@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
+#include <asm-generic/mm_hooks.h>
 
 /* ivho: leaving old MIPS comment
  * For the fast tlb miss handlers, we keep a per cpu array of pointers
