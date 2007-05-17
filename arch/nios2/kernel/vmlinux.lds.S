@@ -46,7 +46,7 @@ SECTIONS
     . = ALIGN(8192);	/* MUST be 8192, the THREAD_SIZE */
     *(.data.init_task)
 
-    *(.data)
+    DATA_DATA
 
     CONSTRUCTORS
   }
