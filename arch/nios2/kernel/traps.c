@@ -119,6 +119,7 @@ void die_if_kernel(char *str, struct pt_regs *pregs)
 	pc = pregs->ra;
 	printk("0x%08lx\n trapped to die_if_kernel\n",pregs->ra);
 	show_regs(pregs);
+	add_taint(TAINT_DIE);
 	if(!user_mode(pregs))
 		do_exit(SIGKILL);
 	do_exit(SIGSEGV);
