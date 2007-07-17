@@ -158,22 +158,9 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 
 		/* when I and D space are separate, this will have to be fixed. */
 		case PTRACE_POKETEXT: /* write the word at location addr. */
-		case PTRACE_POKEDATA: {
-			int copied;
-
-			PRINTK_DEBUG("%s POKETEXT: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
-			ret = 0;
-			copied = access_process_vm(child, addr, &data, sizeof(data), 1);
-			if (request == PTRACE_POKETEXT) {
-				flush_dcache_range(addr, addr+sizeof(data));
-				flush_icache_range(addr, addr+sizeof(data));
-			}
-			PRINTK_DEBUG("%s POKETEXT: copied size = %d\n", __FUNCTION__, copied);
-			if (copied == sizeof(data))
-				break;
-			ret = -EIO;
+		case PTRACE_POKEDATA:
+			ret = generic_ptrace_pokedata(child, addr, data);
 			break;
-		}
 
 		case PTRACE_POKEUSR: /* write the word at location addr in the USER area */
 			PRINTK_DEBUG("%s POKEUSR: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
