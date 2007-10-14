@@ -18,15 +18,15 @@
 cflags-y :=
 
 AFLAGS += $(cflags-y)
-CFLAGS += -pipe -D__linux__ -D__ELF__ $(cflags-y)
-CFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_SUPPORT),-mhw-mul,-mno-hw-mul)
-CFLAGS += $(if $(CONFIG_NIOS2_HW_MULX_SUPPORT),-mhw-mulx,-mno-hw-mulx)
-CFLAGS += $(if $(CONFIG_NIOS2_HW_DIV_SUPPORT),-mhw-div,-mno-hw-div)
+KBUILD_CFLAGS += -pipe -D__linux__ -D__ELF__ $(cflags-y)
+KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_SUPPORT),-mhw-mul,-mno-hw-mul)
+KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_MULX_SUPPORT),-mhw-mulx,-mno-hw-mulx)
+KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_DIV_SUPPORT),-mhw-div,-mno-hw-div)
 
-CFLAGS += -fno-optimize-sibling-calls
-CFLAGS += -DNO_TEXT_SECTIONS
-CFLAGS += -fno-builtin
-CFLAGS += -O2 -g -G 0
+KBUILD_CFLAGS += -fno-optimize-sibling-calls
+KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
+KBUILD_CFLAGS += -fno-builtin
+KBUILD_CFLAGS += -O2 -g -G 0
 
 LDFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
 LDFLAGS += -mnios2elf
