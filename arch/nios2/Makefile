@@ -17,7 +17,7 @@
 
 cflags-y :=
 
-AFLAGS += $(cflags-y)
+KBUILD_AFLAGS += $(cflags-y)
 KBUILD_CFLAGS += -pipe -D__linux__ -D__ELF__ $(cflags-y)
 KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_SUPPORT),-mhw-mul,-mno-hw-mul)
 KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_MULX_SUPPORT),-mhw-mulx,-mno-hw-mulx)
