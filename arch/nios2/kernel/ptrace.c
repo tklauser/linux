@@ -209,11 +209,6 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			break;
 		}
 
-		case PTRACE_DETACH:	/* detach a process that was attached. */
-			PRINTK_DEBUG("%s DETACH\n", __FUNCTION__);
-			ret = ptrace_detach(child, data);
-			break;
-
 		case PTRACE_GETREGS: { /* Get all gp regs from the child. */
 		  	int i;
 			unsigned long tmp;
