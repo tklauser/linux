@@ -209,7 +209,7 @@ out_of_memory:
 	}
 	printk(KERN_INFO "VM: killing process %s\n", tsk->comm);
 	if (user_mode(regs))
-		do_exit(SIGKILL);
+		do_group_exit(SIGKILL);
 	goto no_context;
 
 do_sigbus:
