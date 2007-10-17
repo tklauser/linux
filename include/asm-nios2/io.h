@@ -205,10 +205,6 @@ extern inline void iounmap(void *addr) {
 
 #define IO_SPACE_LIMIT 0xffffffff
 
-#define dma_cache_inv(_start,_size)       flush_dcache_range(_start,_size)
-#define dma_cache_wback(_start,_size)		flush_dcache_range(_start,_size)
-#define dma_cache_wback_inv(_start,_size)	flush_dcache_range(_start,_size)
-
 /* Pages to physical address... */
 #define page_to_phys(page)      virt_to_phys(page_to_virt(page))
 #define page_to_bus(page)       page_to_virt(page)

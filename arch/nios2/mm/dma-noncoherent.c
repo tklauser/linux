@@ -63,7 +63,7 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 
 	ret = dma_alloc_noncoherent(dev, size, dma_handle, gfp);
 	if (ret) {
-		dma_cache_wback_inv((unsigned long) ret, size);
+		flush_dcache_range((unsigned long) ret, (unsigned long) ret + size);
 		ret = UNCAC_ADDR(ret);
 	}
 
@@ -96,15 +96,9 @@ static inline void __dma_sync(unsigned long addr, size_t size,
 {
 	switch (direction) {
 	case DMA_TO_DEVICE:
-		dma_cache_wback(addr, size);
-		break;
-
 	case DMA_FROM_DEVICE:
-		dma_cache_inv(addr, size);
-		break;
-
 	case DMA_BIDIRECTIONAL:
-		dma_cache_wback_inv(addr, size);
+		flush_dcache_range((unsigned long) addr, (unsigned long) addr + size);
 		break;
 
 	default:
@@ -166,7 +160,7 @@ dma_addr_t dma_map_page(struct device *dev, struct page *page,
 	BUG_ON(direction == DMA_NONE);
 
 	addr = (unsigned long) page_address(page) + offset;
-	dma_cache_wback_inv(addr, size);
+	__dma_sync(addr, size, direction);
 
 	return page_to_phys(page) + offset;
 }
@@ -182,7 +176,7 @@ void dma_unmap_page(struct device *dev, dma_addr_t dma_address, size_t size,
 		unsigned long addr;
 
 		addr = dma_address + PAGE_OFFSET;
-		dma_cache_wback_inv(addr, size);
+		__dma_sync(addr, size, direction);
 	}
 }
 
@@ -324,7 +318,7 @@ void dma_cache_sync(void *vaddr, size_t size, enum dma_data_direction direction)
 	if (direction == DMA_NONE)
 		return;
 
-	dma_cache_wback_inv((unsigned long)vaddr, size);
+	__dma_sync((unsigned long)vaddr, size, direction);
 }
 
 EXPORT_SYMBOL(dma_cache_sync);
@@ -364,7 +358,7 @@ void pci_dac_dma_sync_single_for_cpu(struct pci_dev *pdev,
 {
 	BUG_ON(direction == PCI_DMA_NONE);
 
-	dma_cache_wback_inv(dma_addr + PAGE_OFFSET, len);
+	__dma_sync(dma_addr + PAGE_OFFSET, len, DMA_BIDIRECTIONAL);
 }
 
 EXPORT_SYMBOL(pci_dac_dma_sync_single_for_cpu);
@@ -374,7 +368,7 @@ void pci_dac_dma_sync_single_for_device(struct pci_dev *pdev,
 {
 	BUG_ON(direction == PCI_DMA_NONE);
 
-	dma_cache_wback_inv(dma_addr + PAGE_OFFSET, len);
+	__dma_sync(dma_addr + PAGE_OFFSET, len, DMA_BIDIRECTIONAL);
 }
 
 EXPORT_SYMBOL(pci_dac_dma_sync_single_for_device);
