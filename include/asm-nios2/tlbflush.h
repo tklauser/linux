@@ -11,7 +11,6 @@
  *  - flush_tlb_page(vma, vmaddr) flushes one page
  *  - flush_tlb_range(vma, start, end) flushes a range of pages
  *  - flush_tlb_kernel_range(start, end) flushes a range of kernel pages
- *  - flush_tlb_pgtables(mm, start, end) flushes a range of page tables
  */
 extern void local_flush_tlb_all(void);
 extern void local_flush_tlb_mm(struct mm_struct *mm);
@@ -30,11 +29,5 @@ extern void local_flush_tlb_one(unsigned long vaddr);
 	local_flush_tlb_kernel_range(vmaddr, end)
 #define flush_tlb_page(vma,page)	local_flush_tlb_page(vma, page)
 #define flush_tlb_one(vaddr)		local_flush_tlb_one(vaddr)
-
-static inline void flush_tlb_pgtables(struct mm_struct *mm,
-	unsigned long start, unsigned long end)
-{
-	/* Nothing to do on NiosII.  */
-}
 
 #endif /* _ASM_NIOS2_TLBFLUSH_H */
