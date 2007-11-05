@@ -34,7 +34,7 @@
 #if defined(CONFIG_USB_SL811_HCD) || defined (CONFIG_USB_SL811_HCD_MODULE)
 #if defined(CONFIG_MICROTRONIX_STRATIX) || defined (CONFIG_MICROTRONIX_CYCLONE)
 
-#include <linux/usb_sl811.h>
+#include <linux/usb/sl811.h>
 #define SL811_ADDR ((unsigned int)na_usb)
 #define SL811_IRQ na_usb_irq
 
@@ -108,7 +108,7 @@ subsys_initcall(mtx_kit_usb_init);
 
 #if defined(CONFIG_USB_ISP116X_HCD) || defined (CONFIG_USB_ISP116X_HCD_MODULE)
 
-#include <linux/usb_isp116x.h>
+#include <linux/usb/isp116x.h>
 
 #define ISP116X_HCD_ADDR ((unsigned int)na_usb)
 #define ISP116X_HCD_IRQ na_usb_irq
@@ -137,28 +137,15 @@ static struct resource isp116x_hcd_resources[] = {
 
 static struct isp116x_platform_data isp116x_data = {
 		// Enable internal resistors on downstream ports
-        .sel15Kres              = 0,
-        // Clock cannot be stopped
-        .clknotstop             = 1,
+        .sel15Kres              = 1,
         // On-chip overcurrent protection
-        .oc_enable              = 0,
+        .oc_enable              = 1,
         // INT output polarity
         .int_act_high           = 0,
         // INT edge or level triggered
         .int_edge_triggered     = 0,
-        // End-of-transfer input polarity
-        .eot_act_high           = 0,
-        // DREQ output polarity
-        .dreq_act_high          = 1,
-        // WAKEUP pin connected
-        .remote_wakeup_connected= 0,
         // Wakeup by devices on usb bus enabled
         .remote_wakeup_enable   = 0,
-        // Switch or not to switch (keep always powered)
-        .no_power_switching     = 1,
-        // Ganged port power switching (0) or individual port power switching (1)
-        .power_switching_mode   = 0,
-        .reset                  = NULL /* isp116x_reset */,
         .delay                  = isp116x_delay,
 };
 
