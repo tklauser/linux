@@ -213,8 +213,8 @@
 #define __NR_rt_sigtimedwait	177
 #define __NR_rt_sigqueueinfo	178
 #define __NR_rt_sigsuspend	179
-#define __NR_pread64		180
-#define __NR_pwrite64		181
+#define __NR_pread		180
+#define __NR_pwrite		181
 #define __NR_lchown		182
 #define __NR_getcwd		183
 #define __NR_capget		184
@@ -251,375 +251,114 @@
 #define __NR_setfsuid32		215
 #define __NR_setfsgid32		216
 #define __NR_pivot_root		217
+/* 218 unused */
+/* 219 unused */
 #define __NR_getdents64		220
-#define __NR_fcntl64		221
-#define __NR_security		223
-#define __NR_gettid		224
-#define __NR_readahead		225
-#define __NR_setxattr		226
-#define __NR_lsetxattr		227
-#define __NR_fsetxattr		228
-#define __NR_getxattr		229
-#define __NR_lgetxattr		230
-#define __NR_fgetxattr		231
-#define __NR_listxattr		232
-#define __NR_llistxattr		233
-#define __NR_flistxattr		234
-#define __NR_removexattr	235
-#define __NR_lremovexattr	236
-#define __NR_fremovexattr	237
-#define __NR_tkill		238
-#define __NR_sendfile64		239
-#define __NR_futex		240
-#define __NR_sched_setaffinity	241
-#define __NR_sched_getaffinity	242
-#define __NR_set_thread_area	243
-#define __NR_get_thread_area	244
-#define __NR_io_setup		245
-#define __NR_io_destroy		246
-#define __NR_io_getevents	247
-#define __NR_io_submit		248
-#define __NR_io_cancel		249
-#define __NR_alloc_hugepages	250
-#define __NR_free_hugepages	251
-#define __NR_exit_group		252
-#define __NR_lookup_dcookie	253
-#define __NR_sys_epoll_create	254
-#define __NR_sys_epoll_ctl	255
-#define __NR_sys_epoll_wait	256
-#define __NR_remap_file_pages	257
-#define __NR_set_tid_address	258
-#define __NR_timer_create	259
-#define __NR_timer_settime	(__NR_timer_create+1)
-#define __NR_timer_gettime	(__NR_timer_create+2)
-#define __NR_timer_getoverrun	(__NR_timer_create+3)
-#define __NR_timer_delete	(__NR_timer_create+4)
-#define __NR_clock_settime	(__NR_timer_create+5)
-#define __NR_clock_gettime	(__NR_timer_create+6)
-#define __NR_clock_getres	(__NR_timer_create+7)
-#define __NR_clock_nanosleep	(__NR_timer_create+8)
-#define __NR_statfs64		268
-#define __NR_fstatfs64		269
-#define __NR_tgkill		270
-#define __NR_utimes		271
-#define __NR_fadvise64_64	272
-#define __NR_vserver		273
-#define __NR_mbind		274
-#define __NR_get_mempolicy	275
-#define __NR_set_mempolicy	276
-#define __NR_mq_open 		277
-#define __NR_mq_unlink		(__NR_mq_open+1)
-#define __NR_mq_timedsend	(__NR_mq_open+2)
-#define __NR_mq_timedreceive	(__NR_mq_open+3)
-#define __NR_mq_notify		(__NR_mq_open+4)
-#define __NR_mq_getsetattr	(__NR_mq_open+5)
-#define __NR_sys_kexec_load	283
-#define __NR_waitid		284
-/* #define __NR_sys_setaltroot	285 */
-#define __NR_add_key		286
-#define __NR_request_key	287
-#define __NR_keyctl		288
-
-#define NR_syscalls 289
-
-
-/* user-visible error numbers are in the range -1 - -122: see
-   <asm-nios2/errno.h> */
-
-#define __syscall_return(type, res) \
-do { \
-	if ((unsigned long)(res) >= (unsigned long)(-125)) { \
-                                                                        \
-                /* avoid using res which is declared to be in           \
-                    register r2; errno might expand to a function       \
-                    call and clobber it.                          */    \
-                                                                        \
-		int __err = -(res); \
-		errno = __err; \
-		res = -1; \
-	} \
-	return (type) (res); \
-} while (0)
-
-#define _syscall0(type,name) \
-type name(void) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall1 arg a
-//;dgt2;tmp; already being in r4 ?
-#define _syscall1(type,name,atype,a) \
-type name(atype a) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall2 args a,b
-//;dgt2;tmp; already being in r4,r5 ?
-#define _syscall2(type,name,atype,a,btype,b) \
-type name(atype a,btype b) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-        "    mov     r5,    %4\n\t"   /* (long) b        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-          , "r" ((long) b)            /* %4              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-          , "r5"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall3 args a,b,c
-//;dgt2;tmp; already being in r4,r5,r6 ?
-#define _syscall3(type,name,atype,a,btype,b,ctype,c) \
-type name(atype a,btype b,ctype c) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-        "    mov     r5,    %4\n\t"   /* (long) b        */ \
-        "    mov     r6,    %5\n\t"   /* (long) c        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-          , "r" ((long) b)            /* %4              */ \
-          , "r" ((long) c)            /* %5              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-          , "r5"                      /* Clobbered       */ \
-          , "r6"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall4 args a,b,c,d
-//;dgt2;tmp; already being in r4,r5,r6,r7 ?
-#define _syscall4(type,name,atype,a,btype,b,ctype,c,dtype,d) \
-type name (atype a, btype b, ctype c, dtype d) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-        "    mov     r5,    %4\n\t"   /* (long) b        */ \
-        "    mov     r6,    %5\n\t"   /* (long) c        */ \
-        "    mov     r7,    %6\n\t"   /* (long) d        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-          , "r" ((long) b)            /* %4              */ \
-          , "r" ((long) c)            /* %5              */ \
-          , "r" ((long) d)            /* %6              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-          , "r5"                      /* Clobbered       */ \
-          , "r6"                      /* Clobbered       */ \
-          , "r7"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall5 args a,b,c,d
-//;dgt2;tmp; already being in r4,r5,r6,r7 ?
-#define _syscall5(type,name,atype,a,btype,b,ctype,c,dtype,d,etype,e) \
-type name (atype a,btype b,ctype c,dtype d,etype e) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-        "    mov     r5,    %4\n\t"   /* (long) b        */ \
-        "    mov     r6,    %5\n\t"   /* (long) c        */ \
-        "    mov     r7,    %6\n\t"   /* (long) c        */ \
-        "    mov     r8,    %7\n\t"   /* (long) e        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-          , "r" ((long) b)            /* %4              */ \
-          , "r" ((long) c)            /* %5              */ \
-          , "r" ((long) d)            /* %6              */ \
-          , "r" ((long) e)            /* %7              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-          , "r5"                      /* Clobbered       */ \
-          , "r6"                      /* Clobbered       */ \
-          , "r7"                      /* Clobbered       */ \
-          , "r8"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
-
-//;dgt2;tmp;can we RELY on syscall6 args a,b,c,d
-//;dgt2;tmp; already being in r4,r5,r6,r7 ?
-#define _syscall6(type,name,atype,a,btype,b,ctype,c,dtype,d,etype,e,ftype,f) \
-type name (atype a,btype b,ctype c,dtype d,etype e,ftype f) \
-{ \
-    long __res;                                             \
-                                                            \
-    __asm__ __volatile__ (                                  \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        "    movi    r2,    %2\n\t"   /* TRAP_ID_SYSCALL */ \
-        "    movi    r3,    %1\n\t"   /* __NR_##name     */ \
-        "    mov     r4,    %3\n\t"   /* (long) a        */ \
-        "    mov     r5,    %4\n\t"   /* (long) b        */ \
-        "    mov     r6,    %5\n\t"   /* (long) c        */ \
-        "    mov     r7,    %6\n\t"   /* (long) c        */ \
-        "    mov     r8,    %7\n\t"   /* (long) e        */ \
-        "    mov     r9,    %8\n\t"   /* (long) f        */ \
-                                                            \
-        "    trap\n\t"                                      \
-        "    mov     %0,    r2\n\t"   /* syscall rtn     */ \
-                                                            \
-        "    \n\t"                                          \
-                                                            \
-        :   "=r" (__res)              /* %0              */ \
-                                                            \
-        :   "i" (__NR_##name)         /* %1              */ \
-          , "i" (TRAP_ID_SYSCALL)     /* %2              */ \
-          , "r" ((long) a)            /* %3              */ \
-          , "r" ((long) b)            /* %4              */ \
-          , "r" ((long) c)            /* %5              */ \
-          , "r" ((long) d)            /* %6              */ \
-          , "r" ((long) e)            /* %7              */ \
-          , "r" ((long) f)            /* %8              */ \
-                                                            \
-        :   "r2"                      /* Clobbered       */ \
-          , "r3"                      /* Clobbered       */ \
-          , "r4"                      /* Clobbered       */ \
-          , "r5"                      /* Clobbered       */ \
-          , "r6"                      /* Clobbered       */ \
-          , "r7"                      /* Clobbered       */ \
-          , "r8"                      /* Clobbered       */ \
-          , "r9"                      /* Clobbered       */ \
-        );                                                  \
-                                                            \
-__syscall_return(type,__res); \
-}
+#define __NR_gettid		221
+#define __NR_tkill		222
+#define __NR_setxattr		223
+#define __NR_lsetxattr		224
+#define __NR_fsetxattr		225
+#define __NR_getxattr		226
+#define __NR_lgetxattr		227
+#define __NR_fgetxattr		228
+#define __NR_listxattr		229
+#define __NR_llistxattr		230
+#define __NR_flistxattr		231
+#define __NR_removexattr	232
+#define __NR_lremovexattr	233
+#define __NR_fremovexattr	234
+#define __NR_futex		235
+#define __NR_sendfile64		236
+#define __NR_mincore		237
+#define __NR_madvise		238
+#define __NR_fcntl64		239
+#define __NR_readahead		240
+#define __NR_io_setup		241
+#define __NR_io_destroy		242
+#define __NR_io_getevents	243
+#define __NR_io_submit		244
+#define __NR_io_cancel		245
+#define __NR_fadvise64		246
+#define __NR_exit_group		247
+#define __NR_lookup_dcookie	248
+#define __NR_epoll_create	249
+#define __NR_epoll_ctl		250
+#define __NR_epoll_wait		251
+#define __NR_remap_file_pages	252
+#define __NR_set_tid_address	253
+#define __NR_timer_create	254
+#define __NR_timer_settime	255
+#define __NR_timer_gettime	256
+#define __NR_timer_getoverrun	257
+#define __NR_timer_delete	258
+#define __NR_clock_settime	259
+#define __NR_clock_gettime	260
+#define __NR_clock_getres	261
+#define __NR_clock_nanosleep	262
+#define __NR_statfs64		263
+#define __NR_fstatfs64		264
+#define __NR_tgkill		265
+#define __NR_utimes		266
+#define __NR_fadvise64_64	267
+#define __NR_mbind		268
+#define __NR_get_mempolicy	269
+#define __NR_set_mempolicy	270
+#define __NR_mq_open		271
+#define __NR_mq_unlink		272
+#define __NR_mq_timedsend	273
+#define __NR_mq_timedreceive	274
+#define __NR_mq_notify		275
+#define __NR_mq_getsetattr	276
+#define __NR_waitid		277
+#define __NR_sys_setaltroot	278
+#define __NR_add_key		279
+#define __NR_request_key	280
+#define __NR_keyctl		281
+#define __NR_ioprio_set		282
+#define __NR_ioprio_get		283
+#define __NR_inotify_init	284
+#define __NR_inotify_add_watch	285
+#define __NR_inotify_rm_watch	286
+#define __NR_migrate_pages	287
+#define __NR_openat		288
+#define __NR_mkdirat		289
+#define __NR_mknodat		290
+#define __NR_fchownat		291
+#define __NR_futimesat		292
+#define __NR_fstatat64		293
+#define __NR_unlinkat		294
+#define __NR_renameat		295
+#define __NR_linkat		296
+#define __NR_symlinkat		297
+#define __NR_readlinkat		298
+#define __NR_fchmodat		299
+#define __NR_faccessat		300
+#define __NR_pselect6		301
+#define __NR_ppoll		302
+#define __NR_unshare		303
+#define __NR_set_robust_list	304
+#define __NR_get_robust_list	305
+#define __NR_splice		306
+#define __NR_sync_file_range	307
+#define __NR_tee		308
+#define __NR_vmsplice		309
+#define __NR_move_pages		310
+#define __NR_sched_setaffinity	311
+#define __NR_sched_getaffinity	312
+#define __NR_kexec_load		313
+#define __NR_getcpu		314
+#define __NR_epoll_pwait	315
+#define __NR_utimensat		316
+#define __NR_signalfd		317
+#define __NR_timerfd		318
+#define __NR_eventfd		319
+#define __NR_pread64		320
+#define __NR_pwrite64		321
 
 #ifdef __KERNEL__
+#define NR_syscalls		322
+
 #define __ARCH_WANT_IPC_PARSE_VERSION
 #define __ARCH_WANT_OLD_READDIR
 #define __ARCH_WANT_OLD_STAT
@@ -642,46 +381,6 @@ __syscall_return(type,__res); \
 #define __ARCH_WANT_SYS_SIGPENDING
 #define __ARCH_WANT_SYS_SIGPROCMASK
 #define __ARCH_WANT_SYS_RT_SIGACTION
-#endif
-
-#ifdef __KERNEL_SYSCALLS__
-
-#include <linux/compiler.h>
-#include <linux/types.h>
-
-/*
- * we need this inline - forking from kernel space will result
- * in NO COPY ON WRITE (!!!), until an execve is executed. This
- * is no problem, but for the stack. This is handled by not letting
- * main() use the stack at all after fork(). Thus, no function
- * calls - which means inline code for fork too, as otherwise we
- * would use the stack upon exit from 'fork()'.
- *
- * Actually only pause and fork are needed inline, so that there
- * won't be any messing with the stack from main(), but we define
- * some others too.
- */
-#define __NR__exit __NR_exit
-static inline _syscall0(int,pause)
-static inline _syscall0(int,sync)
-static inline _syscall0(pid_t,setsid)
-static inline _syscall3(int,write,int,fd,const char *,buf,off_t,count)
-static inline _syscall3(int,read,int,fd,char *,buf,off_t,count)
-static inline _syscall3(off_t,lseek,int,fd,off_t,offset,int,count)
-static inline _syscall1(int,dup,int,fd)
-static inline _syscall3(int,execve,const char *,file,char **,argv,char **,envp)
-static inline _syscall3(int,open,const char *,file,int,flag,int,mode)
-static inline _syscall1(int,close,int,fd)
-static inline _syscall1(int,_exit,int,exitcode)
-static inline _syscall3(pid_t,waitpid,pid_t,pid,int *,wait_stat,int,options)
-static inline _syscall1(int,delete_module,const char *,name)
-
-static inline pid_t wait(int * wait_stat)
-{
-	return waitpid(-1,wait_stat,0);
-}
-
-#endif
 
 /*
  * "Conditional" syscalls
@@ -690,5 +389,7 @@ static inline pid_t wait(int * wait_stat)
  * but it doesn't work on all toolchains, so we just do it by hand
  */
 #define cond_syscall(x) asm(".weak\t" #x "\n\t.set\t" #x ",sys_ni_syscall");
+
+#endif	/* __KERNEL__ */
 
 #endif /* _ASM_NIOS_UNISTD_H_ */

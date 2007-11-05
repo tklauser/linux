@@ -46,6 +46,9 @@ extern void outsl(unsigned long port, void *src, unsigned long count);
 #define irq_canonicalize(i)	(i)
 #endif
 
+#endif /* __KERNEL__ */
+/* IO macros are needed by userspace programs */
+
 /*
  * readX/writeX() are used to access memory mapped devices. On some
  * architectures the memory mapped IO stuff needs to be accessed
@@ -138,7 +141,8 @@ extern void outsl(unsigned long port, void *src, unsigned long count);
 #define outw_p(x,addr) outw(x,addr)
 #define outl_p(x,addr) outl(x,addr)
 
-
+/* IO macros are needed by userspace programs */
+#ifdef __KERNEL__
 
 extern inline void insb(unsigned long port, void *dst, unsigned long count)
 {
@@ -243,6 +247,9 @@ extern void iounmap(void *addr);
 #define virt_to_bus virt_to_phys
 #define bus_to_virt phys_to_virt
 
+#define ioport_map(port, nr)	ioremap(port, nr)
+#define ioport_unmap(port)	iounmap(port)
+
 /*
  * Convert a physical pointer to a virtual kernel pointer for /dev/mem
  * access
@@ -253,6 +260,16 @@ extern void iounmap(void *addr);
  * Convert a virtual cached pointer to an uncached pointer
  */
 #define xlate_dev_kmem_ptr(p)	p
+
+#define readsb(p,d,l)		insb(p,d,l)
+#define readsw(p,d,l)		insw(p,d,l)
+#define readsl(p,d,l)		insl(p,d,l)
+#define writesb(p,d,l)		outsb(p,d,l)
+#define writesw(p,d,l)		outsw(p,d,l)
+#define writesl(p,d,l)		outsl(p,d,l)
+#ifndef irq_canonicalize
+#define irq_canonicalize(i)	(i)
+#endif
 
 #endif /* __KERNEL__ */
 

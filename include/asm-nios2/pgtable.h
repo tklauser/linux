@@ -29,6 +29,7 @@
 //vic - this bit copied from m68knommu version
 #include <asm/setup.h>
 #include <asm/io.h>
+#include <linux/sched.h>
 
 typedef pte_t *pte_addr_t;
 
@@ -100,5 +101,12 @@ extern inline void flush_pages_to_ram (unsigned long address, int n)
  */
 #define	VMALLOC_START	0
 #define	VMALLOC_END	0xffffffff
+
+#define arch_enter_lazy_mmu_mode()	do {} while (0)
+#define arch_leave_lazy_mmu_mode()	do {} while (0)
+#define arch_flush_lazy_mmu_mode()	do {} while (0)
+#define arch_enter_lazy_cpu_mode()	do {} while (0)
+#define arch_leave_lazy_cpu_mode()	do {} while (0)
+#define arch_flush_lazy_cpu_mode()	do {} while (0)
 
 #endif /* _NIOS_PGTABLE_H */

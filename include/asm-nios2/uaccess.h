@@ -173,11 +173,12 @@ static inline long strnlen_user(const char *src, long n)
  * Zero Userspace
  */
 
-static inline unsigned long
-clear_user(void *to, unsigned long n)
+static inline unsigned long __clear_user(void *to, unsigned long n)
 {
 	memset(to, 0, n);
-    return(0);
+	return(0);
 }
+
+#define clear_user(to, n) __clear_user(to, n)
 
 #endif /* _NIOS2_UACCESS_H */

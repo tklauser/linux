@@ -19,7 +19,7 @@ config SERIO_ALTPS2
 	default N
 	select SERIO
 
-config I2C_GPIO
+config I2C_NIOS2_GPIO
 	tristate "GPIO-Based I2C Interface"
 	default N
 	select I2C

@@ -317,7 +317,7 @@ int copy_thread(int nr, unsigned long clone_flags,
 	unsigned long stack_offset, *retp;
 
 	stack_offset = THREAD_SIZE - sizeof(struct pt_regs);
-	childregs = (struct pt_regs *) ((unsigned long) p->thread_info + stack_offset);
+	childregs = (struct pt_regs *) ((unsigned long) p->stack + stack_offset);
 	p->thread.kregs = childregs;
 
 	*childregs = *regs;

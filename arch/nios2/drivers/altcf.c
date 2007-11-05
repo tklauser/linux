@@ -51,7 +51,7 @@ struct cf_dev {
 	int ide_irq;
 	int configured;
 	ide_hwif_t *hwif;
-	struct work_struct wcf;
+	struct delayed_work wcf;
 };
 
 static struct cf_dev cf_devices[MAX_HWIFS] = {
@@ -123,7 +123,7 @@ static int cf_config(struct cf_dev* dev)
 		    hw.irq = dev->ide_irq;
 		    hw.chipset = ide_generic;
 		    outl(IDECTL_IIDE, dev->base + REG_IDECTL);
-		    index = ide_register_hw(&hw, &hwif);
+		    index = ide_register_hw(&hw, 1, &hwif);
 		    if (index >=0) {
 			    dev->configured = 1;
 			    dev->hwif = hwif;
@@ -157,13 +157,13 @@ static irqreturn_t cf_intr(int irq, void *dev_id)
 	if ((cfctl & CFCTL_DET))
 		schedule_delayed_work(&dev->wcf, HZ/2);
 	else
-		schedule_work(&dev->wcf);
+		schedule_work(&dev->wcf.work);
 	return IRQ_HANDLED;
 }
 
-static void cf_event(void	*dev_id)
+static void cf_event(struct work_struct *work)
 {
-	struct cf_dev* dev = (struct cf_dev *)dev_id;
+	struct cf_dev* dev = container_of(work, struct cf_dev, wcf.work);
 
 	if (dev) {
 		unsigned int cfctl;
@@ -219,7 +219,7 @@ int __init altcf_init(void)
 				cf_init_hwif_ports(&hw, cf_devices[i].ide_base, 0, NULL);
 				hw.chipset = ide_generic;
 				hw.irq = cf_devices[i].ide_irq;
-				if (ide_register_hw(&hw, &hwif)>=0) {
+				if (ide_register_hw(&hw, 1, &hwif)>=0) {
 					cf_devices[i].configured = 1;
 					cf_devices[i].hwif = hwif;
 				}
@@ -230,11 +230,11 @@ int __init altcf_init(void)
 		}
 
 		/* register the detection interrupt */
-		if (request_irq(cf_devices[i].irq, cf_intr, SA_INTERRUPT, "cf", &cf_devices[i])) {
+		if (request_irq(cf_devices[i].irq, cf_intr, IRQF_DISABLED, "cf", &cf_devices[i])) {
 			PDEBUG("CF: unable to get interrupt %d for detecting inf %d\n",
 					cf_devices[i].irq, i );
 		} else {
-			INIT_WORK(&cf_devices[i].wcf, cf_event);
+			INIT_DELAYED_WORK(&cf_devices[i].wcf, cf_event);
 			/* enable the detection interrupt */
 			cfctl=inl(cf_devices[i].base + REG_CFCTL);
 			outl(cfctl | CFCTL_IDET, cf_devices[i].base + REG_CFCTL);

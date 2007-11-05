@@ -114,6 +114,7 @@ struct switch_stack {
 	unsigned long  ra;
 };
 
+#ifdef __KERNEL__
 /* Arbitrarily choose the same ptrace numbers as used by the Sparc code. */
 #define PTRACE_GETREGS            12
 #define PTRACE_SETREGS            13
@@ -121,8 +122,6 @@ struct switch_stack {
 #define PTRACE_GETFPREGS          14
 #define PTRACE_SETFPREGS          15
 #endif
-
-#ifdef __KERNEL__
 
 #ifndef PS_S
 #define PS_S  (0x00000001)

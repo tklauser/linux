@@ -30,36 +30,68 @@
 
 
 #include <linux/errno.h>
-#include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/param.h>
 #include <linux/string.h>
 #include <linux/mm.h>
 #include <linux/interrupt.h>
-#include <linux/profile.h>
 #include <linux/time.h>
 #include <linux/timex.h>
+#include <linux/profile.h>
+#include <linux/module.h>
 #include <linux/irq.h>
 
 #include <asm/segment.h>
 #include <asm/io.h>
 #include <asm/nios.h>
 
-
 #define	TICK_SIZE (tick_nsec / 1000)
 
 unsigned long cpu_khz;
 static inline int set_rtc_mmss(unsigned long nowtime)
 {
-  return -1;
+  return 0;
+}
+
+/* Timer timeout status */
+#define nios2_timer_TO	(inw(&na_timer0->np_timerstatus) & np_timerstatus_to_mask)
+
+/* Timer snapshot */
+static inline unsigned long nios2_read_timercount(void)
+{
+	unsigned long count;
+
+	outw(0, &na_timer0->np_timersnapl);
+	count = inw(&na_timer0->np_timersnaph) << 16 | inw(&na_timer0->np_timersnapl);
+
+	return count;
+}
+
+/*
+ * Should return useconds since last timer tick
+ */
+static unsigned long gettimeoffset(void)
+{
+	unsigned long offset;
+	unsigned long count;
+
+	count = nios2_read_timercount();
+	offset = ((nasys_clock_freq/HZ)-1 - nios2_read_timercount()) \
+		 / (nasys_clock_freq / USEC_PER_SEC);
+
+	/* Check if we just wrapped the counters and maybe missed a tick */
+	if (nios2_timer_TO  && (offset < (100000 / HZ / 2)))
+		offset += (USEC_PER_SEC / HZ);
+
+	return offset;
 }
 
 /*
  * timer_interrupt() needs to keep up the real-time clock,
  * as well as call the "do_timer()" routine every clocktick
  */
-static irqreturn_t timer_interrupt(int irq, void *dummy)
+irqreturn_t timer_interrupt(int irq, void *dummy)
 {
 	/* last time the cmos clock got updated */
 	static long last_rtc_update=0;
@@ -77,7 +109,8 @@ static irqreturn_t timer_interrupt(int irq, void *dummy)
 	 * CMOS clock accordingly every ~11 minutes. Set_rtc_mmss() has to be
 	 * called as close as possible to 500 ms before the new second starts.
 	 */
-	if (ntp_synced() && xtime.tv_sec > last_rtc_update + 660 &&
+	if (ntp_synced() &&
+	    xtime.tv_sec > last_rtc_update + 660 &&
 	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned) TICK_SIZE) / 2 &&
 	    (xtime.tv_nsec  / 1000) <= 500000 + ((unsigned) TICK_SIZE) / 2) {
 	  if (set_rtc_mmss(xtime.tv_sec) == 0)
@@ -90,9 +123,10 @@ static irqreturn_t timer_interrupt(int irq, void *dummy)
 	return(IRQ_HANDLED);
 }
 
-void time_init(void)
+void __init time_init(void)
 {
 	unsigned int year, mon, day, hour, min, sec;
+	int err;
 
 	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
 				int *min, int *sec);
@@ -106,8 +140,9 @@ void time_init(void)
 	xtime.tv_nsec = 0;
 	wall_to_monotonic.tv_sec = -xtime.tv_sec;
 
-	request_irq(na_timer0_irq, timer_interrupt, IRQ_FLG_LOCK, "timer", NULL);
-
+	err = request_irq(na_timer0_irq, timer_interrupt, IRQ_FLG_LOCK, "timer", NULL);
+	if(err)
+		printk(KERN_ERR "%s() failed - errno = %d\n", __FUNCTION__, -err);
 	na_timer0->np_timerperiodl = (nasys_clock_freq/HZ)-1;
 	na_timer0->np_timerperiodh = ((nasys_clock_freq/HZ)-1) >> 16;
 
@@ -128,8 +163,7 @@ void do_gettimeofday(struct timeval *tv)
 
 	do {
 		seq = read_seqbegin_irqsave(&xtime_lock, flags);
-		usec = 0; // For now use timeoffset 0
-//		usec = mach_gettimeoffset ? mach_gettimeoffset() : 0;
+		usec = gettimeoffset();
 		sec = xtime.tv_sec;
 		usec += (xtime.tv_nsec / 1000);
 	} while (read_seqretry_irqrestore(&xtime_lock, seq, flags));
@@ -142,7 +176,7 @@ void do_gettimeofday(struct timeval *tv)
 	tv->tv_sec = sec;
 	tv->tv_usec = usec;
 }
-
+EXPORT_SYMBOL(do_gettimeofday);
 
 int do_settimeofday(struct timespec *tv)
 {
@@ -155,13 +189,11 @@ int do_settimeofday(struct timespec *tv)
 	write_seqlock_irq(&xtime_lock);
 	/*
 	 * This is revolting. We need to set "xtime" correctly. However, the
-	 * value in this location is the value at the most recent update of
-	 * wall time.  Discover what correction gettimeofday() would have
+	 * value in this location is the value at the last tick.
+	 * Discover what correction gettimeofday() would have
 	 * made, and then undo it!
-	 * FIXME On m68knommu this is if (mach_gettimeoffset) nsec -= (mach_gettimeoffset() * 1000);
 	 */
-//	nsec -= cur_timer->get_offset() * NSEC_PER_USEC;
-//	nsec -= (jiffies - wall_jiffies) * TICK_NSEC;
+	nsec -= gettimeoffset() * NSEC_PER_USEC;
 
 	wtm_sec  = wall_to_monotonic.tv_sec + (xtime.tv_sec - sec);
 	wtm_nsec = wall_to_monotonic.tv_nsec + (xtime.tv_nsec - nsec);
@@ -169,15 +201,14 @@ int do_settimeofday(struct timespec *tv)
 	set_normalized_timespec(&xtime, sec, nsec);
 	set_normalized_timespec(&wall_to_monotonic, wtm_sec, wtm_nsec);
 
-	time_adjust = 0;		/* stop active adjtime() */
-	time_status |= STA_UNSYNC;
-	time_maxerror = NTP_PHASE_LIMIT;
-	time_esterror = NTP_PHASE_LIMIT;
+	ntp_clear();
+
 	write_sequnlock_irq(&xtime_lock);
 	clock_was_set();
+
 	return 0;
 }
-
+EXPORT_SYMBOL(do_settimeofday);
 
 /*
  * Scheduler clock - returns current time in nanosec units.
@@ -186,6 +217,3 @@ unsigned long long sched_clock(void)
 {
 	return (unsigned long long)jiffies * (1000000000 / HZ);
 }
-
-EXPORT_SYMBOL(do_gettimeofday);
-EXPORT_SYMBOL(do_settimeofday);

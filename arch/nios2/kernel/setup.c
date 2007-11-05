@@ -56,11 +56,11 @@
 
 #include <asm/irq.h>
 #include <asm/byteorder.h>
-//#include <asm/niosconf.h>
 #include <asm/asm-offsets.h>
+#include <asm/pgtable.h>
 
 #ifdef CONFIG_BLK_DEV_INITRD
-#include <asm/pgtable.h>
+#include <linux/blk.h>
 #endif
 
 #ifdef CONFIG_NIOS_SPI
@@ -90,7 +90,7 @@ EXPORT_SYMBOL(memory_end);
 #ifndef CONFIG_PASS_CMDLINE
 static char default_command_line[] = CONFIG_CMDLINE;
 #endif
-static char command_line[COMMAND_LINE_SIZE] = { 0, };
+static char __initdata command_line[COMMAND_LINE_SIZE] = { 0, };
 
 
 /*				   r1  r2  r3  r4  r5  r6  r7  r8  r9 r10 r11*/
@@ -146,7 +146,7 @@ inline void exit_se_flash(int base)
 	*(unsigned short*)base=0;
 }
 
-void setup_arch(char **cmdline_p)
+void __init setup_arch(char **cmdline_p)
 {
 	int bootmap_size;
 	extern int _stext, _etext;
@@ -635,7 +635,7 @@ static int __init altps2_device_init(void)
 arch_initcall(altps2_device_init);
 #endif // CONFIG_SERIO_ALTPS2
 
-#if defined(CONFIG_I2C_GPIO) && defined(na_gpio_0)
+#if defined(CONFIG_I2C_NIOS2_GPIO) && defined(na_gpio_0)
 #include <asm/gpio.h>
 
 static struct gpio_i2c_pins i2c_gpio_0_pins = {
@@ -660,4 +660,4 @@ static int __init i2c_gpio_device_init(void)
 }
 arch_initcall(i2c_gpio_device_init);
 
-#endif // CONFIG_I2C_GPIO
+#endif // CONFIG_I2C_NIOS2_GPIO
