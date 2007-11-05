@@ -177,7 +177,7 @@
 #define __NR_getdents		141
 #define __NR__newselect		142
 #define __NR_flock		143
-#define __NR_msync		144
+				/* 144 __NR_msync obsolete */
 #define __NR_readv		145
 #define __NR_writev		146
 #define __NR_getsid		147
