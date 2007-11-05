@@ -1,19 +1,26 @@
 /*
- * include/asm-arm/arch-ks8695/vmalloc.h
+ *  linux/include/asm-arm/arch-ks8695/vmalloc.h
  *
- * Copyright (C) 2006 Ben Dooks
- * Copyright (C) 2006 Simtec Electronics <linux@simtec.co.uk>
- *
- * KS8695 vmalloc definition
+ *  Copyright (C) 2000 Russell King.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __ASM_ARCH_VMALLOC_H
-#define __ASM_ARCH_VMALLOC_H
+#ifndef	__ASM_ARCH_VMALLOC_H
+#define	__ASM_ARCH_VMALLOC_H 1
 
-#define VMALLOC_END	  (KS8695_IO_VA & PGDIR_MASK)
+#define VMALLOC_END       (PAGE_OFFSET + 0x10000000)
 
-#endif
+#endif /* __ASM_ARCH_VMALLOC_H */

@@ -213,6 +213,7 @@ source "net/ax25/Kconfig"
 source "net/irda/Kconfig"
 source "net/bluetooth/Kconfig"
 source "net/rxrpc/Kconfig"
+source "../openswan/linux/net/ipsec/Kconfig"
 
 config FIB_RULES
 	bool

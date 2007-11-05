@@ -55,6 +55,7 @@ static inline int v8086_mode(struct pt_regs *regs)
 }
 
 #define instruction_pointer(regs) ((regs)->eip)
+#define user_stack(regs) ((regs)->esp)
 #define regs_return_value(regs) ((regs)->eax)
 
 extern unsigned long profile_pc(struct pt_regs *regs);

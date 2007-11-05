@@ -9,24 +9,17 @@
 /***************************************************************************/
 
 #include <linux/kernel.h>
-#include <linux/sched.h>
 #include <linux/param.h>
-#include <linux/init.h>
 #include <linux/interrupt.h>
-#include <asm/irq.h>
-#include <asm/dma.h>
-#include <asm/traps.h>
 #include <asm/machdep.h>
+#include <asm/dma.h>
+#include <asm/io.h>
 #include <asm/coldfire.h>
-#include <asm/mcftimer.h>
 #include <asm/mcfsim.h>
-#include <asm/mcfdma.h>
+#include <asm/mcfuart.h>
 
 /***************************************************************************/
 
-void coldfire_tick(void);
-void coldfire_timer_init(irq_handler_t handler);
-unsigned long coldfire_timer_offset(void);
 void coldfire_reset(void);
 
 /***************************************************************************/
@@ -42,6 +35,54 @@ unsigned int   dma_base_addr[MAX_M68K_DMA_CHANNELS] = {
 };
 
 unsigned int dma_device_address[MAX_M68K_DMA_CHANNELS];
+
+/***************************************************************************/
+
+static struct mcf_platform_uart m5249_uart_platform[] = {
+	{
+		.mapbase	= MCF_MBAR + MCFUART_BASE1,
+		.irq		= 73,
+	},
+	{
+		.mapbase 	= MCF_MBAR + MCFUART_BASE2,
+		.irq		= 74,
+	}
+};
+
+static struct platform_device m5249_uart = {
+	.name			= "mcfuart",
+	.id			= 0,
+	.dev.platform_data	= m5249_uart_platform,
+};
+
+static struct platform_device *m5249_devices[] __initdata = {
+	&m5249_uart,
+};
+
+/***************************************************************************/
+
+static void m5249_uart_init_line(int line, int irq)
+{
+	if (line == 0) {
+		writel(MCFSIM_ICR_LEVEL6 | MCFSIM_ICR_PRI1, MCF_MBAR + MCFSIM_UART1ICR);
+		writeb(irq, MCFUART_BASE1 + MCFUART_UIVR);
+		mcf_setimr(mcf_getimr() & ~MCFSIM_IMR_UART1);
+	} else if (line == 1) {
+		writel(MCFSIM_ICR_LEVEL6 | MCFSIM_ICR_PRI2, MCF_MBAR + MCFSIM_UART2ICR);
+		writeb(irq, MCFUART_BASE2 + MCFUART_UIVR);
+		mcf_setimr(mcf_getimr() & ~MCFSIM_IMR_UART2);
+	}
+}
+
+void m5249_uarts_init(void)
+{
+	const int nrlines = ARRAY_SIZE(m5249_uart_platform);
+	int line;
+
+	for (line = 0; (line < nrlines); line++)
+		m5249_uart_init_line(line, m5249_uart_platform[line].irq);
+}
+
 
 /***************************************************************************/
 
@@ -95,10 +136,18 @@ int mcf_timerirqpending(int timer)
 void config_BSP(char *commandp, int size)
 {
 	mcf_setimr(MCFSIM_IMR_MASKALL);
-	mach_sched_init = coldfire_timer_init;
-	mach_tick = coldfire_tick;
-	mach_gettimeoffset = coldfire_timer_offset;
 	mach_reset = coldfire_reset;
 }
+
+/***************************************************************************/
+
+static int __init init_BSP(void)
+{
+	m5249_uarts_init();
+	platform_add_devices(m5249_devices, ARRAY_SIZE(m5249_devices));
+	return 0;
+}
+
+arch_initcall(init_BSP);
 
 /***************************************************************************/

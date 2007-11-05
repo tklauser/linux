@@ -424,6 +424,7 @@ bail:
 	return status;
 }
 
+#ifdef CONFIG_DIRECTIO
 /*
  * TODO: Make this into a generic get_blocks function.
  *
@@ -601,6 +602,7 @@ out:
 	mlog_exit(ret);
 	return ret;
 }
+#endif
 
 static void ocfs2_figure_cluster_boundaries(struct ocfs2_super *osb,
 					    u32 cpos,
@@ -1621,7 +1623,9 @@ const struct address_space_operations ocfs2_aops = {
 	.writepage	= ocfs2_writepage,
 	.bmap		= ocfs2_bmap,
 	.sync_page	= block_sync_page,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= ocfs2_direct_IO,
+#endif
 	.invalidatepage	= ocfs2_invalidatepage,
 	.releasepage	= ocfs2_releasepage,
 	.migratepage	= buffer_migrate_page,

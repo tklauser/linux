@@ -12,7 +12,6 @@
 #define	mcfuart_h
 /****************************************************************************/
 
-
 /*
  *	Define the base address of the UARTS within the MBAR address
  *	space.
@@ -33,7 +32,7 @@
 #define MCFUART_BASE2		0x240           /* Base address of UART2 */
 #define MCFUART_BASE3		0x280           /* Base address of UART3 */
 #elif defined(CONFIG_M5249) || defined(CONFIG_M5307) || defined(CONFIG_M5407)
-#if defined(CONFIG_NETtel) || defined(CONFIG_DISKtel) || defined(CONFIG_SECUREEDGEMP3)
+#if defined(CONFIG_NETtel) || defined(CONFIG_SECUREEDGEMP3)
 #define MCFUART_BASE1		0x200           /* Base address of UART1 */
 #define MCFUART_BASE2		0x1c0           /* Base address of UART2 */
 #else
@@ -50,6 +49,16 @@
 #define MCFUART_BASE3		0xfc068000	/* Base address of UART3 */
 #endif
 
+
+#include <linux/serial_core.h>
+#include <linux/platform_device.h>
+
+struct mcf_platform_uart {
+	unsigned long	mapbase;	/* Physical address base */
+	void __iomem	*membase;	/* Virtual address if mapped */
+	unsigned int	irq;		/* Interrupt vector */
+	unsigned int	uartclk;	/* UART clock rate */
+};
 
 /*
  *	Define the ColdFire UART register set addresses.

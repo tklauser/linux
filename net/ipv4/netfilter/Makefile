@@ -48,7 +48,10 @@ obj-$(CONFIG_IP_NF_MATCH_RECENT) += ipt_recent.o
 obj-$(CONFIG_IP_NF_MATCH_ECN) += ipt_ecn.o
 obj-$(CONFIG_IP_NF_MATCH_AH) += ipt_ah.o
 obj-$(CONFIG_IP_NF_MATCH_TTL) += ipt_ttl.o
+obj-$(CONFIG_IP_NF_MATCH_SET) += ipt_set.o
 obj-$(CONFIG_IP_NF_MATCH_ADDRTYPE) += ipt_addrtype.o
+obj-$(CONFIG_IP_NF_MATCH_POLICY) += ipt_policy.o
+obj-$(CONFIG_IP_NF_MATCH_TIME) += ipt_time.o
 
 # targets
 obj-$(CONFIG_IP_NF_TARGET_REJECT) += ipt_REJECT.o
@@ -62,6 +65,17 @@ obj-$(CONFIG_IP_NF_TARGET_LOG) += ipt_LOG.o
 obj-$(CONFIG_IP_NF_TARGET_ULOG) += ipt_ULOG.o
 obj-$(CONFIG_IP_NF_TARGET_CLUSTERIP) += ipt_CLUSTERIP.o
 obj-$(CONFIG_IP_NF_TARGET_TTL) += ipt_TTL.o
+obj-$(CONFIG_IP_NF_TARGET_SET) += ipt_SET.o
+
+# sets
+obj-$(CONFIG_IP_NF_SET) += ip_set.o
+obj-$(CONFIG_IP_NF_SET_IPMAP) += ip_set_ipmap.o
+obj-$(CONFIG_IP_NF_SET_PORTMAP) += ip_set_portmap.o
+obj-$(CONFIG_IP_NF_SET_MACIPMAP) += ip_set_macipmap.o
+obj-$(CONFIG_IP_NF_SET_IPHASH) += ip_set_iphash.o
+obj-$(CONFIG_IP_NF_SET_NETHASH) += ip_set_nethash.o
+obj-$(CONFIG_IP_NF_SET_IPPORTHASH) += ip_set_ipporthash.o
+obj-$(CONFIG_IP_NF_SET_IPTREE) += ip_set_iptree.o
 
 # generic ARP tables
 obj-$(CONFIG_IP_NF_ARPTABLES) += arp_tables.o

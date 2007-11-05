@@ -100,3 +100,14 @@ config MMC_TIFM_SD
           To compile this driver as a module, choose M here: the
 	  module will be called tifm_sd.
 
+config MMC_SPI
+	tristate "MMC/SD over SPI"
+	depends on MMC && SPI && EXPERIMENTAL
+	help
+	  Some systems accss MMC/SD cards using the SPI protocol instead of
+	  using an MMC/SD controller.  The disadvantage of using SPI is that
+	  it's often not as fast; its compensating advantage is that SPI is
+	  available on many systems without MMC/SD controllers.
+
+	  If unsure, or if your system has no SPI controller driver, say N.
+

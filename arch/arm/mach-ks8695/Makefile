@@ -13,3 +13,4 @@ obj-				:=
 
 # Board-specific support
 obj-$(CONFIG_MACH_KS8695)	+= board-micrel.o
+

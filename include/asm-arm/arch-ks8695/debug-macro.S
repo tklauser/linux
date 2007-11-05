@@ -1,38 +1,37 @@
 /*
- * include/asm-arm/arch-ks8695/debug-macro.S
+ * linux/include/asm-arm/arch-ks8695/debug-macro.S
  *
- * Copyright (C) 2006 Ben Dooks <ben@simtec.co.uk>
- * Copyright (C) 2006 Simtec Electronics
+ * Debugging macro include header
  *
- * KS8695 - Debug macros
+ *  Copyright (C) 1994-1999 Russell King
+ *  Moved from linux/arch/arm/kernel/debug.S by Ben Dooks
+ *  (C) Copyright 2006 Greg Ungerer <gerg@snapgear.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#include <asm/hardware.h>
-#include <asm/arch/regs-uart.h>
+.macro addruart,rx
+	mrc	p15, 0, \rx, c1, c0
+	tst	\rx, #1                 @ MMU enabled?
+	moveq	\rx, #0x03000000	@ 0x03ffe000
+	orreq	\rx, \rx, #0x00ff0000
+	movne	\rx, #0xff000000	@ 0xff00e000
+	orr	\rx, \rx, #0x0000e000
+.endm
 
-	.macro	addruart, rx
-		mrc	p15, 0, \rx, c1, c0
-		tst	\rx, #1				@ MMU enabled?
-		ldreq	\rx, =KS8695_UART_PA		@ physical base address
-		ldrne	\rx, =KS8695_UART_VA		@ virtual base address
-	.endm
+.macro senduart,rd,rx
+	str	\rd, [\rx, #0x4]
+.endm
 
-	.macro	senduart, rd, rx
-		str	\rd, [\rx, #KS8695_URTH]	@ Write to Transmit Holding Register
-	.endm
+.macro waituart,rd,rx
+1:	ldr	\rd, [\rx, #0x14]
+	and	\rd, \rd, #0x40		@ check TEMT bit
+	teq	\rd, #0x40
+	bne	1b
+.endm
 
-	.macro	busyuart, rd, rx
-1001:		ldr	\rd, [\rx, #KS8695_URLS]	@ Read Line Status Register
-		tst	\rd, #URLS_URTE			@ Holding & Shift registers empty?
-		beq	1001b
-	.endm
+.macro busyuart,rd,rx
+.endm
 
-	.macro	waituart, rd, rx
-1001:		ldr	\rd, [\rx, #KS8695_URLS]	@ Read Line Status Register
-		tst	\rd, #URLS_URTHRE		@ Holding Register empty?
-		beq	1001b
-	.endm

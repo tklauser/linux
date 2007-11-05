@@ -1407,6 +1407,7 @@ xfs_get_blocks(
 				bh_result, create, 0, BMAPI_WRITE);
 }
 
+#ifdef CONFIG_DIRECTIO
 STATIC int
 xfs_get_blocks_direct(
 	struct inode		*inode,
@@ -1511,6 +1512,7 @@ xfs_vm_direct_IO(
 		xfs_destroy_ioend(iocb->private);
 	return ret;
 }
+#endif
 
 STATIC int
 xfs_vm_prepare_write(
@@ -1576,6 +1578,8 @@ const struct address_space_operations xfs_address_space_operations = {
 	.prepare_write		= xfs_vm_prepare_write,
 	.commit_write		= generic_commit_write,
 	.bmap			= xfs_vm_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO		= xfs_vm_direct_IO,
+#endif
 	.migratepage		= buffer_migrate_page,
 };

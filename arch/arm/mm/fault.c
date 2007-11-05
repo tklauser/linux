@@ -26,6 +26,7 @@
  */
 void show_pte(struct mm_struct *mm, unsigned long addr)
 {
+#ifdef CONFIG_MMU
 	pgd_t *pgd;
 
 	if (!mm)
@@ -70,6 +71,7 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 	} while(0);
 
 	printk("\n");
+#endif /* CONFIG_MMU */
 }
 
 /*
@@ -315,6 +317,7 @@ static int
 do_translation_fault(unsigned long addr, unsigned int fsr,
 		     struct pt_regs *regs)
 {
+#ifdef CONFIG_MMU
 	unsigned int index;
 	pgd_t *pgd, *pgd_k;
 	pmd_t *pmd, *pmd_k;
@@ -346,6 +349,7 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 	return 0;
 
 bad_area:
+#endif /* CONFIG_MMU */
 	do_bad_area(addr, fsr, regs);
 	return 0;
 }

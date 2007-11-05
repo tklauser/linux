@@ -292,6 +292,11 @@ ipt_get_target(struct ipt_entry *e)
 #include <linux/init.h>
 extern void ipt_init(void) __init;
 
+#define ipt_register_match(mtch) 	\
+({	(mtch)->family = AF_INET;	\
+	xt_register_match(mtch); })
+#define ipt_unregister_match(mtch) xt_unregister_match(mtch)
+
 extern int ipt_register_table(struct xt_table *table,
 			      const struct ipt_replace *repl);
 extern void ipt_unregister_table(struct xt_table *table);

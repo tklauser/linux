@@ -10,7 +10,6 @@
 #include <linux/ioport.h>
 #include <linux/init.h>
 #include <linux/initrd.h>
-#include <linux/bootmem.h>
 #include <linux/console.h>
 #include <linux/seq_file.h>
 #include <linux/root_dev.h>
@@ -22,6 +21,7 @@
 #include <linux/mm.h>
 #include <linux/kexec.h>
 #include <linux/module.h>
+#include <linux/bootmem.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/page.h>
@@ -198,6 +198,11 @@ static void __init setup_memory(void)
 	 * Partially used pages are not usable - thus
 	 * we are rounding upwards:
 	 */
+#if defined(CONFIG_SH_CONCAT_FS)
+	if (INITRD_START == __pa(_end))
+		start_pfn = PFN_UP(__pa(_end) + INITRD_SIZE);
+	else
+#endif
 	start_pfn = PFN_UP(__pa(_end));
 	setup_bootmem_allocator(start_pfn);
 }
@@ -249,12 +254,11 @@ void __init setup_arch(char **cmdline_p)
 	/*
 	 * Find the highest page frame number we have available
 	 */
-	max_pfn = PFN_DOWN(__pa(memory_end));
+	max_low_pfn = PFN_DOWN(__pa(memory_end));
 
 	/*
 	 * Determine low and high memory ranges:
 	 */
-	max_low_pfn = max_pfn;
 	min_low_pfn = __MEMORY_START >> PAGE_SHIFT;
 
 	nodes_clear(node_online_map);
@@ -399,3 +403,155 @@ struct seq_operations cpuinfo_op = {
 	.show	= show_cpuinfo,
 };
 #endif /* CONFIG_PROC_FS */
+
+#ifdef CONFIG_SH_KGDB
+/*
+ * Parse command-line kgdb options.  By default KGDB is enabled,
+ * entered on error (or other action) using default serial info.
+ * The command-line option can include a serial port specification
+ * and an action to override default or configured behavior.
+ */
+struct kgdb_sermap kgdb_sci_sermap =
+{ "ttySC", 5, kgdb_sci_setup, NULL };
+
+struct kgdb_sermap *kgdb_serlist = &kgdb_sci_sermap;
+struct kgdb_sermap *kgdb_porttype = &kgdb_sci_sermap;
+
+void kgdb_register_sermap(struct kgdb_sermap *map)
+{
+	struct kgdb_sermap *last;
+
+	for (last = kgdb_serlist; last->next; last = last->next)
+		;
+	last->next = map;
+	if (!map->namelen) {
+		map->namelen = strlen(map->name);
+	}
+}
+
+static int __init kgdb_parse_options(char *options)
+{
+	char c;
+	int baud;
+
+	/* Check for port spec (or use default) */
+
+	/* Determine port type and instance */
+	if (!memcmp(options, "tty", 3)) {
+		struct kgdb_sermap *map = kgdb_serlist;
+
+		while (map && memcmp(options, map->name, map->namelen))
+			map = map->next;
+
+		if (!map) {
+			KGDB_PRINTK("unknown port spec in %s\n", options);
+			return -1;
+		}
+
+		kgdb_porttype = map;
+		kgdb_serial_setup = map->setup_fn;
+		kgdb_portnum = options[map->namelen] - '0';
+		options += map->namelen + 1;
+
+		options = (*options == ',') ? options+1 : options;
+
+		/* Read optional parameters (baud/parity/bits) */
+		baud = simple_strtoul(options, &options, 10);
+		if (baud != 0) {
+			kgdb_baud = baud;
+
+			c = toupper(*options);
+			if (c == 'E' || c == 'O' || c == 'N') {
+				kgdb_parity = c;
+				options++;
+			}
+
+			c = *options;
+			if (c == '7' || c == '8') {
+				kgdb_bits = c;
+				options++;
+			}
+			options = (*options == ',') ? options+1 : options;
+		}
+	}
+
+	/* Check for action specification */
+	if (!memcmp(options, "halt", 4)) {
+		kgdb_halt = 1;
+		options += 4;
+	} else if (!memcmp(options, "disabled", 8)) {
+		kgdb_enabled = 0;
+		options += 8;
+	}
+
+	if (*options) {
+                KGDB_PRINTK("ignored unknown options: %s\n", options);
+		return 0;
+	}
+	return 1;
+}
+__setup("kgdb=", kgdb_parse_options);
+#endif /* CONFIG_SH_KGDB */
+
+#if defined(CONFIG_SH_CONCAT_FS)
+/*
+ * do not call printk in here,  bad things will happen,  the kernel isn't
+ * actually up yet,  we are called from head.S before BSS is cleared.
+ */
+
+extern void copy_romfs(void);
+void copy_romfs()
+{
+#ifdef CONFIG_SH_SECUREEDGE5410
+	volatile char dummy;
+#define SERVICE_WATCHDOG() (dummy = * (volatile char *) 0xb8000000)
+#else
+#define SERVICE_WATCHDOG()
+#endif
+	unsigned char	*sp, *dp;
+	unsigned long	 len;
+	/*
+	 * we used to use __bss_start,  but that is padded to 4K now and doesn't
+	 * work, basically we need the last non-padded symbol before __bss_start
+	 * and that is now __machvec_end
+	 */
+	extern long __machvec_end;
+#define CURRENT_ROMFS_LOC	((unsigned long)(&__machvec_end))
+#ifdef CONFIG_SH_ROMBOOT
+	extern int _mem_start, _rom_store;
+	sp = (unsigned char *) CURRENT_ROMFS_LOC - ((_mem_start - _rom_store) / 4);
+#else
+	sp = (unsigned char *) CURRENT_ROMFS_LOC;
+#endif
+	dp = (unsigned char *) &_end[0];
+
+	if (memcmp(&sp[0], "-rom1fs-", 8) == 0) {
+		/* romfs */
+		memcpy(&len, sp, sizeof(len));
+		len = be32_to_cpu(len);
+	} else if (sp[0]==0x45 && sp[1]==0x3d && sp[2]==0xcd && sp[3]==0x28) {
+		/* cramfs */
+		memcpy(&len, &sp[4], sizeof(len));
+	} else {
+		*dp = 0; /* make sure we don't see an old FS there */
+		return;
+	}
+
+	len = (len + 0xfff) & ~0xfff; /* make it a multiple of a page */
+	LOADER_TYPE = 0;
+	INITRD_SIZE = len;
+	INITRD_START = __pa(_end);
+
+	sp += len;
+	dp += len;
+
+	/* copy backwards to avoid writing over ourselves */
+	SERVICE_WATCHDOG();
+	while (dp >= ((unsigned char *) (&_end[0]))) {
+		*dp-- = *sp--;
+		if ((((unsigned long) dp) & 0x7ffff) == 0)
+			SERVICE_WATCHDOG();
+	}
+	SERVICE_WATCHDOG();
+}
+#endif

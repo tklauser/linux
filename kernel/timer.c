@@ -919,6 +919,12 @@ static inline void update_times(unsigned long ticks)
 void do_timer(unsigned long ticks)
 {
 	jiffies_64 += ticks;
+#ifdef CONFIG_SNAPDOG
+{
+	extern void snapdog_service(void);
+	snapdog_service();
+}
+#endif
 	update_times(ticks);
 }
 

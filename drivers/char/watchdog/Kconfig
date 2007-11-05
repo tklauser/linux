@@ -647,6 +647,48 @@ config WATCHDOG_RTAS
 	  To compile this driver as a module, choose M here. The module
 	  will be called wdrtas.
 
+# MIPS Architecture
+
+config INDYDOG
+	tristate "Indy/I2 Hardware Watchdog"
+	depends on SGI_IP22
+	help
+	  Hardware driver for the Indy's/I2's watchdog. This is a
+	  watchdog timer that will reboot the machine after a 60 second
+	  timer expired and no process has written to /dev/watchdog during
+	  that time.
+
+config WDT_MTX1
+	tristate "MTX-1 Hardware Watchdog"
+	depends on MIPS_MTX1
+	help
+	  Hardware driver for the MTX-1 boards. This is a watchdog timer that
+	  will reboot the machine after a 100 seconds timer expired.
+
+config WDT_RM9K_GPI
+	tristate "RM9000/GPI hardware watchdog"
+	depends on CPU_RM9000
+	help
+	  Watchdog implementation using the GPI hardware found on
+	  PMC-Sierra RM9xxx CPUs.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rm9k_wdt.
+
+# Nios2 Architecture
+config AVALON_WDT
+	tristate "Nios2 Watchdog (Avalon)"
+	depends on WATCHDOG && NIOS2
+	help
+	  This is a driver for a timer connected to the avalon switch fabric wich is 
+	  configured as a watchdog. 
+	  Once started the watchdog cannot be stopped!
+	  This driver assumes you named the watchdog timer watchdog. 
+	  If you didn't you should rename the component or change the definition in 
+	  drivers/char/watchdog/avalonwdt.c
+	  
+	  Most people will say N.
+
 # S390 Architecture
 
 config ZVM_WATCHDOG
@@ -713,6 +755,15 @@ config WATCHDOG_RIO
 	  Say Y here to support the hardware watchdog capability on Sun RIO
 	  machines.  The watchdog timeout period is normally one minute but
 	  can be changed with a boot-time parameter.
+
+# M68KNOMMU Architecture
+
+config WDT_M5272
+	tristate "MCF5272 Hardware Watchdog support"
+	depends on WATCHDOG && M5272
+	help
+	  Say Y here to suuport the hardware watchdog capability on Freescale
+	  Coldfire MCF5272 machines.  
 
 # V850 Architecture
 

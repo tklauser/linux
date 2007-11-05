@@ -362,6 +362,9 @@ static int ctnetlink_conntrack_event(struct notifier_block *this,
 	nfmsg->version	= NFNETLINK_V0;
 	nfmsg->res_id	= 0;
 
+	if (ctnetlink_dump_id(skb, ct) < 0)
+		goto nfattr_failure;
+
 	nest_parms = NFA_NEST(skb, CTA_TUPLE_ORIG);
 	if (ctnetlink_dump_tuples(skb, tuple(ct, IP_CT_DIR_ORIGINAL)) < 0)
 		goto nfattr_failure;

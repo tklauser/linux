@@ -106,30 +106,34 @@ ip_packet_match(const struct iphdr *ip,
 	}
 
 	/* Look for ifname matches; this should unroll nicely. */
-	for (i = 0, ret = 0; i < IFNAMSIZ/sizeof(unsigned long); i++) {
-		ret |= (((const unsigned long *)indev)[i]
-			^ ((const unsigned long *)ipinfo->iniface)[i])
-			& ((const unsigned long *)ipinfo->iniface_mask)[i];
+	if (((const unsigned long *)ipinfo->iniface_mask)[0]) {
+		for (i = 0, ret = 0; i < IFNAMSIZ/sizeof(unsigned long); i++) {
+			ret |= (((const unsigned long *)indev)[i]
+				^ ((const unsigned long *)ipinfo->iniface)[i])
+				& ((const unsigned long *)ipinfo->iniface_mask)[i];
+		}
+
+		if (FWINV(ret != 0, IPT_INV_VIA_IN)) {
+			dprintf("VIA in mismatch (%s vs %s).%s\n",
+				indev, ipinfo->iniface,
+				ipinfo->invflags&IPT_INV_VIA_IN ?" (INV)":"");
+			return 0;
+		}
 	}
 
-	if (FWINV(ret != 0, IPT_INV_VIA_IN)) {
-		dprintf("VIA in mismatch (%s vs %s).%s\n",
-			indev, ipinfo->iniface,
-			ipinfo->invflags&IPT_INV_VIA_IN ?" (INV)":"");
-		return 0;
-	}
+	if (((const unsigned long *)ipinfo->outiface_mask)[0]) {
+		for (i = 0, ret = 0; i < IFNAMSIZ/sizeof(unsigned long); i++) {
+			ret |= (((const unsigned long *)outdev)[i]
+				^ ((const unsigned long *)ipinfo->outiface)[i])
+				& ((const unsigned long *)ipinfo->outiface_mask)[i];
+		}
 
-	for (i = 0, ret = 0; i < IFNAMSIZ/sizeof(unsigned long); i++) {
-		ret |= (((const unsigned long *)outdev)[i]
-			^ ((const unsigned long *)ipinfo->outiface)[i])
-			& ((const unsigned long *)ipinfo->outiface_mask)[i];
-	}
-
-	if (FWINV(ret != 0, IPT_INV_VIA_OUT)) {
-		dprintf("VIA out mismatch (%s vs %s).%s\n",
-			outdev, ipinfo->outiface,
-			ipinfo->invflags&IPT_INV_VIA_OUT ?" (INV)":"");
-		return 0;
+		if (FWINV(ret != 0, IPT_INV_VIA_OUT)) {
+			dprintf("VIA out mismatch (%s vs %s).%s\n",
+				outdev, ipinfo->outiface,
+				ipinfo->invflags&IPT_INV_VIA_OUT ?" (INV)":"");
+			return 0;
+		}
 	}
 
 	/* Check specific protocol */

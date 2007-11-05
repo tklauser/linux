@@ -769,7 +769,7 @@ config LANCE
 
 config NET_VENDOR_SMC
 	bool "Western Digital/SMC cards"
-	depends on ISA || MCA || EISA || MAC
+	depends on ISA || MCA || EISA || MAC || EMBEDDED
 	help
 	  If you have a network (Ethernet) card belonging to this class, say Y
 	  and read the Ethernet-HOWTO, available from
@@ -885,7 +885,7 @@ config BFIN_MAC_RMII
 
 config SMC9194
 	tristate "SMC 9194 support"
-	depends on NET_VENDOR_SMC && (ISA || MAC && BROKEN)
+	depends on NET_VENDOR_SMC && (ISA || MAC && BROKEN || EMBEDDED)
 	select CRC32
 	---help---
 	  This is support for the SMC9xxx based Ethernet cards. Choose this
@@ -898,6 +898,18 @@ config SMC9194
 	  To compile this driver as a module, choose M here and read
 	  <file:Documentation/networking/net-modules.txt>. The module
 	  will be called smc9194.
+
+config OPEN_ETH
+	bool "Opencores (Igor) Emac support"
+	help
+	  This is support for the opencores Igor emac driver implemented
+	  in an FPGA.
+
+config MTIP1000_ETH
+	bool "MoreThanIP 10_100_1000 Emac support"
+	help
+	  This is support for the MoreThanIP 10_100_1000 emac driver implemented
+	  in an FPGA.
 
 config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
@@ -930,7 +942,7 @@ config NET_NETX
 
 config DM9000
 	tristate "DM9000 support"
-	depends on ARM || BLACKFIN || MIPS
+	depends on ARM || BLACKFIN || MIPS || NIOS || NIOS2
 	select CRC32
 	select MII
 	---help---
@@ -940,11 +952,26 @@ config DM9000
 	  <file:Documentation/networking/net-modules.txt>.  The module will be
 	  called dm9000.
 
+config DM9KS
+	tristate "DM9000A with checksum offloading"
+	depends on (ARM || MIPS || NIOS || NIOS2) && NET_ETHERNET
+	select CRC32
+	select MII
+	---help---
+	  Support for DM9000A chipset with checksum offloading. Factory driver.
+
+config ETH_KS8695
+	tristate "KS8695 ethernet support"
+	depends on ARCH_KS8695
+	help
+	  Say 'Y' here to enable support for the Kendin-Micrel KS8695 internal
+	  ethernet ports. 
+
 config SMC911X
 	tristate "SMSC LAN911[5678] support"
 	select CRC32
 	select MII
-	depends on ARCH_PXA
+	depends on ARCH_PXA || NIOS || NIOS2
 	help
 	  This is a driver for SMSC's LAN911x series of Ethernet chipsets
 	  including the new LAN9115, LAN9116, LAN9117, and LAN9118.
@@ -1169,7 +1196,7 @@ config ETH16I
 
 config NE2000
 	tristate "NE2000/NE1000 support"
-	depends on NET_ISA || (Q40 && m) || M32R || TOSHIBA_RBTX4927 || TOSHIBA_RBTX4938
+	depends on NET_ISA || (Q40 && m) || M32R || TOSHIBA_RBTX4927 || TOSHIBA_RBTX4938 || M68K
 	select CRC32
 	---help---
 	  If you have a network (Ethernet) card of this type, say Y and read
@@ -1322,7 +1349,7 @@ config IBM_EMAC_TAH
 
 config NET_PCI
 	bool "EISA, VLB, PCI and on board controllers"
-	depends on ISA || EISA || PCI
+	depends on ISA || EISA || PCI || EMBEDDED
 	help
 	  This is another class of network cards which attach directly to the
 	  bus. If you have one of those, say Y and read the Ethernet-HOWTO,
@@ -1496,17 +1523,25 @@ config FORCEDETH_NAPI
 
 config CS89x0
 	tristate "CS89x0 support"
-	depends on NET_PCI && (ISA || MACH_IXDP2351 || ARCH_IXDP2X01 || ARCH_PNX010X)
+	depends on NET_PCI && (ISA || MACH_IXDP2351 || ARCH_IXDP2X01 || ARCH_PNX010X || MACH_DM270 ) || (M68328 || M68EZ328 || M68VZ328 || COLDFIRE)
 	---help---
-	  Support for CS89x0 chipset based Ethernet cards. If you have a
-	  network (Ethernet) card of this type, say Y and read the
-	  Ethernet-HOWTO, available from
+	  Support for CS89x0 chipset based Ethernet. If you have a
+	  network (Ethernet) card or embedded chipset of this type,
+          say Y and read the Ethernet-HOWTO, available from
 	  <http://www.tldp.org/docs.html#howto> as well as
 	  <file:Documentation/networking/cs89x0.txt>.
 
 	  To compile this driver as a module, choose M here and read
 	  <file:Documentation/networking/net-modules.txt>.  The module will be
 	  called cs89x0.
+
+config CS89x0_SWAPPED
+	bool "Hardware swapped CS89x0"
+	depends on CS89x0 && !NET_PCI && !ISA
+	---help---
+	  Say Y if your CS89x0 data bus is swapped.
+	  This option is for single board computers using a CS89x0 chip. If you
+	  are using a regular Ethernet card, say N.
 
 config TC35815
 	tristate "TOSHIBA TC35815 Ethernet support"
@@ -1663,6 +1698,19 @@ config 8139CP
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called 8139cp.  This is recommended.
+
+config 8139CP_EXTERNAL_PHY
+	bool "External PHY support for the 8139C+ driver"
+	depends on 8139CP
+	help
+	  Allows for an external PHY (ie., hub chip)
+
+config 8139CP_PHY_NUM
+	int "External PHY number for the 8139C+ driver"
+	depends on 8139CP_EXTERNAL_PHY
+	default "32"
+	help
+          The PHY number for the external PHY.
 
 config 8139TOO
 	tristate "RealTek RTL-8129/8130/8139 PCI Fast Ethernet Adapter support"
@@ -1927,16 +1975,9 @@ config DECLANCE
 	  DEC (now Compaq) based on the AMD Lance chipset, including the
 	  DEPCA series.  (This chipset is better known via the NE2100 cards.)
 
-config 68360_ENET
-	bool "Motorola 68360 ethernet controller"
-	depends on M68360
-	help
-	  Say Y here if you want to use the built-in ethernet controller of
-	  the Motorola 68360 processor.
-
 config FEC
 	bool "FEC ethernet controller (of ColdFire CPUs)"
-	depends on M523x || M527x || M5272 || M528x || M520x
+	depends on M523x || M527x || M5272 || M528x || M520x || M532x
 	help
 	  Say Y here if you want to use the built-in 10/100 Fast ethernet
 	  controller on some Motorola ColdFire processors.

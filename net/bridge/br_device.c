@@ -49,6 +49,7 @@ int br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	return 0;
 }
+EXPORT_SYMBOL(br_dev_xmit);
 
 static int br_dev_open(struct net_device *dev)
 {

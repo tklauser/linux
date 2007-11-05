@@ -53,6 +53,7 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
+
 /**
  *	generic_id		-	add a generic drive id
  *	@drive:	drive to make an ID block for
@@ -1019,7 +1020,6 @@ static int init_irq (ide_hwif_t *hwif)
 	unsigned int index;
 	ide_hwgroup_t *hwgroup;
 	ide_hwif_t *match = NULL;
-
 
 	BUG_ON(in_interrupt());
 	BUG_ON(irqs_disabled());	

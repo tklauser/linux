@@ -1,49 +1,38 @@
 /*
- * include/asm-arm/arch-ks8695/hardware.h
+ *  linux/include/asm-arm/arch-ks8695/hardware.h
  *
- * Copyright (C) 2006 Ben Dooks <ben@simtec.co.uk>
- * Copyright (C) 2006 Simtec Electronics
+ *  This file contains the hardware definitions of the KS8695.
  *
- * KS8695 - Memory Map definitions
+ *  Copyright (C) 2002 Micrel Inc.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
-*/
-
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #ifndef __ASM_ARCH_HARDWARE_H
 #define __ASM_ARCH_HARDWARE_H
 
-#include <asm/sizes.h>
-
 /*
- * Physical RAM address.
+ * Virtual memory mapping of the KS8695 internal register area.
+ * This is a static mapping, set up early in kernel startup.
  */
-#define KS8695_SDRAM_PA		0x00000000
+#define	KS8695_IO_VIRT		0xFF000000
+#define	KS8695_REG(x)		((void __iomem *)(KS8695_IO_VIRT + (x)))
 
+#define	pcibios_assign_all_busses()	1
+#define	PCIBIOS_MIN_IO		0x00000100
+#define	PCIBIOS_MIN_MEM		0x00010000
+#define	PCI_MEMORY_VADDR	KS8695P_PCIBG_MEM_BASE
+#define	PCI_IO_VADDR		KS8695P_PCIBG_IO_BASE
 
-/*
- * We map an entire MiB with the System Configuration Registers in even
- * though only 64KiB is needed. This makes it easier for use with the
- * head debug code as the initial MMU setup only deals in L1 sections.
- */
-#define KS8695_IO_PA		0x03F00000
-#define KS8695_IO_VA		0xF0000000
-#define KS8695_IO_SIZE		SZ_1M
-
-#define KS8695_PCIMEM_PA	0x60000000
-#define KS8695_PCIMEM_SIZE	SZ_512M
-
-#define KS8695_PCIIO_PA		0x80000000
-#define KS8695_PCIIO_SIZE	SZ_64K
-
-
-/*
- * PCI support
- */
-#define pcibios_assign_all_busses()	1
-
-#define PCIBIOS_MIN_IO		0
-#define PCIBIOS_MIN_MEM		0
-
-#endif
+#endif /* __ASM_ARCH_HARDWARE_H */
