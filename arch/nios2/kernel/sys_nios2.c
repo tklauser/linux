@@ -39,14 +39,16 @@
 #include <linux/mman.h>
 #include <linux/file.h>
 #include <linux/utsname.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/ipc.h>
+#include <linux/unistd.h>
 
 #include <asm/setup.h>
-#include <asm/uaccess.h>
 #include <asm/cachectl.h>
 #include <asm/traps.h>
 #include <asm/ipc.h>
 #include <asm/cacheflush.h>
-#include <asm/unistd.h>
 
 /*
  * sys_pipe() is the normal C calling standard for creating

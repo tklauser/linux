@@ -41,13 +41,16 @@ flat_get_relocate_addr (unsigned long relval)
 #define FLAT_NIOS2_R_HIADJ_LO	2 /* High 16-bits adjust + low 16-bits field */
 #define FLAT_NIOS2_R_CALL26		4 /* Call imm26 */
 
+#define flat_set_persistent(relval, p)	0
+
 /* Extract the address to be relocated from the symbol reference at rp;
  * relval is the raw relocation-table entry from which RP is derived.
  * rp shall always be 32-bit aligned
  */
 static inline unsigned long flat_get_addr_from_rp (unsigned long *rp,
 						   unsigned long relval,
-						   unsigned long flags)
+						   unsigned long flags,
+						   unsigned long *persistent)
 {
 	switch (FLAT_NIOS2_RELOC_TYPE(relval))
 	{

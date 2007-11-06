@@ -50,11 +50,12 @@
 #include <linux/a.out.h>
 #include <linux/interrupt.h>
 #include <linux/reboot.h>
+#include <linux/uaccess.h>
+#include <linux/fs.h>
+#include <linux/err.h>
 
-#include <asm/uaccess.h>
 #include <asm/system.h>
 #include <asm/traps.h>
-//;dgt2;#include <asm/machdep.h>
 #include <asm/setup.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
