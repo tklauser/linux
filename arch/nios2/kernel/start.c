@@ -31,6 +31,7 @@
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/time.h>
+#include <linux/start_kernel.h>
 
   #ifdef CONFIG_SERIAL_AJUART                       //;dgt;20may05;
     #ifdef CONFIG_SERIAL_AJUART_CONSOLE             //;dgt;20may05;
@@ -381,7 +382,6 @@ int  Test_Flash_Regions(void)
 
 
 int main(void) {
-	extern void start_kernel(void);
 
 #ifdef DEBUG
 	puts("MAIN: starting c\n");
