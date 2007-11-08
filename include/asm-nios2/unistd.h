@@ -355,9 +355,14 @@
 #define __NR_eventfd		319
 #define __NR_pread64		320
 #define __NR_pwrite64		321
+#define __NR_fallocate		322
+
+#define NR_syscalls		323
+
+/* Not relevant on no-mmu */
+#define __IGNORE_msync
 
 #ifdef __KERNEL__
-#define NR_syscalls		322
 
 #define __ARCH_WANT_IPC_PARSE_VERSION
 #define __ARCH_WANT_OLD_READDIR

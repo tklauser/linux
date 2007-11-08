@@ -355,8 +355,9 @@ ENTRY(sys_call_table)
 	.long sys_eventfd
 	.long sys_pread64
 	.long sys_pwrite64		/* 321 */
+	.long sys_fallocate
 
-	.rept NR_syscalls - 322
+	.rept NR_syscalls - 323
 		.long sys_ni_syscall
 	.endr
 
