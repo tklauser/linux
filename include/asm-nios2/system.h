@@ -156,11 +156,15 @@ static inline unsigned long __xchg(unsigned long x, volatile void * ptr, int siz
  */
 #define __HAVE_ARCH_CMPXCHG	1
 
+/* This function doesn't exist, so you'll get a linker error
+   if something tries to do an invalid cmpxchg().  */
+extern void __cmpxchg_called_with_bad_pointer(void);
+
 static __inline__ unsigned long
-cmpxchg(volatile int *p, int old, int new)
+__cmpxchg_u32(volatile unsigned long *p, unsigned long old, unsigned long new)
 {
 	unsigned long flags;
-	int prev;
+	unsigned long prev;
 
 	local_irq_save(flags);
 	if ((prev = *p) == old)
@@ -168,5 +172,23 @@ cmpxchg(volatile int *p, int old, int new)
 	local_irq_restore(flags);
 	return(prev);
 }
+
+static inline unsigned long
+__cmpxchg(volatile void *ptr, unsigned long old, unsigned long new, int size)
+{
+	if (size == 4)
+		return __cmpxchg_u32(ptr, old, new);
+
+	__cmpxchg_called_with_bad_pointer();
+	return old;
+}
+
+#define cmpxchg(ptr,o,n)						 \
+  ({									 \
+     __typeof__(*(ptr)) _o_ = (o);					 \
+     __typeof__(*(ptr)) _n_ = (n);					 \
+     (__typeof__(*(ptr))) __cmpxchg((ptr), (unsigned long)_o_,		 \
+				    (unsigned long)_n_, sizeof(*(ptr))); \
+  })
 
 #endif /* _NIOS2_SYSTEM_H */
