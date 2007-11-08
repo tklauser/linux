@@ -117,7 +117,7 @@ libs-y		+= $(LIBGCC)
 # force user to configure hardware before building kernel
 
 pardoned_targets = clean mrproper sgmldocs psdocs pdfdocs \
-                   htmldocs mandocs
+                   htmldocs mandocs headers_install
 
 -include $(HARDWARE_MK)
 build_targets = $(filter-out $(pardoned_targets), $(MAKECMDGOALS))
