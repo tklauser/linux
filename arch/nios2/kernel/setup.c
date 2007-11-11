@@ -60,7 +60,7 @@
 #include <asm/pgtable.h>
 
 #ifdef CONFIG_BLK_DEV_INITRD
-#include <linux/blk.h>
+#include <linux/blkdev.h>
 #endif
 
 #ifdef CONFIG_NIOS_SPI
