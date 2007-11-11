@@ -84,8 +84,8 @@ static void button_handle_event(void *dev_id)
 	outl(-1, &pio->np_piointerruptmask);
 }
 
-static DECLARE_WORK(button_work, button_handle_event, (void*)&_button_dev);
-static irqreturn_t pio_button_isr(int irq, void *dev_id, struct pt_regs *regs)
+static DECLARE_WORK(button_work, button_handle_event);
+static irqreturn_t pio_button_isr(int irq, void *dev_id)
 {
 	np_pio* pio = (np_pio *)PIO_BUTTON_BASE;
 	

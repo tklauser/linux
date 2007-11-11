@@ -22,6 +22,24 @@
  *
  ---------------------------------------------------------------------*/
 
+/* Core revision's date. Set it to the right thing if you want
+   correct operation. This value is the latest revision as of
+   this writing (2007/08/14). */
+#define OETH_REVISION_DATECODE 20050321
+
+/* Define this to probe these PHY addresses and create user-accessible
+   files for them in /sys/class/net/ethN/mdio. */
+//#define OETH_SYSFS_MDIO_ACCESS {1,2}
+
+/* Define this to set the MDC divisor to this value. If undefined,
+   the divisor will be the core's power-up default of 100. */
+//#define OETH_MDC_DIVISOR 10
+
+/* Define this to do additional CRC checking in software and print debug
+   info when a bad CRC is caught on a packet that the MAC said was good.
+   Useful if you suspect the MAC is silently corrupting packets, which
+   it has been known to do. */
+//#define OETH_SW_CRC_CHECKING
 
 /* Ethernet configuration registers */
 typedef struct _oeth_regs {

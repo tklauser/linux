@@ -89,6 +89,16 @@
 
 #include "open_eth.h"
 
+#ifdef OETH_SYSFS_MDIO_ACCESS
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+
+/*
+ * This is a list of the PHY numbers to probe.
+ */
+static const int probe_mdio_phys[] = OETH_SYSFS_MDIO_ACCESS;
+#endif
+
 #define __clear_user(add,len) memset((add),0,(len))
 
 #define OETH_DEBUG 0
@@ -933,8 +943,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t oeth_PhyInterrupt(int             irq,
-                                     void           *dev_id,
-                                     struct pt_regs *regs)
+                                     void           *dev_id)
   {
     #if defined(TDK78Q2120PHY)
 
@@ -1017,10 +1026,12 @@ oeth_tx(struct net_device *dev)
 
     cep = (struct oeth_private *)dev->priv;
 
+    // Cycles over the TX BDs, starting at the first one that would've been sent. -TS
     for (;; cep->tx_last = (cep->tx_last + 1) & OETH_TXBD_NUM_MASK)
       {
         bdp = cep->tx_bd_base + cep->tx_last;
 
+	// Stops once it runs into the first one that's ready for transmit (and thus hasn't been sent yet), or once it has checked all BDs (which would occur if all have been transmitted). -TS 
         if ((bdp->len_status & OETH_TX_BD_READY) ||
             ((cep->tx_last == cep->tx_next) && !cep->tx_full))
             break;
@@ -1116,6 +1127,12 @@ oeth_rx(struct net_device *dev)
         if (bdp->len_status & OETH_RX_BD_EMPTY)
             break;
 
+        pkt_len = bdp->len_status >> 16;
+
+#ifdef OETH_SW_CRC_CHECKING
+	int force_crc_err = 0;
+#endif
+
         /* Check status for errors.
          */
         if (bdp->len_status & (OETH_RX_BD_TOOLONG | OETH_RX_BD_SHORT)) {
@@ -1133,6 +1150,23 @@ oeth_rx(struct net_device *dev)
             //;dgt - ifconfig doesn't report rx_crc_errors ?
             //;dgt - but we (also) include same in rx_errors.
             bad = 1;
+#ifdef OETH_SW_CRC_CHECKING
+        } else {
+            // There is a bug in the OpenCores MAC that very occasionally
+            // corrupts packets by shifting 12 bytes of 4-byte aligned
+            // data (maybe even more aligned?) by 4 bytes, and this happens
+            // after it checks the CRC so we never get told that it's bad
+            // and thus would end up passing the corruption to a
+            // higher-level protocol. As a workaround, we now check the CRC
+            // here too.
+            u32 actual = crc32_le(~0, bdp->addr, pkt_len);
+            if (actual != 0xDEBB20E3) {
+                printk("Pkt corrupted by MAC: %X\n", actual);
+                force_crc_err = 1;
+                cep->stats.rx_crc_errors++;
+                bad = 1;
+            }
+#endif
         }
         if (bdp->len_status & OETH_RX_BD_OVERRUN) {
             cep->stats.rx_crc_errors++;
@@ -1156,7 +1190,11 @@ oeth_rx(struct net_device *dev)
         if (bdp->len_status & (OETH_RX_BD_TOOLONG   |           //;dgt
                                OETH_RX_BD_SHORT     |           //;dgt
                                OETH_RX_BD_CRCERR    |           //;dgt
-                               OETH_RX_BD_OVERRUN))             //;dgt
+                               OETH_RX_BD_OVERRUN)              //;dgt
+#ifdef OETH_SW_CRC_CHECKING
+            || force_crc_err
+#endif
+            )
             cep->stats.rx_errors++;                             //;dgt
 
         if (bad)
@@ -1173,7 +1211,11 @@ oeth_rx(struct net_device *dev)
 
         /* Process the incoming frame.
          */
-        pkt_len = bdp->len_status >> 16;
+
+	/* Strip the CRC. It is not supposed to be passed by Linux Ethernet
+	   drivers. (Many things will work regardless, but not all; e.g.,
+	   802.1d bridging.) */
+	pkt_len -= 4;
 
 #ifdef RXBUFF_PREALLOC
     #ifdef CONFIG_EXCALIBUR
@@ -1295,7 +1337,7 @@ oeth_rx(struct net_device *dev)
                   #endif                                        //;dgt
                 }                                               //;dgt
 
-            cep->stats.rx_packets++;
+            cep->stats.rx_packets++; // This is the only thing that increments the packet stat if RXBUFF_PREALLOC is defined.
           }
 
         dcache_push (((unsigned long) (bdp->addr)),
@@ -1337,7 +1379,7 @@ oeth_rx(struct net_device *dev)
         else
           {
             skb->dev = dev;
-            skb_put(skb, bdp->len_status >> 16);
+            skb_put(skb, pkt_len);
             skb->protocol = eth_type_trans(skb,dev);
             netif_rx(skb);
             cep->stats.rx_packets++;
@@ -1376,8 +1418,7 @@ oeth_rx(struct net_device *dev)
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t oeth_interrupt(int             irq,
-                                  void           *dev_id,
-                                  struct pt_regs *regs)
+                                  void           *dev_id)
 {
     struct  net_device *dev = dev_id;
     volatile struct oeth_private *cep;
@@ -1426,14 +1467,13 @@ static irqreturn_t oeth_interrupt(int             irq,
     return IRQ_HANDLED;
 }
 
-
 static int
 oeth_open(struct net_device *dev)
 {
     volatile oeth_regs *regs = (oeth_regs *)dev->base_addr;
+    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
 
 #ifndef RXBUFF_PREALLOC
-    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
     struct  sk_buff *skb;
     volatile oeth_bd *rx_bd;
     int i;
@@ -1507,6 +1547,15 @@ oeth_open(struct net_device *dev)
      */
     regs->moder |= OETH_MODER_RXEN | OETH_MODER_TXEN;
 
+#if OETH_REVISION_DATECODE >= 20040426
+    /* Zero the BD pointers.
+     */
+    cep->rx_cur = 0;
+    cep->tx_next = 0;
+    cep->tx_last = 0;
+    cep->tx_full = 0;
+#endif
+
     netif_start_queue(dev);
 
     return 0;
@@ -1550,15 +1599,13 @@ oeth_close(struct net_device *dev)
 
     bdp = cep->rx_bd_base;
     for (i = 0; i < OETH_RXBD_NUM; i++) {
-        bdp->len_status &= ~(OETH_TX_BD_STATS | OETH_TX_BD_READY);
+        bdp->len_status &= ~(OETH_RX_BD_STATS | OETH_RX_BD_EMPTY);
         bdp++;
     }
 
     bdp = cep->tx_bd_base;
     for (i = 0; i < OETH_TXBD_NUM; i++) {
-
-        bdp->len_status &= ~(OETH_RX_BD_STATS | OETH_RX_BD_EMPTY);
-
+        bdp->len_status &= ~(OETH_TX_BD_STATS | OETH_TX_BD_READY);
         bdp++;
     }
 
@@ -1588,6 +1635,7 @@ oeth_close(struct net_device *dev)
     return 0;
 }
 
+// Queues a packet for transmission by the OETH. -TS
 static int
 oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
@@ -1889,6 +1937,153 @@ static void oeth_set_mac_add(struct net_device *dev, void *p)
                       (dev->dev_addr[5]);
 }
 
+#ifdef OETH_SYSFS_MDIO_ACCESS
+int write_in_binary(char *s, int val, int bits) {
+
+	int pos = 0;
+
+	while (bits > 0) {
+		bits--;
+		s[pos++] = '0' + ((val >> bits) & 1);
+	}
+
+	s[pos++] = '\n';
+
+	return pos;
+
+}
+
+int read_in_binary(const char *s, int len) {
+
+	int val = 0;
+
+	while ((len > 0) && (*s == '0' || *s == '1' )) {
+		len--;
+		val = (val << 1) + (*(s++) - '0');
+	}
+
+	return val;
+
+}
+
+#define FIELD_OFFSET(mystruct, myfield) \
+	((unsigned long)&((mystruct *)0)->myfield)
+
+#define CONTAINING_STRUCT(mystruct, myfield, myptr) \
+	((mystruct *)(((const char *)myptr) - FIELD_OFFSET(mystruct, myfield)))
+
+ssize_t show_phy_reg(struct kobject *kobj, struct attribute *attr, 
+                        char *buffer) {
+
+	int phy_num, reg_num;
+	int val;
+	struct net_device *dev = CONTAINING_STRUCT(struct net_device, class_dev.kobj, kobj->parent->parent);
+
+	if (sscanf(kobject_name(kobj), "phy%d", &phy_num) != 1)
+		return -1;
+
+	if (sscanf(attr->name, "reg%d", &reg_num) != 1)
+		return -1;
+
+	val = eth_mdread(dev, phy_num, reg_num);
+
+	return write_in_binary(buffer, val, 16);
+
+}
+
+ssize_t store_phy_reg(struct kobject *kobj, struct attribute *attr, 
+                        const char *buffer, size_t size) {
+
+	int phy_num, reg_num;
+	int val;
+	struct net_device *dev = CONTAINING_STRUCT(struct net_device, class_dev.kobj, kobj->parent->parent);
+
+	if (sscanf(kobject_name(kobj), "phy%d", &phy_num) != 1)
+		return -1;
+	if (sscanf(attr->name, "reg%d", &reg_num) != 1)
+		return -1;
+
+	val = read_in_binary(buffer, size);
+
+	eth_mdwrite(dev, phy_num, reg_num, val);
+
+	return size;
+
+}
+
+struct sysfs_ops phy_ops = {
+	.show = &show_phy_reg,
+	.store = &store_phy_reg
+};
+
+void release_phy(struct kobject *phy) {
+	kfree(phy);
+}
+
+struct kobj_type phy_type = {
+	.release = &release_phy,
+	.sysfs_ops = &phy_ops, // The phys have one attribute for each register
+	.default_attrs = (struct attribute *[]) { 
+		& (struct attribute) { "reg00", NULL, 0640 },
+		& (struct attribute) { "reg01", NULL, 0640 },
+		& (struct attribute) { "reg02", NULL, 0640 },
+		& (struct attribute) { "reg03", NULL, 0640 },
+		& (struct attribute) { "reg04", NULL, 0640 },
+		& (struct attribute) { "reg05", NULL, 0640 },
+		& (struct attribute) { "reg06", NULL, 0640 },
+		& (struct attribute) { "reg07", NULL, 0640 },
+		& (struct attribute) { "reg08", NULL, 0640 },
+		& (struct attribute) { "reg09", NULL, 0640 },
+		& (struct attribute) { "reg10", NULL, 0640 },
+		& (struct attribute) { "reg11", NULL, 0640 },
+		& (struct attribute) { "reg12", NULL, 0640 },
+		& (struct attribute) { "reg13", NULL, 0640 },
+		& (struct attribute) { "reg14", NULL, 0640 },
+		& (struct attribute) { "reg15", NULL, 0640 },
+		& (struct attribute) { "reg16", NULL, 0640 },
+		& (struct attribute) { "reg17", NULL, 0640 },
+		& (struct attribute) { "reg18", NULL, 0640 },
+		& (struct attribute) { "reg19", NULL, 0640 },
+		& (struct attribute) { "reg20", NULL, 0640 },
+		& (struct attribute) { "reg21", NULL, 0640 },
+		& (struct attribute) { "reg22", NULL, 0640 },
+		& (struct attribute) { "reg23", NULL, 0640 },
+		& (struct attribute) { "reg24", NULL, 0640 },
+		& (struct attribute) { "reg25", NULL, 0640 },
+		& (struct attribute) { "reg26", NULL, 0640 },
+		& (struct attribute) { "reg27", NULL, 0640 },
+		& (struct attribute) { "reg28", NULL, 0640 },
+		& (struct attribute) { "reg29", NULL, 0640 },
+		& (struct attribute) { "reg30", NULL, 0640 },
+		& (struct attribute) { "reg31", NULL, 0640 },
+		NULL
+	}
+};
+
+static void init_mdio(struct net_device *dev) {
+
+	int i;
+	// First create the sysfs interface.
+	struct kobject *mdio = kobject_add_dir(&dev->class_dev.kobj, "mdio");
+
+	// Now probe for PHYs.
+	for (i = 0; i < (sizeof(probe_mdio_phys)/sizeof(int)); i++) {
+
+		if (eth_mdread(dev, probe_mdio_phys[i], 0) == 0xFFFF) {
+			// PHY does not exist
+			printk("No PHY found at probe address %d.\n", probe_mdio_phys[i]);
+			continue;
+		}
+
+		struct kobject *phy = kzalloc(sizeof(struct kobject), GFP_KERNEL);
+		kobject_set_name(phy, "phy%02d", probe_mdio_phys[i]);
+		phy->ktype = &phy_type;
+		phy->parent = mdio;
+
+		kobject_register(phy);
+	}
+}
+#endif
 
 /*-----------------------------------------------------------
  | Entry condition: Cpu interrupts ENabled
@@ -1953,12 +2148,14 @@ static int __init oeth_probe(struct net_device *dev)
     cep->rx_bd_base = ((oeth_bd *)OETH_BD_BASE) + OETH_TXBD_NUM;
     rx_bd =  ((volatile oeth_bd *)OETH_BD_BASE) + OETH_TXBD_NUM;
 
+#if OETH_REVISION_DATECODE < 20040426
     /* Initialize transmit pointers.
      */
     cep->rx_cur = 0;
     cep->tx_next = 0;
     cep->tx_last = 0;
     cep->tx_full = 0;
+#endif
 
     /* Set min/max packet length
      */
@@ -2202,7 +2399,20 @@ struct net_device * __init oeth_init(int unit)
       }
 
     err = register_netdev(dev);
-    if (!err) return dev;
+    if (err) {
+      goto out;
+    }
+
+#ifdef OETH_MDC_DIVISOR
+    // Set the MDC divisor.
+    ((volatile oeth_regs *)dev->base_addr)->miimoder = OETH_MDC_DIVISOR;
+#endif
+#ifdef OETH_SYSFS_MDIO_ACCESS
+    init_mdio(dev);
+#endif
+
+    return dev;
+
 out:
     free_netdev(dev);
     return ERR_PTR(err);

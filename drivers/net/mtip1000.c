@@ -672,8 +672,7 @@ Dropfrm_label:
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t mtip_DmaInterrupt(int             irq,
-                                     void           *dev_id,
-                                     struct pt_regs *regs)
+                                     void           *dev_id)
   {
     unsigned int       cmplnstatus;
     struct net_device *dev      = dev_id;
@@ -1645,8 +1644,7 @@ static int mtip_hard_start_xmit( struct sk_buff    * skb,
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t mtip_RxInterrupt(int             irq,
-                                    void           *dev_id,
-                                    struct pt_regs *regs)
+                                    void           *dev_id)
   {
     unsigned int            cmplnstatus;
     struct   net_device    *dev         = dev_id;
@@ -1724,8 +1722,7 @@ static irqreturn_t mtip_RxInterrupt(int             irq,
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t mtip_TxInterrupt(int             irq,
-                                    void           *dev_id,
-                                    struct pt_regs *regs)
+                                    void           *dev_id)
   {
     unsigned long        cmdcfg;
     struct   net_device *dev        = dev_id;
@@ -1805,8 +1802,7 @@ static irqreturn_t mtip_TxInterrupt(int             irq,
  | Entry condition: Cpu interrupts DISabled.
  */
 static irqreturn_t mtip_PhyInterrupt(int             irq,
-                                     void           *dev_id,
-                                     struct pt_regs *regs)
+                                     void           *dev_id)
   {
     struct   net_device    *dev      = dev_id;
     np_mtip_mac            *pmac;
