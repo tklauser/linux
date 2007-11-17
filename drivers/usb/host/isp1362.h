@@ -33,7 +33,7 @@
 
 // insert platform specific definitions for other machines here
 //#elif defined(CONFIG_ARCH_)
-#elif defined(CONFIG_BFIN)
+#elif defined(CONFIG_BLACKFIN)
 
 #include <asm/io.h>
 #define USE_32BIT		0
@@ -63,7 +63,7 @@ static inline void delayed_insw(unsigned int addr, void *buf, int len)
   unsigned short *bp = (unsigned short *) buf;
   while (len--){
     DUMMY_DELAY_ACCESS;
-    *bp++ = inw(addr);
+    *bp++ = inw((void*)addr);
   }
 }
 
@@ -785,7 +785,7 @@ static void isp1362_read_fifo(struct isp1362_hcd *isp1362_hcd, void *buf, u16 le
 #endif
 	if (len >= 2) {
 		RDBG("%s: Using readsw for %d words\n", __FUNCTION__, len >> 1);
-#if 1		
+#if 1
 		insw((unsigned long)isp1362_hcd->data_reg, dp, len >> 1);
 		dp += len & ~1;
 		len &= 1;
@@ -812,8 +812,18 @@ static void isp1362_write_fifo(struct isp1362_hcd *isp1362_hcd, void *buf, u16 l
 {
 	u8 *dp = buf;
 	u16 data;
+	u8 *temp = NULL;
 
 	_BUG_ON(!irqs_disabled());
+	if((unsigned)dp & 0x1) {
+		temp = kmalloc(len, GFP_KERNEL);
+		if (temp == NULL) {
+			printk(KERN_ERR "No memory available\n");
+			return;
+		}
+		memcpy(temp, dp, len);
+		dp = temp;
+	}
 	if (!len) {
 		return;
 	}
@@ -850,6 +860,9 @@ static void isp1362_write_fifo(struct isp1362_hcd *isp1362_hcd, void *buf, u16 l
 			data, (u32)dp);
 	  DUMMY_DELAY_ACCESS;
 		isp1362_write_data16(isp1362_hcd, data);
+	}
+	if (temp) {
+		kfree(temp);
 	}
 }
 
