@@ -271,7 +271,7 @@ subsys_initcall(usb_udc_init);
 
 #if defined(CONFIG_USB_ISP1362_HCD) && defined(na_usb)
 
-#include <linux/usb_isp1362.h>
+#include <linux/usb/isp1362.h>
 #define ISP1362_HCD_ADDR ((unsigned int)na_usb)
 #define ISP1362_HCD_IRQ na_usb_irq
 
