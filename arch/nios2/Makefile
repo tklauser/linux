@@ -97,7 +97,7 @@ endif
 
 head-y := arch/nios2/kernel/head.o arch/nios2/kernel/init_task.o
 
-CLEAN_FILES := include/asm-$(ARCH)/asm-offsets.h \
+CLEAN_FILES += include/asm-$(ARCH)/asm-offsets.h \
 	       $(HARDWARE_MK) \
 	       arch/$(ARCH)/kernel/asm-offsets.s \
 	       linux.srec \
@@ -145,7 +145,7 @@ hwselect:
 prepare: include/nios2_system.h
 
 archclean:
-	$(call descend arch/$(ARCH)/boot, subdirclean)
+	@$(MAKE) $(clean)=arch/$(ARCH)/boot
 
 define filechk_nios2_system.h
 	# call perl script that will build nios2_system.h file
