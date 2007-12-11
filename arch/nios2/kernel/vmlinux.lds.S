@@ -43,7 +43,7 @@ SECTIONS
      * arch/mips/kernel/init_task.c:30: warning: alignment of ‘init_thread_union’
      * is greater than maximum object file alignment.  Using 32768
      */
-    . = ALIGN(4096);
+    . = ALIGN(8192);	/* MUST be 8192, the THREAD_SIZE */
     *(.data.init_task)
 
     *(.data)
