@@ -125,6 +125,8 @@ software_exception:
 	ldw	r24,-4(ea)		// instruction that caused the exception
 	xorhi	r24,r24,0x003b		// upper half of trap opcode
 	xori	r24,r24,0x683a		// lower half of trap opcode
+	cmpeqi	r11,r24,0x40		/* Check for imm=0x01 => breakpoint */
+	bne	r11,r0,breakpoint
 	bne	r24,r0,instruction_trap	/* N - check for instruction trap */
 	cmpeqi	r11,r2,TRAP_ID_SYSCALL	/* ? Is this a syscall */
 	bne	r11,r0,system_call	/* Y - handle syscall */
@@ -141,6 +143,11 @@ app_debug:
 	ORI32 r24, r24, NIOS2_FLAG_DEBUG  /* set the debug flag */
 	stw	r24,(TASK_THREAD + THREAD_FLAGS)(r1)	/* save thread_info->task->thread.flags */
 	br	restore_all
+
+breakpoint:
+	mov  r4,sp
+	call breakpoint_c
+	br restore_all
 
 /*
  * This is the generic interrupt handler (for all hardware interrupt

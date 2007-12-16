@@ -176,3 +176,19 @@ void trap_init(void)
 	printk("trap_init reached\n");
 #endif
 }
+
+/* Breakpoint handler */
+asmlinkage void breakpoint_c(struct pt_regs *fp)
+{
+	siginfo_t info;
+
+/*
+	printk(KERN_DEBUG "Breakpoint detected, instr=0x%08x ea=0x%08x ra=0x%08x sp=0x%08x\n", *(u32*)((fp->ea)-4), *(u32*)(fp->ea), *(u32*)(fp->ra), *(u32*)(fp->sp));
+*/
+
+	info.si_code = TRAP_BRKPT;
+	info.si_signo = SIGTRAP;
+	info.si_errno = 0;
+
+	force_sig_info(info.si_signo, &info, current);
+}
