@@ -26,6 +26,11 @@
 
 #ifndef __ASSEMBLY__
 
+/*
+ * Register numbers used by 'ptrace' system call interface.
+ */
+
+/* GP registers */
 #define PTR_R0		0
 #define PTR_R1		1
 #define PTR_R2		2
@@ -58,11 +63,18 @@
 #define PTR_EA		29
 #define PTR_BA		30
 #define PTR_RA		31
+/* Control registers */
 #define PTR_STATUS	32
 #define PTR_ESTATUS	33
 #define PTR_BSTATUS	34
 #define PTR_IENABLE	35
 #define PTR_IPENDING	36
+#define PTR_CPUID	37
+
+/* Text/data offsets, needed by gdbserver */
+#define PT_TEXT_ADDR	38*4
+#define PT_DATA_ADDR	39*4
+#define PT_TEXT_END_ADDR 40*4
 
 /* this struct defines the way the registers are stored on the
    stack during a system call. 
@@ -70,7 +82,7 @@
    There is a fake_regs in setup.c that has to match pt_regs.*/
 
 struct pt_regs {
-	unsigned long  r8;
+	unsigned long  r8;		/* r8-r15 Caller-saved GP registers */
 	unsigned long  r9;
 	unsigned long  r10;
 	unsigned long  r11;
@@ -78,21 +90,21 @@ struct pt_regs {
 	unsigned long  r13;
 	unsigned long  r14;
 	unsigned long  r15;
-	unsigned long  r1;
-	unsigned long  r2;
-	unsigned long  r3;
-	unsigned long  r4;
+	unsigned long  r1;		/* Assembler temporary */
+	unsigned long  r2;		/* Retval LS 32bits */
+	unsigned long  r3;		/* Retval MS 32bits */
+	unsigned long  r4;		/* r4-r7 Register arguments */
 	unsigned long  r5;
 	unsigned long  r6;
 	unsigned long  r7;
-	unsigned long  orig_r2;
-	unsigned long  ra;
-	unsigned long  fp;
-	unsigned long  sp;
-	unsigned long  gp;
+	unsigned long  orig_r2;		/* Copy of r2 ?? */
+	unsigned long  ra;		/* Return address */
+	unsigned long  fp;		/* Frame pointer */
+	unsigned long  sp;		/* Stack pointer */
+	unsigned long  gp;		/* Global pointer */
 	unsigned long  estatus;
-	unsigned long  status_extension;
-	unsigned long  ea;
+	unsigned long  status_extension; /* Status extension. Used to fake user mode */
+	unsigned long  ea;		/* Exception return address (pc) */
 };
 
 
@@ -101,7 +113,7 @@ struct pt_regs {
  * switcher: it's pushed after the normal "struct pt_regs".
  */
 struct switch_stack {
-	unsigned long  r16;
+	unsigned long  r16;		/* r16-r23 Callee-saved GP registers */
 	unsigned long  r17;
 	unsigned long  r18;
 	unsigned long  r19;

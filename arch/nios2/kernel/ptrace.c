@@ -25,6 +25,14 @@
 #include <asm/system.h>
 #include <asm/processor.h>
 
+#define DEBUG
+
+#ifdef DEBUG
+# define PRINTK_DEBUG(str...)   printk(KERN_DEBUG str)
+#else
+# define PRINTK_DEBUG(str...)   do { } while (0)
+#endif
+
 /*
  * does not yet catch signals sent when the child dies.
  * in exit.c or in signal.c.
@@ -38,18 +46,21 @@
 #define PT_REG(reg)	((long)&((struct pt_regs *)0)->reg)
 #define SW_REG(reg)	((long)&((struct switch_stack *)0)->reg \
 			 - sizeof(struct switch_stack))
+
 /* Mapping from PT_xxx to the stack offset at which the register is
    saved.  Notice that usp has no stack-slot and needs to be treated
    specially (see get_reg/put_reg below). */
 static int regoff[] = {
-	-1, PT_REG(r1), PT_REG(r2), PT_REG(r3), PT_REG(r4),
-	PT_REG(r5), PT_REG(r6), PT_REG(r7), PT_REG(r8),
-	PT_REG(r9), PT_REG(r10), PT_REG(r11), PT_REG(r12),
-	PT_REG(r13), PT_REG(r14), PT_REG(r15), SW_REG(r16),
-	SW_REG(r17), SW_REG(r18), SW_REG(r19), SW_REG(r20),
-	SW_REG(r21), SW_REG(r22), SW_REG(r23), -1, -1,
-	PT_REG(gp), PT_REG(sp), -1, -1, PT_REG(ra), -1,
-	PT_REG(estatus), -1, -1, -1
+	         -1, PT_REG( r1), PT_REG( r2), PT_REG( r3),
+	PT_REG( r4), PT_REG( r5), PT_REG( r6), PT_REG( r7),
+	PT_REG( r8), PT_REG( r9), PT_REG(r10), PT_REG(r11),
+	PT_REG(r12), PT_REG(r13), PT_REG(r14), PT_REG(r15),
+	SW_REG(r16), SW_REG(r17), SW_REG(r18), SW_REG(r19),
+	SW_REG(r20), SW_REG(r21), SW_REG(r22), SW_REG(r23),
+	         -1,          -1, PT_REG( gp), PT_REG( sp),
+	         -1,          -1,          -1, PT_REG( ra),
+	         -1, PT_REG(estatus),      -1,          -1,
+	         -1,          -1
 };
 
 /*
@@ -59,15 +70,7 @@ static inline long get_reg(struct task_struct *task, int regno)
 {
 	unsigned long *addr;
 
-	if (regno == PTR_R0)
-		return 0;
-	else if (regno == PTR_BA)
-		return 0;
-	else if (regno == PTR_STATUS)
-		return 0;
-	else if (regno == PTR_IENABLE)
-		return 0;
-	else if (regno == PTR_IPENDING)
+	if (regoff[regno] == -1)
 		return 0;
 	else if (regno < sizeof(regoff)/sizeof(regoff[0]))
 		addr = (unsigned long *)(task->thread.kregs + regoff[regno]);
@@ -84,15 +87,7 @@ static inline int put_reg(struct task_struct *task, int regno,
 {
 	unsigned long *addr;
 
-	if (regno == PTR_R0)
-		return -1;
-	else if (regno == PTR_BA)
-		return -1;
-	else if (regno == PTR_STATUS)
-		return -1;
-	else if (regno == PTR_IENABLE)
-		return -1;
-	else if (regno == PTR_IPENDING)
+	if (regoff[regno] == -1)
 		return -1;
 	else if (regno < sizeof(regoff)/sizeof(regoff[0]))
 		addr = (unsigned long *) (task->thread.kregs + regoff[regno]);
@@ -122,11 +117,13 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			unsigned long tmp;
 			int copied;
 
+			PRINTK_DEBUG("%s PEEKTEXT: addr=0x%08x\n", __FUNCTION__,(u32)addr);
 			copied = access_process_vm(child, addr, &tmp, sizeof(tmp), 0);
 			ret = -EIO;
 			if (copied != sizeof(tmp))
 				break;
 			ret = put_user(tmp,(unsigned long *) data);
+			PRINTK_DEBUG("%s PEEKTEXT: rword=0x%08x\n", __FUNCTION__, (u32)tmp);
 			break;
 		}
 
@@ -139,33 +136,42 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			    addr > sizeof(struct user) - 3)
 				break;
 			
+			PRINTK_DEBUG("%s PEEKUSR: addr=0x%08x\n", __FUNCTION__, (u32)addr);
 			tmp = 0;  /* Default return condition */
 			addr = addr >> 2; /* temporary hack. */
 			ret = -EIO;
-			if (addr < 19) {
+			if (addr < sizeof(regoff)/sizeof(regoff[0])) {
 				tmp = get_reg(child, addr);
-			} else if (addr == 49) {
+			} else if (addr == PT_TEXT_ADDR/4) {
 				tmp = child->mm->start_code;
-			} else if (addr == 50) {
+			} else if (addr == PT_DATA_ADDR/4) {
 				tmp = child->mm->start_data;
-			} else if (addr == 51) {
+			} else if (addr == PT_TEXT_END_ADDR/4) {
 				tmp = child->mm->end_code;
 			} else
 				break;
 			ret = put_user(tmp,(unsigned long *) data);
+			PRINTK_DEBUG("%s PEEKUSR: rdword=0x%08x\n", __FUNCTION__, (u32)tmp);
 			break;
 		}
 
 		/* when I and D space are separate, this will have to be fixed. */
 		case PTRACE_POKETEXT: /* write the word at location addr. */
-		case PTRACE_POKEDATA:
+		case PTRACE_POKEDATA: {
+			int copied;
+
+			PRINTK_DEBUG("%s POKETEXT: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
 			ret = 0;
-			if (access_process_vm(child, addr, &data, sizeof(data), 1) == sizeof(data))
+			copied = access_process_vm(child, addr, &data, sizeof(data), 1);
+			PRINTK_DEBUG("%s POKETEXT: copied size = %d\n", __FUNCTION__, copied);
+			if (copied == sizeof(data))
 				break;
 			ret = -EIO;
 			break;
+		}
 
 		case PTRACE_POKEUSR: /* write the word at location addr in the USER area */
+			PRINTK_DEBUG("%s POKEUSR: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
 			ret = -EIO;
 			if ((addr & 3) || addr < 0 ||
 			    addr > sizeof(struct user) - 3)
@@ -177,7 +183,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 				data &= SR_MASK;
 				data |= get_reg(child, PTR_ESTATUS) & ~(SR_MASK);
 			}
-			if (addr < 19) {
+			if (addr < sizeof(regoff)/sizeof(regoff[0])) {
 				if (put_reg(child, addr, data))
 					break;
 				ret = 0;
@@ -188,6 +194,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		case PTRACE_SYSCALL: /* continue and stop at next (return from) syscall */
 		case PTRACE_CONT: { /* restart after signal. */
 
+			PRINTK_DEBUG("%s CONT: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
 			ret = -EIO;
 			if ((unsigned long) data > _NSIG)
 				break;
@@ -196,6 +203,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			else
 				clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
 			child->exit_code = data;
+			PRINTK_DEBUG("%s CONT: About to run wake_up_process()\n", __FUNCTION__);
 			wake_up_process(child);
 			ret = 0;
 			break;
@@ -208,6 +216,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		 */
 		case PTRACE_KILL: {
 
+			PRINTK_DEBUG("%s KILL\n", __FUNCTION__);
 			ret = 0;
 			if (child->state == EXIT_ZOMBIE) /* already dead */
 				break;
@@ -224,6 +233,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		 */
 		case PTRACE_SINGLESTEP: {  /* set the trap flag. */
 
+			PRINTK_DEBUG("%s SINGLESTEP: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
 			ret = -EIO;
 			if ((unsigned long) data > _NSIG)
 				break;
@@ -237,13 +247,16 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		}
 
 		case PTRACE_DETACH:	/* detach a process that was attached. */
+			PRINTK_DEBUG("%s DETACH\n", __FUNCTION__);
 			ret = ptrace_detach(child, data);
 			break;
 
 		case PTRACE_GETREGS: { /* Get all gp regs from the child. */
 		  	int i;
 			unsigned long tmp;
-			for (i = 0; i < 19; i++) {
+
+			PRINTK_DEBUG("%s GETREGS\n", __FUNCTION__);
+			for (i = 0; i < sizeof(regoff)/sizeof(regoff[0]); i++) {
 			    tmp = get_reg(child, i);
 			    if (put_user(tmp, (unsigned long *) data)) {
 				ret = -EFAULT;
@@ -258,7 +271,9 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		case PTRACE_SETREGS: { /* Set all gp regs in the child. */
 			int i;
 			unsigned long tmp;
-			for (i = 0; i < 19; i++) {
+
+			PRINTK_DEBUG("%s SETREGS\n", __FUNCTION__);
+			for (i = 0; i < sizeof(regoff)/sizeof(regoff[0]); i++) {
 			    if (get_user(tmp, (unsigned long *) data)) {
 				ret = -EFAULT;
 				break;
@@ -275,6 +290,7 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 		}
 
 		default:
+			PRINTK_DEBUG("%s Undefined\n", __FUNCTION__);
 			ret = -EIO;
 			break;
 	}
