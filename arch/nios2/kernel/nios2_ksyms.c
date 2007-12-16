@@ -49,7 +49,6 @@ extern void dump_thread(struct pt_regs *, struct user *);
 
 EXPORT_SYMBOL(__ioremap);
 EXPORT_SYMBOL(iounmap);
-EXPORT_SYMBOL(dump_fpu);
 EXPORT_SYMBOL(dump_thread);
 
 EXPORT_SYMBOL(kernel_thread);

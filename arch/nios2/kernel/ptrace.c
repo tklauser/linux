@@ -1,5 +1,5 @@
 /*
- *  linux/arch/m68knommu/kernel/ptrace.c
+ *  linux/arch/nios2/kernel/ptrace.c
  *
  *  Copyright (C) 1994 by Hamish Macdonald
  *  Taken from linux/kernel/ptrace.c and modified for M680x0.
@@ -144,18 +144,6 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			ret = -EIO;
 			if (addr < 19) {
 				tmp = get_reg(child, addr);
-#if 0 // No FPU stuff
-			} else if (addr >= 21 && addr < 49) {
-				tmp = child->thread.fp[addr - 21];
-#ifdef CONFIG_M68KFPU_EMU
-				/* Convert internal fpu reg representation
-				 * into long double format
-				 */
-				if (FPU_IS_EMU && (addr < 45) && !(addr % 3))
-					tmp = ((tmp & 0xffff0000) << 15) |
-					      ((tmp & 0x0000ffff) << 16);
-#endif
-#endif
 			} else if (addr == 49) {
 				tmp = child->mm->start_code;
 			} else if (addr == 50) {
@@ -195,23 +183,6 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 				ret = 0;
 				break;
 			}
-#if 0 // No FPU stuff
-			if (addr >= 21 && addr < 48)
-			{
-#ifdef CONFIG_M68KFPU_EMU
-				/* Convert long double format
-				 * into internal fpu reg representation
-				 */
-				if (FPU_IS_EMU && (addr < 45) && !(addr % 3)) {
-					data = (unsigned long)data << 15;
-					data = (data & 0xffff0000) |
-					       ((data & 0x0000ffff) >> 1);
-				}
-#endif
-				child->thread.fp[addr - 21] = data;
-				ret = 0;
-			}
-#endif
 			break;
 
 		case PTRACE_SYSCALL: /* continue and stop at next (return from) syscall */
@@ -302,26 +273,6 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			ret = 0;
 			break;
 		}
-
-#ifdef PTRACE_GETFPREGS
-		case PTRACE_GETFPREGS: { /* Get the child FPU state. */
-			ret = 0;
-			if (copy_to_user((void *)data, &child->thread.fp,
-					 sizeof(struct user_m68kfp_struct)))
-				ret = -EFAULT;
-			break;
-		}
-#endif
-
-#ifdef PTRACE_SETFPREGS
-		case PTRACE_SETFPREGS: { /* Set the child FPU state. */
-			ret = 0;
-			if (copy_from_user(&child->thread.fp, (void *)data,
-					   sizeof(struct user_m68kfp_struct)))
-				ret = -EFAULT;
-			break;
-		}
-#endif
 
 		default:
 			ret = -EIO;

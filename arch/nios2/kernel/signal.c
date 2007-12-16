@@ -390,76 +390,6 @@ badframe:
 	return 0;
 }
 
-#ifdef CONFIG_FPU
-/*
- * Set up a signal frame.
- *
- * Not converted, no FPU support at moment.
- */
-
-static inline int save_fpu_state(struct sigcontext *sc, struct pt_regs *regs)
-{
-	int err = 0;
-
-	if (FPU_IS_EMU) {
-		/* save registers */
-		err |= copy_to_user(&sc->sc_fpcntl, current->thread.fpcntl, 12);
-		err |= copy_to_user(&sc->sc_fpregs, current->thread.fp, 24);
-		return err;
-	}
-
-	__asm__ volatile ("Nios II FPUt"
-			  : : );
-
-	if (sc->sc_fpstate[0]) {
-		fpu_version = sc->sc_fpstate[0];
-		__asm__ volatile ("Nios II FPU"
-				  : /* no outputs */
-				  : 
-				  : );
-	}
-	return err;
-}
-
-static inline int rt_save_fpu_state(struct ucontext *uc, struct pt_regs *regs)
-{
-	unsigned char fpstate[FPCONTEXT_SIZE];
-	int context_size = 0;
-	int err = 0;
-
-	if (FPU_IS_EMU) {
-		/* save fpu control register */
-		err |= copy_to_user(&uc->uc_mcontext.fpregs.f_pcr,
-				current->thread.fpcntl, 12);
-		/* save all other fpu register */
-		err |= copy_to_user(uc->uc_mcontext.fpregs.f_fpregs,
-				current->thread.fp, 96);
-		return err;
-	}
-
-	__asm__ volatile ("Nios II FPU"
-			  : : : );
-
-	err |= __put_user(*(long *)fpstate, (long *)&uc->uc_fpstate);
-	if (fpstate[0]) {
-		fpregset_t fpregs;
-		context_size = fpstate[1];
-		fpu_version = fpstate[0];
-		__asm__ volatile ("Nios II FPU"
-				  : /* no outputs */
-				  : 
-				  : );
-		err |= copy_to_user(&uc->uc_mcontext.fpregs, &fpregs,
-				    sizeof(fpregs));
-	}
-	if (context_size)
-		err |= copy_to_user((long *)&uc->uc_fpstate + 1, fpstate + 4,
-				    context_size);
-	return err;
-}
-
-#endif
-
 static int setup_sigcontext(struct sigcontext *sc, struct pt_regs *regs,
 			     unsigned long mask)
 {
@@ -467,9 +397,6 @@ static int setup_sigcontext(struct sigcontext *sc, struct pt_regs *regs,
 
 	err |= __put_user(mask, &sc->sc_mask);
 	err |= copy_to_user(&sc->regs, regs, sizeof(*regs));
-#ifdef CONFIG_FPU
-	err |= save_fpu_state(sc, regs);
-#endif
 	return err;
 }
 
@@ -508,9 +435,6 @@ static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 	err |= __put_user(regs->sp, &gregs[23]);
 	err |= __put_user(sw->fp, &gregs[24]);
 	err |= __put_user(sw->gp, &gregs[25]);
-#ifdef CONFIG_FPU
-	err |= rt_save_fpu_state(uc, regs);
-#endif
 	return err;
 }
 

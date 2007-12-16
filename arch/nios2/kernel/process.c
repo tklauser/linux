@@ -241,17 +241,7 @@ void flush_thread(void)
 	/* Now, this task is no longer a kernel thread. */
 	current->thread.flags &= ~NIOS2_FLAG_KTHREAD;
 
-#ifdef CONFIG_FPU
-	unsigned long zero = 0;
-#endif
 	set_fs(USER_DS);
-#ifdef CONFIG_FPU
-	if (!FPU_IS_EMU)
-...;dgt2;
-		asm volatile (".chip 68k/68881\n\t"
-			      "frestore %0@\n\t"
-			      ".chip 68k" : : "a" (&zero));
-#endif
 }
 
 /*
@@ -338,22 +328,6 @@ int copy_thread(int nr, unsigned long clone_flags,
 
 	p->thread.ksp = (unsigned long)childstack;
 
-#ifdef CONFIG_FPU
-	if (!FPU_IS_EMU) {
-		/* Copy the current fpu state */
-...;dgt2;
-		asm volatile ("fsave %0" : : "m" (p->thread.fpstate[0]) : "memory");
-
-		if (p->thread.fpstate[0])
-		  asm volatile ("fmovemx %/fp0-%/fp7,%0\n\t"
-				"fmoveml %/fpiar/%/fpcr/%/fpsr,%1"
-				: : "m" (p->thread.fp[0]), "m" (p->thread.fpcntl[0])
-				: "memory");
-		/* Restore the state in case the fpu was busy */
-		asm volatile ("frestore %0" : : "m" (p->thread.fpstate[0]));
-	}
-#endif
-
 	/* Set the return value for the child. */
 	childregs->r2 = 0;  //;dgt2;...redundant?...see childregs->r2 above
 	childregs->r3 = 1;  //;dgt2;...eg: kernel_thread parent test
@@ -363,43 +337,6 @@ int copy_thread(int nr, unsigned long clone_flags,
 	regs->r3 = 0;       //;dgt2;...eg: kernel_thread parent test
 
 	return 0;
-}
-
-/* Fill in the fpu structure for a core dump.  */
-
-int dump_fpu(struct pt_regs *regs, struct user_m68kfp_struct *fpu)
-{
-#ifdef CONFIG_FPU
-	char fpustate[216];
-
-	if (FPU_IS_EMU) {
-		int i;
-
-		memcpy(fpu->fpcntl, current->thread.fpcntl, 12);
-		memcpy(fpu->fpregs, current->thread.fp, 96);
-		/* Convert internal fpu reg representation
-		 * into long double format
-		 */
-		for (i = 0; i < 24; i += 3)
-			fpu->fpregs[i] = ((fpu->fpregs[i] & 0xffff0000) << 15) |
-			                 ((fpu->fpregs[i] & 0x0000ffff) << 16);
-		return 1;
-	}
-
-	/* First dump the fpu context to avoid protocol violation.  */
-...;dgt2;tmp;
-	asm volatile ("fsave %0" :: "m" (fpustate[0]) : "memory");
-	if (!fpustate[0])
-		return 0;
-
-	asm volatile ("fmovem %/fpiar/%/fpcr/%/fpsr,%0"
-		:: "m" (fpu->fpcntl[0])
-		: "memory");
-	asm volatile ("fmovemx %/fp0-%/fp7,%0"
-		:: "m" (fpu->fpregs[0])
-		: "memory");
-#endif
-	return 1;
 }
 
 /*
@@ -454,8 +391,6 @@ void dump_thread(struct pt_regs * regs, struct user * dump)
 	dump->regs.orig_r2 = regs->orig_r2;
 	dump->regs.estatus = regs->estatus;
 	dump->regs.ea = regs->ea;
-	/* dump floating point stuff */
-	//	dump->u_fpvalid = dump_fpu (regs, &dump->m68kfp);
 }
 
 /*
