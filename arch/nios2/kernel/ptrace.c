@@ -58,7 +58,7 @@ static int regoff[] = {
 	SW_REG(r16), SW_REG(r17), SW_REG(r18), SW_REG(r19),
 	SW_REG(r20), SW_REG(r21), SW_REG(r22), SW_REG(r23),
 	         -1,          -1, PT_REG( gp), PT_REG( sp),
-	         -1,          -1,          -1, PT_REG( ra),
+	         -1, PT_REG( ea),          -1, PT_REG( ra),
 	         -1, PT_REG(estatus),      -1,          -1,
 	         -1,          -1
 };
@@ -73,7 +73,7 @@ static inline long get_reg(struct task_struct *task, int regno)
 	if (regoff[regno] == -1)
 		return 0;
 	else if (regno < sizeof(regoff)/sizeof(regoff[0]))
-		addr = (unsigned long *)(task->thread.kregs + regoff[regno]);
+		addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
 	else
 		return 0;
 	return *addr;
@@ -90,7 +90,7 @@ static inline int put_reg(struct task_struct *task, int regno,
 	if (regoff[regno] == -1)
 		return -1;
 	else if (regno < sizeof(regoff)/sizeof(regoff[0]))
-		addr = (unsigned long *) (task->thread.kregs + regoff[regno]);
+		addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
 	else
 		return -1;
 	*addr = data;
