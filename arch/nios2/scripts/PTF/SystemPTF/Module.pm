@@ -168,21 +168,8 @@ sub getSize {
 	my $data_width = $SBI->getAssignment ('Data_Width');
 	my $addr_width = $SBI->getAssignment ('Address_Width');
 	
-	if ($data_width == 8) {
-		$size = 1 << $addr_width;
-	} elsif ($data_width == 16) {
-		$size = 1 << ($addr_width + 1);
-	} elsif ($data_width == 32) {
-		$size = 1 << ($addr_width + 2);
-	} elsif ($data_width == 64) {
-		$size = 1 << ($addr_width + 3);
-	} elsif ($data_width == 128) {
-		$size = 1 << ($addr_width + 4);
-	} else {
-		return;
-	}
-	
-	$size_text = sprintf ("%#010x", $size);
+	my $size = (1 << $addr_width) * ($data_width / 8);
+	my $size_text = sprintf ("%#010x", $size);
 	return $size_text;
 }
 
