@@ -304,6 +304,17 @@ printf ("#define %-33s %30s\n",
 		("CPU_RESET_ADDRESS", $reset_address));
 }
 
+{	
+	my ($except_location, $except_offset) = $cpu->getExceptLocationOffset();
+	my ($except_module_name, $except_port_name) = ($except_location =~ /(.*)\/(.*)/);
+	my $except_module = $system->getModule ($except_module_name);
+	my $except_address = $except_module->getBaseAddress ($except_port_name);
+	
+	$except_address = hex ($except_address) + hex ($except_offset);
+	printf ("#define %-53s %#010x\n", 
+		("CPU_EXCEPT_ADDRESS", $except_address));
+}
+
 print "\n";
 
 #

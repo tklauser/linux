@@ -156,6 +156,10 @@ int main(void)
 	DEFINE(NIOS2_ICACHE_LINE_SIZE, nasys_icache_line_size);
 	DEFINE(NIOS2_DCACHE_SIZE, nasys_dcache_size);
 	DEFINE(NIOS2_DCACHE_LINE_SIZE, nasys_dcache_line_size);
+
+#if defined(CPU_EXCEPT_ADDRESS)
+	DEFINE(CPU_EXCEPT_ADDRESS_ASM, CPU_EXCEPT_ADDRESS);
+#endif
 	
 #if defined(na_enet)
 	DEFINE(NA_ENET_ASM, na_enet);

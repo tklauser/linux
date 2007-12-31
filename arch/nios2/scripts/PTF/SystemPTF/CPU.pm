@@ -72,6 +72,18 @@ sub getResetLocationOffset {
 	return ($location, $offset);
 }
 
+sub getExceptLocationOffset {
+	my ($self) = @_;
+	
+	$wsa = $self->{ptf}->getSection('WIZARD_SCRIPT_ARGUMENTS', '');
+	$wsa or return;
+	
+	my $location = $wsa->getAssignment ('exc_slave');
+	my $offset = $wsa->getAssignment ('exc_offset');
+	
+	return ($location, $offset);
+}
+
 sub isEnabled {
 	my ($self) = @_;
 	

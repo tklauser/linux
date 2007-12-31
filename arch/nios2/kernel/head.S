@@ -87,7 +87,7 @@ text_flush:
 	/* This is the default location for the exception 
 	 * handler. Code in jump to our handler
 	 */
-	
+exc_hook:	
 	movia	r24,inthandler
 	jmp	r24
 1:		
@@ -128,6 +128,26 @@ loop_move:				// r1: src, r2: dest, r3: last dest
 	jmp	r1			// jmp to _start	
 
 finish_move:
+
+#if defined(CPU_EXCEPT_ADDRESS_ASM) && (CPU_EXCEPT_ADDRESS_ASM != (LINUX_SDRAM_START + 0x20))
+/*	Copy an instruction sequence to put at the exception address */	
+        movia	r2,exc_hook
+        movia	r3,CPU_EXCEPT_ADDRESS_ASM
+        ldw     r1,0(r2)
+        stw     r1,0(r3)
+        ldw     r1,4(r2)
+        stw     r1,4(r3)
+        ldw     r1,8(r2)
+        stw     r1,8(r3)
+        flushd  0(r3)
+        flushd  4(r3)
+        flushd  8(r3)
+        flushi  r3
+        addi    r3,r3,4
+        flushi  r3
+        addi    r3,r3,4
+        flushi  r3
+#endif
 
 	//------------------------------------
 	// Disable interrupts on known devices
