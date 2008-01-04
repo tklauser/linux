@@ -501,7 +501,6 @@ struct seq_operations cpuinfo_op = {
 // note, hardware MAC address is still undefined
 
 #if defined(CONFIG_SMC91X) && defined(na_enet)
-
 #ifndef LAN91C111_REGISTERS_OFFSET
 #define LAN91C111_REGISTERS_OFFSET 0x300
 #endif
@@ -526,6 +525,12 @@ static struct platform_device smc91x_device = {
 };
 static int __init smc91x_device_init(void)
 {
+#define SMC_DEBUG 0
+#include "../../../drivers/net/smc91x.h"
+	/* write eth hardware address to MAC */
+	void __iomem *ioaddr = (void *)(na_enet + LAN91C111_REGISTERS_OFFSET);
+	SMC_SELECT_BANK(1);
+	SMC_SET_MAC_ADDR(excalibur_enet_hwaddr);
 	/* customizes platform devices, or adds new ones */
 	platform_device_register(&smc91x_device);
 	return 0;
@@ -573,6 +578,12 @@ static struct platform_device dm9k_device = {
 };
 static int __init dm9k_device_init(void)
 {
+	/* write eth hardware address to MAC */
+	int i;
+	for (i = 0; i < 6; i++) {
+		writeb(0x10 + i, na_dm9000); /* DM9000_PAR */
+		writeb(excalibur_enet_hwaddr[i], na_dm9000 + 4);		
+	}
 	/* customizes platform devices, or adds new ones */
 	platform_device_register(&dm9k_device);
 	return 0;
