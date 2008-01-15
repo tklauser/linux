@@ -176,7 +176,7 @@ ENTRY(inthandler)
 
 	addi	ea,ea,-4		/* re-issue the interrupted instruction */
 	stw	ea,PT_EA(sp)
-	rdctl	r9,ienable		/* Isolate possible interrupts */
+2:	rdctl	r9,ienable		/* Isolate possible interrupts */
 	and	r12,r12,r9
 	beq	r12,r0,ret_from_interrupt /* No one to service done */
 	movi	r4,%lo(-1)		/* Start from bit position 0, highest priority */
@@ -191,9 +191,9 @@ ENTRY(inthandler)
 	PUSH	r4			/* Save state for return */
 	PUSH	r12
 	call	process_int
-	POP	r12
-	POP	r4
-	br	1b			/* Check for other interrupts while here */
+	addi	sp,sp,8			/* pop r12,r4 */
+	rdctl	r12,ipending		/* check again if irq still pending */
+	bne	r12,r0,2b
 
 ENTRY(ret_from_interrupt)
 	ldw	r4,PT_STATUS_EXTENSION(sp)
