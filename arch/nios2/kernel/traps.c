@@ -182,13 +182,19 @@ asmlinkage void breakpoint_c(struct pt_regs *fp)
 {
 	siginfo_t info;
 
+/* 	The breakpoint entry code has moved the PC on by 4 bytes, so we must */
+/* 	move it back.  This could be done on the host but we do it here */
+/* 	because monitor.S of JATG gdbserver does it. */
+	fp->ea -= 4;
+
 /*
 	printk(KERN_DEBUG "Breakpoint detected, instr=0x%08x ea=0x%08x ra=0x%08x sp=0x%08x\n", *(u32*)((fp->ea)-4), *(u32*)(fp->ea), *(u32*)(fp->ra), *(u32*)(fp->sp));
 */
-
+	
 	info.si_code = TRAP_BRKPT;
 	info.si_signo = SIGTRAP;
 	info.si_errno = 0;
+	info.si_addr = (void *) fp->ea;
 
 	force_sig_info(info.si_signo, &info, current);
 }
