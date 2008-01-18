@@ -26,7 +26,7 @@
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
 
-#define DEBUG
+/* #define DEBUG */
 
 #ifdef DEBUG
 # define PRINTK_DEBUG(str...)   printk(KERN_DEBUG str)
@@ -55,13 +55,14 @@ static int regoff[] = {
 	         -1, PT_REG( r1), PT_REG( r2), PT_REG( r3),
 	PT_REG( r4), PT_REG( r5), PT_REG( r6), PT_REG( r7),
 	PT_REG( r8), PT_REG( r9), PT_REG(r10), PT_REG(r11),
-	PT_REG(r12), PT_REG(r13), PT_REG(r14), PT_REG(r15),
+	PT_REG(r12), PT_REG(r13), PT_REG(r14), PT_REG(r15),  /* reg 15 */
 	SW_REG(r16), SW_REG(r17), SW_REG(r18), SW_REG(r19),
 	SW_REG(r20), SW_REG(r21), SW_REG(r22), SW_REG(r23),
 	         -1,          -1, PT_REG( gp), PT_REG( sp),
-	         -1, PT_REG( ea),          -1, PT_REG( ra),
-	         -1, PT_REG(estatus),      -1,          -1,
-	         -1,          -1
+	PT_REG( fp), PT_REG( ea),          -1, PT_REG( ra),  /* reg 31 */
+	PT_REG( ea),          -1,          -1,          -1,  /* use ea for pc */
+	         -1,          -1,          -1,          -1,
+	         -1,          -1,          -1,          -1   /* reg 43 */ 
 };
 
 /*
@@ -225,27 +226,6 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 				break;
 			child->exit_code = SIGKILL;
 			wake_up_process(child);
-			break;
-		}
-
-		/*
-		 * Single stepping requires placing break instructions in
-		 * the code to break back. If you are stepping through a 
-		 * conditional branch you need to decode the test and put
-		 * the break in the correct location.
-		 */
-		case PTRACE_SINGLESTEP: {  /* set the trap flag. */
-
-			PRINTK_DEBUG("%s SINGLESTEP: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
-			ret = -EIO;
-			if ((unsigned long) data > _NSIG)
-				break;
-			clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-
-			child->exit_code = data;
-			/* give it a chance to run. */
-			wake_up_process(child);
-			ret = 0;
 			break;
 		}
 

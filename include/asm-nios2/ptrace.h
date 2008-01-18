@@ -64,17 +64,23 @@
 #define PTR_BA		30
 #define PTR_RA		31
 /* Control registers */
-#define PTR_STATUS	32
-#define PTR_ESTATUS	33
-#define PTR_BSTATUS	34
-#define PTR_IENABLE	35
-#define PTR_IPENDING	36
-#define PTR_CPUID	37
+#define PTR_PC    	32
+#define PTR_STATUS	33
+#define PTR_ESTATUS	34
+#define PTR_BSTATUS	35
+#define PTR_IENABLE	36
+#define PTR_IPENDING	37
+#define PTR_CPUID	38
+#define PTR_CTL6	39
+#define PTR_CTL7	40
+#define PTR_PTEADDR	41
+#define PTR_TLBACC	42
+#define PTR_TLBMISC	43
 
 /* Text/data offsets, needed by gdbserver */
-#define PT_TEXT_ADDR	38*4
-#define PT_DATA_ADDR	39*4
-#define PT_TEXT_END_ADDR 40*4
+#define PT_TEXT_ADDR	44*4
+#define PT_TEXT_END_ADDR 45*4
+#define PT_DATA_ADDR	46*4
 
 /* this struct defines the way the registers are stored on the
    stack during a system call. 
