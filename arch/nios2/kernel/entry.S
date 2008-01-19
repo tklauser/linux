@@ -165,6 +165,8 @@ ENTRY(inthandler)
 	andi	r24,r24,1
 	beq	r24,r0,software_exception
 	rdctl	r12,ipending
+	rdctl	r9,ienable
+	and	r12,r12,r9
 	beq	r12,r0,software_exception
 
 	movi	r24,-1
@@ -176,24 +178,19 @@ ENTRY(inthandler)
 
 	addi	ea,ea,-4		/* re-issue the interrupted instruction */
 	stw	ea,PT_EA(sp)
-2:	rdctl	r9,ienable		/* Isolate possible interrupts */
-	and	r12,r12,r9
-	beq	r12,r0,ret_from_interrupt /* No one to service done */
-	movi	r4,%lo(-1)		/* Start from bit position 0, highest priority */
+2:	movi	r4,%lo(-1)		/* Start from bit position 0, highest priority */
 					/* This is the IRQ # for handler call */
-1:	addi	r4,r4,1
-	srl	r10,r12,r4
-	andi	r10,r10,1		/* Isolate bit we are interested in */
-	cmpeqi	r11,r4,32		  /* ? End of the register */
-	bne	r11,r0,ret_from_interrupt /* Y - out of here */
+1:	andi	r10,r12,1		/* Isolate bit we are interested in */
+	srli	r12,r12,1		/* shift count is costly without hardware multiplier */
+	addi	r4,r4,1
 	beq	r10,r0,1b
 	mov	r5,sp			/* Setup pt_regs pointer for handler call */
-	PUSH	r4			/* Save state for return */
-	PUSH	r12
 	call	process_int
-	addi	sp,sp,8			/* pop r12,r4 */
 	rdctl	r12,ipending		/* check again if irq still pending */
-	bne	r12,r0,2b
+	rdctl	r9,ienable		/* Isolate possible interrupts */
+	and	r12,r12,r9
+	bne	r12,r0,2b		
+	br	ret_from_interrupt	
 
 ENTRY(ret_from_interrupt)
 	ldw	r4,PT_STATUS_EXTENSION(sp)
