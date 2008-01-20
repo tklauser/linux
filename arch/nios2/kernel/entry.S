@@ -190,7 +190,7 @@ ENTRY(inthandler)
 	rdctl	r9,ienable		/* Isolate possible interrupts */
 	and	r12,r12,r9
 	bne	r12,r0,2b		
-	br	ret_from_interrupt	
+	/* br	ret_from_interrupt */	/* fall throught to ret_from_interrupt */
 
 ENTRY(ret_from_interrupt)
 	ldw	r4,PT_STATUS_EXTENSION(sp)
