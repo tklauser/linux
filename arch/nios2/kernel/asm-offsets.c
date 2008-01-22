@@ -140,8 +140,6 @@ int main(void)
 	/* the romdisk placement in the flash */
 	DEFINE(LINUX_ROMFS_START, na_flash_kernel+0x200000);
 	DEFINE(LINUX_ROMFS_END, na_flash_kernel_end);
-#else
-#error Sorry,you dont have na_flash_kernel or na_flash_kernel_end defined in the core.
 #endif
 	
 #if defined(nasys_program_mem) && defined(nasys_program_mem_end)

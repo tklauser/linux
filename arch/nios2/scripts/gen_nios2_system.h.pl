@@ -16,7 +16,7 @@ my $target_cpu;
 my $exec_location;
 my $upload_location;
 
-if (scalar (@ARGV) != 3) {
+if (scalar (@ARGV) < 2) {
 	print STDERR "ERROR: Invalid number of parameters.\n";
 	print ("#error Invalid number of parameters.\n");
 	exit;
@@ -75,7 +75,7 @@ if (! $exec_module) {
 }
 
 my $upload_module = $system->getModule ($upload_location);
-if (! $upload_module) {
+if ($upload_location && ! $upload_module) {
 	print STDERR "ERROR: $upload_location is not a valid module in the system: " . $system->getName() . ".\n";
 	print "#error $upload_location is not a valid module in system: " . $system->getName () . ".\n";
 	exit 1;
@@ -251,7 +251,7 @@ printf ("#define %-33s %30s\n",
 	
 print "\n";
 
-if ($upload_location eq "flash_kernel") {
+if (!$upload_location || ($upload_location eq "flash_kernel")) {
 	# nothing to do
 	print ("/* Redefinition of CFI flash memory unecessary */\n");
 } else {

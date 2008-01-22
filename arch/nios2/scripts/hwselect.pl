@@ -125,7 +125,7 @@ foreach my $name (keys (%cfiinfo)) {
 }
 
 my @cfilist = keys (%cfiinfo);
-my $cfi_selected = $cfilist[request_answer (1, $index - 1) - 1];
+my $cfi_selected = $cfilist[($index > 1) ? (request_answer (1, $index - 1) - 1) : 0];
 
 delete $meminfo{$cfi_selected};
 

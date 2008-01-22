@@ -232,6 +232,7 @@ void __init setup_arch(char **cmdline_p)
 
 	/* now read the hwaddr of the ethernet --wentao*/
 
+#if defined (na_flash_kernel)
     #if 1                                                   //;dgt2;
 //    #if defined (nasys_am29lv065d_flash_0)                //;dgt;
       {                                                     //;dgt;
@@ -290,6 +291,15 @@ void __init setup_arch(char **cmdline_p)
 		printk("Ethernet hardware address:Clearing invalid bit #0\n");
 		excalibur_enet_hwaddr_array[0] ^= (unsigned char)1;
 	}
+#else
+	excalibur_enet_hwaddr[0] = 0x00;
+	excalibur_enet_hwaddr[1] = 0x07;
+	excalibur_enet_hwaddr[2] = 0xed;
+	excalibur_enet_hwaddr[3] = 0x0a;
+	excalibur_enet_hwaddr[4] = 0x03;
+	excalibur_enet_hwaddr[5] = 0x00;
+#endif /* defined na_flash_kernel */
+
 	excalibur_enet_hwaddr=excalibur_enet_hwaddr_array;
 #ifdef DEBUG
 	printk("Setup the hardware addr for ethernet\n\t %02x %02x %02x %02x %02x %02x\n",
