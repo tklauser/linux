@@ -142,7 +142,7 @@ hwselect:
 	@echo $($(quiet)cmd_gen_mk);
 	@$(cmd_gen_mk)	
 	
-prepare: include/nios2_system.h
+archprepare: include/nios2_system.h
 
 archclean:
 	@$(MAKE) $(clean)=arch/$(ARCH)/boot
