@@ -148,8 +148,6 @@ source "drivers/Kconfig"
 
 source "fs/Kconfig"
 
-source "kernel/Kconfig.instrumentation"
-
 source "arch/nios2/Kconfig.debug"
 
 source "security/Kconfig"
