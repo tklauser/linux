@@ -23,7 +23,6 @@
  ---------------------------------------------------------------------*/
 
 #include <linux/types.h>
-#include <linux/autoconf.h>
 #include <asm/nios.h>
 #include <asm/string.h>
 
