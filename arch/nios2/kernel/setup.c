@@ -212,11 +212,11 @@ void __init setup_arch(char **cmdline_p)
 	 * Arguments are start, size
          */
 	printk("reserve_bootmem(%#lx, %#x)\n", memory_start, bootmap_size);
-        reserve_bootmem(memory_start, bootmap_size);
+        reserve_bootmem(memory_start, bootmap_size, BOOTMEM_DEFAULT);
 
 #ifdef CONFIG_BLK_DEV_INITRD
 	if (initrd_start) {
-	  reserve_bootmem(virt_to_phys((void *)initrd_start), initrd_end - initrd_start);
+	  reserve_bootmem(virt_to_phys((void *)initrd_start), initrd_end - initrd_start, BOOTMEM_DEFAULT);
 	}
 #endif /* CONFIG_BLK_DEV_INITRD */
 
