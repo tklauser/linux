@@ -36,6 +36,13 @@
 #define NIOS2_OP_NOP 0x1883a
 #define NIOS2_OP_BREAK	0x3da03a
 
+#ifdef __KERNEL__
+
+#define STACK_TOP	TASK_SIZE
+#define STACK_TOP_MAX	STACK_TOP
+
+#endif
+
 #ifndef __ASSEMBLY__
 
 /*
