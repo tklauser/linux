@@ -79,6 +79,7 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 #define pgprot_val(x)	((x).pgprot)
 #define __pgprot(x)	((pgprot_t) { (x) } )
 
+typedef struct page *pgtable_t;
 
 /*
  * On R4000-style MMUs where a TLB entry is mapping a adjacent even / odd
