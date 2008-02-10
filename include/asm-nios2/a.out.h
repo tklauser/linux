@@ -1,4 +1,4 @@
-/* $Id: a.out.h,v 1.1 2006/07/05 06:20:25 gerg Exp $ */
+/* $Id: a.out.h,v 1.1 2006-07-05 06:20:25 gerg Exp $ */
 /*
  * Copyright (C) 2004 Microtronix Datacom Ltd.
  *

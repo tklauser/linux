@@ -1,5 +1,5 @@
 /* arch/sh/kernel/pci.c
- * $Id: altpci.c,v 1.1 2006/07/05 06:23:17 gerg Exp $
+ * $Id: altpci.c,v 1.1 2006-07-05 06:23:17 gerg Exp $
  *
  * Copyright (c) 2002 M. R. Brown  <mrbrown@linux-sh.org>
  * 

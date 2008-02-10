@@ -2490,7 +2490,7 @@ static int isp1362_hc_reset(struct usb_hcd *hcd)
 		ERR("Clock not ready after %lums\n", timeout);
 		ret = -ENODEV;
 	}
-	return 0;   //  SKIP ret;
+	return ret;
 }
 
 static void isp1362_hc_stop(struct usb_hcd *hcd)

@@ -1,4 +1,4 @@
-/* $Id: linux_logo.h,v 1.1 2006/07/05 06:20:25 gerg Exp $
+/* $Id: linux_logo.h,v 1.1 2006-07-05 06:20:25 gerg Exp $
  * include/asm-nios/linux_logo.h: This is a linux logo
  *                                 to be displayed on boot.
  *

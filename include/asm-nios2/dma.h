@@ -1,4 +1,4 @@
-/* $Id: dma.h,v 1.1 2006/07/05 06:20:25 gerg Exp $
+/* $Id: dma.h,v 1.1 2006-07-05 06:20:25 gerg Exp $
  *
  * Copyright 2004 (C) Microtronix Datacom Ltd.
  *

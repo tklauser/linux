@@ -1,5 +1,5 @@
 /* arch/sh/kernel/pci.c
- * $Id: pci.c,v 1.2 2007/01/25 01:26:48 gerg Exp $
+ * $Id: pci.c,v 1.4 2007-11-22 04:57:40 gerg Exp $
  *
  * Copyright (c) 2002 M. R. Brown  <mrbrown@linux-sh.org>
  * 
