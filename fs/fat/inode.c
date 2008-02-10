@@ -166,6 +166,7 @@ static int fat_write_end(struct file *file, struct address_space *mapping,
 	return err;
 }
 
+#ifdef CONFIG_DIRECTIO
 static ssize_t fat_direct_IO(int rw, struct kiocb *iocb,
 			     const struct iovec *iov,
 			     loff_t offset, unsigned long nr_segs)
@@ -195,6 +196,7 @@ static ssize_t fat_direct_IO(int rw, struct kiocb *iocb,
 	return blockdev_direct_IO(rw, iocb, inode, inode->i_sb->s_bdev, iov,
 				  offset, nr_segs, fat_get_block, NULL);
 }
+#endif
 
 static sector_t _fat_bmap(struct address_space *mapping, sector_t block)
 {
@@ -209,7 +211,9 @@ static const struct address_space_operations fat_aops = {
 	.sync_page	= block_sync_page,
 	.write_begin	= fat_write_begin,
 	.write_end	= fat_write_end,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= fat_direct_IO,
+#endif
 	.bmap		= _fat_bmap
 };
 

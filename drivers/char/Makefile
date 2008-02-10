@@ -7,7 +7,12 @@
 #
 FONTMAPFILE = cp437.uni
 
-obj-y	 += mem.o random.o tty_io.o n_tty.o tty_ioctl.o
+obj-y	 += mem.o tty_io.o n_tty.o tty_ioctl.o
+ifeq ($(CONFIG_FIPS_RNG),y)
+	obj-y	 += random_fips.o
+else
+	obj-y	 += random.o
+endif
 
 obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
 obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
@@ -58,6 +63,7 @@ obj-$(CONFIG_VIOCONS)		+= viocons.o
 obj-$(CONFIG_VIOTAPE)		+= viotape.o
 obj-$(CONFIG_HVCS)		+= hvcs.o
 obj-$(CONFIG_SGI_MBCS)		+= mbcs.o
+obj-$(CONFIG_MCF_QSPI)		+= mcf_qspi.o
 obj-$(CONFIG_BRIQ_PANEL)	+= briq_panel.o
 
 obj-$(CONFIG_PRINTER)		+= lp.o
@@ -87,6 +93,8 @@ obj-$(CONFIG_DS1620)		+= ds1620.o
 obj-$(CONFIG_HW_RANDOM)		+= hw_random/
 obj-$(CONFIG_COBALT_LCD)	+= lcd.o
 obj-$(CONFIG_PPDEV)		+= ppdev.o
+obj-$(CONFIG_NIOS_LCD_16207)	+= lcd_16207.o
+obj-$(CONFIG_NIOS_BUTTON)	+= altera_pio_button.o
 obj-$(CONFIG_NWBUTTON)		+= nwbutton.o
 obj-$(CONFIG_NWFLASH)		+= nwflash.o
 obj-$(CONFIG_SCx200_GPIO)	+= scx200_gpio.o
@@ -96,6 +104,12 @@ obj-$(CONFIG_CS5535_GPIO)	+= cs5535_gpio.o
 obj-$(CONFIG_GPIO_VR41XX)	+= vr41xx_giu.o
 obj-$(CONFIG_GPIO_TB0219)	+= tb0219.o
 obj-$(CONFIG_TELCLOCK)		+= tlclk.o
+obj-$(CONFIG_LEDMAN)		+= ledman.o
+obj-$(CONFIG_M41T11M6)		+= m41t11m6.o
+obj-$(CONFIG_RESETSWITCH)	+= resetswitch.o
+obj-$(CONFIG_MCFWATCHDOG)	+= mcfwatchdog.o
+obj-$(CONFIG_SNAPDOG)		+= snapdog.o
+obj-$(CONFIG_FAST_TIMER)	+= fast_timer.o
 
 obj-$(CONFIG_MWAVE)		+= mwave/
 obj-$(CONFIG_AGP)		+= agp/

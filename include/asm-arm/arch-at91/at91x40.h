@@ -49,7 +49,7 @@
  * But it does have a chip identify register and extension ID, so define at
  * least these here.
  */
-#define AT91_DBGU_CIDR	(AT91_SF + 0)	/* CIDR in PS segment */
-#define AT91_DBGU_EXID	(AT91_SF + 4)	/* EXID in PS segment */
+#define	AT91_DBGU_CIDR	(AT91_SF + 0)	/* CIDR in PS segment */
+#define	AT91_DBGU_EXID	(AT91_SF + 4)	/* EXID in PS segment */
 
 #endif /* AT91X40_H */

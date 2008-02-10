@@ -1674,6 +1674,7 @@ static int ext3_releasepage(struct page *page, gfp_t wait)
 	return journal_try_to_free_buffers(journal, page, wait);
 }
 
+#ifdef CONFIG_DIRECTIO
 /*
  * If the O_DIRECT write will extend the file then add this inode to the
  * orphan list.  So recovery will truncate it back to the original size
@@ -1748,6 +1749,7 @@ out_stop:
 out:
 	return ret;
 }
+#endif
 
 /*
  * Pages can be marked dirty completely asynchronously from ext3's journalling
@@ -1778,7 +1780,9 @@ static const struct address_space_operations ext3_ordered_aops = {
 	.bmap		= ext3_bmap,
 	.invalidatepage	= ext3_invalidatepage,
 	.releasepage	= ext3_releasepage,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= ext3_direct_IO,
+#endif
 	.migratepage	= buffer_migrate_page,
 };
 
@@ -1792,7 +1796,9 @@ static const struct address_space_operations ext3_writeback_aops = {
 	.bmap		= ext3_bmap,
 	.invalidatepage	= ext3_invalidatepage,
 	.releasepage	= ext3_releasepage,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= ext3_direct_IO,
+#endif
 	.migratepage	= buffer_migrate_page,
 };
 

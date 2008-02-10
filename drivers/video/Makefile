@@ -34,6 +34,7 @@ obj-$(CONFIG_FB_CLPS711X)         += clps711xfb.o
 obj-$(CONFIG_FB_CYBER2000)        += cyber2000fb.o
 obj-$(CONFIG_FB_PM2)              += pm2fb.o
 obj-$(CONFIG_FB_PM3)		  += pm3fb.o
+obj-$(CONFIG_FB_M532x)		  += m532xfb.o
 
 obj-$(CONFIG_FB_MATROX)		  += matrox/
 obj-$(CONFIG_FB_RIVA)		  += riva/
@@ -96,6 +97,7 @@ obj-$(CONFIG_FB_GBE)              += gbefb.o
 obj-$(CONFIG_FB_CIRRUS)		  += cirrusfb.o
 obj-$(CONFIG_FB_ASILIANT)	  += asiliantfb.o
 obj-$(CONFIG_FB_PXA)		  += pxafb.o
+obj-$(CONFIG_FB_DM270)            += dm270fb.o 
 obj-$(CONFIG_FB_W100)		  += w100fb.o
 obj-$(CONFIG_FB_AU1100)		  += au1100fb.o
 obj-$(CONFIG_FB_AU1200)		  += au1200fb.o

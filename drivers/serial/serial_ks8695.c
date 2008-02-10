@@ -21,6 +21,9 @@
 #include <linux/console.h>
 #include <linux/sysrq.h>
 #include <linux/device.h>
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -35,10 +38,15 @@
 
 #include <linux/serial_core.h>
 
-
+#ifdef CONFIG_SERIAL_KS8695_COM
+#define SERIAL_KS8695_MAJOR	4
+#define SERIAL_KS8695_MINOR	64
+#define SERIAL_KS8695_DEVNAME	"ttyS"
+#else
 #define SERIAL_KS8695_MAJOR	204
 #define SERIAL_KS8695_MINOR	16
 #define SERIAL_KS8695_DEVNAME	"ttyAM"
+#endif
 
 #define SERIAL_KS8695_NR	1
 
@@ -111,6 +119,10 @@ static irqreturn_t ks8695uart_rx_chars(int irq, void *dev_id)
 	struct tty_struct *tty = port->info->tty;
 	unsigned int status, ch, lsr, flg, max_count = 256;
 
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET, LEDMAN_COM1_RX);
+#endif
+
 	status = UART_GET_LSR(port);		/* clears pending LSR interrupts */
 	while ((status & URLS_URDR) && max_count--) {
 		ch = UART_GET_CHAR(port);
@@ -166,6 +178,10 @@ static irqreturn_t ks8695uart_tx_chars(int irq, void *dev_id)
 	struct uart_port *port = dev_id;
 	struct circ_buf *xmit = &port->info->xmit;
 	unsigned int count;
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET, LEDMAN_COM1_TX);
+#endif
 
 	if (port->x_char) {
 		KS8695_CLR_TX_INT();

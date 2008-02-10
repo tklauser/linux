@@ -103,6 +103,7 @@ static int hfs_releasepage(struct page *page, gfp_t mask)
 	return res ? try_to_free_buffers(page) : 0;
 }
 
+#ifdef CONFIG_DIRECTIO
 static ssize_t hfs_direct_IO(int rw, struct kiocb *iocb,
 		const struct iovec *iov, loff_t offset, unsigned long nr_segs)
 {
@@ -112,6 +113,7 @@ static ssize_t hfs_direct_IO(int rw, struct kiocb *iocb,
 	return blockdev_direct_IO(rw, iocb, inode, inode->i_sb->s_bdev, iov,
 				  offset, nr_segs, hfs_get_block, NULL);
 }
+#endif
 
 static int hfs_writepages(struct address_space *mapping,
 			  struct writeback_control *wbc)
@@ -136,7 +138,9 @@ const struct address_space_operations hfs_aops = {
 	.write_begin	= hfs_write_begin,
 	.write_end	= generic_write_end,
 	.bmap		= hfs_bmap,
+#ifdef CONFIG_DIRECTIO
 	.direct_IO	= hfs_direct_IO,
+#endif
 	.writepages	= hfs_writepages,
 };
 

@@ -13,12 +13,52 @@
 #include <linux/netfilter_bridge.h>
 #include <linux/netfilter/xt_physdev.h>
 #include <linux/netfilter/x_tables.h>
+#include <linux/etherdevice.h>
+#include <net/dst.h>
+#include <net/neighbour.h>
+#include "../bridge/br_private.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Bart De Schuymer <bdschuym@pandora.be>");
 MODULE_DESCRIPTION("iptables bridge physical device match module");
 MODULE_ALIAS("ipt_physdev");
 MODULE_ALIAS("ip6t_physdev");
+
+static inline struct nf_bridge_info *nf_bridge_alloc(struct sk_buff *skb)
+{
+	skb->nf_bridge = kzalloc(sizeof(struct nf_bridge_info), GFP_ATOMIC);
+	if (likely(skb->nf_bridge))
+		atomic_set(&(skb->nf_bridge->use), 1);
+
+	return skb->nf_bridge;
+}
+
+static void get_outdev(const struct sk_buff* skb, const struct net_device *out)
+{
+	struct neighbour *neigh;
+	struct nf_bridge_info *nf_bridge;
+	const unsigned char *dest;
+	struct net_bridge_fdb_entry *fdb;
+
+	nf_bridge = skb->nf_bridge;
+	if ((nf_bridge && nf_bridge->physoutdev) ||
+	    !out || out->hard_start_xmit != br_dev_xmit || !br_fdb_get_hook)
+		return;
+
+	if (!nf_bridge && !(nf_bridge = nf_bridge_alloc(skb)))
+		return;
+	nf_bridge->physoutdev = out; /* so that --physdev-is-out matches */
+
+	neigh = skb->dst->neighbour;
+	if (!neigh || neigh_event_send(neigh, NULL))
+		return;
+	dest = neigh->ha;
+	if (!is_multicast_ether_addr(dest) &&
+	    (fdb = br_fdb_get_hook(netdev_priv(out), dest)) != NULL) {
+		nf_bridge->physoutdev = fdb->dst->dev;
+		br_fdb_put_hook(fdb);
+	}
+}
 
 static bool
 match(const struct sk_buff *skb,
@@ -48,16 +88,10 @@ match(const struct sk_buff *skb,
 		if ((info->bitmask & XT_PHYSDEV_OP_ISIN) &&
 		    !(info->invert & XT_PHYSDEV_OP_ISIN))
 			return false;
-		if ((info->bitmask & XT_PHYSDEV_OP_ISOUT) &&
-		    !(info->invert & XT_PHYSDEV_OP_ISOUT))
-			return false;
 		if ((info->bitmask & XT_PHYSDEV_OP_IN) &&
 		    !(info->invert & XT_PHYSDEV_OP_IN))
 			return false;
-		if ((info->bitmask & XT_PHYSDEV_OP_OUT) &&
-		    !(info->invert & XT_PHYSDEV_OP_OUT))
-			return false;
-		return true;
+		goto match_outdev;
 	}
 
 	/* This only makes sense in the FORWARD and POSTROUTING chains */
@@ -66,10 +100,8 @@ match(const struct sk_buff *skb,
 	    !(info->invert & XT_PHYSDEV_OP_BRIDGED)))
 		return false;
 
-	if ((info->bitmask & XT_PHYSDEV_OP_ISIN &&
-	    (!nf_bridge->physindev ^ !!(info->invert & XT_PHYSDEV_OP_ISIN))) ||
-	    (info->bitmask & XT_PHYSDEV_OP_ISOUT &&
-	    (!nf_bridge->physoutdev ^ !!(info->invert & XT_PHYSDEV_OP_ISOUT))))
+	if (info->bitmask & XT_PHYSDEV_OP_ISIN &&
+	    (!nf_bridge->physindev ^ !!(info->invert & XT_PHYSDEV_OP_ISIN)))
 		return false;
 
 	if (!(info->bitmask & XT_PHYSDEV_OP_IN))
@@ -85,6 +117,23 @@ match(const struct sk_buff *skb,
 		return false;
 
 match_outdev:
+	if (!(info->bitmask & (XT_PHYSDEV_OP_ISOUT | XT_PHYSDEV_OP_OUT)))
+		return true;
+	get_outdev(skb, out);
+	if (!(nf_bridge = skb->nf_bridge)) {
+		if ((info->bitmask & XT_PHYSDEV_OP_ISOUT) &&
+		    !(info->invert & XT_PHYSDEV_OP_ISOUT))
+			return false;
+		if ((info->bitmask & XT_PHYSDEV_OP_OUT) &&
+		    !(info->invert & XT_PHYSDEV_OP_OUT))
+			return false;
+		return true;
+	}
+
+	if (info->bitmask & XT_PHYSDEV_OP_ISOUT &&
+	    (!nf_bridge->physoutdev ^ !!(info->invert & XT_PHYSDEV_OP_ISOUT)))
+		return false;
+
 	if (!(info->bitmask & XT_PHYSDEV_OP_OUT))
 		return true;
 	outdev = nf_bridge->physoutdev ?
@@ -110,17 +159,6 @@ checkentry(const char *tablename,
 	if (!(info->bitmask & XT_PHYSDEV_OP_MASK) ||
 	    info->bitmask & ~XT_PHYSDEV_OP_MASK)
 		return false;
-	if (info->bitmask & XT_PHYSDEV_OP_OUT &&
-	    (!(info->bitmask & XT_PHYSDEV_OP_BRIDGED) ||
-	     info->invert & XT_PHYSDEV_OP_BRIDGED) &&
-	    hook_mask & ((1 << NF_IP_LOCAL_OUT) | (1 << NF_IP_FORWARD) |
-			 (1 << NF_IP_POST_ROUTING))) {
-		printk(KERN_WARNING "physdev match: using --physdev-out in the "
-		       "OUTPUT, FORWARD and POSTROUTING chains for non-bridged "
-		       "traffic is not supported anymore.\n");
-		if (hook_mask & (1 << NF_IP_LOCAL_OUT))
-			return false;
-	}
 	return true;
 }
 

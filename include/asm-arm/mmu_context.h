@@ -58,11 +58,13 @@ static inline void check_context(struct mm_struct *mm)
 
 #else
 
+#ifdef CONFIG_MMU
 static inline void check_context(struct mm_struct *mm)
 {
 	if (unlikely(mm->context.kvm_seq != init_mm.context.kvm_seq))
 		__check_kvm_seq(mm);
 }
+#endif /* CONFIG_MMU */
 
 #define init_new_context(tsk,mm)	0
 

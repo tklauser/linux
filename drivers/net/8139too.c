@@ -111,6 +111,20 @@
 #include <asm/uaccess.h>
 #include <asm/irq.h>
 
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
+
+#ifdef CONFIG_FAST_TIMER
+#define FAST_POLL 1
+#include <linux/fast_timer.h>
+static void fast_poll_8139too(void *arg);
+/* Maximum events (Rx packets, etc.) to handle at each poll.
+ * (same as max_interrupt_work from 2.4.x driver)
+ */
+#define MAX_QUOTA 20
+#endif
+
 #define RTL8139_DRIVER_NAME   DRV_NAME " Fast Ethernet driver " DRV_VERSION
 #define PFX DRV_NAME ": "
 
@@ -258,7 +272,7 @@ static struct pci_device_id rtl8139_pci_tbl[] = {
 	{0x1743, 0x8139, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 	{0x021b, 0x8139, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 
-#ifdef CONFIG_SH_SECUREEDGE5410
+#if defined(CONFIG_MTD_NETtel) || defined(CONFIG_SH_SECUREEDGE5410)
 	/* Bogus 8139 silicon reports 8129 without external PROM :-( */
 	{0x10ec, 0x8129, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 #endif
@@ -964,10 +978,16 @@ static int __devinit rtl8139_init_one (struct pci_dev *pdev,
 	ioaddr = tp->mmio_addr;
 	assert (ioaddr != NULL);
 
+#if defined(CONFIG_MTD_NETtel) || defined(CONFIG_SH_SECUREEDGE5410)
+	/* Don't rely on the eeprom, get MAC from chip. */
+	for (i = 0; i < 6; i++)
+		dev->dev_addr[i] = readb(ioaddr + MAC0 + i);
+#else
 	addr_len = read_eeprom (ioaddr, 0, 8) == 0x8129 ? 8 : 6;
 	for (i = 0; i < 3; i++)
 		((u16 *) (dev->dev_addr))[i] =
 		    le16_to_cpu (read_eeprom (ioaddr, i + 7, addr_len));
+#endif
 	memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
 
 	/* The Rtl8139-specific entries in the device structure. */
@@ -1300,19 +1320,23 @@ static void mdio_write (struct net_device *dev, int phy_id, int location,
 static int rtl8139_open (struct net_device *dev)
 {
 	struct rtl8139_private *tp = netdev_priv(dev);
-	int retval;
 	void __iomem *ioaddr = tp->mmio_addr;
+#ifndef FAST_POLL
+	int retval;
 
 	retval = request_irq (dev->irq, rtl8139_interrupt, IRQF_SHARED, dev->name, dev);
 	if (retval)
 		return retval;
+#endif
 
 	tp->tx_bufs = dma_alloc_coherent(&tp->pci_dev->dev, TX_BUF_TOT_LEN,
 					   &tp->tx_bufs_dma, GFP_KERNEL);
 	tp->rx_ring = dma_alloc_coherent(&tp->pci_dev->dev, RX_BUF_TOT_LEN,
 					   &tp->rx_ring_dma, GFP_KERNEL);
 	if (tp->tx_bufs == NULL || tp->rx_ring == NULL) {
+#ifndef FAST_POLL
 		free_irq(dev->irq, dev);
+#endif
 
 		if (tp->tx_bufs)
 			dma_free_coherent(&tp->pci_dev->dev, TX_BUF_TOT_LEN,
@@ -1342,6 +1366,16 @@ static int rtl8139_open (struct net_device *dev)
 			tp->mii.full_duplex ? "full" : "half");
 
 	rtl8139_start_thread(tp);
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd((RTL_R16 (CSCR) & CSCR_LinkOKBit) ?
+		LEDMAN_CMD_ON : LEDMAN_CMD_OFF,
+		(dev->name[3] == '0') ? LEDMAN_LAN1_LINK : LEDMAN_LAN2_LINK);
+#endif
+
+#ifdef FAST_POLL
+	fast_timer_add(fast_poll_8139too, dev);
+#endif /* FAST_POLL */
 
 	return 0;
 }
@@ -1418,8 +1452,10 @@ static void rtl8139_hw_start (struct net_device *dev)
 	if ((!(tmp & CmdRxEnb)) || (!(tmp & CmdTxEnb)))
 		RTL_W8 (ChipCmd, CmdRxEnb | CmdTxEnb);
 
+#ifndef FAST_POLL
 	/* Enable all known interrupts by setting the interrupt mask. */
 	RTL_W16 (IntrMask, rtl8139_intr_mask);
+#endif
 }
 
 
@@ -1700,6 +1736,11 @@ static int rtl8139_start_xmit (struct sk_buff *skb, struct net_device *dev)
 	unsigned int len = skb->len;
 	unsigned long flags;
 
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+		(dev->name[3] == '0') ? LEDMAN_LAN1_TX : LEDMAN_LAN2_TX);
+#endif
+
 	/* Calculate the next Tx descriptor entry. */
 	entry = tp->cur_tx % NUM_TX_DESC;
 
@@ -1929,6 +1970,7 @@ static int rtl8139_rx(struct net_device *dev, struct rtl8139_private *tp,
 	unsigned char *rx_ring = tp->rx_ring;
 	unsigned int cur_rx = tp->cur_rx;
 	unsigned int rx_size = 0;
+	int cng_level;
 
 	DPRINTK ("%s: In rtl8139_rx(), current %4.4x BufAddr %4.4x,"
 		 " free to %4.4x, Cmd %2.2x.\n", dev->name, (u16)cur_rx,
@@ -1962,6 +2004,11 @@ static int rtl8139_rx(struct net_device *dev, struct rtl8139_private *tp,
 					rx_ring[ring_offset + i]);
 			printk (".\n");
 		}
+#endif
+
+#ifdef CONFIG_LEDMAN
+		ledman_cmd(LEDMAN_CMD_SET, (dev->name[3] == '0') ?
+			LEDMAN_LAN1_RX : LEDMAN_LAN2_RX);
 #endif
 
 		/* Packet copy from FIFO still in progress.
@@ -2014,6 +2061,7 @@ no_early_rx:
 			skb_put (skb, pkt_size);
 
 			skb->protocol = eth_type_trans (skb, dev);
+			cng_level = netif_rx(skb);
 
 			dev->last_rx = jiffies;
 			tp->stats.rx_bytes += pkt_size;
@@ -2026,6 +2074,7 @@ no_early_rx:
 					"%s: Memory squeeze, dropping packet.\n",
 					dev->name);
 			tp->stats.rx_dropped++;
+			cng_level = NET_RX_DROP;
 		}
 		received++;
 
@@ -2033,6 +2082,11 @@ no_early_rx:
 		RTL_W16 (RxBufPtr, (u16) (cur_rx - 16));
 
 		rtl8139_isr_ack(tp);
+
+		if (cng_level == NET_RX_DROP || cng_level == NET_RX_CN_HIGH
+				|| cng_level == NET_RX_CN_MOD)
+			break;
+
 	}
 
 	if (unlikely(!received || rx_size == 0xfff0))
@@ -2079,6 +2133,12 @@ static void rtl8139_weird_interrupt (struct net_device *dev,
 	    (tp->drv_flags & HAS_LNK_CHNG)) {
 		rtl_check_media(dev, 0);
 		status &= ~RxUnderrun;
+#ifdef CONFIG_LEDMAN
+		ledman_cmd((RTL_R16 (CSCR) & CSCR_LinkOKBit) ?
+			LEDMAN_CMD_ON : LEDMAN_CMD_OFF,
+			(dev->name[3] == '0') ?
+					LEDMAN_LAN1_LINK : LEDMAN_LAN2_LINK);
+#endif
 	}
 
 	if (status & (RxUnderrun | RxErr))
@@ -2097,6 +2157,16 @@ static void rtl8139_weird_interrupt (struct net_device *dev,
 			dev->name, pci_cmd_status);
 	}
 }
+
+#ifdef FAST_POLL
+/*
+ *	Fast poll interrupt simulator.
+ */
+static void fast_poll_8139too(void *arg)
+{
+	rtl8139_interrupt(0, arg);
+}
+#endif /* FAST_POLL */
 
 static int rtl8139_poll(struct napi_struct *napi, int budget)
 {
@@ -2168,10 +2238,15 @@ static irqreturn_t rtl8139_interrupt (int irq, void *dev_instance)
 	/* Receive packets are processed by poll routine.
 	   If not running start it now. */
 	if (status & RxAckBits){
+#ifdef FAST_POLL
+		int max_quota = MAX_QUOTA;
+		rtl8139_poll(dev, &max_quota);
+#else
 		if (netif_rx_schedule_prep(dev, &tp->napi)) {
 			RTL_W16_F (IntrMask, rtl8139_norx_intr_mask);
 			__netif_rx_schedule(dev, &tp->napi);
 		}
+#endif
 	}
 
 	/* Check uncommon events with one test. */
@@ -2233,7 +2308,11 @@ static int rtl8139_close (struct net_device *dev)
 	spin_unlock_irqrestore (&tp->lock, flags);
 
 	synchronize_irq (dev->irq);	/* racy, but that's ok here */
+#ifndef FAST_POLL
 	free_irq (dev->irq, dev);
+#else
+	fast_timer_remove(fast_poll_8139too, dev);
+#endif
 
 	rtl8139_tx_clear (tp);
 
@@ -2249,6 +2328,11 @@ static int rtl8139_close (struct net_device *dev)
 
 	if (rtl_chip_info[tp->chipset].flags & HasHltClk)
 		RTL_W8 (HltClk, 'H');	/* 'R' would leave the clock running. */
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_OFF,
+		(dev->name[3] == '0') ? LEDMAN_LAN1_LINK : LEDMAN_LAN2_LINK);
+#endif
 
 	return 0;
 }

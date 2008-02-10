@@ -57,6 +57,9 @@
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/crypto.h>
+#ifdef CONFIG_FIPS_RNG
+#include <linux/random.h>
+#endif
 #include <asm/byteorder.h>
 
 #define AES_MIN_KEY_SIZE	16
@@ -304,6 +307,28 @@ static int aes_set_key(struct crypto_tfm *tfm, const u8 *in_key,
 	return 0;
 }
 
+#ifdef CONFIG_FIPS_RNG
+/* For use by get_random_bytes() before crypto module loaded,
+ * when using the FIPS RNG in the kernel.
+ */
+int rand_aes_set_key(struct crypto_tfm *tfm, const u8 *in_key,
+		       unsigned int key_len)
+{
+	static int configured = 0;
+	int ret = 0;
+
+	if (!configured) {
+		gen_tabs();
+		configured = 1;
+	}
+
+	ret = aes_set_key(tfm, in_key, key_len);
+
+	return ret;
+}
+EXPORT_SYMBOL(rand_aes_set_key);
+#endif /* #ifdef CONFIG_FIPS_RNG */
+
 /* encrypt a block of text */
 
 #define f_nround(bo, bi, k) \
@@ -358,6 +383,17 @@ static void aes_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
 	dst[2] = cpu_to_le32(b0[2]);
 	dst[3] = cpu_to_le32(b0[3]);
 }
+
+#ifdef CONFIG_FIPS_RNG
+/* For use by get_random_bytes() before crypto module loaded,
+ * when using the FIPS RNG in the kernel.
+ */
+void rand_aes_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
+{
+	aes_encrypt(tfm, out, in);
+}
+EXPORT_SYMBOL(rand_aes_encrypt);
+#endif /* #ifdef CONFIG_FIPS_RNG */
 
 /* decrypt a block of text */
 

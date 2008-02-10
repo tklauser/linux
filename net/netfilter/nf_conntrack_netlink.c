@@ -381,6 +381,9 @@ static int ctnetlink_conntrack_event(struct notifier_block *this,
 	nfmsg->version	= NFNETLINK_V0;
 	nfmsg->res_id	= 0;
 
+	if (ctnetlink_dump_id(skb, ct) < 0)
+		goto nla_put_failure;
+
 	nest_parms = nla_nest_start(skb, CTA_TUPLE_ORIG | NLA_F_NESTED);
 	if (!nest_parms)
 		goto nla_put_failure;

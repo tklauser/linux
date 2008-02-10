@@ -8,6 +8,11 @@
 #include <linux/wait.h>
 #include "hcd.h"
 
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+static int ledcnt = 0;
+#endif
+
 #define to_urb(d) container_of(d, struct urb, kref)
 
 static void urb_destroy(struct kref *kref)
@@ -441,6 +446,11 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 		/* Round down to a power of 2, no more than max */
 		urb->interval = min(max, 1 << ilog2(urb->interval));
 	}
+
+#ifdef CONFIG_LEDMAN
+	if (ledcnt++ % 10 == 0)
+		ledman_cmd(LEDMAN_CMD_SET, LEDMAN_USB1_TX);
+#endif
 
 	return usb_hcd_submit_urb(urb, mem_flags);
 }

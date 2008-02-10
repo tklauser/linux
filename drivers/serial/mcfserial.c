@@ -65,7 +65,8 @@ struct timer_list mcfrs_timer_struct;
 #define CONSOLE_BAUD_RATE 	115200
 #define DEFAULT_CBAUD		B115200
 #elif defined(CONFIG_ARNEWSH) || defined(CONFIG_FREESCALE) || \
-      defined(CONFIG_senTec) || defined(CONFIG_SNEHA) || defined(CONFIG_AVNET)
+      defined(CONFIG_senTec) || defined(CONFIG_SNEHA) || defined(CONFIG_AVNET) || \
+      defined(CONFIG_SAVANT)
 #define	CONSOLE_BAUD_RATE	19200
 #define	DEFAULT_CBAUD		B19200
 #endif
@@ -1530,6 +1531,14 @@ static void mcfrs_irqinit(struct mcf_serial *info)
 	imrp = (volatile unsigned long *) (MCF_MBAR + MCFICM_INTC0 +
 		MCFINTC_IMRL);
 	*imrp &= ~((1 << (info->irq - MCFINT_VECBASE)) | 1);
+
+#if defined(CONFIG_M523x)
+	{
+		volatile unsigned short *par_uartp;
+		par_uartp = (volatile unsigned short *) (MCF_MBAR + MCF523x_GPIO_PAR_UART);
+		*par_uartp = 0x3FFF; /* setup GPIO for UART0, UART1 & UART2 */
+	}
+#endif
 #if defined(CONFIG_M527x)
 	{
 		/*

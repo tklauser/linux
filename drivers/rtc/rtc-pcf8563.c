@@ -72,14 +72,32 @@ struct pcf8563 {
 	int c_polarity;	/* 0: MO_C=1 means 19xx, otherwise MO_C=1 means 20xx */
 };
 
+/* Define various control and status bits in the registers. */
+#define	PCF8563_ST1_TEST1		0x80	// 1 = test mode.
+#define	PCF8563_ST1_STOP		0x20	// 1 = stop RTC.
+#define	PCF8563_ST1_TESTC		0x8	// 1 = override power-on reset.
+
+#define	PCF8563_ST2_TI			0x10	// 1 = output clock on /int.
+#define	PCF8563_ST2_AF			0x8	// Alarm flag.
+#define	PCF8563_ST2_TF			0x4	// Timer flag.
+#define	PCF8563_ST2_AIE			0x2	// Alarm interrupt enable.
+#define	PCF8563_ST2_TIE			0x1	// Timer interrupt enable.
+
+#define	PCF8563_ALARM_AE		0x80	// 1 = enable alarm output.
+
 static int pcf8563_probe(struct i2c_adapter *adapter, int address, int kind);
 static int pcf8563_detach(struct i2c_client *client);
+
+#define ALARM_BCD2BIN(B) (((B) & PCF8563_ALARM_AE) ? 0xFF : BCD2BIN(B))
+#define ALARM_BIN(B) (((B) & PCF8563_ALARM_AE) ? 0xFF : (B))
 
 /*
  * In the routines that deal directly with the pcf8563 hardware, we use
  * rtc_time -- month 0-11, hour 0-23, yr = calendar year-epoch.
+ *
+ * If 'alrm' is not NULL, the alarm state is retrieved into *tm, alrm->pending and alrm->enabled.
  */
-static int pcf8563_get_datetime(struct i2c_client *client, struct rtc_time *tm)
+static int pcf8563_get_datetime(struct i2c_client *client, struct rtc_time *tm, struct rtc_wkalrm *alrm)
 {
 	struct pcf8563 *pcf8563 = container_of(client, struct pcf8563, client);
 	unsigned char buf[13] = { PCF8563_REG_ST1 };
@@ -108,11 +126,15 @@ static int pcf8563_get_datetime(struct i2c_client *client, struct rtc_time *tm)
 		buf[8]);
 
 
-	tm->tm_sec = BCD2BIN(buf[PCF8563_REG_SC] & 0x7F);
-	tm->tm_min = BCD2BIN(buf[PCF8563_REG_MN] & 0x7F);
-	tm->tm_hour = BCD2BIN(buf[PCF8563_REG_HR] & 0x3F); /* rtc hr 0-23 */
-	tm->tm_mday = BCD2BIN(buf[PCF8563_REG_DM] & 0x3F);
-	tm->tm_wday = buf[PCF8563_REG_DW] & 0x07;
+	if (alrm) {
+		dev_dbg(&client->dev,
+			"%s: alarm raw data is min=%02x, hr=%02x, "
+			"mday=%02x, wday=%02x\n",
+			__FUNCTION__,
+			buf[9], buf[10], buf[11], buf[12]);
+	}
+
+	/* Alarm has no month and year, so these are the same for both */
 	tm->tm_mon = BCD2BIN(buf[PCF8563_REG_MO] & 0x1F) - 1; /* rtc mn 1-12 */
 	tm->tm_year = BCD2BIN(buf[PCF8563_REG_YR]);
 	if (tm->tm_year < 70)
@@ -121,30 +143,50 @@ static int pcf8563_get_datetime(struct i2c_client *client, struct rtc_time *tm)
 	pcf8563->c_polarity = (buf[PCF8563_REG_MO] & PCF8563_MO_C) ?
 		(tm->tm_year >= 100) : (tm->tm_year < 100);
 
-	dev_dbg(&client->dev, "%s: tm is secs=%d, mins=%d, hours=%d, "
+	if (alrm) {
+		tm->tm_sec = 0;
+		tm->tm_min = ALARM_BCD2BIN(buf[PCF8563_REG_AMN]);
+		tm->tm_hour = ALARM_BCD2BIN(buf[PCF8563_REG_AHR] & 0xBF);
+		tm->tm_mday = ALARM_BCD2BIN(buf[PCF8563_REG_ADM] & 0xBF);
+		tm->tm_wday = ALARM_BIN(buf[PCF8563_REG_ADW] & 0x87);
+		/* tm_mon and tm_year are set below */
+		alrm->enabled = buf[PCF8563_REG_ST2] & PCF8563_ST2_AIE;
+		alrm->pending = buf[PCF8563_REG_ST2] & PCF8563_ST2_AF;
+	}
+	else {
+		tm->tm_sec = BCD2BIN(buf[PCF8563_REG_SC] & 0x7F);
+		tm->tm_min = BCD2BIN(buf[PCF8563_REG_MN] & 0x7F);
+		tm->tm_hour = BCD2BIN(buf[PCF8563_REG_HR] & 0x3F); /* rtc hr 0-23 */
+		tm->tm_mday = BCD2BIN(buf[PCF8563_REG_DM] & 0x3F);
+		tm->tm_wday = buf[PCF8563_REG_DW] & 0x07;
+
+		/* the clock can give out invalid datetime, but we cannot return
+		 * -EINVAL otherwise hwclock will refuse to set the time on bootup.
+		 */
+		if (rtc_valid_tm(tm) < 0) {
+			dev_err(&client->dev, "retrieved date/time is not valid.\n");
+		}
+	}
+
+	dev_dbg(&client->dev, "%s: %s tm is secs=%d, mins=%d, hours=%d, "
 		"mday=%d, mon=%d, year=%d, wday=%d\n",
 		__FUNCTION__,
+		alrm ? "alarm" : "time",
 		tm->tm_sec, tm->tm_min, tm->tm_hour,
 		tm->tm_mday, tm->tm_mon, tm->tm_year, tm->tm_wday);
-
-	/* the clock can give out invalid datetime, but we cannot return
-	 * -EINVAL otherwise hwclock will refuse to set the time on bootup.
-	 */
-	if (rtc_valid_tm(tm) < 0)
-		dev_err(&client->dev, "retrieved date/time is not valid.\n");
 
 	return 0;
 }
 
-static int pcf8563_set_datetime(struct i2c_client *client, struct rtc_time *tm)
+static int pcf8563_set_datetime(struct i2c_client *client, struct rtc_time *tm, struct rtc_wkalrm *alrm)
 {
 	struct pcf8563 *pcf8563 = container_of(client, struct pcf8563, client);
 	int i, err;
-	unsigned char buf[9];
+	unsigned char buf[13];
 
-	dev_dbg(&client->dev, "%s: secs=%d, mins=%d, hours=%d, "
-		"mday=%d, mon=%d, year=%d, wday=%d\n",
+	dev_dbg(&client->dev, "%s: %s secs=%d, mins=%d, hours=%d, "
 		__FUNCTION__,
+		alrm ? "alarm" : "time",
 		tm->tm_sec, tm->tm_min, tm->tm_hour,
 		tm->tm_mday, tm->tm_mon, tm->tm_year, tm->tm_wday);
 
@@ -178,6 +220,48 @@ static int pcf8563_set_datetime(struct i2c_client *client, struct rtc_time *tm)
 			return -EIO;
 		}
 	};
+
+	return 0;
+}
+
+static int pcf8563_set_alarm(struct i2c_client *client, struct rtc_wkalrm *alrm)
+{
+	int err;
+	unsigned char buf[5];
+
+	dev_dbg(&client->dev, "%s: alarm mins=%d, hours=%d, "
+		"mday=%d, wday=%d, enabled=%d\n",
+		__FUNCTION__,
+		alrm->time.tm_min, alrm->time.tm_hour,
+		alrm->time.tm_mday, alrm->time.tm_wday, alrm->enabled);
+
+	/* First set the alarm time/date */
+	/* Wild card (0xff) value in field means that alarm is not set for that field. */
+	buf[0] = PCF8563_REG_AMN;	/* Address to write data */
+	buf[1] = (alrm->time.tm_min == 0xff) ? 0x80 : BIN_TO_BCD(alrm->time.tm_min);
+	buf[2] = (alrm->time.tm_hour == 0xff) ? 0x80 : BIN_TO_BCD(alrm->time.tm_hour);
+	buf[3] = (alrm->time.tm_mday == 0xff) ? 0x81 : BIN_TO_BCD(alrm->time.tm_mday);
+	buf[4] = (alrm->time.tm_wday == 0xff) ? 0x80 : alrm->time.tm_wday;
+
+	/* write alarm registers */
+	err = i2c_master_send(client, buf, sizeof(buf));
+	if (err != sizeof(buf)) {
+		dev_err(&client->dev,
+			"%s: err=%d addr=%02x\n",
+			__FUNCTION__, err, buf[0]);
+		return -EIO;
+	}
+
+	/* Now write the status/control register 2 */
+	buf[0] = PCF8563_REG_ST2;	/* Address to write data */
+	buf[1] = alrm->enabled ? PCF8563_ST2_AIE : 0;
+	err = i2c_master_send(client, buf, 2);
+	if (err != 2) {
+		dev_err(&client->dev,
+			"%s: err=%d addr=%02x\n",
+			__FUNCTION__, err, buf[0]);
+		return -EIO;
+	}
 
 	return 0;
 }
@@ -242,19 +326,31 @@ static int pcf8563_validate_client(struct i2c_client *client)
 	return 0;
 }
 
+static int pcf8563_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
+{
+	return pcf8563_get_datetime(to_i2c_client(dev), &alrm->time, alrm);
+}
+
+static int pcf8563_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
+{
+	return pcf8563_set_alarm(to_i2c_client(dev), alrm);
+}
+
 static int pcf8563_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
-	return pcf8563_get_datetime(to_i2c_client(dev), tm);
+	return pcf8563_get_datetime(to_i2c_client(dev), tm, 0);
 }
 
 static int pcf8563_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
-	return pcf8563_set_datetime(to_i2c_client(dev), tm);
+	return pcf8563_set_datetime(to_i2c_client(dev), tm, 0);
 }
 
 static const struct rtc_class_ops pcf8563_rtc_ops = {
 	.read_time	= pcf8563_rtc_read_time,
 	.set_time	= pcf8563_rtc_set_time,
+	.read_alarm	= pcf8563_rtc_read_alarm,
+	.set_alarm	= pcf8563_rtc_set_alarm,
 };
 
 static int pcf8563_attach(struct i2c_adapter *adapter)

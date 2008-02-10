@@ -56,7 +56,12 @@ static void ks8695_irq_unmask(unsigned int irqno)
 
 static void ks8695_irq_ack(unsigned int irqno)
 {
-	__raw_writel((1 << irqno), KS8695_IRQ_VA + KS8695_INTST);
+	/*
+	 * DO NOT touch the UART TX interrupt. The serial driver will
+	 * take care of this ack. We lose interrupt edges otherwise.
+	 */
+	if (irqno != KS8695_IRQ_UART_TX)
+		__raw_writel((1 << irqno), KS8695_IRQ_VA + KS8695_INTST);
 }
 
 

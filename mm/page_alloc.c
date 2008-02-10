@@ -43,6 +43,9 @@
 #include <linux/backing-dev.h>
 #include <linux/fault-inject.h>
 #include <linux/page-isolation.h>
+#ifdef CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY
+#include <linux/vmalloc.h>
+#endif /* CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY */
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -4317,6 +4320,14 @@ void *__init alloc_large_system_hash(const char *tablename,
 	if (numentries > max)
 		numentries = max;
 
+	/*
+	 * we will allocate at least a page (even on low memory systems)
+	 * so do a fixup here to ensure we utilise the space that will be
+	 * allocated,  this also prevents us reporting -ve orders
+	 */
+	if (bucketsize * numentries < PAGE_SIZE)
+		numentries = (PAGE_SIZE + bucketsize - 1) / bucketsize;
+
 	log2qty = ilog2(numentries);
 
 	do {
@@ -4377,6 +4388,68 @@ unsigned long page_to_pfn(struct page *page)
 EXPORT_SYMBOL(pfn_to_page);
 EXPORT_SYMBOL(page_to_pfn);
 #endif /* CONFIG_OUT_OF_LINE_PFN_TO_PAGE */
+
+#ifdef CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY
+/*
+ * Calculate the number of pages required to store x bytes
+ */
+static inline int nextorder(unsigned int x)
+{
+	int order = 0;
+	x >>= PAGE_SHIFT;
+	while (x) {
+		x >>= 1;
+		order++;
+	}
+	return order;
+}
+/*
+ * Allocate a collection of physically contiguous pages to store size bytes.
+ * If that fails, fallback to vmalloc
+ */
+void * alloc_exact(unsigned int size)
+{ 
+	struct page *p, *w; 
+	int order = nextorder(size); 
+
+	p = alloc_pages(GFP_KERNEL, order);
+	if (p) {
+		struct page *end = p + (1UL << order); 
+		for (w = p+1; w < end; ++w) 
+			set_page_count(w, 1); 
+		for (w = p + (size>>PAGE_SHIFT)+1; w < end; ++w) 	      
+			__free_pages(w, 0); 
+		return (void *) page_address(p); 
+	} 
+
+	return vmalloc(size);
+} 
+
+/*
+ * Free a pointer that was provided by alloc_exact
+ */
+void free_exact(void * addr, unsigned int size)
+{ 
+	struct page * w; 
+
+	unsigned long mptr = (unsigned long) addr;
+        int sz;
+        
+	if (mptr >= VMALLOC_START && mptr + size <= VMALLOC_END) {
+		vfree(addr);
+		return;
+	}
+                                                        
+	w = virt_to_page(addr); 
+	for (sz = size; sz > 0; sz -= PAGE_SIZE, ++w) { 
+		__free_pages(w, 0); 
+	} 	
+}
+
+EXPORT_SYMBOL(free_exact);
+EXPORT_SYMBOL(alloc_exact);
+#endif /* CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY */
+
 
 /* Return a pointer to the bitmap storing bits affecting a block of pages */
 static inline unsigned long *get_pageblock_bitmap(struct zone *zone,

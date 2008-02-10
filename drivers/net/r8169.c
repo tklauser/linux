@@ -23,6 +23,9 @@
 #include <linux/tcp.h>
 #include <linux/init.h>
 #include <linux/dma-mapping.h>
+#ifdef CONFIG_LEDMAN
+#include <linux/ledman.h>
+#endif
 
 #include <asm/system.h>
 #include <asm/io.h>
@@ -87,8 +90,8 @@ static const int multicast_filter_limit = 32;
 
 #define R8169_REGS_SIZE		256
 #define R8169_NAPI_WEIGHT	64
-#define NUM_TX_DESC	64	/* Number of Tx descriptor registers */
-#define NUM_RX_DESC	256	/* Number of Rx descriptor registers */
+#define NUM_TX_DESC	256	/* Number of Tx descriptor registers */
+#define NUM_RX_DESC	1024	/* Number of Rx descriptor registers */
 #define RX_BUF_SIZE	1536	/* Rx Buffer size */
 #define R8169_TX_RING_BYTES	(NUM_TX_DESC * sizeof(struct TxDesc))
 #define R8169_RX_RING_BYTES	(NUM_RX_DESC * sizeof(struct RxDesc))
@@ -506,8 +509,9 @@ static int mdio_read(void __iomem *ioaddr, int reg_addr)
 static void rtl8169_irq_mask_and_ack(void __iomem *ioaddr)
 {
 	RTL_W16(IntrMask, 0x0000);
-
+#if 0
 	RTL_W16(IntrStatus, 0xffff);
+#endif
 }
 
 static void rtl8169_asic_down(void __iomem *ioaddr)
@@ -2015,6 +2019,7 @@ static void rtl_hw_start_8169(struct net_device *dev)
 	struct rtl8169_private *tp = netdev_priv(dev);
 	void __iomem *ioaddr = tp->mmio_addr;
 	struct pci_dev *pdev = tp->pci_dev;
+	int i;
 
 	if (tp->mac_version == RTL_GIGA_MAC_VER_05) {
 		RTL_W16(CPlusCmd, RTL_R16(CPlusCmd) | PCIMulRW);
@@ -2030,6 +2035,11 @@ static void rtl_hw_start_8169(struct net_device *dev)
 
 	RTL_W8(EarlyTxThres, EarlyTxThld);
 
+	/* Restore our idea of the MAC address */
+	for (i = 0; i < MAC_ADDR_LEN; i++)
+		RTL_W8(MAC0 + i, dev->dev_addr[i]);
+
+	/* Low hurts. Let's disable the filtering. */
 	rtl_set_rx_max_size(ioaddr);
 
 	if ((tp->mac_version == RTL_GIGA_MAC_VER_01) ||
@@ -2543,6 +2553,13 @@ static int rtl8169_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	u32 status, len;
 	u32 opts1;
 	int ret = NETDEV_TX_OK;
+	
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+			(dev->name[3] == '0') ? LEDMAN_LAN1_TX :
+			(dev->name[3] == '1') ? LEDMAN_LAN2_TX :
+			LEDMAN_LAN3_TX);
+#endif
 
 	if (unlikely(TX_BUFFS_AVAIL(tp) < skb_shinfo(skb)->nr_frags)) {
 		if (netif_msg_drv(tp)) {
@@ -2768,6 +2785,13 @@ static int rtl8169_rx_interrupt(struct net_device *dev,
 	cur_rx = tp->cur_rx;
 	rx_left = NUM_RX_DESC + tp->dirty_rx - cur_rx;
 	rx_left = rtl8169_rx_quota(rx_left, budget);
+
+#ifdef CONFIG_LEDMAN
+	ledman_cmd(LEDMAN_CMD_SET,
+			(dev->name[3] == '0') ? LEDMAN_LAN1_RX :
+			(dev->name[3] == '1') ? LEDMAN_LAN2_RX :
+			LEDMAN_LAN3_RX);
+#endif
 
 	for (; rx_left > 0; rx_left--, cur_rx++) {
 		unsigned int entry = cur_rx % NUM_RX_DESC;

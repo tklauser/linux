@@ -18,6 +18,10 @@
  * depending on the priority for the interrupt.  In fact the priority
  * is the interrupt :-)
  */
+#define	INTC_IPRA	0xffd00004UL
+#define	INTC_IPRB	0xffd00008UL
+#define	INTC_IPRC	0xffd0000cUL
+#define	INTC_IPRD	0xffd00010UL
 
 #define IRL0_IRQ	2
 #define IRL0_PRIORITY	13
@@ -30,6 +34,22 @@
 
 #define IRL3_IRQ	11
 #define IRL3_PRIORITY	4
+
+#define RTC_BASE	0xffc80000
+#define RTC_ATI_IRQ	20
+#define RTC_PRI_IRQ	21
+#define RTC_CUI_IRQ	22
+#define	RTC_IPR_ADDR	INTC_IPRA
+#define	RTC_IPR_POS	0
+#define	RTC_PRIORITY	2
+
+#define	INTC_ICR	0xffd00000
+#define	INTC_ICR_NMIL	(1<<15)
+#define	INTC_ICR_MAI	(1<<14)
+#define	INTC_ICR_NMIB	(1<<9)
+#define	INTC_ICR_NMIE	(1<<8)
+#define	INTC_ICR_IRLM	(1<<7)
+
 #endif
 
 #define __IO_PREFIX	snapgear

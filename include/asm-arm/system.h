@@ -59,6 +59,9 @@
 		__val;							\
 	})
 #else
+#ifndef __ASSEMBLY__
+extern unsigned int processor_id;
+#endif
 #define read_cpuid(reg) (processor_id)
 #endif
 

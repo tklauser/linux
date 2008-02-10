@@ -24,3 +24,15 @@
 #define uninitialized_var(x) x = x
 
 #define __always_inline		inline __attribute__((always_inline))
+
+#if __GNUC_MINOR__ <= 0
+#undef __always_inline
+#define __always_inline		inline
+#undef inline
+#undef __inline__
+#undef __inline
+#undef __deprecated
+#define __deprecated
+#undef  noinline
+#define  noinline
+#endif

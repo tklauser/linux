@@ -1157,5 +1157,10 @@ int vmemmap_populate_basepages(struct page *start_page,
 						unsigned long pages, int node);
 int vmemmap_populate(struct page *start_page, unsigned long pages, int node);
 
+#ifdef CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY
+extern void * alloc_exact(unsigned int size);
+extern void free_exact(void * addr, unsigned int size);
+#endif /* CONFIG_ARM_MODULE_USE_CONTIGUOUS_MEMORY */
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

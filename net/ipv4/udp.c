@@ -103,6 +103,7 @@
 #include <net/route.h>
 #include <net/checksum.h>
 #include <net/xfrm.h>
+#include <net/xfrmudp.h>
 #include "udp_impl.h"
 
 /*
@@ -928,6 +929,128 @@ int udp_disconnect(struct sock *sk, int flags)
 	return 0;
 }
 
+#if defined(CONFIG_XFRM) || defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+
+static xfrm4_rcv_encap_t xfrm4_rcv_encap_func = NULL;
+
+/*
+ * de-encapsulate and pass to the registered xfrm4_rcv_encap_func function.
+ * Most of this code stolen from net/ipv4/xfrm4_input.c
+ * which is attributed to YOSHIFUJI Hideaki @USAGI, and
+ * Derek Atkins <derek@ihtfp.com>
+ */
+
+static int xfrm4_udp_encap_rcv_wrapper(struct sock *sk, struct sk_buff *skb)
+{
+	struct udp_sock *up = udp_sk(sk);
+	struct udphdr *uh;
+	struct iphdr *iph;
+	int iphlen, len;
+	int ret;
+
+	__u8 *udpdata;
+	__be32 *udpdata32;
+	__u16 encap_type = up->encap_type;
+
+	/* if this is not encapsulated socket, then just return now */
+	if (!encap_type && !xfrm4_rcv_encap_func)
+		return 1;
+
+	/* If this is a paged skb, make sure we pull up
+	 * whatever data we need to look at. */
+	len = skb->len - sizeof(struct udphdr);
+	if (!pskb_may_pull(skb, sizeof(struct udphdr) + min(len, 8)))
+		return 1;
+
+	/* Now we can get the pointers */
+	uh = udp_hdr(skb);
+	udpdata = (__u8 *)uh + sizeof(struct udphdr);
+	udpdata32 = (__be32 *)udpdata;
+
+	switch (encap_type) {
+	default:
+	case UDP_ENCAP_ESPINUDP:
+		/* Check if this is a keepalive packet.  If so, eat it. */
+		if (len == 1 && udpdata[0] == 0xff) {
+			goto drop;
+		} else if (len > sizeof(struct ip_esp_hdr) && udpdata32[0] != 0) {
+			/* ESP Packet without Non-ESP header */
+			len = sizeof(struct udphdr);
+		} else
+			/* Must be an IKE packet.. pass it through */
+			return 1;
+		break;
+	case UDP_ENCAP_ESPINUDP_NON_IKE:
+		/* Check if this is a keepalive packet.  If so, eat it. */
+		if (len == 1 && udpdata[0] == 0xff) {
+			goto drop;
+		} else if (len > 2 * sizeof(u32) + sizeof(struct ip_esp_hdr) &&
+			   udpdata32[0] == 0 && udpdata32[1] == 0) {
+
+			/* ESP Packet with Non-IKE marker */
+			len = sizeof(struct udphdr) + 2 * sizeof(u32);
+		} else
+			/* Must be an IKE packet.. pass it through */
+			return 1;
+		break;
+	}
+
+	/* At this point we are sure that this is an ESPinUDP packet,
+	 * so we need to remove 'len' bytes from the packet (the UDP
+	 * header and optional ESP marker bytes) and then modify the
+	 * protocol to ESP, and then call into the transform receiver.
+	 */
+	if (skb_cloned(skb) && pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
+		goto drop;
+
+	/* Now we can update and verify the packet length... */
+	iph = ip_hdr(skb);
+	iphlen = iph->ihl << 2;
+	iph->tot_len = htons(ntohs(iph->tot_len) - len);
+	if (skb->len < iphlen + len) {
+		/* packet is too small!?! */
+		goto drop;
+	}
+
+	/* pull the data buffer up to the ESP header and set the
+	 * transport header to point to ESP.  Keep UDP on the stack
+	 * for later.
+	 */
+	__skb_pull(skb, len);
+	skb_reset_transport_header(skb);
+
+	/* modify the protocol (it's ESP!) */
+	iph->protocol = IPPROTO_ESP;
+
+	/* process ESP */
+	ret = (*xfrm4_rcv_encap_func)(skb, encap_type);
+	return ret;
+
+drop:
+	kfree_skb(skb);
+	return 0;
+}
+
+int udp4_register_esp_rcvencap(xfrm4_rcv_encap_t func,
+		xfrm4_rcv_encap_t *oldfunc)
+{
+	if (oldfunc != NULL)
+		*oldfunc = xfrm4_rcv_encap_func;
+	xfrm4_rcv_encap_func = func;
+	return 0;
+}
+
+int udp4_unregister_esp_rcvencap(xfrm4_rcv_encap_t func)
+{
+	if (xfrm4_rcv_encap_func != func)
+		return -1;
+
+	xfrm4_rcv_encap_func = NULL;
+	return 0;
+}
+
+#endif /* CONFIG_XFRM_MODULE || CONFIG_IPSEC_NAT_TRAVERSAL */
+
 /* returns:
  *  -1: error
  *   0: success
@@ -1260,6 +1383,11 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 		case 0:
 		case UDP_ENCAP_ESPINUDP:
 		case UDP_ENCAP_ESPINUDP_NON_IKE:
+#if defined(CONFIG_XFRM) || defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+			if (xfrm4_rcv_encap_func)
+				up->encap_rcv = xfrm4_udp_encap_rcv_wrapper;
+			else
+#endif
 			up->encap_rcv = xfrm4_udp_encap_rcv;
 			/* FALLTHROUGH */
 		case UDP_ENCAP_L2TPINUDP:
@@ -1659,3 +1787,9 @@ EXPORT_SYMBOL(udp_poll);
 EXPORT_SYMBOL(udp_proc_register);
 EXPORT_SYMBOL(udp_proc_unregister);
 #endif
+
+#if defined(CONFIG_IPSEC_NAT_TRAVERSAL)
+EXPORT_SYMBOL(udp4_register_esp_rcvencap);
+EXPORT_SYMBOL(udp4_unregister_esp_rcvencap);
+#endif
+

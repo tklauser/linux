@@ -834,6 +834,10 @@ static void lm87_init_client(struct i2c_client *client)
 	struct lm87_data *data = i2c_get_clientdata(client);
 	u8 config;
 
+#ifdef CONFIG_MACH_SG720
+	lm87_write_value(client, LM87_REG_CHANNEL_MODE, 0x03);
+#endif
+
 	data->channel = lm87_read_value(client, LM87_REG_CHANNEL_MODE);
 
 	config = lm87_read_value(client, LM87_REG_CONFIG);
