@@ -6,25 +6,7 @@
  * This file contains various random system calls that
  * have a non-standard calling sequence on the Linux/nios2
  * platform.
- *
-  * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
-*/
+ */
 
 #include <linux/errno.h>
 #include <linux/sched.h>
@@ -39,16 +21,15 @@
 #include <linux/mman.h>
 #include <linux/file.h>
 #include <linux/utsname.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
 #include <linux/ipc.h>
-#include <linux/unistd.h>
+#include <linux/fs.h>
 
 #include <asm/setup.h>
+#include <asm/uaccess.h>
 #include <asm/cachectl.h>
 #include <asm/traps.h>
-#include <asm/ipc.h>
 #include <asm/cacheflush.h>
+#include <asm/unistd.h>
 
 /*
  * sys_pipe() is the normal C calling standard for creating
@@ -159,7 +140,7 @@ asmlinkage int old_select(struct sel_arg_struct *arg)
 asmlinkage int sys_ipc (uint call, int first, int second,
 			int third, void *ptr, long fifth)
 {
-	int version;
+	int version, ret;
 
 	version = call >> 16; /* hack for backward compatibility */
 	call &= 0xffff;
@@ -216,7 +197,7 @@ asmlinkage int sys_ipc (uint call, int first, int second,
 	return -EINVAL;
 }
 
-/* sys_cacheflush -- flush the processor cache.  */
+/* sys_cacheflush -- flush (part of) the processor cache.  */
 asmlinkage int
 sys_cacheflush (unsigned long addr, int scope, int cache, unsigned long len)
 {
