@@ -16,6 +16,10 @@ config ZONE_DMA
 	bool
 	default y
 
+config NO_DMA
+	bool
+	default y
+
 config UID16
 	bool
 	default y
