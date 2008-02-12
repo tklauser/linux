@@ -193,6 +193,27 @@ asmlinkage int sys_ipc (uint call, int first, int second,
 		default:
 			return -EINVAL;
 		}
+	if (call <= SHMCTL)
+		switch (call) {
+		case SHMAT:
+			switch (version) {
+			default: {
+				ulong raddr;
+				ret = do_shmat (first, ptr, second, &raddr);
+				if (ret)
+					return ret;
+				return put_user (raddr, (ulong __user *) third);
+			}
+			}
+		case SHMDT:
+			return sys_shmdt (ptr);
+		case SHMGET:
+			return sys_shmget (first, second, third);
+		case SHMCTL:
+			return sys_shmctl (first, second, ptr);
+		default:
+			return -ENOSYS;
+		}
 
 	return -EINVAL;
 }
