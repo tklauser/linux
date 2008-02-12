@@ -8,5 +8,5 @@
 # Note 2! The CFLAGS definition is now in the main makefile...
 
 obj-y	:= init.o ioremap.o extable.o memory.o
-obj-y	+= dma-noncoherent.o
+
 
