@@ -73,8 +73,8 @@ KBUILD_CFLAGS += -DUTS_SYSNAME=\"uClinux\"
 CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
 KBUILD_CFLAGS += -I$(CFLAGS_GCC_INC)
 
-AFLAGS += -DNO_MM -g
-#AFLAGS += -DNO_MM -g -save-temps
+KBUILD_AFLAGS += -DNO_MM -g
+#KBUILD_AFLAGS += -DNO_MM -g -save-temps
 
 # vic - add this to get name of nios gcc library
 LIBGCC_CFLAGS = $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
