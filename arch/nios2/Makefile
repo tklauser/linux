@@ -34,44 +34,44 @@ MODEL := $(model-y)
 
 export PLATFORM BOARD MODEL
 
-CFLAGS += -DNO_MM -pipe -D__linux__ -D__ELF__
-#CFLAGS += -DNO_MM -save-temps -D__linux__ -D__ELF__
+KBUILD_CFLAGS += -DNO_MM -pipe -D__linux__ -D__ELF__
+#KBUILD_CFLAGS += -DNO_MM -save-temps -D__linux__ -D__ELF__
 
 # Uncomment this if you are doing gdb source level
 # debugging of the kernel to get the proper debugging information.
 #
-#CFLAGS +=  -DDEBUG
+#KBUILD_CFLAGS +=  -DDEBUG
 
 # Turn on/off various hardware multiply options
 cpu-cflags-$(CONFIG_NIOS2_HW_MUL_OFF) += -mno-hw-mul -mno-hw-mulx
 cpu-cflags-$(CONFIG_NIOS2_HW_MUL) += -mhw-mul -mno-hw-mulx
 cpu-cflags-$(CONFIG_NIOS2_HW_MULX) += -mhw-mul -mhw-mulx
-CFLAGS += $(cpu-cflags-y)
+KBUILD_CFLAGS += $(cpu-cflags-y)
 
 # mulx flags currently cause older version of nios2-elf-gcc to fail
 # The following line ensures that all mulx flags are removed before
 # it is passed to the compiler.
 mulx_help_text:= $(shell $(CC) --target-help | grep mulx)
 ifeq "$(mulx_help_text)" ""
-CFLAGS := $(filter-out -mhw-mulx -mno-hw-mulx, $(CFLAGS))
+KBUILD_CFLAGS := $(filter-out -mhw-mulx -mno-hw-mulx, $(KBUILD_CFLAGS))
 endif
 
 # Temporary workaround for nios2-elf-gcc bug
 # First noticed in v3.4.1 (Altera Nios II 1.1 b131)
 # To be removed at a later date when bug is resolved.
-CFLAGS += -fno-optimize-sibling-calls
+KBUILD_CFLAGS += -fno-optimize-sibling-calls
 
 # This undefines the "__init" type used in defining initialization
 # procedures.  When defined, the procedures are put into an 'init' data
 # section that GDB doesn't recognize as source.
 #
-CFLAGS += -DNO_TEXT_SECTIONS
-CFLAGS += -fno-builtin
-CFLAGS += -O2 -g -G 0
-CFLAGS += -DUTS_SYSNAME=\"uClinux\"
+KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
+KBUILD_CFLAGS += -fno-builtin
+KBUILD_CFLAGS += -O2 -g -G 0
+KBUILD_CFLAGS += -DUTS_SYSNAME=\"uClinux\"
 
 CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
-CFLAGS += -I$(CFLAGS_GCC_INC)
+KBUILD_CFLAGS += -I$(CFLAGS_GCC_INC)
 
 AFLAGS += -DNO_MM -g
 #AFLAGS += -DNO_MM -g -save-temps
