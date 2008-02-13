@@ -115,13 +115,13 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	/* last time the cmos clock got updated */
 	static long last_rtc_update=0;
 	
+	profile_tick(CPU_PROFILING);
+
 	write_seqlock(&xtime_lock);
 	na_timer0v->np_timerstatus = 0; /* Clear the interrupt condition */
 
 	do_timer(1);
-	update_process_times(user_mode(get_irq_regs()));
 
-	profile_tick(CPU_PROFILING);
 	/*
 	 * If we have an externally synchronized Linux clock, then update
 	 * CMOS clock accordingly every ~11 minutes. Set_rtc_mmss() has to be
@@ -138,6 +138,9 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	}
 
 	write_sequnlock(&xtime_lock);
+
+	update_process_times(user_mode(get_irq_regs()));
+
 	return(IRQ_HANDLED);
 }
 
