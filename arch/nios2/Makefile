@@ -34,8 +34,8 @@ MODEL := $(model-y)
 
 export PLATFORM BOARD MODEL
 
-KBUILD_CFLAGS += -DNO_MM -pipe -D__linux__ -D__ELF__
-#KBUILD_CFLAGS += -DNO_MM -save-temps -D__linux__ -D__ELF__
+KBUILD_CFLAGS += -pipe -D__linux__ -D__ELF__
+#KBUILD_CFLAGS += -save-temps -D__linux__ -D__ELF__
 
 # Uncomment this if you are doing gdb source level
 # debugging of the kernel to get the proper debugging information.
@@ -73,8 +73,8 @@ KBUILD_CFLAGS += -DUTS_SYSNAME=\"uClinux\"
 CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
 KBUILD_CFLAGS += -I$(CFLAGS_GCC_INC)
 
-KBUILD_AFLAGS += -DNO_MM -g
-#KBUILD_AFLAGS += -DNO_MM -g -save-temps
+KBUILD_AFLAGS += -g
+#KBUILD_AFLAGS += -g -save-temps
 
 # vic - add this to get name of nios gcc library
 LIBGCC_CFLAGS = $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
