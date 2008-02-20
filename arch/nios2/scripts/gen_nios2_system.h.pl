@@ -287,11 +287,8 @@ if (!$upload_location || ($upload_location eq "flash_kernel")) {
 }
 
 print "\n";
-
 printf ("#define %-33s %30s\n", 
-	("nasys_clock_freq", $system->getClockFreq()));
-printf ("#define %-33s %30s\n", 
-	("nasys_clock_freq_1000", int ($system->getClockFreq()) / 1000));
+	("na_cpu_clock_freq", $system->getClockFreq($target_cpu)));
 	
 {	
 	my ($reset_location, $reset_offset) = $cpu->getResetLocationOffset();

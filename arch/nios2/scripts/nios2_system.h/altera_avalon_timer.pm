@@ -33,6 +33,12 @@ sub is_module_valid {
 	my $fixed_period = $module->getWSAAssignment ('fixed_period');	
 
 	if ($fixed_period eq '0') {
+	    printf ("\n");
+	    printf ("/* system timer input clock frequency */\n");
+	    printf ("#define %-33s %30s\n", 
+		    ("nasys_clock_freq", $system->getClockFreq($module_name)));
+	    printf ("#define %-33s %30s\n", 
+		    ("nasys_clock_freq_1000", int ($system->getClockFreq($module_name)) / 1000));
 		return 1;
 	} else {
 		return 0;

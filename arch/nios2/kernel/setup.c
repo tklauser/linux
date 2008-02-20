@@ -353,7 +353,7 @@ int get_cpuinfo(char * buffer)
     mmu = "none";
     fpu = "none";
 
-    clockfreq = nasys_clock_freq;
+    clockfreq = na_cpu_clock_freq;
 
     return(sprintf(buffer, "CPU:\t\t%s\n"
 		   "MMU:\t\t%s\n"
@@ -381,7 +381,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
     mmu = "none";
     fpu = "none";
 
-    clockfreq = nasys_clock_freq;
+    clockfreq = na_cpu_clock_freq;
 
     seq_printf(m, "CPU:\t\t%s\n"
 		   "MMU:\t\t%s\n"

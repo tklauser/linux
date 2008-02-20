@@ -124,13 +124,23 @@ sub getSlaveModules {
 	return sort module_comparison keys (%connected); 
 }
 
+# get the clock frequency of a module
 sub getClockFreq () {
-	my ($self) = @_;
+	my ($self, $name) = @_;
 	
+	my $module = $self->{root}->getSection ('MODULE', $name);
+	$module or return;
+	my $sbi = $module->getSection ('SYSTEM_BUILDER_INFO', '');
+	$sbi or return;
+	my $clk_src = $sbi->getAssignment ('Clock_Source');
+	$clk_src or return;
 	my $wsa = $self->{root}->getSection ('WIZARD_SCRIPT_ARGUMENTS', '');
 	$wsa or return;
-	
-	my $result = $wsa->getAssignment ('clock_freq');
+	my $clocks = $wsa->getSection ('CLOCKS', '');
+	$clocks or return;
+	my $clock = $clocks->getSection ('CLOCK', $clk_src);
+	$clock or return;
+	my $result = $clock->getAssignment ('frequency');
 	return $result;
 }
 
