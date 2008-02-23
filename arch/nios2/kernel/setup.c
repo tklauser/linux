@@ -292,12 +292,12 @@ void __init setup_arch(char **cmdline_p)
 		excalibur_enet_hwaddr_array[0] ^= (unsigned char)1;
 	}
 #else
-	excalibur_enet_hwaddr[0] = 0x00;
-	excalibur_enet_hwaddr[1] = 0x07;
-	excalibur_enet_hwaddr[2] = 0xed;
-	excalibur_enet_hwaddr[3] = 0x0a;
-	excalibur_enet_hwaddr[4] = 0x03;
-	excalibur_enet_hwaddr[5] = 0x00;
+	excalibur_enet_hwaddr_array[0] = 0x00;
+	excalibur_enet_hwaddr_array[1] = 0x07;
+	excalibur_enet_hwaddr_array[2] = 0xed;
+	excalibur_enet_hwaddr_array[3] = 0x0a;
+	excalibur_enet_hwaddr_array[4] = 0x03;
+	excalibur_enet_hwaddr_array[5] = 0x00;
 #endif /* defined na_flash_kernel */
 
 	excalibur_enet_hwaddr=excalibur_enet_hwaddr_array;
