@@ -75,7 +75,7 @@ asmlinkage void resume(void);
 #define local_irq_restore(x) __asm__ __volatile__ (	\
 	"mov	r8, %0\n"				\
 	"wrctl	status, r8\n"				\
-	: :"r" (x) : "memory")
+	: :"r" (x) : "r8", "memory")
 
 /* For spinlocks etc */
 #define local_irq_save(x) do { local_save_flags(x); local_irq_disable(); } while (0)
