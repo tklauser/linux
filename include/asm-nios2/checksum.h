@@ -41,7 +41,7 @@
  * returns a 16-bit checksum, already complemented
  */
 
-extern inline unsigned short csum_tcpudp_magic(unsigned long saddr,
+extern inline __sum16 csum_tcpudp_magic(unsigned long saddr,
 					       unsigned long daddr,
 					       unsigned short len,
 					       unsigned short proto,
@@ -83,7 +83,7 @@ extern inline unsigned short csum_tcpudp_magic(unsigned long saddr,
 	        : "=&r" (sum), "=&r" (saddr)
 		: "0" (sum), "1" (saddr), "r" (ntohl(len+proto)), "r" (daddr)
 		: "r15");
-		return ((unsigned short) sum); 
+		return (__force __sum16)sum; 
     barrier();
 }
 
@@ -171,7 +171,7 @@ out:
  * aligned but can fail to be dword aligned very often.
  */
 
-  extern inline unsigned short ip_fast_csum(const unsigned char *iph, unsigned int ihl)
+  extern inline __sum16 ip_fast_csum(const unsigned char *iph, unsigned int ihl)
   {
 	unsigned int sum;
 
@@ -213,7 +213,7 @@ out:
 		: "=&r" (sum), "=&r" (iph), "=&r" (ihl)
 		: "1" (iph), "2" (ihl)
 		: "r8", "r9");
-	return sum;
+	return (__force __sum16)sum;
     barrier();
   }
 
@@ -248,7 +248,7 @@ csum_partial_copy_from_user(const char *src, char *dst, int len, int sum, int *c
  * in icmp.c
  */
 
-extern inline unsigned short ip_compute_csum(unsigned char * buff, int len)
+extern inline __sum16 ip_compute_csum(unsigned char * buff, int len)
 {
     barrier();
  return ~from32to16(do_csum(buff,len));
@@ -269,7 +269,7 @@ extern inline unsigned short ip_compute_csum(unsigned char * buff, int len)
 /*
  *	Fold a partial checksum without adding pseudo headers
  */
-extern __inline__ unsigned int csum_fold(unsigned int sum)
+extern __inline__ __sum16 csum_fold(unsigned int sum)
 {
     barrier();
 	__asm__ __volatile__(
@@ -281,7 +281,7 @@ extern __inline__ unsigned int csum_fold(unsigned int sum)
 		: "=r" (sum)
 		: "r" (sum << 16), "0" (sum)
 		: "r8"); 
-	return sum;
+	return (__force __sum16)sum;
     barrier();
 }
 
