@@ -43,3 +43,9 @@ config NIOS_SPI
 	help
 	  This driver supports the Nios softcore SPI device.
 
+config NIOS_SD_HOST
+	tristate "NIOS SD/SDIO/MMC Host"
+	depends on NIOS || NIOS2
+	help
+		This driver supports the FPS-Tech SD/SDIO/MMC Host IP
+

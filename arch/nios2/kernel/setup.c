@@ -682,3 +682,32 @@ static int __init i2c_gpio_device_init(void)
 arch_initcall(i2c_gpio_device_init);
 
 #endif // CONFIG_I2C_NIOS2_GPIO
+
+
+#if defined(CONFIG_NIOS_SD_HOST) && defined(na_sdio_host_inst)
+static struct resource nios_mmc_resources[] = {
+	[0] = {
+		.start = na_sdio_host_inst,
+		.end = na_sdio_host_inst + (16*4-1),
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_sdio_host_inst_irq,
+		.end = na_sdio_host_inst_irq,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+static struct platform_device nios_mmc_device = {
+	.name = "nios_mmc",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(nios_mmc_resources),
+	.resource = nios_mmc_resources,
+};
+
+static int __init nios_mmc_device_init(void)
+{
+	return platform_device_register(&nios_mmc_device);
+}
+arch_initcall(nios_mmc_device_init);
+#endif // CONFIG_NIOS_SD_HOST
+

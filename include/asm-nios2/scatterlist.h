@@ -24,5 +24,8 @@ struct scatterlist {
 #define sg_dma_len(sg)		((sg)->length)
 
 #define ISA_DMA_THRESHOLD (0xffffffff)
+#define sg_address(sg)		(page_to_virt((sg)->page) + (sg)->offset)
+#define sg_dma_address(sg)      ((sg)->dma_address)
+#define sg_dma_len(sg)          ((sg)->length)
 
 #endif /* __ASM_SCATTERLIST_H */
