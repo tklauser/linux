@@ -44,18 +44,6 @@
 #include <asm/io.h>
 
 /*
- * cache_clear() semantics: Clear any cache entries for the area in question,
- * without writing back dirty entries first. This is useful if the data will
- * be overwritten anyway, e.g. by DMA to memory. The range is defined by a
- * _physical_ address.
- */
-
-void cache_clear (unsigned long paddr, int len)
-{
-}
-
-
-/*
  *	Define cache invalidate functions. The instruction and data cache 
  *	will need to be flushed. Write back the dirty data cache and invalidate
  *	the instruction cache for the range.
@@ -88,7 +76,7 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 
 	__asm__ __volatile__ (
 	"1:\n\t"
-	"flushd	0(%0)\n\t"
+	"flushda	0(%0)\n\t"
 	"add	%0,%0,%2\n\t"
 	"blt	%0,%1,1b\n\t"
 	: : "r" (sset),"r" (eset), "r" (nasys_dcache_line_size));
@@ -98,9 +86,11 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 static __inline__ void cache_invalidate_lines(unsigned long paddr, int len)
 {
 	unsigned long	sset, eset;
+	int dlen = min(len, nasys_dcache_size);
+	int ilen = min(len, nasys_icache_size);
 
 	sset = (paddr & (nasys_dcache_size - 1)) & (~(nasys_dcache_line_size - 1));
-	eset = (((paddr & (nasys_dcache_size - 1)) + len) & (~(nasys_dcache_line_size - 1))) + nasys_dcache_line_size;
+	eset = (((paddr & (nasys_dcache_size - 1)) + dlen) & (~(nasys_dcache_line_size - 1))) + nasys_dcache_line_size;
 
 	__asm__ __volatile__ (
 	"1:\n\t"
@@ -110,7 +100,7 @@ static __inline__ void cache_invalidate_lines(unsigned long paddr, int len)
 	: : "r" (sset),"r" (eset), "r" (nasys_dcache_line_size));
 
 	sset = (paddr & (nasys_icache_size - 1)) & (~(nasys_icache_line_size - 1));
-	eset = (((paddr & (nasys_icache_size - 1)) + len) & (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
+	eset = (((paddr & (nasys_icache_size - 1)) + ilen) & (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
 
 	__asm__ __volatile__ (
 	"1:\n\t"
@@ -133,7 +123,6 @@ void cache_push (unsigned long paddr, int len)
 {
 	cache_invalidate_lines(paddr, len);
 }
-
 
 /*
  * cache_push_v() semantics: Write back any dirty cache data in the given
@@ -168,6 +157,18 @@ void cache_push_all (void)
 	"flushp\n\t"
 	: : "r" (nasys_icache_size), "r" (nasys_icache_line_size));
 
+}
+
+/*
+ * cache_clear() semantics: Clear any cache entries for the area in question,
+ * without writing back dirty entries first. This is useful if the data will
+ * be overwritten anyway, e.g. by DMA to memory. The range is defined by a
+ * _physical_ address.
+ */
+
+void cache_clear (unsigned long paddr, int len)
+{
+	cache_invalidate_data(paddr, len);
 }
 
 /*
