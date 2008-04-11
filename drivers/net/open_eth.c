@@ -2151,7 +2151,7 @@ static int __init oeth_probe(struct net_device *dev)
 
     PRINTK2("%s:oeth_probe\n", dev->name);
 
-    SET_MODULE_OWNER (dev);
+/*     SET_MODULE_OWNER (dev); */
 
     cep = (struct oeth_private *)dev->priv;
 
