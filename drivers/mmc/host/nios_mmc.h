@@ -28,6 +28,7 @@ typedef volatile struct
 
 #define NIOS_MMC_CTLSTAT_BUSY (1<<0)
 #define NIOS_MMC_CTLSTAT_CD (1<<1)
+#define NIOS_MMC_CTLSTAT_WP (1<<2)
 #define NIOS_MMC_CTLSTAT_CD_IF (1<<3)
 #define NIOS_MMC_CTLSTAT_DEV_IF (1<<4)
 #define NIOS_MMC_CTLSTAT_XFER_IF (1<<5)

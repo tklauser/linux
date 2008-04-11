@@ -283,7 +283,11 @@ static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq)
 }
 static int nios_mmc_get_ro(struct mmc_host *mmc)
 {
+	int ctlstat;
+	NIOS_MMC_HOST *host = mmc_priv(mmc);
 	MMC_DEBUG(3,"Get RO\n");
+	ctlstat = readl(host->base + NIOS_MMC_REG_CTLSTAT);
+	if (ctlstat & NIOS_MMC_CTLSTAT_WP) return 1;
 	return 0;
 }
 static void nios_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
