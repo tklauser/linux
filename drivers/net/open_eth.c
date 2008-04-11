@@ -53,12 +53,14 @@
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 #include <linux/init.h>
+#include <linux/mii.h>
 
 #include <asm/irq.h>
 #include <asm/pgtable.h>
 #include <asm/bitops.h>
 #include <asm/page.h>
 
+#define OETH_REVISION_DATECODE 20050321
 
 #define ANNOUNCEPHYINT
 //#undef  ANNOUNCEPHYINT
@@ -68,24 +70,18 @@
     #include <asm/cacheflush.h>
     #define _print              printk
     #define MACIRQ_NUM          na_igor_mac_irq
-    #define PHYIRQ_NUM          na_mii_irq_irq
     #define ETH_BASE_ADD        na_igor_mac
     #ifdef na_mii_irq
+      #define PHYIRQ_NUM        na_mii_irq_irq
       #define PHYIRQ_BASE_ADDR  na_mii_irq
-    #else
-      #ifdef na_mii_irq_base
-        #define PHYIRQ_BASE_ADDR  na_mii_irq_base
-      #else
-        ...?...
-      #endif
     #endif
-    #define TDK78Q2120PHY
-      #define NUM_PHY_REGS                            19
-        /* Numbered 0, 1, ...       (NUM_PHY_REGS - 1)                  */
-//    #define PHY_ADDRESS                           0x1F
-      // TDK78Q2120PHY's respond to the "'broadcast" phy address 0
+    /* #define TDK78Q2120PHY */
+    #if defined(TDK78Q2120PHY)
       #define PHY_ADDRESS                           0x00
-#endif  // CONFIG_EXCALIBUR
+    #else /* generic PHY, eg NS,Micrel */
+      #define PHY_ADDRESS                           0x01
+    #endif /* defined(TDK78Q2120PHY) */
+#endif  /* CONFIG_EXCALIBUR */
 
 #include "open_eth.h"
 
@@ -159,7 +155,7 @@ static const int probe_mdio_phys[] = OETH_SYSFS_MDIO_ACCESS;
   #define TOTBYTSALLRXBUFS  (OETH_RXBD_NUM * OETH_RX_BUFF_SIZE)
   #define TOTBYTSALLTXBUFS  (OETH_TXBD_NUM * OETH_TX_BUFF_SIZE)
   #define TOTBYTSALLBUFS    (TOTBYTSALLRXBUFS + TOTBYTSALLTXBUFS)
-  #if(na_sram_size >= TOTBYTSALLBUFS)
+#if defined(na_sram_size) && (na_sram_size >= TOTBYTSALLBUFS)
     #define SRAM_BUFF   1
     #define SRAM_BUFF_BASE  (na_sram_base)
   #else
@@ -187,6 +183,8 @@ struct oeth_private {
     oeth_bd         *tx_bd_base;/* Address of Tx BDs. */
 
     struct net_device_stats stats;
+    struct tasklet_struct	oeth_rx_tasklet;
+    struct tasklet_struct	oeth_tx_tasklet;
 };
 
 #ifdef SANCHKEPKT
@@ -651,7 +649,6 @@ oeth_print_packet(unsigned long add, int len)
 #endif
 
 // Read a phy register
-#if defined(TDK78Q2120PHY)
 int eth_mdread(struct net_device *dev,
                int                fiad_phy_addr,
                int                phyreg)
@@ -681,12 +678,8 @@ int eth_mdread(struct net_device *dev,
 
     return rdata;
   }
-#else
-  ...?...
-#endif
 
 // Write a phy register
-#if defined(TDK78Q2120PHY)
 void eth_mdwrite(struct net_device *dev,
                  int                fiad_phy_addr,
                  int                phyreg,
@@ -716,9 +709,6 @@ void eth_mdwrite(struct net_device *dev,
 
     return;
   }
-#else
-  ...?...
-#endif
 
 void oeth_phymac_synch (struct net_device *dev, int callerflg)
   {
@@ -727,27 +717,25 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
     unsigned long        ulmr1sts;
     unsigned long        ulphydiagval;
 
-    ulmr1sts = eth_mdread(dev, PHY_ADDRESS, 1);
+    ulmr1sts = eth_mdread(dev, PHY_ADDRESS, MII_BMSR);
     /* Read twice to get CURRENT status                                 */
-    ulmr1sts = eth_mdread(dev, PHY_ADDRESS, 1);
+    ulmr1sts = eth_mdread(dev, PHY_ADDRESS, MII_BMSR);
 
     ulmoderval = regs->moder;
 
     #if defined(TDK78Q2120PHY)
       ulphydiagval = eth_mdread(dev, PHY_ADDRESS, 18);
-    #else
-      ...?...
     #endif
 
     if(callerflg == 0)
       {
         // Caller = NOT Phy interrupt handler
 
-        if((ulmr1sts & 0x00000004) != 0)
+        if((ulmr1sts & BMSR_LSTATUS) != 0)
           {
             // Link is ostensibly OK
 
-            if((eth_mdread(dev, PHY_ADDRESS, 0) & 0x00001000) != 0)
+            if((eth_mdread(dev, PHY_ADDRESS, MII_BMCR) & BMCR_ANENABLE) != 0)
               {
                 // Auto negotiation ostensibly enabled
 
@@ -798,9 +786,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                               return;
                             }
                         }
-                    #else
-                      ...?...
-                    #endif
+                    #endif /* defined(TDK78Q2120PHY) */
                   }
               }
           }
@@ -817,21 +803,21 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
       printk("\noeth_phymac_synch:%s  MR1: 0x%08lX\n",
              dev->name,
              ulmr1sts);
-      if((ulmr1sts & 0x00000002) != 0)
+      if((ulmr1sts & BMSR_JCD) != 0)
         {
           printk("                               Jabber\n");
         }
-      if((ulmr1sts & 0x00000010) != 0)
+      if((ulmr1sts & BMSR_RFAULT) != 0)
         {
           printk("                               Remote Fault\n");
         }
-      if((ulmr1sts & 0x00000020) != 0)
+      if((ulmr1sts & BMSR_ANEGCOMPLETE) != 0)
         {
           printk("                               Autoneg'd\n");
         }
     #endif
 
-    if((ulmr1sts & 0x00000004) != 0)
+    if((ulmr1sts & BMSR_LSTATUS) != 0)
       {
         /* Phy MR1 (status register) indicates link is (now) OK.        */
 
@@ -918,9 +904,62 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
             printk("             %s\n",
                    (ulphydiagval & 0x0400) ? "100BASE-TX" : "10BASE-T");
           #endif
-        #else
-          ...?...
-        #endif
+
+        #else /* generic PHY, use MR1 */
+
+	    if((ulmr1sts & (BMSR_100FULL | BMSR_10FULL)) != 0)
+            {
+              /* Phy MR1 indicates              */
+              /*  link is (now) running full duplex.                    */
+
+              if((ulmoderval & (OETH_MODER_FULLD)) == 0)
+                {
+                  regs->moder = ((unsigned long) (ulmoderval |
+                                                  (OETH_MODER_FULLD)));
+                }
+              // FIXME:...
+              // ...Note manual says not supposed to "change
+              // ... registers after ModeR's TxEn or RxEn
+              // ...  bit(s) have been set"
+              if(regs->ipgt != ((unsigned long) (0x00000015)))
+                {
+                  regs->ipgt = ((unsigned long) (0x00000015));
+                }
+
+              #if defined(ANNOUNCEPHYINT)
+                printk("             FullD\n");
+              #endif
+            }
+            else
+            {
+              /* Phy MR1 indicates              */
+              /*  link is (now) running half duplex.                    */
+
+              if((ulmoderval & (OETH_MODER_FULLD)) != 0)
+                {
+                  regs->moder = ((unsigned long) (ulmoderval &
+                                                  (~(OETH_MODER_FULLD))));
+                }
+              // FIXME:...
+              // ...Note manual says not supposed to "change
+              // ... registers after ModeR's TxEn or RxEn
+              // ...  bit(s) have been set"
+              if(regs->ipgt != ((unsigned long) (0x00000012)))
+                {
+                  regs->ipgt = ((unsigned long) (0x00000012));
+                }
+
+              #if defined(ANNOUNCEPHYINT)
+                printk("             HalfD\n");
+              #endif
+            }
+
+          #if defined(ANNOUNCEPHYINT)
+            printk("             %s\n",
+                   (ulmr1sts & (BMSR_100FULL | BMSR_100HALF)) ? "100BASE-TX" : "10BASE-T");
+          #endif
+
+        #endif /* defined(TDK78Q2120PHY) */
       }
     #if defined(ANNOUNCEPHYINT)
       else
@@ -1002,9 +1041,7 @@ static irqreturn_t oeth_PhyInterrupt(int             irq,
 
       oeth_phymac_synch((struct net_device *) dev_id,
                         1);  // Caller = Phy interrupt handler
-    #else
-      ...?...
-    #endif
+    #endif  /* defined(TDK78Q2120PHY) */
 
     return IRQ_HANDLED;
   }
@@ -1015,9 +1052,11 @@ static irqreturn_t oeth_PhyInterrupt(int             irq,
     Entered at interrupt level
 */
 static void
-oeth_tx(struct net_device *dev)
+oeth_tx(unsigned long devn)
 {
+    struct net_device *dev = (void *)devn;
     volatile struct oeth_private *cep;
+    unsigned        long          flags;
     volatile oeth_bd *bdp;
 
 #ifndef TXBUFF_PREALLOC
@@ -1027,7 +1066,7 @@ oeth_tx(struct net_device *dev)
     cep = (struct oeth_private *)dev->priv;
 
     // Cycles over the TX BDs, starting at the first one that would've been sent. -TS
-    for (;; cep->tx_last = (cep->tx_last + 1) & OETH_TXBD_NUM_MASK)
+    while (1)
       {
         bdp = cep->tx_bd_base + cep->tx_last;
 
@@ -1038,6 +1077,8 @@ oeth_tx(struct net_device *dev)
 
         /* Check status for errors
          */
+	if (bdp->len_status & 0x1ff) printk("oeth: tx%02d,%08x\n",cep->tx_last,bdp->len_status);
+
         if (bdp->len_status & OETH_TX_BD_LATECOL)
             cep->stats.tx_window_errors++;
             //;dgt - ifconfig doesn't report tx_window_errors ?
@@ -1062,6 +1103,7 @@ oeth_tx(struct net_device *dev)
             cep->stats.tx_errors++;
 
         cep->stats.tx_packets++;
+        cep->stats.tx_bytes += bdp->len_status >> 16;
         cep->stats.collisions += (bdp->len_status >> 4) & 0x000f;
 
 #ifndef TXBUFF_PREALLOC
@@ -1072,17 +1114,33 @@ oeth_tx(struct net_device *dev)
         dev_kfree_skb(skb);
 #endif
 
+	local_irq_save(flags);
+
         if (cep->tx_full)
             cep->tx_full = 0;
+	cep->tx_last = (cep->tx_last + 1) & OETH_TXBD_NUM_MASK;
+
+	local_irq_restore(flags);
+
       }
+
+        if(((cep->tx_next + 1) & OETH_TXBD_NUM_MASK) != cep->tx_last)
+          {
+            netif_wake_queue(dev);
+          }
+//        else
+//        {
+//          Tx done interrupt but no tx BD's released ?
+//        }
 }
 
 /*
     Entered at interrupt level
 */
 static void
-oeth_rx(struct net_device *dev)
+oeth_rx(unsigned long devn)
 {
+    struct net_device *dev = (void *)devn;
     volatile struct oeth_private *cep;
     volatile        oeth_bd      *bdp;
     struct          sk_buff      *skb;
@@ -1114,8 +1172,8 @@ oeth_rx(struct net_device *dev)
             {
                 bdp->addr = (unsigned long) skb->tail;
 
-                dcache_push (((unsigned long) (bdp->addr)),
-                             MAX_FRAME_SIZE);
+/*                 dcache_push (((unsigned long) (bdp->addr)), */
+/*                              MAX_FRAME_SIZE); */
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
             }
@@ -1135,6 +1193,8 @@ oeth_rx(struct net_device *dev)
 
         /* Check status for errors.
          */
+	if (bdp->len_status & 0x1ff) printk("oeth: rx%02d,%08x\n",cep->rx_cur,bdp->len_status);
+
         if (bdp->len_status & (OETH_RX_BD_TOOLONG | OETH_RX_BD_SHORT)) {
             cep->stats.rx_length_errors++;
             //;dgt - ifconfig doesn't report rx_length_errors ?
@@ -1201,8 +1261,8 @@ oeth_rx(struct net_device *dev)
           {
             bdp->len_status &= ~OETH_RX_BD_STATS;
 
-            dcache_push (((unsigned long) (bdp->addr)),
-                         OETH_RX_BUFF_SIZE);
+/*             dcache_push (((unsigned long) (bdp->addr)), */
+/*                          OETH_RX_BUFF_SIZE); */
 
             bdp->len_status |= OETH_RX_BD_EMPTY;
 
@@ -1338,10 +1398,11 @@ oeth_rx(struct net_device *dev)
                 }                                               //;dgt
 
             cep->stats.rx_packets++; // This is the only thing that increments the packet stat if RXBUFF_PREALLOC is defined.
+	    cep->stats.rx_bytes += pkt_len;
           }
 
-        dcache_push (((unsigned long) (bdp->addr)),
-                     pkt_len);
+/*         dcache_push (((unsigned long) (bdp->addr)), */
+/*                      pkt_len); */
 
         bdp->len_status &= ~OETH_RX_BD_STATS;
         bdp->len_status |= OETH_RX_BD_EMPTY;
@@ -1363,6 +1424,7 @@ oeth_rx(struct net_device *dev)
                 small_skb->protocol = eth_type_trans(small_skb,dev);
                 netif_rx(small_skb);
                 cep->stats.rx_packets++;
+		cep->stats.rx_bytes += pkt_len;
               }
             else
               {
@@ -1370,8 +1432,8 @@ oeth_rx(struct net_device *dev)
                 cep->stats.rx_dropped++;
               }
 
-            dcache_push (((unsigned long) (bdp->addr)),
-                         pkt_len);
+/*             dcache_push (((unsigned long) (bdp->addr)), */
+/*                          pkt_len); */
 
             bdp->len_status &= ~OETH_RX_BD_STATS;
             bdp->len_status |=  OETH_RX_BD_EMPTY;
@@ -1383,6 +1445,7 @@ oeth_rx(struct net_device *dev)
             skb->protocol = eth_type_trans(skb,dev);
             netif_rx(skb);
             cep->stats.rx_packets++;
+	    cep->stats.rx_bytes += pkt_len;
   #if OETH_DEBUG
             _print("RX long\n");
             oeth_print_packet(bdp->addr, bdp->len_status >> 16);
@@ -1397,8 +1460,8 @@ oeth_rx(struct net_device *dev)
 
                 bdp->addr = (unsigned long)skb->tail;
 
-                dcache_push (((unsigned long) (bdp->addr)),
-                             MAX_FRAME_SIZE);
+/*                 dcache_push (((unsigned long) (bdp->addr)), */
+/*                              MAX_FRAME_SIZE); */
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
               }
@@ -1433,23 +1496,13 @@ static irqreturn_t oeth_interrupt(int             irq,
 
     /* Handle receive event in its own function.
      */
-    if (int_events & (OETH_INT_RXF | OETH_INT_RXE))
-        oeth_rx(dev_id);
+    if (int_events & (OETH_INT_RXF | OETH_INT_RXE | OETH_INT_BUSY))
+        tasklet_schedule(&cep->oeth_rx_tasklet);       
 
     /* Handle transmit event in its own function.
      */
-    if (int_events & (OETH_INT_TXB | OETH_INT_TXE)) {
-        oeth_tx(dev_id);
-
-        if(((cep->tx_next + 1) & OETH_TXBD_NUM_MASK) != cep->tx_last)
-          {
-            netif_wake_queue(dev);
-          }
-//        else
-//        {
-//          Tx done interrupt but no tx BD's released ?
-//        }
-    }
+    if (int_events & (OETH_INT_TXB | OETH_INT_TXE))
+        tasklet_schedule(&cep->oeth_tx_tasklet);       
 
     /* Check for receive busy, i.e. packets coming but no place to
      * put them.
@@ -1457,11 +1510,6 @@ static irqreturn_t oeth_interrupt(int             irq,
     if (int_events & OETH_INT_BUSY)
       {
         cep->stats.rx_dropped++;                                //;dgt
-
-        if (!(int_events & (OETH_INT_RXF | OETH_INT_RXE)))
-          {
-            oeth_rx(dev_id);
-          }
       }
 
     return IRQ_HANDLED;
@@ -1536,9 +1584,7 @@ oeth_open(struct net_device *dev)
                 ((unsigned long) (0x0001));
           // Enable phy interrupt pass thru to PHYIRQ_NUM
       #endif
-    #else
-      ...?...
-    #endif
+    #endif  /* defined(TDK78Q2120PHY) */
 
     oeth_phymac_synch(dev,
                       0);  // Caller = NOT Phy interrupt handler
@@ -1557,6 +1603,8 @@ oeth_open(struct net_device *dev)
 #endif
 
     netif_start_queue(dev);
+    tasklet_init(&cep->oeth_rx_tasklet, oeth_rx, (unsigned long)dev);
+    tasklet_init(&cep->oeth_tx_tasklet, oeth_tx, (unsigned long)dev);
 
     return 0;
 }
@@ -1573,8 +1621,7 @@ oeth_close(struct net_device *dev)
 
     /* Free phy interrupt handler
      */
-    #if defined(TDK78Q2120PHY)
-      #if defined(PHYIRQ_NUM)
+    #if defined(PHYIRQ_NUM)
         (*(volatile unsigned long *)
              (((unsigned long *)
                   ((((char *)
@@ -1584,14 +1631,14 @@ oeth_close(struct net_device *dev)
           // Disable phy interrupt pass thru to PHYIRQ_NUM
 
         free_irq(PHYIRQ_NUM, (void *)dev);
-      #endif
-    #else
-      ...?...
     #endif
 
     /* Free interrupt hadler
      */
     free_irq(MACIRQ_NUM, (void *)dev);
+
+    tasklet_kill(&cep->oeth_tx_tasklet);
+    tasklet_kill(&cep->oeth_rx_tasklet);
 
     /* Disable receiver and transmitesr
      */
@@ -1783,23 +1830,12 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
       {
         cep->tx_full = 1;
       }
-      else
-      {
-        if(((cep->tx_next + 1) & OETH_TXBD_NUM_MASK) != cep->tx_last)
-          {
-            netif_wake_queue(dev);
-          }
-//        else
-//        {
-//          Don't let the tx ring completely fill
-//        }
-      }
 
     /* Send it on its way.  Tell controller its ready, interrupt when done,
      * and to put the CRC on the end.
      */
-    dcache_push (((unsigned long) (bdp->addr)),
-                 lenSkbDataByts);
+/*     dcache_push (((unsigned long) (bdp->addr)), */
+/*                  lenSkbDataByts); */
 
     bdp->len_status |= (  0
                         | OETH_TX_BD_READY
@@ -1810,6 +1846,18 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
     dev->trans_start = jiffies;
 
     local_irq_restore(flags);
+
+    if (cep->tx_next != cep->tx_last)
+      {
+        if(((cep->tx_next + 1) & OETH_TXBD_NUM_MASK) != cep->tx_last)
+          {
+            netif_wake_queue(dev);
+          }
+//        else
+//        {
+//          Don't let the tx ring completely fill
+//        }
+      }
 
     return 0;
 }
@@ -2195,7 +2243,7 @@ static int __init oeth_probe(struct net_device *dev)
       //   MR18 (Diagnostics):  0x0000
 
       /* TDK78Q2120 LEDs (seven?) NOT configurable?                     */
-    #else
+    #elif defined(LXT971PHY)
       ...Intel LXT971A phy...?...
 
       /* Set PHY to show Tx status, Rx status and Link status */
@@ -2211,7 +2259,7 @@ static int __init oeth_probe(struct net_device *dev)
     for(i = 0, k = 0; i < OETH_TX_BUFF_PAGE_NUM; i++) {
 
   #ifndef SRAM_BUFF
-        mem_addr = __get_free_page(GFP_KERNEL);
+        mem_addr = __get_free_page(GFP_KERNEL) | 0x80000000;
   #endif    // SRAM_BUFF
 
         for(j = 0; j < OETH_TX_BUFF_PPGAE; j++, k++) {
@@ -2247,15 +2295,15 @@ static int __init oeth_probe(struct net_device *dev)
     for(i = 0, k = 0; i < OETH_RX_BUFF_PAGE_NUM; i++) {
 
   #ifndef SRAM_BUFF
-        mem_addr = __get_free_page(GFP_KERNEL);
+        mem_addr = __get_free_page(GFP_KERNEL) | 0x80000000;
   #endif    // SRAM_BUFF
 
         for(j = 0; j < OETH_RX_BUFF_PPGAE; j++, k++)
           {
             rx_bd[k].addr = __pa(mem_addr);
 
-            dcache_push (((unsigned long) (rx_bd[k].addr)),
-                         OETH_RX_BUFF_SIZE);
+/*             dcache_push (((unsigned long) (rx_bd[k].addr)), */
+/*                          OETH_RX_BUFF_SIZE); */
 
             rx_bd[k].len_status = OETH_RX_BD_EMPTY | OETH_RX_BD_IRQ;
               // FIXME...Should we really let the rx ring
@@ -2266,6 +2314,8 @@ static int __init oeth_probe(struct net_device *dev)
           }
     }
     rx_bd[OETH_RXBD_NUM - 1].len_status |= OETH_RX_BD_WRAP;
+
+    cache_push_all();
 
 #else
     /* Initialize RXBDs.
