@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
 #include <linux/mmc/host.h>
+#include <linux/mmc/core.h>
 #include <linux/pagemap.h>
 
 #include <asm/dma.h>
@@ -70,34 +71,35 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	if (tmp & NIOS_MMC_CTLSTAT_TIMEOUTERR_IF)
 	{
 		MMC_DEBUG(1,"Timeout error\n");
-		ret = MMC_ERR_TIMEOUT;
+		ret = -ETIMEDOUT;
 	}
 	else if (tmp & NIOS_MMC_CTLSTAT_FRMERR_IF)
 	{
 		MMC_DEBUG(1,"Framing error\n");
-		ret = MMC_ERR_TIMEOUT;
+		ret = -EILSEQ;
 	}
 	else if (tmp & NIOS_MMC_CTLSTAT_CRCERR_IF)
 	{
 		MMC_DEBUG(1,"CRC Error\n");
-		ret = MMC_ERR_BADCRC;
+		ret = -EILSEQ;
 	}
 	else if (tmp & NIOS_MMC_CTLSTAT_FIFO_UNDERRUN_IF)
 	{
 		MMC_DEBUG(1,"FIFO Underrun error\n");
-		ret = MMC_ERR_BADCRC;
+		ret = -EINVAL;
 	}
 	else if (tmp & NIOS_MMC_CTLSTAT_FIFO_OVERRUN_IF)
 	{
 		MMC_DEBUG(1,"FIFO Overrun error\n");	
-		ret = MMC_ERR_BADCRC;
+		ret = -EINVAL;
 	}
 	else
 	{
 		/* Response is good! */
-		ret = MMC_ERR_NONE;
+		//ret = MMC_ERR_NONE
+		ret = 0;
 	}
-	if (ret != MMC_ERR_NONE)
+	if (ret)
 	{
 		MMC_DEBUG(1,"Error executing CMD%d\n",cmd->opcode);
 		MMC_DEBUG(2,"Response argument: 0x%X\n",readl(host->base+NIOS_MMC_REG_CMD_ARG0));
@@ -115,7 +117,8 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	/* Check if this was a data transaction */
 	if (data)
 	{
-		if (cmd->error == MMC_ERR_NONE)
+		//if (cmd->error == MMC_ERR_NONE)
+		if (cmd->error == 0)
 			data->bytes_xfered = data->blksz*data->blocks;
 		else data->bytes_xfered = 0;
 	}
@@ -158,7 +161,7 @@ void nios_mmc_execute_cmd(NIOS_MMC_HOST *host, unsigned char cmd, unsigned int a
 	cmdidx = (xfer_ctl >> NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT)&0x3F;
 	/* Setup DMA base */
 	writel(buf | (1<<31), host->base + NIOS_MMC_REG_DMA_BASE);
-	MMC_DEBUG(2,"XFER_CTL: 0x%X (CMD%d), DMA_BASE(%c): 0x%X, ARG_IN: 0x%X\n",
+	MMC_DEBUG(1,"XFER_CTL: 0x%X (CMD%d), DMA_BASE(%c): 0x%X, ARG_IN: 0x%X\n",
 			xfer_ctl,cmdidx,
 		       	(xfer_ctl&NIOS_MMC_XFER_CTL_DAT_RWn)?'R':'W',buf, arg_in);
 	/* Execute command */
@@ -233,8 +236,9 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd)
 	}
 
 	sg = data->sg;
-	current_address = sg_address(sg);
-	cmd->error = MMC_ERR_NONE;
+	current_address = (unsigned int) sg_virt(sg);
+	//cmd->error = MMC_ERR_NONE;
+	cmd->error = 0;
 	if (data)
 	{
 		if (data->sg_len > 1)
