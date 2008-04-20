@@ -80,6 +80,7 @@
       #define PHY_ADDRESS                           0x00
     #else /* generic PHY, eg NS,Micrel */
       #define PHY_ADDRESS                           0x01
+      #undef PHYIRQ_NUM       // No PHY irq with generic MII
     #endif /* defined(TDK78Q2120PHY) */
 #endif  /* CONFIG_EXCALIBUR */
 
@@ -178,13 +179,16 @@ struct oeth_private {
     ushort           tx_full;   /* Buffer ring fuul indicator */
     ushort           rx_cur;    /* Next buffer to be checked if packet received */
 
-    oeth_regs       *regs;      /* Address of controller registers. */
-    oeth_bd         *rx_bd_base;/* Address of Rx BDs. */
-    oeth_bd         *tx_bd_base;/* Address of Tx BDs. */
+    volatile oeth_regs       *regs;      /* Address of controller registers. */
+    volatile oeth_bd         *rx_bd_base;/* Address of Rx BDs. */
+    volatile oeth_bd         *tx_bd_base;/* Address of Tx BDs. */
 
     struct net_device_stats stats;
     struct tasklet_struct	oeth_rx_tasklet;
     struct tasklet_struct	oeth_tx_tasklet;
+
+    struct mii_if_info mii;
+    spinlock_t       lock;
 };
 
 #ifdef SANCHKEPKT
@@ -648,6 +652,20 @@ oeth_print_packet(unsigned long add, int len)
 }
 #endif
 
+static int mii_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+{
+	struct oeth_private *np = netdev_priv(dev);
+	int rc;
+	if (!netif_running(dev))
+		return -EINVAL;
+
+	spin_lock_irq(&np->lock);
+	rc = generic_mii_ioctl(&np->mii, if_mii(rq), cmd, NULL);
+	spin_unlock_irq(&np->lock);
+
+	return rc;
+}
+
 // Read a phy register
 int eth_mdread(struct net_device *dev,
                int                fiad_phy_addr,
@@ -715,7 +733,11 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
     volatile oeth_regs  *regs = (oeth_regs *)dev->base_addr;
     unsigned long        ulmoderval;
     unsigned long        ulmr1sts;
+    #if defined(TDK78Q2120PHY)
     unsigned long        ulphydiagval;
+    #else
+    unsigned long        bmcrval;
+    #endif
 
     ulmr1sts = eth_mdread(dev, PHY_ADDRESS, MII_BMSR);
     /* Read twice to get CURRENT status                                 */
@@ -725,6 +747,8 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
 
     #if defined(TDK78Q2120PHY)
       ulphydiagval = eth_mdread(dev, PHY_ADDRESS, 18);
+    #else
+      bmcrval = eth_mdread(dev, PHY_ADDRESS, MII_BMCR);
     #endif
 
     if(callerflg == 0)
@@ -905,11 +929,12 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                    (ulphydiagval & 0x0400) ? "100BASE-TX" : "10BASE-T");
           #endif
 
-        #else /* generic PHY, use MR1 */
+        #else /* generic PHY, use MR0 */
 
-	    if((ulmr1sts & (BMSR_100FULL | BMSR_10FULL)) != 0)
+
+	    if((bmcrval & (BMCR_FULLDPLX)) != 0)
             {
-              /* Phy MR1 indicates              */
+              /* Phy MR0 indicates              */
               /*  link is (now) running full duplex.                    */
 
               if((ulmoderval & (OETH_MODER_FULLD)) == 0)
@@ -932,7 +957,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
             }
             else
             {
-              /* Phy MR1 indicates              */
+              /* Phy MR0 indicates              */
               /*  link is (now) running half duplex.                    */
 
               if((ulmoderval & (OETH_MODER_FULLD)) != 0)
@@ -956,7 +981,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
 
           #if defined(ANNOUNCEPHYINT)
             printk("             %s\n",
-                   (ulmr1sts & (BMSR_100FULL | BMSR_100HALF)) ? "100BASE-TX" : "10BASE-T");
+                   (bmcrval & BMCR_SPEED100) ? "100BASE-TX" : "10BASE-T");
           #endif
 
         #endif /* defined(TDK78Q2120PHY) */
@@ -1193,7 +1218,7 @@ oeth_rx(unsigned long devn)
 
         /* Check status for errors.
          */
-	if (bdp->len_status & 0x1ff) printk("oeth: rx%02d,%08x\n",cep->rx_cur,bdp->len_status);
+	//if (bdp->len_status & 0x1ff) printk("oeth: rx%02d,%08x\n",cep->rx_cur,bdp->len_status);
 
         if (bdp->len_status & (OETH_RX_BD_TOOLONG | OETH_RX_BD_SHORT)) {
             cep->stats.rx_length_errors++;
@@ -1484,7 +1509,7 @@ static irqreturn_t oeth_interrupt(int             irq,
                                   void           *dev_id)
 {
     struct  net_device *dev = dev_id;
-    volatile struct oeth_private *cep;
+    struct oeth_private *cep;
     uint    int_events;
 
     cep = (struct oeth_private *)dev->priv;
@@ -1519,7 +1544,7 @@ static int
 oeth_open(struct net_device *dev)
 {
     volatile oeth_regs *regs = (oeth_regs *)dev->base_addr;
-    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)dev->priv;
 
 #ifndef RXBUFF_PREALLOC
     struct  sk_buff *skb;
@@ -1612,7 +1637,7 @@ oeth_open(struct net_device *dev)
 static int
 oeth_close(struct net_device *dev)
 {
-    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)dev->priv;
     volatile oeth_regs *regs = (oeth_regs *)dev->base_addr;
     volatile oeth_bd *bdp;
     int i;
@@ -1895,7 +1920,7 @@ static int calc_crc(char *mac_addr)
 
 static struct net_device_stats *oeth_get_stats(struct net_device *dev)
 {
-    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)dev->priv;
 
     return &cep->stats;
 }
@@ -1968,7 +1993,7 @@ static void oeth_set_multicast_list(struct net_device *dev)
     }
 }
 
-static void oeth_set_mac_add(struct net_device *dev, void *p)
+static int oeth_set_mac_add(struct net_device *dev, void *p)
 {
     struct sockaddr *addr=p;
     volatile oeth_regs *regs;
@@ -1983,6 +2008,7 @@ static void oeth_set_mac_add(struct net_device *dev, void *p)
                       (dev->dev_addr[3]) << 16 |
                       (dev->dev_addr[4]) <<  8 |
                       (dev->dev_addr[5]);
+    return 0;
 }
 
 #ifdef OETH_SYSFS_MDIO_ACCESS
@@ -2139,7 +2165,7 @@ static void init_mdio(struct net_device *dev) {
 */
 static int __init oeth_probe(struct net_device *dev)
 {
-    volatile struct oeth_private  *cep;
+    struct          oeth_private  *cep;
     volatile        oeth_regs     *regs;
     volatile        oeth_bd       *tx_bd, *rx_bd;
     int                            i, j, k;
@@ -2148,6 +2174,7 @@ static int __init oeth_probe(struct net_device *dev)
   #else
     unsigned long mem_addr;
   #endif    // SRAM_BUFF
+    unsigned bmcr_val;
 
     PRINTK2("%s:oeth_probe\n", dev->name);
 
@@ -2250,6 +2277,9 @@ static int __init oeth_probe(struct net_device *dev)
       regs->miiaddress = 20<<8;
       regs->miitx_data = 0x1422;
       regs->miicommand = OETH_MIICOMMAND_WCTRLDATA;
+    #else
+//      printk("\n*** WARNING : forcing link 10Mbps - autoneg... ***\n");
+//      eth_mdwrite(dev, PHY_ADDRESS, 0, 0x0100);
     #endif  // TDK78Q2120PHY
 
 #ifdef TXBUFF_PREALLOC
@@ -2387,6 +2417,18 @@ static int __init oeth_probe(struct net_device *dev)
     dev->set_multicast_list = oeth_set_multicast_list;
     dev->set_mac_address = oeth_set_mac_add;
 
+    bmcr_val = eth_mdread(dev, PHY_ADDRESS, MII_BMCR);
+    dev->do_ioctl = mii_ioctl;
+    cep->mii.dev = dev;
+    cep->mii.mdio_read = eth_mdread;
+    cep->mii.mdio_write = eth_mdwrite;
+    cep->mii.phy_id_mask = 0x1f;
+    cep->mii.reg_num_mask = 0x1f;
+    cep->mii.phy_id = PHY_ADDRESS;
+    cep->mii.full_duplex = (bmcr_val & BMCR_FULLDPLX) ? 1 : 0;	/* is full duplex? */
+    cep->mii.force_media = (bmcr_val & BMCR_ANENABLE) ? 1 : 0;	/* is autoneg. disabled? */
+    cep->mii.supports_gmii = 0; /* are GMII registers supported? */
+
 #ifdef CONFIG_EXCALIBUR
   #ifdef SRAM_BUFF
     printk(" SRAM @0x%08X",SRAM_BUFF_BASE);
@@ -2413,6 +2455,7 @@ static int __init oeth_probe(struct net_device *dev)
              "NOT "
            #endif
           );
+    printk("              BMCR = %04xh.\n", bmcr_val);
 #endif
 #ifdef SANCHKEPKT
     printk("              SANCHKEPKT defined.\n");
