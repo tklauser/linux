@@ -71,8 +71,8 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 {
 	unsigned long	sset, eset;
 
-	sset = (paddr & (nasys_dcache_size - 1)) & (~(nasys_dcache_line_size - 1));
-	eset = (((paddr & (nasys_dcache_size - 1)) + len) & (~(nasys_dcache_line_size - 1))) + nasys_dcache_line_size;
+	sset = paddr & (~(nasys_dcache_line_size - 1));
+	eset = (paddr + len + nasys_dcache_line_size - 1) & (~(nasys_dcache_line_size - 1));
 
 	__asm__ __volatile__ (
 	"1:\n\t"
