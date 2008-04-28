@@ -54,6 +54,7 @@
 #include <linux/skbuff.h>
 #include <linux/init.h>
 #include <linux/mii.h>
+#include <linux/crc32.h>
 
 #include <asm/irq.h>
 #include <asm/pgtable.h>
@@ -64,6 +65,7 @@
 
 #define ANNOUNCEPHYINT
 //#undef  ANNOUNCEPHYINT
+#undef OETH_SW_CRC_CHECKING
 
 #ifdef CONFIG_EXCALIBUR
     #include <asm/nios.h>
@@ -1081,7 +1083,6 @@ oeth_tx(unsigned long devn)
 {
     struct net_device *dev = (void *)devn;
     volatile struct oeth_private *cep;
-    unsigned        long          flags;
     volatile oeth_bd *bdp;
 
 #ifndef TXBUFF_PREALLOC
@@ -1139,13 +1140,9 @@ oeth_tx(unsigned long devn)
         dev_kfree_skb(skb);
 #endif
 
-	local_irq_save(flags);
-
-        if (cep->tx_full)
+       if (cep->tx_full)
             cep->tx_full = 0;
 	cep->tx_last = (cep->tx_last + 1) & OETH_TXBD_NUM_MASK;
-
-	local_irq_restore(flags);
 
       }
 
@@ -1197,8 +1194,8 @@ oeth_rx(unsigned long devn)
             {
                 bdp->addr = (unsigned long) skb->tail;
 
-/*                 dcache_push (((unsigned long) (bdp->addr)), */
-/*                              MAX_FRAME_SIZE); */
+                dcache_push (((unsigned long) (bdp->addr)),
+                             MAX_FRAME_SIZE);
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
             }
@@ -1286,8 +1283,8 @@ oeth_rx(unsigned long devn)
           {
             bdp->len_status &= ~OETH_RX_BD_STATS;
 
-/*             dcache_push (((unsigned long) (bdp->addr)), */
-/*                          OETH_RX_BUFF_SIZE); */
+            dcache_push (((unsigned long) (bdp->addr)),
+                         OETH_RX_BUFF_SIZE);
 
             bdp->len_status |= OETH_RX_BD_EMPTY;
 
@@ -1426,8 +1423,8 @@ oeth_rx(unsigned long devn)
 	    cep->stats.rx_bytes += pkt_len;
           }
 
-/*         dcache_push (((unsigned long) (bdp->addr)), */
-/*                      pkt_len); */
+        dcache_push (((unsigned long) (bdp->addr)),
+                     pkt_len);
 
         bdp->len_status &= ~OETH_RX_BD_STATS;
         bdp->len_status |= OETH_RX_BD_EMPTY;
@@ -1457,8 +1454,8 @@ oeth_rx(unsigned long devn)
                 cep->stats.rx_dropped++;
               }
 
-/*             dcache_push (((unsigned long) (bdp->addr)), */
-/*                          pkt_len); */
+            dcache_push (((unsigned long) (bdp->addr)),
+                         pkt_len);
 
             bdp->len_status &= ~OETH_RX_BD_STATS;
             bdp->len_status |=  OETH_RX_BD_EMPTY;
@@ -1485,8 +1482,8 @@ oeth_rx(unsigned long devn)
 
                 bdp->addr = (unsigned long)skb->tail;
 
-/*                 dcache_push (((unsigned long) (bdp->addr)), */
-/*                              MAX_FRAME_SIZE); */
+                dcache_push (((unsigned long) (bdp->addr)),
+                             MAX_FRAME_SIZE);
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
               }
@@ -1713,7 +1710,6 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
     volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
     volatile        oeth_bd      *bdp;
-    unsigned        long          flags;
     unsigned        int           lenSkbDataByts;
 
     netif_stop_queue(dev);
@@ -1847,7 +1843,13 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 //;dgt  cep->tx_next = (cep->tx_next + 1) & OETH_TXBD_NUM_MASK;
 
-    local_irq_save(flags);
+    /* Send it on its way.  Tell controller its ready, interrupt when done,
+     * and to put the CRC on the end.
+     */
+    dcache_push (((unsigned long) (bdp->addr)),
+                 lenSkbDataByts);
+
+    local_bh_disable();
 
     cep->tx_next = (cep->tx_next + 1) & OETH_TXBD_NUM_MASK;     //;dgt
 
@@ -1856,12 +1858,6 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
         cep->tx_full = 1;
       }
 
-    /* Send it on its way.  Tell controller its ready, interrupt when done,
-     * and to put the CRC on the end.
-     */
-/*     dcache_push (((unsigned long) (bdp->addr)), */
-/*                  lenSkbDataByts); */
-
     bdp->len_status |= (  0
                         | OETH_TX_BD_READY
                         | OETH_TX_BD_IRQ
@@ -1869,8 +1865,6 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
                        );
 
     dev->trans_start = jiffies;
-
-    local_irq_restore(flags);
 
     if (cep->tx_next != cep->tx_last)
       {
@@ -1883,6 +1877,7 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 //          Don't let the tx ring completely fill
 //        }
       }
+    local_bh_enable();
 
     return 0;
 }
@@ -2253,7 +2248,7 @@ static int __init oeth_probe(struct net_device *dev)
 
     /* Set control module mode
      */
-  #if 0
+  #if 1
     regs->ctrlmoder = OETH_CTRLMODER_TXFLOW | OETH_CTRLMODER_RXFLOW;
   #else
     regs->ctrlmoder = 0;
@@ -2289,7 +2284,7 @@ static int __init oeth_probe(struct net_device *dev)
     for(i = 0, k = 0; i < OETH_TX_BUFF_PAGE_NUM; i++) {
 
   #ifndef SRAM_BUFF
-        mem_addr = __get_free_page(GFP_KERNEL) | 0x80000000;
+        mem_addr = __get_free_page(GFP_KERNEL);
   #endif    // SRAM_BUFF
 
         for(j = 0; j < OETH_TX_BUFF_PPGAE; j++, k++) {
@@ -2325,15 +2320,15 @@ static int __init oeth_probe(struct net_device *dev)
     for(i = 0, k = 0; i < OETH_RX_BUFF_PAGE_NUM; i++) {
 
   #ifndef SRAM_BUFF
-        mem_addr = __get_free_page(GFP_KERNEL) | 0x80000000;
+        mem_addr = __get_free_page(GFP_KERNEL);
   #endif    // SRAM_BUFF
 
         for(j = 0; j < OETH_RX_BUFF_PPGAE; j++, k++)
           {
             rx_bd[k].addr = __pa(mem_addr);
 
-/*             dcache_push (((unsigned long) (rx_bd[k].addr)), */
-/*                          OETH_RX_BUFF_SIZE); */
+            dcache_push (((unsigned long) (rx_bd[k].addr)),
+                         OETH_RX_BUFF_SIZE);
 
             rx_bd[k].len_status = OETH_RX_BD_EMPTY | OETH_RX_BD_IRQ;
               // FIXME...Should we really let the rx ring
@@ -2344,8 +2339,6 @@ static int __init oeth_probe(struct net_device *dev)
           }
     }
     rx_bd[OETH_RXBD_NUM - 1].len_status |= OETH_RX_BD_WRAP;
-
-    cache_push_all();
 
 #else
     /* Initialize RXBDs.
