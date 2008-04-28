@@ -115,6 +115,7 @@ int pte_write(pte_t pte);
 int pte_dirty(pte_t pte);
 int pte_young(pte_t pte);
 int pte_file(pte_t pte);
+static inline int pte_special(pte_t pte)	{ return 0; }
 
 #include <linux/swap.h>
 swp_entry_t   __pte_to_swp_entry(pte_t pte);
@@ -136,6 +137,7 @@ pte_t pte_mkclean(pte_t pte);
 pte_t pte_mkold(pte_t pte);
 pte_t pte_mkwrite(pte_t pte);
 pte_t pte_mkdirty(pte_t pte);
+static inline pte_t pte_mkspecial(pte_t pte)	{ return pte; }
 
 pte_t pte_mkyoung(pte_t pte);
 pte_t pte_modify(pte_t pte, pgprot_t newprot);
