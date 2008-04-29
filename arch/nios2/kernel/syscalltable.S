@@ -351,13 +351,15 @@ ENTRY(sys_call_table)
 	.long sys_epoll_pwait		/* 315 */
 	.long sys_utimensat
 	.long sys_signalfd
-	.long sys_timerfd
+	.long sys_timerfd_create
 	.long sys_eventfd
 	.long sys_pread64
 	.long sys_pwrite64		/* 321 */
 	.long sys_fallocate
+	.long sys_timerfd_settime
+	.long sys_timerfd_gettime
 
-	.rept NR_syscalls - 323
+	.rept NR_syscalls - 325
 		.long sys_ni_syscall
 	.endr
 
