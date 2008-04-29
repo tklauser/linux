@@ -1,6 +1,11 @@
-#ifndef _ASM_NIOS2_UNALIGNED_H
-#define _ASM_NIOS2_UNALIGNED_H
+#ifndef _ASM_UNALIGNED_H
+#define _ASM_UNALIGNED_H
 
-#include <asm-generic/unaligned.h>
+#include <linux/unaligned/le_byteshift.h>
+#include <linux/unaligned/be_byteshift.h>
+#include <linux/unaligned/generic.h>
 
-#endif  /* _ASM_NIOS2_UNALIGNED_H */
+#define get_unaligned	__get_unaligned_le
+#define put_unaligned	__put_unaligned_le
+
+#endif /* _ASM_UNALIGNED_H */
