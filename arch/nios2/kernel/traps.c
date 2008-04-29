@@ -93,7 +93,7 @@ int kstack_depth_to_print = 48;
 void show_stack(struct task_struct *task, unsigned long *stack)
 {
 	unsigned long *endstack, addr;
-	extern char _start, _etext;
+	extern char _stext, _etext;
 	int i;
 
 	if (!stack) {
@@ -127,7 +127,7 @@ void show_stack(struct task_struct *task, unsigned long *stack)
 		 * down the cause of the crash will be able to figure
 		 * out the call path that was taken.
 		 */
-		if (((addr >= (unsigned long) &_start) &&
+		if (((addr >= (unsigned long) &_stext) &&
 		     (addr <= (unsigned long) &_etext))) {
 			if (i % 4 == 0)
 				printk(KERN_EMERG "\n       ");

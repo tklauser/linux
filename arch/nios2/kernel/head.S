@@ -23,6 +23,8 @@
  *
  */
 
+#include <linux/linkage.h>
+#include <linux/init.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
@@ -68,9 +70,10 @@ _current_thread:
  * if the code resides in flash (looks for "Nios" at offset 0x0c from
  * the potential executable image).
  */
-	.text
-	.global _start
-_start:
+
+__INIT
+
+ENTRY(_start)
 	wrctl	status,r0		/* Disable interrupts */
 	
 	/* Flush all cache lines within the instruction cache */
@@ -234,7 +237,7 @@ finish_move:
 	movia	r1,nios2_boot_init	// save args r4-r7 passed from u-boot
 	callr	r1
 	
-	movia	r1,main			// call main as a subroutine
+	movia	r1,start_kernel		// call main as a subroutine
 	callr	r1
 
 	//------------------------------------------------------------------
@@ -245,4 +248,7 @@ finish_move:
 	/* End of startup code */
 .set at
 
+ENDPROC(_start)
+
+__FINIT
 
