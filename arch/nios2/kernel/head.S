@@ -70,10 +70,9 @@ _current_thread:
  * if the code resides in flash (looks for "Nios" at offset 0x0c from
  * the potential executable image).
  */
-
-__INIT
-
-ENTRY(_start)
+	.text
+	.global _start
+_start:
 	wrctl	status,r0		/* Disable interrupts */
 	
 	/* Flush all cache lines within the instruction cache */
@@ -226,8 +225,4 @@ data_flush:
 
 	/* End of startup code */
 .set at
-
-ENDPROC(_start)
-
-__FINIT
 
