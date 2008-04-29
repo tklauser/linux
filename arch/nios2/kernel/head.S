@@ -107,30 +107,9 @@ data_flush:
 	sub	r1,r1,r2
 	bgt	r1,r0,data_flush
 
-NR_MoveStart:
 #ifdef CONFIG_BREAK_ON_START
 	break
 #endif //CONFIG_BREAK_ON_START
-	nextpc	r1			/* Find out where we are */
-chkadr:	
-	movia	r2,chkadr
-	beq	r1,r2,finish_move	/* We are running in RAM done */
-	addi	r1,r1,(_start - chkadr)	/* Source */
-	movia	r2,_start		/* Destination */
-	movia	r3,__bss_start		/* End of copy */
-	
-loop_move:				// r1: src, r2: dest, r3: last dest
-	ldw	r8,0(r1)		// load a word from [r1]
-	stw	r8,0(r2)		// stort a word to dest [r2]
-	flushd	0(r2)			// Flush cache for safty
-	addi 	r1,r1,4			// inc the src addr
-	addi	r2,r2,4			// inc the dest addr
-	blt	r2,r3,loop_move
-		
-	movia	r1,finish_move		// VMA(_start)->l1
-	jmp	r1			// jmp to _start	
-
-finish_move:
 
 #if defined(CPU_EXCEPT_ADDRESS_ASM) && (CPU_EXCEPT_ADDRESS_ASM != (LINUX_SDRAM_START + 0x20))
 /*	Copy an instruction sequence to put at the exception address */	
@@ -215,8 +194,8 @@ finish_move:
 	//------------------------------------------------------
 	// Zero out the .bss segment (uninitialized common data)
 	//
-	movia	r2,__bss_start		// presume nothing is between
-	movia	r1,_end			// the .bss and _end.
+	movia	r2,__bss_start		// zero out bss
+	movia	r1,__bss_stop
 1:
 	stb	r0,0(r2)
 	addi	r2,r2,1
