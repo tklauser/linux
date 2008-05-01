@@ -537,6 +537,7 @@ static struct platform_device smc91x_device = {
 static int __init smc91x_device_init(void)
 {
 #define SMC_DEBUG 0
+#include <linux/mii.h>
 #include "../../../drivers/net/smc91x.h"
 	/* write eth hardware address to MAC */
 	void __iomem *ioaddr = (void *)(na_enet + LAN91C111_REGISTERS_OFFSET);
