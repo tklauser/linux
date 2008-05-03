@@ -43,10 +43,6 @@
 
 #define VIDEOMEMSIZE	(XRES * YRES * (BPX>>3))
 
-static void *videomemory;
-static u_long videomemorysize = VIDEOMEMSIZE;
-module_param(videomemorysize, ulong, 0);
-
 static struct fb_var_screeninfo altfb_default __initdata = {
 	.xres =		XRES,
 	.yres =		YRES,
@@ -98,16 +94,13 @@ static struct fb_ops altfb_ops = {
 };
 
 
-    /*
-     *  Most drivers don't need their own mmap function 
-     */
-
-static int altfb_mmap(struct fb_info *info,
-		    struct vm_area_struct *vma)
+/* We implement our own mmap to set MAY_SHARE and add the correct size */
+static int altfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
-	/* this is uClinux (no MMU) specific code */
-	vma->vm_flags |= (VM_RESERVED | VM_MAYSHARE);
-	vma->vm_start = (unsigned) videomemory;
+	vma->vm_flags |= VM_MAYSHARE| VM_SHARED;
+
+	vma->vm_start = info->fix.smem_start;
+	vma->vm_end   = info->fix.smem_start + info->fix.smem_len;
 	return 0;
 }
 
@@ -125,23 +118,20 @@ static int __init altfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	int retval = -ENOMEM;
-	dma_addr_t handle;
 
-	/*
-	 * For real video cards we use ioremap.
-	 */
-	if (!(videomemory = dma_alloc_coherent(&dev->dev, PAGE_ALIGN(videomemorysize), &handle, GFP_KERNEL))) {
-	        printk(KERN_ERR "altfb: unable to allocate screen memory\n");
-		return retval;
+	altfb_fix.smem_len = VIDEOMEMSIZE;
+	altfb_fix.smem_start = __get_free_pages(GFP_KERNEL, get_order(altfb_fix.smem_len));
+	if (!altfb_fix.smem_start) {
+		printk("Unable to allocate %d PAGEs(%d Bytes) fb memory\n",
+		       get_order(altfb_fix.smem_len), altfb_fix.smem_len);
+		return -ENOMEM;
 	}
-	altfb_fix.smem_start = handle;
-	altfb_fix.smem_len = videomemorysize;
 
 	info = framebuffer_alloc(sizeof(u32) * 256, &dev->dev);
 	if (!info)
 		goto err;
 
-	info->screen_base = (char __iomem *)videomemory;
+	info->screen_base = ioremap(altfb_fix.smem_start, altfb_fix.smem_len);
 	info->fbops = &altfb_ops;
 	info->var = altfb_default;
 	info->fix = altfb_fix;
@@ -159,21 +149,20 @@ static int __init altfb_probe(struct platform_device *dev)
 	platform_set_drvdata(dev, info);
 
 	outl(0x0,vgabase+0);  // Reset the VGA controller
-	outl(videomemory,vgabase+4);  // Where our frame buffer starts
-	outl(videomemorysize,vgabase+8);  // amount of memory needed
-	outl(0x1,vgabase+0);  // Set the go bit
+	outl(altfb_fix.smem_start, vgabase+4);  // Where our frame buffer starts
+	outl(altfb_fix.smem_len, vgabase+8);  // amount of memory needed
+	outl(0x1, vgabase+0);  // Set the go bit
 
-	printk(KERN_INFO
-	       "fb%d: Altera frame buffer device, using %ldK of video memory\n",
-	       info->node, videomemorysize >> 10);
+	printk(KERN_INFO "fb%d: %s frame buffer device\n", info->node, info->fix.id);
 	// printk("vga %08x, video %08x+%08x\n",vgabase,videomemory,videomemorysize);
 	return 0;
 err2:
 	fb_dealloc_cmap(&info->cmap);
 err1:
+	iounmap((void *)altfb_fix.smem_start);
 	framebuffer_release(info);
 err:
-	dma_free_noncoherent(&dev->dev, videomemorysize, videomemory, handle);
+	free_pages(altfb_fix.smem_start, get_order(altfb_fix.smem_len));
 	return retval;
 }
 
@@ -183,7 +172,8 @@ static int altfb_remove(struct platform_device *dev)
 
 	if (info) {
 		unregister_framebuffer(info);
-	        dma_free_noncoherent(&dev->dev, videomemorysize, videomemory, altfb_fix.smem_start);
+		iounmap((void *)info->fix.smem_start);
+		free_pages(info->fix.smem_start, get_order(info->fix.smem_len));
 		framebuffer_release(info);
 	}
 	return 0;
