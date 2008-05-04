@@ -572,7 +572,7 @@ static struct resource dm9k_resource[] = {
 	[2] = {
 		.start = na_dm9000_irq,
 		.end   = na_dm9000_irq,
-		.flags = IORESOURCE_IRQ,
+		.flags = IORESOURCE_IRQ | IRQF_TRIGGER_HIGH,
 	}
 
 };
