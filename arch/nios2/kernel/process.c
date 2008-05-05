@@ -340,60 +340,6 @@ int copy_thread(int nr, unsigned long clone_flags,
 }
 
 /*
- * fill in the user structure for a core dump..
- */
-void dump_thread(struct pt_regs * regs, struct user * dump)
-{
-	struct switch_stack *sw;
-
-	/* changed the size calculations - should hopefully work better. lbt */
-	dump->magic = CMAGIC;
-	dump->start_code = 0;
-	dump->start_stack = regs->sp & ~(PAGE_SIZE - 1);
-	dump->u_tsize = ((unsigned long) current->mm->end_code) >> PAGE_SHIFT;
-	dump->u_dsize = ((unsigned long) (current->mm->brk +
-					  (PAGE_SIZE-1))) >> PAGE_SHIFT;
-	dump->u_dsize -= dump->u_tsize;
-	dump->u_ssize = 0;
-
-	if (dump->start_stack < TASK_SIZE)
-		dump->u_ssize = ((unsigned long) (TASK_SIZE - dump->start_stack)) >> PAGE_SHIFT;
-
-	dump->u_ar0 = (struct user_regs_struct *)((int)&dump->regs - (int)dump);
-	sw = ((struct switch_stack *)regs) - 1;
-	dump->regs.r1 = regs->r1;
-	dump->regs.r2 = regs->r2;
-	dump->regs.r3 = regs->r3;
-	dump->regs.r4 = regs->r4;
-	dump->regs.r5 = regs->r5;
-	dump->regs.r6 = regs->r6;
-	dump->regs.r7 = regs->r7;
-	dump->regs.r8 = regs->r8;
-	dump->regs.r9 = regs->r9;
-	dump->regs.r10 = regs->r10;
-	dump->regs.r11 = regs->r11;
-	dump->regs.r12 = regs->r12;
-	dump->regs.r13 = regs->r13;
-	dump->regs.r14 = regs->r14;
-	dump->regs.r15 = regs->r15;
-	dump->regs.r16 = sw->r16;
-	dump->regs.r17 = sw->r17;
-	dump->regs.r18 = sw->r18;
-	dump->regs.r19 = sw->r19;
-	dump->regs.r20 = sw->r20;
-	dump->regs.r21 = sw->r21;
-	dump->regs.r22 = sw->r22;
-	dump->regs.r23 = sw->r23;
-	dump->regs.ra = sw->ra;
-	dump->regs.fp = sw->fp;
-	dump->regs.gp = sw->gp;
-	dump->regs.sp = regs->sp;
-	dump->regs.orig_r2 = regs->orig_r2;
-	dump->regs.estatus = regs->estatus;
-	dump->regs.ea = regs->ea;
-}
-
-/*
  *	Generic dumping code. Used for panic and debug.
  */
 void dump(struct pt_regs *fp)

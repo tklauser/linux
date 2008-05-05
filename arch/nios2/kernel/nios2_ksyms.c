@@ -44,12 +44,10 @@
 #include <asm/hardirq.h>
 #include <asm/current.h>
 
-extern void dump_thread(struct pt_regs *, struct user *);
 /* platform dependent support */
 
 EXPORT_SYMBOL(__ioremap);
 EXPORT_SYMBOL(iounmap);
-EXPORT_SYMBOL(dump_thread);
 
 EXPORT_SYMBOL(kernel_thread);
 
