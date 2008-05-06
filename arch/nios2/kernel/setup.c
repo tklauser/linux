@@ -326,8 +326,9 @@ void __init setup_arch(char **cmdline_p)
 	free_bootmem(memory_start, memory_end - memory_start);
 	reserve_bootmem(memory_start, bootmap_size, BOOTMEM_DEFAULT);
 #ifdef CONFIG_BLK_DEV_INITRD
-	if (initrd_start) reserve_bootmem(virt_to_phys((void *)initrd_start), initrd_end - initrd_start,
-		BOOTMEM_DEFAULT);
+	if (initrd_start)
+		reserve_bootmem(virt_to_phys((void *)initrd_start),
+			initrd_end - initrd_start, BOOTMEM_DEFAULT);
 #endif /* CONFIG_BLK_DEV_INITRD */
 	/*
 	 * get kmalloc into gear
