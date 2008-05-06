@@ -39,7 +39,7 @@
 }
 #else
 #define MMC_DEBUG(l,x...) {}
-#endif //CONFIG_MMC_DEBUG
+#endif /* CONFIG_MMC_DEBUG */
 
 #define MMC_CRIT_ERR(x...) {\
 	printk("Crit. error in %s(): %s. Halting\n",__func__,x);\
@@ -67,7 +67,7 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 		while(1);
 	}
 	tmp = readl(host->base + NIOS_MMC_REG_CTLSTAT);
-	//Interrupt flags will be cleared in ISR routine, so we don't have to touch them */
+	/* Interrupt flags will be cleared in ISR routine, so we don't have to touch them */
 	if (tmp & NIOS_MMC_CTLSTAT_TIMEOUTERR_IF)
 	{
 		MMC_DEBUG(1,"Timeout error\n");
@@ -96,7 +96,6 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	else
 	{
 		/* Response is good! */
-		//ret = MMC_ERR_NONE
 		ret = 0;
 	}
 	if (ret)
@@ -117,7 +116,6 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	/* Check if this was a data transaction */
 	if (data)
 	{
-		//if (cmd->error == MMC_ERR_NONE)
 		if (cmd->error == 0)
 			data->bytes_xfered = data->blksz*data->blocks;
 		else data->bytes_xfered = 0;
@@ -220,7 +218,6 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd)
 			nocrc = 1;
 		case MMC_RSP_R1:
 		case MMC_RSP_R1B:
-		//case MMC_RSP_R6:
 			resp_type = 1;
 			break;
 		case MMC_RSP_R2:
@@ -237,7 +234,6 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd)
 
 	sg = data->sg;
 	current_address = (unsigned int) sg_virt(sg);
-	//cmd->error = MMC_ERR_NONE;
 	cmd->error = 0;
 	if (data)
 	{
