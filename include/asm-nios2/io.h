@@ -239,8 +239,6 @@ extern void iounmap(void *addr);
 #define page_to_phys(page)      page_to_virt(page)
 #define page_to_bus(page)       page_to_virt(page)
 
-#define mm_ptov(vaddr)		((void *) (vaddr))
-#define mm_vtop(vaddr)		((unsigned long) (vaddr))
 #define phys_to_virt(vaddr)	((void *) (vaddr))
 #define virt_to_phys(vaddr)	((unsigned long) (vaddr))
 
