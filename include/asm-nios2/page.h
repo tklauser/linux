@@ -31,8 +31,6 @@
 #define PAGE_SIZE	(4096)
 #define PAGE_MASK	(~(PAGE_SIZE-1))
 
-#ifdef __KERNEL__
-
 #include <asm/setup.h>
 
 #if PAGE_SHIFT < 13
@@ -119,7 +117,5 @@ extern unsigned long memory_end;
 #endif /* __ASSEMBLY__ */
 
 #include <asm-generic/page.h>
-
-#endif /* __KERNEL__ */
 
 #endif /* _NIOS2_PAGE_H */
