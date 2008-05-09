@@ -1,9 +1,4 @@
 /*
-  21Mar2001    1.1    dgt/microtronix: Altera Excalibur/Nios32 port
-  30Jun2003           kenw/microtronix: Remove cmdline check in flash
-*/
-
-/*
  *  linux/arch/niosnommu/kernel/setup.c
  *
  *  Copyright (C) 2004       Microtronix Datacom Ltd.
@@ -186,7 +181,6 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	printk("\x0F\r\n\nuClinux/Nios II\n");
-	printk("Altera Nios II support (C) 2004 Microtronix Datacom Ltd.\n");
 
 #ifdef DEBUG
 	printk("KERNEL -> TEXT=0x%08x-0x%08x DATA=0x%08x-0x%08x "
