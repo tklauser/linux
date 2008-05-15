@@ -536,8 +536,8 @@ static int __init smc91x_device_init(void)
 #include "../../../drivers/net/smc91x.h"
 	/* write eth hardware address to MAC */
 	void __iomem *ioaddr = (void *)(na_enet + LAN91C111_REGISTERS_OFFSET);
-	SMC_SELECT_BANK(1);
-	SMC_SET_MAC_ADDR(excalibur_enet_hwaddr);
+	SMC_outl((1)<<16, ioaddr, 12<<SMC_IO_SHIFT);	/* Select Bank 1 */
+	SMC_SET_MAC_ADDR(0, excalibur_enet_hwaddr);
 	/* customizes platform devices, or adds new ones */
 	platform_device_register(&smc91x_device);
 	return 0;
