@@ -11,11 +11,10 @@ extra-y := head.o init_task.o vmlinux.lds
 
 obj-y   := entry.o traps.o irq.o syscalltable.o \
 	    process.o signal.o setup.o sys_nios2.o \
-	    io.o usb.o\
+	    io.o usb.o config.o \
 	    time.o ptrace.o nios2_ksyms.o
 
 obj-$(CONFIG_MODULES) += module.o
-obj-$(CONFIG_CONSOLE) += console.o
 obj-$(CONFIG_PIO_DEVICES) += pio.o
 obj-$(CONFIG_AVALON_DMA) += dma.o
 
