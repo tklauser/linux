@@ -10,10 +10,10 @@
 #include <linux/platform_device.h>
 
 struct avalon_uart_platform_uart {
-	unsigned long	mapbase;	/* Physical address base */
-	void __iomem	*membase;	/* Virtual address if mapped */
-	unsigned int	irq;		/* Interrupt vector */
-	unsigned int	uartclk;	/* UART clock rate */
+	unsigned long mapbase;	/* Physical address base */
+	void __iomem *membase;	/* Virtual address if mapped */
+	unsigned int irq;	/* Interrupt vector */
+	unsigned int uartclk;	/* UART clock rate */
 };
 
 #define AVALON_UART_RXDATA_REG            0
@@ -52,5 +52,5 @@ struct avalon_uart_platform_uart {
 
 #define AVALON_UART_EOP_MSK               (0xFF)
 #define AVALON_UART_EOP_OFST              (0)
-					
-#endif	/* avuart_h */
+
+#endif /* avuart_h */
