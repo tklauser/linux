@@ -100,7 +100,7 @@ foreach my $module_name (@modulelist) {
 	my $class = $module->getClass ();
 
 	if ($module->isEnabled ()) {	
-		if ($class eq 'altera_avalon_cfi_flash') {
+		if ($module->isNonvolatileStorage()) {
 			$cfiinfo{$module_name}{class} = $class;
 			$cfiinfo{$module_name}{size} = $module->getSize();
 		} 

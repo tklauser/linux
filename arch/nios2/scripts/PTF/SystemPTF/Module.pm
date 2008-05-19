@@ -116,6 +116,26 @@ sub isMemoryDevice {
 	return $result;
 }
 
+sub isNonvolatileStorage {
+	my ($self, $port_name) = @_;
+	
+	my $port = $self->getPort ($port_name);
+	if (! $port) {
+		# return undef if the PTF section doesn't exist
+		return;
+	}
+	
+	my $SBI = $port->getSection('SYSTEM_BUILDER_INFO', '');
+	if (! $SBI) {
+		# return undef if the PTF section doesn't exist
+		return;
+	}
+	
+	my $result = $SBI->getAssignment('Is_Nonvolatile_Storage');
+	
+	return $result;
+}
+
 sub isCustomInstruction {
 	my ($self, $port_name) = @_;
 	
