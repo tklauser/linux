@@ -186,4 +186,14 @@ void *memcpy (void *dstpp, const void *srcpp, size_t len)
 
   return dstpp;
 }
+
+void *memcpyb (void *dstpp, const void *srcpp, unsigned len)
+{
+  unsigned long int dstp = (long int) dstpp;
+  unsigned long int srcp = (long int) srcpp;
+
+  BYTE_COPY_FWD (dstp, srcp, len);
+
+  return dstpp;
+}
 #endif
