@@ -48,6 +48,9 @@ config GENERIC_TIME
 	bool
 	default y
 
+config NO_IOPORT
+	def_bool y
+
 config HOTPLUG_CPU
 	bool
 	default n
