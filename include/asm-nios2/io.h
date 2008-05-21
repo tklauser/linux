@@ -78,9 +78,8 @@ static inline void io_insl(unsigned int addr, void *buf, int len)
  *	can override them as required
  */
 
-extern void *memcpyb (void *dstpp, const void *srcpp, unsigned len);
 #define memset_io(a, b, c)	memset((void *)(a), (b), (c))
-#define memcpy_fromio(a, b, c)	memcpyb((a), (void *)(b), (c))
+#define memcpy_fromio(a, b, c)	memcpy((a), (void *)(b), (c))
 #define memcpy_toio(a, b, c)	memcpy((void *)(a), (b), (c))
 
 #define inb(addr)    readb(addr)
