@@ -480,6 +480,7 @@ static struct mtd_info *cfi_amdstd_setup(struct mtd_info *mtd)
  * correctly and is therefore not done	(particulary with interleaved chips
  * as each chip must be checked independantly of the others).
  */
+#ifndef CONFIG_NIOS2
 static int __xipram chip_ready(struct map_info *map, unsigned long addr)
 {
 	map_word d, t;
@@ -489,6 +490,28 @@ static int __xipram chip_ready(struct map_info *map, unsigned long addr)
 
 	return map_word_equal(map, d, t);
 }
+#else
+/* On avalon bus, there is no such a luxury of toggling bit ... 
+ * Use the polling bit, if we know the datum ...
+ */ 
+static int __xipram chip_ready_dq7(struct map_info *map, unsigned long addr, map_word datum)
+{
+	map_word d;
+
+	d = map_read(map, addr);
+
+	return map_word_equal(map, d, datum);
+}
+
+static int __xipram erase_is_done(struct map_info *map, unsigned long addr)
+{
+	map_word d;
+
+	d = map_read(map, addr);
+
+	return (d.x[0] & 0x80);
+}
+#endif
 
 /*
  * Return true if the chip is ready and has the correct value.
@@ -509,10 +532,16 @@ static int __xipram chip_good(struct map_info *map, unsigned long addr, map_word
 {
 	map_word oldd, curd;
 
+#ifndef CONFIG_NIOS2
 	oldd = map_read(map, addr);
+#endif
 	curd = map_read(map, addr);
 
+#ifdef CONFIG_NIOS2
+	return
+#else
 	return	map_word_equal(map, oldd, curd) &&
+#endif
 		map_word_equal(map, curd, expected);
 }
 
@@ -530,8 +559,10 @@ static int get_chip(struct map_info *map, struct flchip *chip, unsigned long adr
 
 	case FL_STATUS:
 		for (;;) {
+#ifndef CONFIG_NIOS2
 			if (chip_ready(map, adr))
 				break;
+#endif
 
 			if (time_after(jiffies, timeo)) {
 				printk(KERN_ERR "Waiting for chip to be ready timed out.\n");
@@ -551,6 +582,12 @@ static int get_chip(struct map_info *map, struct flchip *chip, unsigned long adr
 		return 0;
 
 	case FL_ERASING:
+#ifdef CONFIG_NIOS2
+		/* Because of Avalon bus, it is impossible to tell if a
+		 * sector is suspended or not, better avoid erase suspending
+		 */
+		 	goto sleep;
+#endif
 		if (mode == FL_WRITING) /* FIXME: Erase-suspend-program appears broken. */
 			goto sleep;
 
@@ -574,8 +611,10 @@ static int get_chip(struct map_info *map, struct flchip *chip, unsigned long adr
 		chip->state = FL_ERASE_SUSPENDING;
 		chip->erase_suspended = 1;
 		for (;;) {
+#ifndef CONFIG_NIOS2
 			if (chip_ready(map, adr))
 				break;
+#endif
 
 			if (time_after(jiffies, timeo)) {
 				/* Should have suspended the erase by now.
@@ -1027,7 +1066,11 @@ static int __xipram do_write_oneword(struct map_info *map, struct flchip *chip, 
 	 * depending of the conditions.	 The ' + 1' is to avoid having a
 	 * timeout of 0 jiffies if HZ is smaller than 1000.
 	 */
+#ifdef CONFIG_NIOS2
+	unsigned long uWriteTimeout = ( HZ / 1000 ) + 2;
+#else
 	unsigned long uWriteTimeout = ( HZ / 1000 ) + 1;
+#endif
 	int ret = 0;
 	map_word oldd;
 	int retry_cnt = 0;
@@ -1088,14 +1131,22 @@ static int __xipram do_write_oneword(struct map_info *map, struct flchip *chip, 
 			continue;
 		}
 
+#ifdef CONFIG_NIOS2
+		if (time_after(jiffies, timeo) && !chip_ready_dq7(map, adr, datum)){
+#else
 		if (time_after(jiffies, timeo) && !chip_ready(map, adr)){
+#endif
 			xip_enable(map, chip, adr);
 			printk(KERN_WARNING "MTD %s(): software timeout\n", __func__);
 			xip_disable(map, chip, adr);
 			break;
 		}
 
+#ifdef CONFIG_NIOS2
+		if (chip_ready_dq7(map, adr, datum))
+#else
 		if (chip_ready(map, adr))
+#endif
 			break;
 
 		/* Latency issues. Drop the lock, wait a while and retry */
@@ -1274,7 +1325,11 @@ static int __xipram do_write_buffer(struct map_info *map, struct flchip *chip,
 	struct cfi_private *cfi = map->fldrv_priv;
 	unsigned long timeo = jiffies + HZ;
 	/* see comments in do_write_oneword() regarding uWriteTimeo. */
+#ifdef CONFIG_NIOS2
+	unsigned long uWriteTimeout = ( HZ / 1000 ) + 2;
+#else
 	unsigned long uWriteTimeout = ( HZ / 1000 ) + 1;
+#endif
 	int ret = -EIO;
 	unsigned long cmd_adr;
 	int z, words;
@@ -1349,10 +1404,18 @@ static int __xipram do_write_buffer(struct map_info *map, struct flchip *chip,
 			continue;
 		}
 
+#ifdef CONFIG_NIOS2
+		if (time_after(jiffies, timeo) && !chip_ready_dq7(map, adr, datum))
+#else
 		if (time_after(jiffies, timeo) && !chip_ready(map, adr))
+#endif
 			break;
 
+#ifdef CONFIG_NIOS2
+		if (chip_ready_dq7(map, adr, datum)) {
+#else
 		if (chip_ready(map, adr)) {
+#endif
 			xip_enable(map, chip, adr);
 			goto op_done;
 		}
@@ -1522,7 +1585,11 @@ static int __xipram do_erase_chip(struct map_info *map, struct flchip *chip)
 			chip->erase_suspended = 0;
 		}
 
+#ifdef CONFIG_NIOS2
+		if (erase_is_done(map, adr))
+#else
 		if (chip_ready(map, adr))
+#endif
 			break;
 
 		if (time_after(jiffies, timeo)) {
@@ -1558,6 +1625,9 @@ static int __xipram do_erase_oneblock(struct map_info *map, struct flchip *chip,
 	unsigned long timeo = jiffies + HZ;
 	DECLARE_WAITQUEUE(wait, current);
 	int ret = 0;
+#ifdef CONFIG_NIOS2
+	int altera_retried = 0;
+#endif
 
 	adr += chip->start;
 
@@ -1571,6 +1641,10 @@ static int __xipram do_erase_oneblock(struct map_info *map, struct flchip *chip,
 	DEBUG( MTD_DEBUG_LEVEL3, "MTD %s(): ERASE 0x%.8lx\n",
 	       __func__, adr );
 
+#ifdef CONFIG_NIOS2
+/* the erase sometimes needs a second try on altera platforms */
+altera_retry:
+#endif
 	XIP_INVAL_CACHED_RANGE(map, adr, len);
 	ENABLE_VPP(map);
 	xip_disable(map, chip, adr);
@@ -1610,7 +1684,11 @@ static int __xipram do_erase_oneblock(struct map_info *map, struct flchip *chip,
 			chip->erase_suspended = 0;
 		}
 
+#ifdef CONFIG_NIOS2
+		if (erase_is_done(map, adr)) {
+#else
 		if (chip_ready(map, adr)) {
+#endif
 			xip_enable(map, chip, adr);
 			break;
 		}
@@ -1625,6 +1703,17 @@ static int __xipram do_erase_oneblock(struct map_info *map, struct flchip *chip,
 		/* Latency issues. Drop the lock, wait a while and retry */
 		UDELAY(map, chip, adr, 1000000/HZ);
 	}
+
+#ifdef CONFIG_NIOS2
+	/* give altera's platform a second chance */
+	if (!altera_retried) {
+		altera_retried=1;
+		/* reset on all failures. */
+		map_write( map, CMD(0xF0), chip->start );
+		goto altera_retry;
+	}
+#endif
+
 	/* Did we succeed? */
 	if (!chip_good(map, adr, map_word_ff(map))) {
 		/* reset on all failures. */
