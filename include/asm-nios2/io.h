@@ -171,8 +171,5 @@ extern void iounmap(void *addr);
 #define writesb(p, d, l)	outsb(p, d, l)
 #define writesw(p, d, l)	outsw(p, d, l)
 #define writesl(p, d, l)	outsl(p, d, l)
-#ifndef irq_canonicalize
-#define irq_canonicalize(i)	(i)
-#endif
 
 #endif /* __NIOS2_IO_H__ */

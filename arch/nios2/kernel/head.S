@@ -93,6 +93,8 @@ exc_hook:
 	movia	r24,inthandler
 	jmp	r24
 1:		
+	wrctl	ienable,r0		/* Disable interrupt lines */
+
 	/*
 	 * After flushing the instruction cache, we must flush the data
 	 * cache.

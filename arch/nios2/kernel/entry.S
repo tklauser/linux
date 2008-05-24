@@ -185,7 +185,7 @@ ENTRY(inthandler)
 	addi	r4,r4,1
 	beq	r10,r0,1b
 	mov	r5,sp			/* Setup pt_regs pointer for handler call */
-	call	process_int
+	call	do_IRQ
 	rdctl	r12,ipending		/* check again if irq still pending */
 	rdctl	r9,ienable		/* Isolate possible interrupts */
 	and	r12,r12,r9

@@ -14,13 +14,12 @@
 #include <linux/ptrace.h>
 #include <linux/hardirq.h>
 #include <linux/kbuild.h>
-
+#include <asm/bootinfo.h>
 #include <asm/irq.h>
-#include <asm/errno.h>
+#include <asm/thread_info.h>
 
 int main(void)
 {
-
 	/* offsets into the task struct */
 	DEFINE(TASK_STATE, offsetof(struct task_struct, state));
 	DEFINE(TASK_FLAGS, offsetof(struct task_struct, flags));
@@ -36,12 +35,6 @@ int main(void)
 
 	/* offsets into the irq_cpustat_t struct */
 	DEFINE(CPUSTAT_SOFTIRQ_PENDING, offsetof(irq_cpustat_t, __softirq_pending));
-
-	/* offsets into the irq_node struct */
-	DEFINE(IRQ_HANDLER, offsetof(struct irq_hand, handler));
-	DEFINE(IRQ_FLAGS, offsetof(struct irq_hand, flags));
-	DEFINE(IRQ_DEV_ID, offsetof(struct irq_hand, dev_id));
-	DEFINE(IRQ_DEVNAME, offsetof(struct irq_hand, devname));
 
 	/* offsets into the thread struct */
 	DEFINE(THREAD_KSP, offsetof(struct thread_struct, ksp));

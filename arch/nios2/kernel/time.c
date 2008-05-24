@@ -108,11 +108,15 @@ static struct clocksource nios2_timer = {
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
+static struct irqaction nios2_timer_irq = {
+	.name	 = "timer",
+	.flags	 = IRQF_DISABLED | IRQF_TIMER,
+	.handler = timer_interrupt,
+};
+
 void __init time_init(void)
 {
 	unsigned int year, mon, day, hour, min, sec;
-	int err;
-
 	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
 				int *min, int *sec);
 	
@@ -124,9 +128,8 @@ void __init time_init(void)
 	xtime.tv_nsec = 0;
 	wall_to_monotonic.tv_sec = -xtime.tv_sec;
 
-	err = request_irq(na_timer0_irq, timer_interrupt, IRQ_FLG_LOCK, "timer", NULL);
-	if(err)
-		printk(KERN_ERR "%s() failed - errno = %d\n", __FUNCTION__, -err);
+	/* dont use request_irq here, kmalloc is not ready yet */
+	setup_irq(na_timer0_irq, &nios2_timer_irq);
 	write_timerperiod(NIOS2_TIMER_PERIOD-1);
 
 	/* clocksource initialize */
