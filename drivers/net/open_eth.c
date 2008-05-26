@@ -1575,7 +1575,7 @@ oeth_open(struct net_device *dev)
 
     /* Install our interrupt handler.
      */
-    request_irq(MACIRQ_NUM, oeth_interrupt, 0, "eth", (void *)dev);
+    request_irq(MACIRQ_NUM, oeth_interrupt, IRQF_DISABLED, "eth", (void *)dev);
 
     // enable phy interrupts
     //
