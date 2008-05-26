@@ -79,7 +79,7 @@ static long bytes_out = 0;
 static uch *output_data;
 static unsigned long output_ptr = 0;
 
-#include "nios2_sio.c"
+#include "console.c"
 
 static void *malloc(int size);
 static void free(void *where);
@@ -201,6 +201,7 @@ void decompress_kernel(void)
   free_mem_ptr = (unsigned long)&_end;
   free_mem_end_ptr = free_mem_ptr + HEAP_SIZE;
 
+  console_init();
   makecrc();
   puts("Uncompressing Linux... ");
   gunzip();
