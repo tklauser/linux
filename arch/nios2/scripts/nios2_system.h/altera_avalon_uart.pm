@@ -12,16 +12,8 @@ sub required_class_name {
 }
 
 sub base_address_cast {
-	"np_uart"
+	"void *"
 }
-
-sub print_prefix {
-	my ($class, $system) = @_;
-
-	print "#ifndef __ASSEMBLY__\n";
-	print "#include <asm/uart_struct.h>\n";
-	print "#endif\n\n";
-}	
 
 sub translate {
 	my $class = shift;

@@ -93,7 +93,6 @@ exc_hook:
 	movia	r24,inthandler
 	jmp	r24
 1:		
-	wrctl	ienable,r0		/* Disable interrupt lines */
 
 	/*
 	 * After flushing the instruction cache, we must flush the data
@@ -133,63 +132,8 @@ data_flush:
 #endif
 
 	//------------------------------------
-	// Disable interrupts on known devices
+	// Disable interrupts
 	//
-#ifdef NA_ENET_ASM
-#ifdef NA_ENET_RESET_ASM
-	movia	r1,NA_ENET_RESET_ASM	// ethernet reset address
-	stwio	r0,0(r1)		// reset
-#endif
-#ifdef NA_ENET_RESET_N_ASM
-	movia	r1,NA_ENET_RESET_N_ASM	// ethernet reset address
-	stwio	r0,0(r1)		// reset
-#endif
-	nop				// give it some time
-	nop				//
-	nop				//
-	nop				//
-#endif
-#ifdef NA_TIMER0_ASM
-	movia	r1,NA_TIMER0_ASM	    // get timer address
-	stwio	r0,NP_TIMERCONTROL_ASM(r1)  // clear interrupt enable
-	stwio	r0,NP_TIMERSTATUS_ASM(r1)   // clear interrupt condition
-#endif
-#ifdef NA_UART0_ASM
-	movia	r1,NA_UART0_ASM
-	stwio	r0,NP_UARTCONTROL_ASM(r1)	// clear interrupt enable
-	stwio	r0,NP_UARTSTATUS_ASM(r1)	// clear interrupt status
-#endif
-#ifdef NA_UART1_ASM
-	movia	r1,NA_UART1_ASM
-	stwio	r0,NP_UARTCONTROL_ASM(r1)	// clear interrupt enable
-	stwio	r0,NP_UARTSTATUS_ASM(r1)	// clear interrupt status
-#endif
-#ifdef NA_UART2_ASM
-	movia	r1,NA_UART2_ASM
-	stwio	r0,NP_UARTCONTROL_ASM(r1)	// clear interrupt enable
-	stwio	r0,NP_UARTSTATUS_ASM(r1)	// clear interrupt status
-#endif
-#ifdef NA_UART3_ASM
-	movia	r1,NA_UART3_ASM
-	stwio	r0,NP_UARTCONTROL_ASM(r1)	// clear interrupt enable
-	stwio	r0,NP_UARTSTATUS_ASM(r1)	// clear interrupt status
-#endif
-#ifdef NA_IDE_INTERFACE_ASM
-	movia	r1,NA_IDE_INTERFACE_ASM	// ATA reset
-	stwio	r0,0(r1)		// write to control register
-#endif
-#ifdef NA_ENET_ASM
-#ifdef NA_ENET_RESET_ASM
-	movia	r1,NA_ENET_RESET_ASM	// ethernet reset address
-	movui	r2,1			// reset
-	stwio	r2,0(r1)		//
-#endif
-#ifdef NA_ENET_RESET_N_ASM
-	movia	r1,NA_ENET_RESET_N_ASM	// ethernet reset address
-	movui	r2,1			// reset
-	stwio	r2,0(r1)		//
-#endif
-#endif
 	wrctl	ienable,r0		// Mask off all possible interrupts
 
 	//------------------------------------------------------

@@ -148,45 +148,5 @@ int main(void)
 	DEFINE(CPU_EXCEPT_ADDRESS_ASM, CPU_EXCEPT_ADDRESS);
 #endif
 	
-#if defined(na_enet)
-	DEFINE(NA_ENET_ASM, na_enet);
-#endif	
-
-#if defined(na_enet_reset)
-	DEFINE(NA_ENET_RESET_ASM, na_enet_reset);
-#endif	
-
-#if defined(na_enet_reset_n)
-	DEFINE(NA_ENET_RESET_N_ASM, na_enet_reset_n);
-#endif	
-
-#if defined(na_ide_interface)
-	DEFINE(NA_IDE_INTERFACE_ASM, na_ide_interface);
-#endif	
-
-#if defined(na_timer0)
-	DEFINE(NA_TIMER0_ASM, na_timer0);
-	DEFINE(NP_TIMERCONTROL_ASM, offsetof(np_timer, np_timercontrol));
-	DEFINE(NP_TIMERSTATUS_ASM,  offsetof(np_timer, np_timerstatus));
-#endif	
-
-#if defined(na_uart0)
-	DEFINE(NA_UART0_ASM, na_uart0);
-	DEFINE(NP_UARTCONTROL_ASM,  offsetof(np_uart,  np_uartcontrol));
-	DEFINE(NP_UARTSTATUS_ASM,   offsetof(np_uart,  np_uartstatus));
-#endif	
-
-#if defined(na_uart1)
-	DEFINE(NA_UART1_ASM, na_uart1);
-#endif	
-
-#if defined(na_uart2)
-	DEFINE(NA_UART2_ASM, na_uart2);
-#endif	
-
-#if defined(na_uart3)
-	DEFINE(NA_UART3_ASM, na_uart3);
-#endif	
-
 	return 0;
 }
