@@ -19,30 +19,42 @@
 #define	TICK_SIZE (tick_nsec / 1000)
 #define NIOS2_TIMER_PERIOD (nasys_clock_freq/HZ)
 
+#define AVALON_TIMER_STATUS_REG              0
+#define AVALON_TIMER_CONTROL_REG             4
+#define AVALON_TIMER_PERIODL_REG             8
+#define AVALON_TIMER_PERIODH_REG             12
+#define AVALON_TIMER_SNAPL_REG               16
+#define AVALON_TIMER_SNAPH_REG               20
+
+#define AVALON_TIMER_CONTROL_ITO_MSK         (0x1)
+#define AVALON_TIMER_CONTROL_CONT_MSK        (0x2)
+#define AVALON_TIMER_CONTROL_START_MSK       (0x4)
+#define AVALON_TIMER_CONTROL_STOP_MSK        (0x8)
+
 static unsigned long nios2_timer_count;
+static unsigned long timer_membase;
 
 static inline int set_rtc_mmss(unsigned long nowtime)
 {
-  return 0;
+	return 0;
 }
-
-/* Timer timeout status */
-#define nios2_timer_TO	(inw(&na_timer0->np_timerstatus) & np_timerstatus_to_mask)
 
 static inline unsigned long read_timersnapshot(void)
 {
 	unsigned long count;
 
-	outw(0, &na_timer0->np_timersnapl);
-	count = inw(&na_timer0->np_timersnaph) << 16 | inw(&na_timer0->np_timersnapl);
+	outw(0, timer_membase + AVALON_TIMER_SNAPL_REG);
+	count =
+	    inw(timer_membase + AVALON_TIMER_SNAPH_REG) << 16 |
+	    inw(timer_membase + AVALON_TIMER_SNAPL_REG);
 
 	return count;
 }
 
 static inline void write_timerperiod(unsigned long period)
 {
-	na_timer0->np_timerperiodl = period;
-	na_timer0->np_timerperiodh = period >> 16;
+	outw(period, timer_membase + AVALON_TIMER_SNAPL_REG);
+	outw(period >> 16, timer_membase + AVALON_TIMER_SNAPH_REG);
 }
 
 /*
@@ -52,9 +64,10 @@ static inline void write_timerperiod(unsigned long period)
 irqreturn_t timer_interrupt(int irq, void *dummy)
 {
 	/* last time the cmos clock got updated */
-	static long last_rtc_update=0;
+	static long last_rtc_update = 0;
 
-	na_timer0->np_timerstatus = 0; /* Clear the interrupt condition */
+	/* Clear the interrupt condition */
+	outw(0, timer_membase + AVALON_TIMER_STATUS_REG);
 	nios2_timer_count += NIOS2_TIMER_PERIOD;
 
 	write_seqlock(&xtime_lock);
@@ -68,12 +81,12 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	 */
 	if (ntp_synced() &&
 	    xtime.tv_sec > last_rtc_update + 660 &&
-	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned) TICK_SIZE) / 2 &&
-	    (xtime.tv_nsec  / 1000) <= 500000 + ((unsigned) TICK_SIZE) / 2) {
-	  if (set_rtc_mmss(xtime.tv_sec) == 0)
-	    last_rtc_update = xtime.tv_sec;
-	  else
-	    last_rtc_update = xtime.tv_sec - 600; /* do it again in 60 s */
+	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned)TICK_SIZE) / 2 &&
+	    (xtime.tv_nsec / 1000) <= 500000 + ((unsigned)TICK_SIZE) / 2) {
+		if (set_rtc_mmss(xtime.tv_sec) == 0)
+			last_rtc_update = xtime.tv_sec;
+		else
+			last_rtc_update = xtime.tv_sec - 600;	/* do it again in 60 s */
 	}
 
 	write_sequnlock(&xtime_lock);
@@ -82,7 +95,7 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	update_process_times(user_mode(get_irq_regs()));
 #endif
 
-	return(IRQ_HANDLED);
+	return (IRQ_HANDLED);
 }
 
 static cycle_t nios2_timer_read(void)
@@ -100,17 +113,17 @@ static cycle_t nios2_timer_read(void)
 }
 
 static struct clocksource nios2_timer = {
-	.name	= "timer",
-	.rating	= 250,
-	.read	= nios2_timer_read,
-	.shift	= 20,
-	.mask	= CLOCKSOURCE_MASK(32),
-	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
+	.name = "timer",
+	.rating = 250,
+	.read = nios2_timer_read,
+	.shift = 20,
+	.mask = CLOCKSOURCE_MASK(32),
+	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
 static struct irqaction nios2_timer_irq = {
-	.name	 = "timer",
-	.flags	 = IRQF_DISABLED | IRQF_TIMER,
+	.name = "timer",
+	.flags = IRQF_DISABLED | IRQF_TIMER,
 	.handler = timer_interrupt,
 };
 
@@ -119,7 +132,8 @@ void __init time_init(void)
 	unsigned int year, mon, day, hour, min, sec;
 	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
 				int *min, int *sec);
-	
+	unsigned ctrl;
+
 	arch_gettod(&year, &mon, &day, &hour, &min, &sec);
 
 	if ((year += 1900) < 1970)
@@ -128,16 +142,18 @@ void __init time_init(void)
 	xtime.tv_nsec = 0;
 	wall_to_monotonic.tv_sec = -xtime.tv_sec;
 
-	/* dont use request_irq here, kmalloc is not ready yet */
+	timer_membase = (unsigned long)ioremap((unsigned long)na_timer0, 32);
 	setup_irq(na_timer0_irq, &nios2_timer_irq);
-	write_timerperiod(NIOS2_TIMER_PERIOD-1);
+	write_timerperiod(NIOS2_TIMER_PERIOD - 1);
 
 	/* clocksource initialize */
-	nios2_timer.mult = clocksource_hz2mult(nasys_clock_freq, nios2_timer.shift);
+	nios2_timer.mult =
+	    clocksource_hz2mult(nasys_clock_freq, nios2_timer.shift);
 	clocksource_register(&nios2_timer);
 
 	/* interrupt enable + continuous + start */
-	na_timer0->np_timercontrol = np_timercontrol_start_mask
-				   + np_timercontrol_cont_mask
-				   + np_timercontrol_ito_mask;
+	ctrl =
+	    AVALON_TIMER_CONTROL_ITO_MSK | AVALON_TIMER_CONTROL_CONT_MSK |
+	    AVALON_TIMER_CONTROL_START_MSK;
+	outw(ctrl, timer_membase + AVALON_TIMER_CONTROL_REG);
 }

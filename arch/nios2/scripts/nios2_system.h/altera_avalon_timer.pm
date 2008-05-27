@@ -11,18 +11,8 @@ sub required_module_names {
 	"timer0"
 }
 
-sub print_prefix {
-	my ($class, $system) = @_;
-
-	print "\n";
-	print "#ifndef __ASSEMBLY__\n";
-	print "#include <asm/timer_struct.h>\n";
-	print "#endif\n";
-	print "\n";
-}
-
 sub base_address_cast {
-	"np_timer"
+	"void "
 }
 
 # only timers with a non-fixed-period are valid
