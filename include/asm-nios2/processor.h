@@ -106,17 +106,7 @@ struct thread_struct {
 #define INIT_MMAP { &init_mm, (0), (0), \
 		    __pgprot(0x0) , VM_READ | VM_WRITE | VM_EXEC }
 
-#define INIT_THREAD  { \
-	.kregs		= 0,			\
-	.sig_address	= 0,			\
-	.sig_desc	= 0,			\
-	.ksp		= 0,			\
-	.kpsr		= 0,			\
-	.kesr		= PS_S,			\
-	.flags		= NIOS2_FLAG_KTHREAD,	\
-	.current_ds	= __KERNEL_DS,		\
-	.core_exec	= INIT_EXEC		\
-}
+#define INIT_THREAD { sizeof init_stack + (unsigned long)init_stack }
 
 /* Free all resources held by a thread. */
 extern void release_thread(struct task_struct *);
