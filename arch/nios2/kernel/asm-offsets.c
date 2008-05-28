@@ -14,7 +14,6 @@
 #include <linux/ptrace.h>
 #include <linux/hardirq.h>
 #include <linux/kbuild.h>
-#include <asm/bootinfo.h>
 #include <asm/irq.h>
 #include <asm/thread_info.h>
 
