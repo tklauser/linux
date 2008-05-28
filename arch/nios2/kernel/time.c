@@ -53,8 +53,8 @@ static inline unsigned long read_timersnapshot(void)
 
 static inline void write_timerperiod(unsigned long period)
 {
-	outw(period, timer_membase + AVALON_TIMER_SNAPL_REG);
-	outw(period >> 16, timer_membase + AVALON_TIMER_SNAPH_REG);
+	outw(period, timer_membase + AVALON_TIMER_PERIODL_REG);
+	outw(period >> 16, timer_membase + AVALON_TIMER_PERIODH_REG);
 }
 
 /*
