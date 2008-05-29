@@ -1,11 +1,11 @@
 /*
- *  Altera VGA controller
+ *  altfb.c -- Altera VGA framebuffer driver
  * 
- *  linux/drivers/video/vfb.c -- Virtual frame buffer device
- *
- *      Copyright (C) 2002 James Simmons
+ *  Based on vfb.c -- Virtual frame buffer device
  *
  *	Copyright (C) 1997 Geert Uytterhoeven
+ *      Copyright (C) 2002 James Simmons
+ *	(C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
  *
  *  This file is subject to the terms and conditions of the GNU General Public
  *  License. See the file COPYING in the main directory of this archive for
