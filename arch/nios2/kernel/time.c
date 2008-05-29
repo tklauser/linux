@@ -19,17 +19,17 @@
 #define	TICK_SIZE (tick_nsec / 1000)
 #define NIOS2_TIMER_PERIOD (nasys_clock_freq/HZ)
 
-#define AVALON_TIMER_STATUS_REG              0
-#define AVALON_TIMER_CONTROL_REG             4
-#define AVALON_TIMER_PERIODL_REG             8
-#define AVALON_TIMER_PERIODH_REG             12
-#define AVALON_TIMER_SNAPL_REG               16
-#define AVALON_TIMER_SNAPH_REG               20
+#define ALTERA_TIMER_STATUS_REG              0
+#define ALTERA_TIMER_CONTROL_REG             4
+#define ALTERA_TIMER_PERIODL_REG             8
+#define ALTERA_TIMER_PERIODH_REG             12
+#define ALTERA_TIMER_SNAPL_REG               16
+#define ALTERA_TIMER_SNAPH_REG               20
 
-#define AVALON_TIMER_CONTROL_ITO_MSK         (0x1)
-#define AVALON_TIMER_CONTROL_CONT_MSK        (0x2)
-#define AVALON_TIMER_CONTROL_START_MSK       (0x4)
-#define AVALON_TIMER_CONTROL_STOP_MSK        (0x8)
+#define ALTERA_TIMER_CONTROL_ITO_MSK         (0x1)
+#define ALTERA_TIMER_CONTROL_CONT_MSK        (0x2)
+#define ALTERA_TIMER_CONTROL_START_MSK       (0x4)
+#define ALTERA_TIMER_CONTROL_STOP_MSK        (0x8)
 
 static unsigned long nios2_timer_count;
 static unsigned long timer_membase;
@@ -43,18 +43,18 @@ static inline unsigned long read_timersnapshot(void)
 {
 	unsigned long count;
 
-	outw(0, timer_membase + AVALON_TIMER_SNAPL_REG);
+	outw(0, timer_membase + ALTERA_TIMER_SNAPL_REG);
 	count =
-	    inw(timer_membase + AVALON_TIMER_SNAPH_REG) << 16 |
-	    inw(timer_membase + AVALON_TIMER_SNAPL_REG);
+	    inw(timer_membase + ALTERA_TIMER_SNAPH_REG) << 16 |
+	    inw(timer_membase + ALTERA_TIMER_SNAPL_REG);
 
 	return count;
 }
 
 static inline void write_timerperiod(unsigned long period)
 {
-	outw(period, timer_membase + AVALON_TIMER_PERIODL_REG);
-	outw(period >> 16, timer_membase + AVALON_TIMER_PERIODH_REG);
+	outw(period, timer_membase + ALTERA_TIMER_PERIODL_REG);
+	outw(period >> 16, timer_membase + ALTERA_TIMER_PERIODH_REG);
 }
 
 /*
@@ -67,7 +67,7 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	static long last_rtc_update = 0;
 
 	/* Clear the interrupt condition */
-	outw(0, timer_membase + AVALON_TIMER_STATUS_REG);
+	outw(0, timer_membase + ALTERA_TIMER_STATUS_REG);
 	nios2_timer_count += NIOS2_TIMER_PERIOD;
 
 	write_seqlock(&xtime_lock);
@@ -153,7 +153,7 @@ void __init time_init(void)
 
 	/* interrupt enable + continuous + start */
 	ctrl =
-	    AVALON_TIMER_CONTROL_ITO_MSK | AVALON_TIMER_CONTROL_CONT_MSK |
-	    AVALON_TIMER_CONTROL_START_MSK;
-	outw(ctrl, timer_membase + AVALON_TIMER_CONTROL_REG);
+	    ALTERA_TIMER_CONTROL_ITO_MSK | ALTERA_TIMER_CONTROL_CONT_MSK |
+	    ALTERA_TIMER_CONTROL_START_MSK;
+	outw(ctrl, timer_membase + ALTERA_TIMER_CONTROL_REG);
 }
