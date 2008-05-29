@@ -1,5 +1,5 @@
 /*
- *	avuart.c -- Altera UART driver
+ *	altuart.c -- Altera UART driver
  *
  *	Based on mcf.c -- Freescale ColdFire UART driver
  *

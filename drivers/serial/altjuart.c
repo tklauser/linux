@@ -1,5 +1,5 @@
 /*
- *	avjtag.c -- Altera JTAG UART driver
+ *	altjuart.c -- Altera JTAG UART driver
  *
  *	Based on mcf.c -- Freescale ColdFire UART driver
  *
