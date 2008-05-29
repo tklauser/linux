@@ -2,17 +2,6 @@
 
 source "arch/nios2/drivers/pci/Kconfig"
 
-config FB_ALTERA
-	tristate "Avalon VGA controller support"
-	default N
-	select FB
-	select FB_CFB_FILLRECT
-	select FB_CFB_COPYAREA
-	select FB_CFB_IMAGEBLIT
-	help
-	  This is the frame buffer device driver for the VGA controller 
-	  in SOPC Builder.
-
 config SERIO_ALTPS2
 	tristate "PS2 controller"
 	select VT
