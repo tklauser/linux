@@ -3,14 +3,14 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/avjtag.h>
-#include <linux/avuart.h>
+#include <linux/altjuart.h>
+#include <linux/altuart.h>
 
 /*
- *	Avalon JTAG UART
+ *	Altera JTAG UART
  */
 
-static struct avalon_jtaguart_platform_uart nios2_jtaguart_platform[] = {
+static struct altera_jtaguart_platform_uart nios2_jtaguart_platform[] = {
 #ifdef na_jtag_uart
 	{
 	 .mapbase = (unsigned long)na_jtag_uart,
@@ -21,16 +21,16 @@ static struct avalon_jtaguart_platform_uart nios2_jtaguart_platform[] = {
 };
 
 static struct platform_device nios2_jtaguart = {
-	.name = "avalon_jtaguart",
+	.name = "altera_jtaguart",
 	.id = 0,
 	.dev.platform_data = nios2_jtaguart_platform,
 };
 
 /*
- *	Avalon UART
+ *	Altera UART
  */
 
-static struct avalon_uart_platform_uart nios2_uart_platform[] = {
+static struct altera_uart_platform_uart nios2_uart_platform[] = {
 #ifdef na_uart0
 	{
 	 .mapbase = (unsigned long)na_uart0,
@@ -63,7 +63,7 @@ static struct avalon_uart_platform_uart nios2_uart_platform[] = {
 };
 
 static struct platform_device nios2_uart = {
-	.name = "avalon_uart",
+	.name = "altera_uart",
 	.id = 0,
 	.dev.platform_data = nios2_uart_platform,
 };
