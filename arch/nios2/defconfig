@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux kernel version: 2.6.26-rc3
+# Linux kernel version: 2.6.26-rc4
 #
 # CONFIG_MMU is not set
 # CONFIG_FPU is not set
@@ -317,7 +317,6 @@ CONFIG_DM9000_DEBUGLEVEL=4
 # CONFIG_IBM_NEW_EMAC_RGMII is not set
 # CONFIG_IBM_NEW_EMAC_TAH is not set
 # CONFIG_IBM_NEW_EMAC_EMAC4 is not set
-# CONFIG_B44 is not set
 # CONFIG_NETDEV_1000 is not set
 # CONFIG_NETDEV_10000 is not set
 
