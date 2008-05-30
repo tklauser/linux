@@ -28,6 +28,8 @@
  *	Altera JATG UART reg defs
  */
 
+#define ALTERA_JTAGUART_SIZE                      8
+
 #define ALTERA_JTAGUART_DATA_REG                  0
 
 #define ALTERA_JTAGUART_DATA_DATA_MSK             (0x000000FF)
@@ -299,8 +301,7 @@ int __init early_altera_jtaguart_setup(struct altera_jtaguart_platform_uart
 		port->line = i;
 		port->type = PORT_ALTERA_JTAGUART;
 		port->mapbase = platp[i].mapbase;
-		port->membase = (platp[i].membase) ? platp[i].membase :
-		    (unsigned char __iomem *)port->mapbase;
+		port->membase = ioremap(port->mapbase, ALTERA_JTAGUART_SIZE);
 		port->iotype = SERIAL_IO_MEM;
 		port->irq = platp[i].irq;
 		port->flags = ASYNC_BOOT_AUTOCONF;
@@ -411,8 +412,7 @@ static int __devinit altera_jtaguart_probe(struct platform_device *pdev)
 		port->line = i;
 		port->type = PORT_ALTERA_JTAGUART;
 		port->mapbase = platp[i].mapbase;
-		port->membase = (platp[i].membase) ? platp[i].membase :
-		    (unsigned char __iomem *)platp[i].mapbase;
+		port->membase = ioremap(port->mapbase, ALTERA_JTAGUART_SIZE);
 		port->iotype = SERIAL_IO_MEM;
 		port->irq = platp[i].irq;
 		port->ops = &altera_jtaguart_ops;
