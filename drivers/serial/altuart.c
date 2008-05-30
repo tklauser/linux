@@ -28,6 +28,8 @@
  *	Altera UART reg defs
  */
 
+#define ALTERA_UART_SIZE                  32
+
 #define ALTERA_UART_RXDATA_REG            0
 #define ALTERA_UART_TXDATA_REG            4
 #define ALTERA_UART_STATUS_REG            8
@@ -394,8 +396,7 @@ int __init early_altera_uart_setup(struct altera_uart_platform_uart *platp)
 		port->line = i;
 		port->type = PORT_ALTERA_UART;
 		port->mapbase = platp[i].mapbase;
-		port->membase = (platp[i].membase) ? platp[i].membase :
-		    (unsigned char __iomem *)port->mapbase;
+		port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);
 		port->iotype = SERIAL_IO_MEM;
 		port->irq = platp[i].irq;
 		port->uartclk = platp[i].uartclk;
@@ -510,8 +511,7 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 		port->line = i;
 		port->type = PORT_ALTERA_UART;
 		port->mapbase = platp[i].mapbase;
-		port->membase = (platp[i].membase) ? platp[i].membase :
-		    (unsigned char __iomem *)platp[i].mapbase;
+		port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);
 		port->iotype = SERIAL_IO_MEM;
 		port->irq = platp[i].irq;
 		port->uartclk = platp[i].uartclk;
