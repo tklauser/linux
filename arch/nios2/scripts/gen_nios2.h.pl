@@ -127,11 +127,6 @@ foreach my $module_name (@module_names) {
 	}
 	push @{$found_classes{$module_class}}, $module_name;
 	
-	if (! $module->isMemoryDevice () && ! $module->isCustomInstruction ()) {
-		# turn on high bit for base address
-		$mask = 0x80000000;
-	}
-
 	if (scalar (@module_ports) == 1) {
 		my $base_address;
 		my $mem_size;
