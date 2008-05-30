@@ -14,7 +14,7 @@
 
 #include <asm/segment.h>
 #include <asm/io.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 #define	TICK_SIZE (tick_nsec / 1000)
 #define NIOS2_TIMER_PERIOD (nasys_clock_freq/HZ)

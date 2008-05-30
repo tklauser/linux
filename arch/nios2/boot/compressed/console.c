@@ -1,4 +1,4 @@
-#include <asm/nios.h>
+#include <asm/nios2.h>
 #include <asm/io.h>
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)

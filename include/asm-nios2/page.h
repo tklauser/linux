@@ -76,7 +76,7 @@ extern unsigned long memory_start;
 extern unsigned long memory_end;
 
 #endif /* !__ASSEMBLY__ */
-#include <asm/nios.h>
+#include <asm/nios2.h>
 #define PAGE_OFFSET		((int)(nasys_program_mem))
 
 #ifndef __ASSEMBLY__

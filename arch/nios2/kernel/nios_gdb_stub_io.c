@@ -6,9 +6,9 @@
 // Single character I/O for Nios GDB Stub
 
 #ifndef __KERNEL__
-#include "nios.h"
+#include "nios2.h"
 #else
-#include <asm/nios.h>
+#include <asm/nios2.h>
 #endif
 
 #include "nios_gdb_stub.h"

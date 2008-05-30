@@ -27,7 +27,7 @@
  ---------------------------------------------------------------------*/
 
 
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 
 #define CLOCK_TICK_RATE	nasys_clock_freq /* Underlying HZ */

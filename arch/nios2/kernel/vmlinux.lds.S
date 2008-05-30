@@ -4,7 +4,7 @@
  */
 
 #include <asm-generic/vmlinux.lds.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 #include <asm/page.h>
 		
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")

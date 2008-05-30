@@ -1,5 +1,5 @@
 #include <asm-generic/vmlinux.lds.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
 

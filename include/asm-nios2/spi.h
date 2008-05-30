@@ -25,7 +25,7 @@
  ---------------------------------------------------------------------*/
 
 
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 int  register_NIOS_SPI( void );
 void unregister_NIOS_SPI( void );

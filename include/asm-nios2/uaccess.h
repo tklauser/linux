@@ -31,7 +31,7 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <asm/segment.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 #define VERIFY_READ	0
 #define VERIFY_WRITE	1

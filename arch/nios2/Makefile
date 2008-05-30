@@ -142,19 +142,19 @@ hwselect:
 	@echo $($(quiet)cmd_gen_mk);
 	@$(cmd_gen_mk)	
 	
-archprepare: include/nios2_system.h
+archprepare: include/asm-nios2/nios2.h
 
 archclean:
 	@$(MAKE) $(clean)=arch/$(ARCH)/boot
 
-define filechk_nios2_system.h
-	# call perl script that will build nios2_system.h file
+define filechk_nios2.h
+	# call perl script that will build nios2.h file
 	perl -I$(TOPDIR)/arch/$(ARCH)/scripts \
-	  $(TOPDIR)/arch/$(ARCH)/scripts/gen_nios2_system.h.pl $(CPU) $(EXEMEM) $(UPLMEM)
+	  $(TOPDIR)/arch/$(ARCH)/scripts/gen_nios2.h.pl $(CPU) $(EXEMEM) $(UPLMEM)
 endef
 
-include/nios2_system.h: $(SYSPTF) FORCE
-	$(call filechk,nios2_system.h)
+include/asm-nios2/nios2.h: $(SYSPTF) FORCE
+	$(call filechk,nios2.h)
 
 quiet_cmd_touch = '  TOUCH   $@'
       cmd_touch = touch $(TOPDIR)/$@
@@ -173,7 +173,7 @@ zImage: vmlinux
 
 compressed: zImage
 
-CLEAN_FILES += include/nios2_system.h
+CLEAN_FILES += include/asm-nios2/nios2.h
 
 archmrproper:
 

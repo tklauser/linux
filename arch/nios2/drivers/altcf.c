@@ -24,7 +24,7 @@
 #include <linux/ide.h>
 #include <linux/init.h>
 #include <asm/io.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 MODULE_AUTHOR("Microtronix Datacom Ltd.");
 MODULE_DESCRIPTION("Driver of Altera CompactFlash core with Avalon interface");

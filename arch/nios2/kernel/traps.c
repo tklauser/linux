@@ -40,7 +40,7 @@
 #include <asm/pgtable.h>
 #include <asm/unistd.h>
 
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 /* #define TRAP_DEBUG */
 

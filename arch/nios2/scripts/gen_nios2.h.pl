@@ -37,15 +37,15 @@ if (!$system) {
 }
 
 #
-# print header for nios2_system.h
+# print header for nios2.h
 #
 print <<ENDOFHEADER;
-#ifndef __NIOS2_SYSTEM_H__
-#define __NIOS2_SYSTEM_H__
+#ifndef __NIOS2_H__
+#define __NIOS2_H__
 
 /*
  * This file contains hardware information about the target platform.
- * The nios2_system.h file is being phased out and will be removed in a 
+ * The nios2.h file is being phased out and will be removed in a 
  * later release.
  *
  * All base addresses for non memory devices have their high bit turned on to
@@ -57,7 +57,7 @@ print <<ENDOFHEADER;
 ENDOFHEADER
 
 #
-# generate contents for nios2_system.h
+# generate contents for nios2.h
 #
 my $result; # dummy variable
 my $cpu = $system->getCPU ($target_cpu);
@@ -200,19 +200,19 @@ foreach my $class_name (@found_classes_order) {
 	my $code = "";
 	
 	foreach my $dir (@INC) {
-		if (-e "$dir/nios2_system.h/$class_name.pm") {
-			print "/* Executing ...scripts/nios2_system.h/$class_name.pm */\n";
-			$code .= "require \"$dir/nios2_system.h/BasicModule.pm\";";
-			$code .= "require \"$dir/nios2_system.h/$class_name.pm\";";
+		if (-e "$dir/nios2.h/$class_name.pm") {
+			print "/* Executing ...scripts/nios2.h/$class_name.pm */\n";
+			$code .= "require \"$dir/nios2.h/BasicModule.pm\";";
+			$code .= "require \"$dir/nios2.h/$class_name.pm\";";
 			$code .= $class_name . "::run(\$system, \@{\$found_classes{\$class_name}});";
 			eval $code;
 			if ($@) {
-				print "#warning Could not execute ...scripts/nios2_system.h/$class_name.pm\n";
-				print "#warning Error message is stored in nios2_system.h:\n";
+				print "#warning Could not execute ...scripts/nios2.h/$class_name.pm\n";
+				print "#warning Error message is stored in nios2.h:\n";
 				print "/*\n";
 				print "$@";
 				print "*/\n";
-				print STDERR "Could not execute ...scripts/nios2_system.h/$class_name.pm\n";
+				print STDERR "Could not execute ...scripts/nios2.h/$class_name.pm\n";
 				print STDERR "Error message follows:\n";
 				print STDERR "$@";
 			} 
@@ -315,8 +315,8 @@ printf ("#define %-33s %30s\n",
 print "\n";
 
 #
-# print footer for nios2_system.h
+# print footer for nios2.h
 #
 print <<ENDOFFOOTER;
-#endif /* __NIOS2_SYSTEM_H__ */
+#endif /* __NIOS2_H__ */
 ENDOFFOOTER

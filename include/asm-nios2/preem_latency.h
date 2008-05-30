@@ -27,7 +27,7 @@
  ---------------------------------------------------------------------*/
 
 
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 #define readclock(low) \
 do {\

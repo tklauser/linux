@@ -5,7 +5,7 @@
 #include <linux/compiler.h>
 #include <asm/segment.h>
 #include <asm/entry.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 /*
  * switch_to(n) should switch tasks to task ptr, first checking that

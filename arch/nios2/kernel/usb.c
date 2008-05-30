@@ -29,7 +29,7 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/system.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 #if defined(CONFIG_USB_SL811_HCD) || defined (CONFIG_USB_SL811_HCD_MODULE)
 #if defined(CONFIG_MICROTRONIX_STRATIX) || defined (CONFIG_MICROTRONIX_CYCLONE)

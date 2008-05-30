@@ -62,7 +62,7 @@
 #define MCA_bus__is_a_macro /* for versions in ksyms.c */
 
 /*
- * The nios has no problems with write protection
+ * The nios2.has no problems with write protection
  */
 #define wp_works_ok 1
 #define wp_works_ok__is_a_macro /* for versions in ksyms.c */

@@ -22,7 +22,7 @@
 #ifndef __ARCH_NIOS2_CACHE_H
 #define __ARCH_NIOS2_CACHE_H
 
-#include <asm/nios.h>
+#include <asm/nios2.h>
 
 /* bytes per L1 cache line */
 #define        L1_CACHE_BYTES	nasys_icache_line_size 	/* 32, this need to be at least 1 */

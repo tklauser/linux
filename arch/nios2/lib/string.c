@@ -24,7 +24,7 @@
 
 #include <linux/types.h>
 #include <linux/autoconf.h>
-#include <asm/nios.h>
+#include <asm/nios2.h>
 #include <asm/string.h>
 
 #ifdef __HAVE_ARCH_MEMSET
