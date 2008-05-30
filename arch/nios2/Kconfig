@@ -2,11 +2,7 @@
 # For a description of the syntax of this configuration file,
 # see the Configure script.
 #
-mainmenu 'uClinux/Nios2 (w/o MMU) Kernel Configuration'
-
-config MMU
-	bool
-	default n
+mainmenu "Linux/Nios2 Kernel Configuration"
 
 config FPU
 	bool
@@ -82,6 +78,16 @@ config NIOS2
 	  Altera Nios2 softcore processor.
 
 endchoice
+
+config MMU
+	bool "MMU support"
+	default n
+	help
+	  This option switches on and off support for the Nios2 MMU
+	  (effectively switching between vmlinux and uClinux).	  
+	  Only Nios2/f core with MMU enabled can set this option on.
+	  For other Nios2 cores without MMU, this option must be 
+	  turned off.
 
 choice
 	prompt "Platform"
