@@ -16,7 +16,7 @@ sub run {
 
 		# get all the relevant information
 		my $base_address = $module->getBaseAddress ();
-		$base_address = hex ($base_address) | 0x80000000;
+		$base_address = hex ($base_address);
 		my $irq = $module->getIRQ ();
 
 		print "/* Casting base addresses to the appropriate structure */\n";

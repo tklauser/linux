@@ -96,7 +96,7 @@ sub translate {
 
 		# turn on the high bit for the base address to bypass cache.
 		my $base_address = $module->getBaseAddress ();
-		$base_address = hex ($base_address) | 0x80000000;
+		$base_address = hex ($base_address);
 	
 		my $cast = $class->base_address_cast;
 		$class->print_define_line ($required_module_name, 
@@ -113,7 +113,7 @@ sub translate {
 		foreach my $port_name (@port_names) {
 			my $cast = $class->base_address_cast ($port_name);
 			my $base_address = $module->getBaseAddress ($port_name);
-			$base_address = hex ($base_address) | 0x80000000;
+			$base_address = hex ($base_address);
 			$class->print_define_line ($required_module_name, 
 				$port_name, "addr", $cast, $base_address);
 
