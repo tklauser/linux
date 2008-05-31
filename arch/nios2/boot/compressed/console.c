@@ -7,22 +7,21 @@
 #define ALTERA_JTAGUART_CONTROL_REG               4
 #define ALTERA_JTAGUART_CONTROL_AC_MSK            (0x00000400)
 #define ALTERA_JTAGUART_CONTROL_WSPACE_MSK        (0xFFFF0000)
+static unsigned uartbase;
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS)
 static void jtag_putc(int ch)
 {
-	unsigned base = na_jtag_uart;
-	if (readl(base + ALTERA_JTAGUART_CONTROL_REG) &
+	if (readl(uartbase + ALTERA_JTAGUART_CONTROL_REG) &
 	    ALTERA_JTAGUART_CONTROL_WSPACE_MSK)
-		writeb(ch, base + ALTERA_JTAGUART_DATA_REG);
+		writeb(ch, uartbase + ALTERA_JTAGUART_DATA_REG);
 }
 #else
 static void jtag_putc(int ch)
 {
-	unsigned base = na_jtag_uart;
-	while ((readl(base + ALTERA_JTAGUART_CONTROL_REG) &
+	while ((readl(uartbase + ALTERA_JTAGUART_CONTROL_REG) &
 		ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) ;
-	writeb(ch, base + ALTERA_JTAGUART_DATA_REG);
+	writeb(ch, uartbase + ALTERA_JTAGUART_DATA_REG);
 }
 #endif
 
@@ -34,9 +33,9 @@ static int putchar(int ch)
 
 static void console_init(void)
 {
-	unsigned base = na_jtag_uart;
+	uartbase = ioremap(na_jtag_uart, 8);
 	writel(ALTERA_JTAGUART_CONTROL_AC_MSK,
-	       base + ALTERA_JTAGUART_CONTROL_REG);
+	       uartbase + ALTERA_JTAGUART_CONTROL_REG);
 }
 
 #elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
@@ -45,10 +44,10 @@ static void console_init(void)
 #define ALTERA_UART_STATUS_REG            8
 #define ALTERA_UART_DIVISOR_REG           16
 #define ALTERA_UART_STATUS_TRDY_MSK       (0x40)
+static unsigned uartbase;
 
 static void uart_putc(int ch)
 {
-	unsigned base = (unsigned)na_uart0;
 	int i;
 
 	for (i = 0; (i < 0x10000); i++) {
@@ -72,6 +71,7 @@ static void console_init(void)
 	unsigned base = (unsigned)na_uart0;
 	unsigned int baud, baudclk;
 
+	uart_base = ioremap(na_uart0, 32);
 	baud = CONFIG_SERIAL_ALTERA_UART_BAUDRATE;
 	baudclk = nasys_clock_freq / baud;
 	writew(baudclk, base + ALTERA_UART_DIVISOR_REG);
