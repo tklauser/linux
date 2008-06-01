@@ -1,6 +1,12 @@
 #include <asm/nios2.h>
 #include <asm/io.h>
 
+static void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag)
+{
+	return (cacheflag == IOMAP_FULL_CACHING) ? (void *)(physaddr & ~0x80000000) : 
+		(void *)(physaddr | 0x80000000);
+}
+
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
 
 #define ALTERA_JTAGUART_DATA_REG                  0
