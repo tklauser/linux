@@ -78,10 +78,6 @@ unsigned long memory_end;
 EXPORT_SYMBOL(memory_start);
 EXPORT_SYMBOL(memory_end);
 
-#ifndef CONFIG_CMDLINE
-#define CONFIG_CMDLINE	"CONSOLE=/dev/ttyS0 root=/dev/rom0 ro"
-#endif
-
 #ifndef CONFIG_PASS_CMDLINE
 static char default_command_line[] = CONFIG_CMDLINE;
 #endif
@@ -94,15 +90,6 @@ static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,\
 				    0,  0,  0,  0,  0, (unsigned long)cpu_idle,  0,  0,  0, 0,   0,  0};
 
 #define CPU "NIOS2"
-
-#if defined (CONFIG_CS89x0) || defined (CONFIG_SMC91111) || defined (CONFIG_OPEN_ETH) || defined (CONFIG_MTIP1000_ETH) || defined (CONFIG_DM9000_ETH) || defined (CONFIG_SMC91X) || defined (CONFIG_DM9000) || defined (CONFIG_DM9KS)
-    #if defined (CONFIG_MTIP1000_ETH)                       //;dgt3;
-        #include <../drivers/net/mtip1000.h>                //;dgt3;
-    #endif                                                  //;dgt3;
-
-    unsigned char *excalibur_enet_hwaddr;
-    unsigned char excalibur_enet_hwaddr_array[6];
-#endif
 
 // save args passed from u-boot, called from head.S
 void nios2_boot_init(unsigned r4,unsigned r5,unsigned r6,unsigned r7)
@@ -126,21 +113,6 @@ void nios2_boot_init(unsigned r4,unsigned r5,unsigned r6,unsigned r7)
 #endif
 }
 
-inline void flash_command(int base, int offset, short data)
-{
-	volatile unsigned short * ptr=(unsigned short*) (base);
-
-	ptr[0x555]=0xaa;
-	ptr[0x2aa]=0x55;
-	ptr[offset]=data;
-}
-
-inline void exit_se_flash(int base)
-{
-	flash_command(base, 0x555, 0x90);
-	*(unsigned short*)base=0;
-}
-
 void __init setup_arch(char **cmdline_p)
 {
 	int bootmap_size;
@@ -152,30 +124,10 @@ void __init setup_arch(char **cmdline_p)
 	extern int *romarray;
 #endif
 #endif
-#if 0							    // krh
-	unsigned char *psrc=(unsigned char *)((NIOS_FLASH_START + NIOS_FLASH_END)>>1);
-	int i=0;
-#endif							    // krh
 
 	memory_start = PAGE_ALIGN((unsigned long)&_end);
 	memory_end = (unsigned long) nasys_program_mem_end;
 
-#if 0                                                       //;kenw;
-	/* copy the command line from booting paramter region */
-    #if defined (nasys_am29lv065d_flash_0)                  //;dgt;
-      {                                                     //;dgt;
-        // ...TBA...                                        //;dgt;
-      }                                                     //;dgt;
-    #else                                                   //;dgt;
-	    flash_command((int)psrc, 0x555, 0x88);
-	    while ((*psrc!=0xFF) && (i<sizeof(command_line))) {
-	    	command_line[i++]=*psrc++;
-	    }
-	    command_line[i]=0;
-	    exit_se_flash(((NIOS_FLASH_START + NIOS_FLASH_END)>>1) );
-	    if (command_line[0]==0)
-    #endif                                                  //;dgt;
-#endif                                                      //;kenw;
 #ifndef CONFIG_PASS_CMDLINE
 		memcpy(command_line, default_command_line, sizeof(default_command_line));
 #endif
@@ -198,10 +150,6 @@ void __init setup_arch(char **cmdline_p)
 	init_mm.brk = (unsigned long) 0;
 	init_task.thread.kregs = &fake_regs;
 
-#if 0
-	ROOT_DEV = MKDEV(BLKMEM_MAJOR,0);
-#endif
-
 	/* Keep a copy of command line */
 	*cmdline_p = &command_line[0];
 
@@ -214,95 +162,6 @@ void __init setup_arch(char **cmdline_p)
 	else
 		printk("No Command line passed\n");
 #endif
-
-
-#if defined (CONFIG_CS89x0) || defined (CONFIG_SMC91111) || defined (CONFIG_OPEN_ETH) || defined (CONFIG_MTIP1000_ETH) || defined (CONFIG_DM9000_ETH) || defined (CONFIG_SMC91X) || defined (CONFIG_DM9000) || defined (CONFIG_DM9KS)
-
-    #if defined (CONFIG_MTIP1000_ETH)                       //;dgt3;
-        (*((np_mtip_mac *)                                  //;dgt3;
-                (na_mtip_mac_control_port))).               //;dgt3;
-                    COMMAND_CONFIG = 0;                     //;dgt3;
-    #endif                                                  //;dgt3;
-
-	/* now read the hwaddr of the ethernet --wentao*/
-
-#if defined (na_flash_kernel)
-    #if 1                                                   //;dgt2;
-//    #if defined (nasys_am29lv065d_flash_0)                //;dgt;
-      {                                                     //;dgt;
-        unsigned char   *flashptr               =           //;dgt;
-            ((unsigned char *)                              //;dgt;
-                ((                                          //;dgt;
-                  #if defined (na_flash_kernel_end)         //;dgt2;
-                      na_flash_kernel_end                   //;dgt2;
-                  #else                                     //;dgt2;
-                    #if defined (na_flash_kernel_base)      //;dgt2;
-                      na_flash_kernel_base      +           //;dgt;
-                    #else                                   //;dgt2;
-                      na_flash_kernel           +           //;dgt2;
-                    #endif                                  //;dgt2;
-                      na_flash_kernel_size                  //;dgt2;
-                  #endif                                    //;dgt2;
-                      - 0x00010000)));                      //;dgt;
-          // last 64K of Altera stratix/cyclone flash       //;dgt;
-                                                            //;dgt;
-        if((*((unsigned long *) flashptr)) == 0x00005AFE)   //;dgt;
-          {                                                 //;dgt;
-            memcpy(excalibur_enet_hwaddr_array,             //;dgt;
-                   ((void*) (flashptr+4)),6);               //;dgt;
-          }                                                 //;dgt;
-          else                                              //;dgt;
-          {                                                 //;dgt;
-            printk("\nsetup_arch: No persistant network"    //;dgt;
-                        " settings signature at %08lX\n",   //;dgt;
-                   ((unsigned long) flashptr));             //;dgt;
-            *((unsigned long *)                             //;dgt;
-                 (&(excalibur_enet_hwaddr_array[0]))) =     //;dgt;
-                    0x00ED0700;                             //;dgt2;
-                      /* 0x00-07-ED: Altera Corporation.    //;dgt;     */
-            *((unsigned short *)                            //;dgt;
-                 (&(excalibur_enet_hwaddr_array[4]))) =     //;dgt;
-                    0x0000;                                 //;dgt;
-            /* Should be: 0x-00-07-ED-0A-03-(Random# 0-256) //;dgt2;    */
-            /* 0x-00-07-ED-0A-xx-yy   Vermont boards        //;dgt2;    */
-            /* 0x-00-07-ED-0B-xx-yy   Rhode Island boards   //;dgt2;    */
-            /* 0x-00-07-ED-0C-xx-yy   Delaware boards       //;dgt2;    */
-            /*                00        Internal Altera     //;dgt2;    */
-            /*                01        Beta, pre-production//;dgt2;    */
-            /*                02        Beta, pre-production//;dgt2;    */
-            /*                03        Customer use        //;dgt2;    */
-          }                                                 //;dgt;
-      }                                                     //;dgt;
-    #else                                                   //;dgt;
-	  flash_command(NIOS_FLASH_START, 0x555, 0x88);
-	  memcpy(excalibur_enet_hwaddr_array,(void*)NIOS_FLASH_START,6);
-	  exit_se_flash(NIOS_FLASH_START);;
-    #endif                                                  //;dgt;
-
-	/* now do the checking, make sure we got a valid addr */
-	if (excalibur_enet_hwaddr_array[0] & (unsigned char)1)
-	{
-		printk("Ethernet hardware address:Clearing invalid bit #0\n");
-		excalibur_enet_hwaddr_array[0] ^= (unsigned char)1;
-	}
-#else
-	excalibur_enet_hwaddr_array[0] = 0x00;
-	excalibur_enet_hwaddr_array[1] = 0x07;
-	excalibur_enet_hwaddr_array[2] = 0xed;
-	excalibur_enet_hwaddr_array[3] = 0x0a;
-	excalibur_enet_hwaddr_array[4] = 0x03;
-	excalibur_enet_hwaddr_array[5] = 0x00;
-#endif /* defined na_flash_kernel */
-
-	excalibur_enet_hwaddr=excalibur_enet_hwaddr_array;
-#ifdef DEBUG
-	printk("Setup the hardware addr for ethernet\n\t %02x %02x %02x %02x %02x %02x\n",
-		excalibur_enet_hwaddr[0],excalibur_enet_hwaddr[1],
-		excalibur_enet_hwaddr[2],excalibur_enet_hwaddr[3],
-		excalibur_enet_hwaddr[4],excalibur_enet_hwaddr[5]);
-#endif
-#endif
-
 
 	/*
 	 * give all the memory to the bootmap allocator,  tell it to put the
@@ -531,13 +390,6 @@ static struct platform_device smc91x_device = {
 };
 static int __init smc91x_device_init(void)
 {
-#define SMC_DEBUG 0
-#include <linux/mii.h>
-#include "../../../drivers/net/smc91x.h"
-	/* write eth hardware address to MAC */
-	void __iomem *ioaddr = (void *)(na_enet + LAN91C111_REGISTERS_OFFSET);
-	SMC_outl((1)<<16, ioaddr, 12<<SMC_IO_SHIFT);	/* Select Bank 1 */
-	SMC_SET_MAC_ADDR(0, excalibur_enet_hwaddr);
 	/* customizes platform devices, or adds new ones */
 	platform_device_register(&smc91x_device);
 	return 0;
@@ -585,12 +437,6 @@ static struct platform_device dm9k_device = {
 };
 static int __init dm9k_device_init(void)
 {
-	/* write eth hardware address to MAC */
-	int i;
-	for (i = 0; i < 6; i++) {
-		writeb(0x10 + i, na_dm9000); /* DM9000_PAR */
-		writeb(excalibur_enet_hwaddr[i], na_dm9000 + 4);		
-	}
 	/* customizes platform devices, or adds new ones */
 	platform_device_register(&dm9k_device);
 	return 0;
