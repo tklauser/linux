@@ -63,12 +63,19 @@
 
 #define OETH_REVISION_DATECODE 20050321
 
+#define MACADDR0 0x00
+#define MACADDR1 0x07
+#define MACADDR2 0xed
+#define MACADDR3 0x0a
+#define MACADDR4 0x03
+#define MACADDR5 0x29
+
 #define ANNOUNCEPHYINT
 //#undef  ANNOUNCEPHYINT
 #undef OETH_SW_CRC_CHECKING
 
 #ifdef CONFIG_EXCALIBUR
-    #include <asm/nios.h>
+    #include <asm/nios2.h>
     #include <asm/cacheflush.h>
     #define _print              printk
     #define MACIRQ_NUM          na_igor_mac_irq
@@ -2164,6 +2171,7 @@ static int __init oeth_probe(struct net_device *dev)
     volatile        oeth_regs     *regs;
     volatile        oeth_bd       *tx_bd, *rx_bd;
     int                            i, j, k;
+    unsigned long		   regbase;
   #ifdef SRAM_BUFF
     unsigned long mem_addr = SRAM_BUFF_BASE;
   #else
@@ -2177,7 +2185,7 @@ static int __init oeth_probe(struct net_device *dev)
 
     cep = (struct oeth_private *)dev->priv;
 
-    if (!request_region(OETH_REG_BASE,
+    if (!request_region(ETH_BASE_ADD,
                         OETH_IO_EXTENT,
                         dev->name)) return -EBUSY;
 
@@ -2189,15 +2197,20 @@ static int __init oeth_probe(struct net_device *dev)
            OETH_RXBD_NUM,
            OETH_TXBD_NUM);
   #endif    // CONFIG_EXCALIBUR
+    
+    regbase = (unsigned long)ioremap(ETH_BASE_ADD, OETH_IO_EXTENT);
 
-    dev->base_addr = OETH_REG_BASE;
+    if (regbase == 0) {
+    	dev_err(dev,"failed to ioremap mac reg\n");
+      	return -EINVAL;
+    }
 
     __clear_user(cep,sizeof(*cep));
 
     /* Get pointer ethernet controller configuration registers.
      */
-    cep->regs = (oeth_regs *)(OETH_REG_BASE);
-    regs = (oeth_regs *)(OETH_REG_BASE);
+    cep->regs = (oeth_regs *)(regbase);
+    regs = (oeth_regs *)(regbase);
 
     /* Reset the controller.
      */
@@ -2210,13 +2223,13 @@ static int __init oeth_probe(struct net_device *dev)
 
     /* Initialize TXBD pointer
      */
-    cep->tx_bd_base = (oeth_bd *)OETH_BD_BASE;
-    tx_bd =  (volatile oeth_bd *)OETH_BD_BASE;
+    cep->tx_bd_base = (oeth_bd *)(regbase + OETH_BD_OFS);
+    tx_bd =  (volatile oeth_bd *)(regbase + OETH_BD_OFS);
 
     /* Initialize RXBD pointer
      */
-    cep->rx_bd_base = ((oeth_bd *)OETH_BD_BASE) + OETH_TXBD_NUM;
-    rx_bd =  ((volatile oeth_bd *)OETH_BD_BASE) + OETH_TXBD_NUM;
+    cep->rx_bd_base = ((oeth_bd *)(regbase + OETH_BD_OFS)) + OETH_TXBD_NUM;
+    rx_bd =  ((volatile oeth_bd *)(regbase + OETH_BD_OFS)) + OETH_TXBD_NUM;
 
 #if OETH_REVISION_DATECODE < 20040426
     /* Initialize transmit pointers.
@@ -2353,22 +2366,12 @@ static int __init oeth_probe(struct net_device *dev)
 
 #endif  // RXBUFF_PREALLOC
 
-    /* Set default ethernet station address.
-     */
-
-  #ifdef CONFIG_EXCALIBUR
-   {
-    extern unsigned char *excalibur_enet_hwaddr;
-    memcpy(dev->dev_addr, excalibur_enet_hwaddr, 6);
-   }
-  #else
     dev->dev_addr[0] = MACADDR0;
     dev->dev_addr[1] = MACADDR1;
     dev->dev_addr[2] = MACADDR2;
     dev->dev_addr[3] = MACADDR3;
     dev->dev_addr[4] = MACADDR4;
     dev->dev_addr[5] = MACADDR5;
-  #endif    // CONFIG_EXCALIBUR
 
     regs->mac_addr1 = (dev->dev_addr[0]) <<  8 |
                       (dev->dev_addr[1]);
@@ -2399,7 +2402,7 @@ static int __init oeth_probe(struct net_device *dev)
      */
     ether_setup(dev);
 
-    dev->base_addr = (unsigned long)OETH_REG_BASE;
+    dev->base_addr = (void *)regbase;
 
     /* The Open Ethernet specific entries in the device structure.
      */

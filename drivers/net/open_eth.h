@@ -76,8 +76,7 @@ typedef struct _oeth_bd {
         uint    addr;           /* Buffer address */
 } oeth_bd;
 
-#define OETH_REG_BASE           ETH_BASE_ADD
-#define OETH_BD_BASE            (ETH_BASE_ADD + 0x400)
+#define OETH_BD_OFS             0x400
 #define OETH_TOTAL_BD           128
 #define OETH_MAXBUF_LEN         0x600
                                 
@@ -192,6 +191,6 @@ typedef struct _oeth_bd {
 
 /*----------------------------------------------------------------------*/
 
-    #define OETH_IO_EXTENT      (sizeof(oeth_regs))
+    #define OETH_IO_EXTENT      0x800
 
 /*----------------------------------------------------------------------*/
