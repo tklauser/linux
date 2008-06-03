@@ -167,6 +167,13 @@ config ALTERA_DE2
 	  Support for the Altera Cyclone Development board. Includes
 	  support for 10/100 ethernet, FLASH, SDRAM, VGA, I2C.
 
+config ALTERA_NEEK_C3
+	bool "Altera Nios II Embedded Evaluation Kit support"
+	depends on NIOS2
+	help
+	  Support for the Altera Nios II Embedded Evaluation Kit. Includes
+	  support for 10/100 ethernet, FLASH, SDRAM, LCD, VGA, I2C.
+
 endchoice
 
 choice
