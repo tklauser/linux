@@ -104,8 +104,8 @@ static int altfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	vma->vm_flags |= VM_MAYSHARE | VM_SHARED;
 
-	vma->vm_start = info->fix.smem_start;
-	vma->vm_end = info->fix.smem_start + info->fix.smem_len;
+	vma->vm_start = info->screen_base;
+	vma->vm_end = vma->vm_start + info->fix.smem_len;
 	return 0;
 }
 
