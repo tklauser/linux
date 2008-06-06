@@ -11,17 +11,6 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
  */
 
 #include <linux/mm.h>
@@ -36,6 +25,7 @@
 #include <asm/page.h>
 #include <asm/pgalloc.h>
 #include <asm/io.h>
+#include <asm/cacheflush.h>
 #include <asm/system.h>
 
 /*
@@ -44,8 +34,12 @@
 
 void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag)
 {
-	return (cacheflag == IOMAP_FULL_CACHING) ? (void *)(physaddr & ~0x80000000) : 
-		(void *)(physaddr | 0x80000000);
+	if (cacheflag == IOMAP_FULL_CACHING) {
+		return (void *)(physaddr & ~0x80000000);
+	} else {
+		dcache_push(physaddr, size);
+		return (void *)(physaddr | 0x80000000);
+	}
 }
 
 /*
@@ -63,4 +57,3 @@ void iounmap(void *addr)
 void __iounmap(void *addr, unsigned long size)
 {
 }
-
