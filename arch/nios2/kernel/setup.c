@@ -445,6 +445,88 @@ arch_initcall(dm9k_device_init);
 #endif // CONFIG_DM9000
 
 
+#if defined (CONFIG_ATSE)
+/* Altera Triple Speed Ethernet */
+#include         "../drivers/net/atse.h"
+static struct resource atse_resource[] = {
+	[0] = {
+		.start = na_descriptor_memory_s1,
+		.end   = na_descriptor_memory_s1 + 0x2000 - 1,   /* hard number copied from ATSE FPGA sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_DESC_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_sgdma_rx_csr,
+		.end   = na_sgdma_rx_csr + 0x400 - 1,  /* hard number copied from ATSE FPGA sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_RX_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[2] = {
+		.start = na_sgdma_tx,
+		.end   = na_sgdma_tx + 0x400 - 1,  /* hard number copied from ATSE FPGA sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_TX_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[3] = {
+		.start = na_sgdma_rx_csr_irq,
+		.end   = na_sgdma_rx_csr_irq,
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_RX_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+	[4] = {
+		.start = na_sgdma_tx_irq,
+		.end   = na_sgdma_tx_irq,
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_TX_IRQ,
+		.flags = IORESOURCE_IRQ,
+	}
+};
+
+static struct atse_plat_data atse_platdata = {
+	.flags		= 1,
+};
+
+static struct platform_device atse_device = {
+	/* the name string must be the same as in struct patform_driver */
+	.name		= ATSE_CARDNAME,
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(atse_resource),
+	.resource	= atse_resource,
+	.dev		= {
+		.platform_data = &atse_platdata,
+	}
+};
+static int __init atse_device_init(void)
+{
+	/* write eth hardware address to MAC registers */
+	unsigned int mac_reg_0;
+	unsigned int mac_reg_1 = 0x0;
+	/*
+	mac_reg_0 = excalibur_enet_hwaddr[0]   | 
+		excalibur_enet_hwaddr[1] << 8  |
+		excalibur_enet_hwaddr[2] << 16 |
+		excalibur_enet_hwaddr[3] << 24;
+
+	mac_reg_1 = excalibur_enet_hwaddr[4] | excalibur_enet_hwaddr[5] << 8;
+	*/
+	mac_reg_0 = 0x00   |
+		0x07 << 8  |
+		0xED << 16 |
+		0x0D << 24;
+
+	mac_reg_1 = 0x09   |
+		0x19 << 8  ;
+
+	writel(mac_reg_0, ATSE_MAC_REG_MAC_ADDR_0);
+	writel(mac_reg_1, ATSE_MAC_REG_MAC_ADDR_1);
+	platform_device_register(&atse_device);
+
+	return 0;
+}
+
+arch_initcall(atse_device_init);
+#endif /* CONFIG_ATSE */
+
+
 #if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
 
 static struct resource altps2_0_resources[] = {
