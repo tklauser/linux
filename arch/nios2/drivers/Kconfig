@@ -26,12 +26,6 @@ config BLK_DEV_ALTCF
 	  Avalon interface) support. If you have an Altera or Microtronix
 	  development board you can build support into the FPGA device for this.
 
-config NIOS_SPI
-	bool "Nios SPI device support"
-	depends on NIOS || NIOS2
-	help
-	  This driver supports the Nios softcore SPI device.
-
 config NIOS_SD_HOST
 	tristate "NIOS SD/SDIO/MMC Host"
 	depends on NIOS || NIOS2
