@@ -7,26 +7,12 @@
  *  Copyright (C) 2004  Microtronix Datacom Ltd.
  *
  *  Based on:
- *
  *  linux/arch/m68k/mm/memory.c
- *
- * All rights reserved.          
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
  */
 
 #include <linux/mm.h>
@@ -52,63 +38,58 @@
 
 static __inline__ void cache_invalidate_inst(unsigned long paddr, int len)
 {
-	unsigned long	sset, eset;
+	if (len >= nasys_icache_size) {
+		__asm__ __volatile__("1:\n\t"
+				     "flushi	%0\n\t"
+				     "sub	%0,%0,%1\n\t"
+				     "bgt	%0,r0,1b\n\t"
+				     "flushp\n\t"::"r"
+				     (nasys_icache_size),
+				     "r"(nasys_icache_line_size));
+	} else {
+		unsigned long sset, eset;
 
-	sset = (paddr & (nasys_icache_size - 1)) & (~(nasys_icache_line_size - 1));
-	eset = (((paddr & (nasys_icache_size - 1)) + len) & (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
+		sset =
+		    (paddr & (nasys_icache_size - 1)) &
+		    (~(nasys_icache_line_size - 1));
+		eset =
+		    (((paddr & (nasys_icache_size - 1)) + len) &
+		     (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
 
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushi	%0\n\t"
-	"add	%0,%0,%2\n\t"
-	"blt	%0,%1,1b\n\t"
-	"flushp\n\t"
-	: : "r" (sset), "r" (eset), "r" (nasys_icache_line_size));
+		__asm__ __volatile__("1:\n\t"
+				     "flushi	%0\n\t"
+				     "add	%0,%0,%2\n\t"
+				     "blt	%0,%1,1b\n\t"
+				     "flushp\n\t"::"r"(sset),
+				     "r"(eset), "r"(nasys_icache_line_size));
+	}
 
 }
 
 static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 {
-	unsigned long	sset, eset;
+	if (len >= nasys_dcache_size * 2) {
+		__asm__ __volatile__("1:\n\t"
+				     "flushd	0(%0)\n\t"
+				     "sub	%0,%0,%1\n\t"
+				     "bgt	%0,r0,1b\n\t"::"r"
+				     (nasys_dcache_size),
+				     "r"(nasys_dcache_line_size));
 
-	sset = paddr & (~(nasys_dcache_line_size - 1));
-	eset = (paddr + len + nasys_dcache_line_size - 1) & (~(nasys_dcache_line_size - 1));
+	} else {
+		unsigned long sset, eset;
 
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushda	0(%0)\n\t"
-	"add	%0,%0,%2\n\t"
-	"blt	%0,%1,1b\n\t"
-	: : "r" (sset),"r" (eset), "r" (nasys_dcache_line_size));
+		sset = paddr & (~(nasys_dcache_line_size - 1));
+		eset =
+		    (paddr + len + nasys_dcache_line_size - 1) &
+		    (~(nasys_dcache_line_size - 1));
 
-}
-
-static __inline__ void cache_invalidate_lines(unsigned long paddr, int len)
-{
-	unsigned long	sset, eset;
-	int dlen = min(len, nasys_dcache_size);
-	int ilen = min(len, nasys_icache_size);
-
-	sset = (paddr & (nasys_dcache_size - 1)) & (~(nasys_dcache_line_size - 1));
-	eset = (((paddr & (nasys_dcache_size - 1)) + dlen) & (~(nasys_dcache_line_size - 1))) + nasys_dcache_line_size;
-
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushd	0(%0)\n\t"
-	"add	%0,%0,%2\n\t"
-	"blt	%0,%1,1b\n\t"
-	: : "r" (sset),"r" (eset), "r" (nasys_dcache_line_size));
-
-	sset = (paddr & (nasys_icache_size - 1)) & (~(nasys_icache_line_size - 1));
-	eset = (((paddr & (nasys_icache_size - 1)) + ilen) & (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
-
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushi	%0\n\t"
-	"add	%0,%0,%2\n\t"
-	"blt	%0,%1,1b\n\t"
-	"flushp\n\t"
-	: : "r" (sset), "r" (eset), "r" (nasys_icache_line_size));
+		__asm__ __volatile__("1:\n\t"
+				     "flushda	0(%0)\n\t"
+				     "add	%0,%0,%2\n\t"
+				     "blt	%0,%1,1b\n\t"::"r"(sset),
+				     "r"(eset), "r"(nasys_dcache_line_size));
+	}
 
 }
 
@@ -119,9 +100,10 @@ static __inline__ void cache_invalidate_lines(unsigned long paddr, int len)
  * _physical_ address.
  */
 
-void cache_push (unsigned long paddr, int len)
+void cache_push(unsigned long paddr, int len)
 {
-	cache_invalidate_lines(paddr, len);
+	cache_invalidate_data(paddr, len);
+	cache_invalidate_inst(paddr, len);
 }
 
 /*
@@ -131,31 +113,30 @@ void cache_push (unsigned long paddr, int len)
  * code later. The range is defined by a _user_mode_ _virtual_ address.
  */
 
-void cache_push_v (unsigned long vaddr, int len)
+void cache_push_v(unsigned long vaddr, int len)
 {
-	cache_invalidate_lines(vaddr, len);
+	cache_invalidate_data(vaddr, len);
+	cache_invalidate_inst(vaddr, len);
 }
 
 /*
  * cache_push_all() semantics: Invalidate instruction cache and write back
  * dirty data cache & invalidate.
  */
-void cache_push_all (void)
+void cache_push_all(void)
 {
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushd	0(%0)\n\t"
-	"sub	%0,%0,%1\n\t"
-	"bgt	%0,r0,1b\n\t"
-	: : "r" (nasys_dcache_size), "r" (nasys_dcache_line_size));
+	__asm__ __volatile__("1:\n\t"
+			     "flushd	0(%0)\n\t"
+			     "sub	%0,%0,%1\n\t"
+			     "bgt	%0,r0,1b\n\t"::"r"(nasys_dcache_size),
+			     "r"(nasys_dcache_line_size));
 
-	__asm__ __volatile__ (
-	"1:\n\t"
-	"flushi	%0\n\t"
-	"sub	%0,%0,%1\n\t"
-	"bgt	%0,r0,1b\n\t"
-	"flushp\n\t"
-	: : "r" (nasys_icache_size), "r" (nasys_icache_line_size));
+	__asm__ __volatile__("1:\n\t"
+			     "flushi	%0\n\t"
+			     "sub	%0,%0,%1\n\t"
+			     "bgt	%0,r0,1b\n\t"
+			     "flushp\n\t"::"r"(nasys_icache_size),
+			     "r"(nasys_icache_line_size));
 
 }
 
@@ -166,7 +147,7 @@ void cache_push_all (void)
  * _physical_ address.
  */
 
-void cache_clear (unsigned long paddr, int len)
+void cache_clear(unsigned long paddr, int len)
 {
 	cache_invalidate_data(paddr, len);
 }
@@ -175,7 +156,7 @@ void cache_clear (unsigned long paddr, int len)
  * dcache_push() semantics: Write back and dirty data cache and invalidate
  * the range.
  */
-void dcache_push (unsigned long vaddr, int len)
+void dcache_push(unsigned long vaddr, int len)
 {
 	cache_invalidate_data(vaddr, len);
 }
@@ -183,7 +164,7 @@ void dcache_push (unsigned long vaddr, int len)
 /*
  * icache_push() semantics: Invalidate instruction cache in the range.
  */
-void icache_push (unsigned long vaddr, int len)
+void icache_push(unsigned long vaddr, int len)
 {
 	cache_invalidate_inst(vaddr, len);
 }
@@ -193,21 +174,20 @@ void icache_push (unsigned long vaddr, int len)
  */
 
 unsigned long kernel_map(unsigned long paddr, unsigned long size,
-			 int nocacheflag, unsigned long *memavailp )
+			 int nocacheflag, unsigned long *memavailp)
 {
 	return paddr;
 }
 
-
 int is_in_rom(unsigned long addr)
 {
 	/* Default case, not in ROM */
-	return(0);
+	return (0);
 }
 
 int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
-		unsigned long address, int write_access)
+		      unsigned long address, int write_access)
 {
-  BUG();
-		return VM_FAULT_OOM;
+	BUG();
+	return VM_FAULT_OOM;
 }
