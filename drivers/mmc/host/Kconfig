@@ -130,3 +130,21 @@ config MMC_SPI
 
 	  If unsure, or if your system has no SPI master driver, say N.
 
+config MMC_NIOS
+	tristate "NIOS SD/SDIO/MMC Host"
+	depends on NIOS_SD_HOST
+	help
+		Device driver for the FPS-Tech SD/SDIO/MMC Host for Altera NIOS systems
+
+config NIOS_MMC_NOBLK_PREFETCH
+	tristate "Disable Block pre-fetching"
+	depends on MMC_NIOS
+	help	
+		The NIOS SD Host will pre-fetch a complete block from memory
+		before writing on the SD interface. The pre-fetch is performed
+		for systems that have high memory access times (eg: DDR-based systems).
+		For configurations with low-latency memory access (eg: SSRAM), pre-fetching
+		shouldn't be required. Disable Block pre-fetching only if you have a low-latency
+		memory system. 
+
+		If unsure, say N here

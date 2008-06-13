@@ -106,6 +106,24 @@ config SERIAL_NONSTANDARD
 
 	  Most people can say N here.
 
+config NIOS_LCD_16207
+	tristate "Nios LCD 16207 device support"
+	depends on NIOS || NIOS2
+	help
+	  This driver supports the Nios LCD 16207 device.
+
+config NIOS_BUTTON
+	bool "Nios PIO buttons support"
+	depends on NIOS || NIOS2
+	---help---
+	This driver takes the 4 user buttons on Altera's Nios Development Kit
+	as a source of input: users can input '1','2','4' or '8' by pressing
+	one of the 4 buttons. The device node is a character device with a
+	major of 62 and minor of 0. Users can view input using the following
+	command:
+		$ cat /dev/btn
+	where /dev/btn is the device node file.
+
 config COMPUTONE
 	tristate "Computone IntelliPort Plus serial support"
 	depends on SERIAL_NONSTANDARD && (ISA || EISA || PCI)

@@ -52,6 +52,13 @@ config SPI_MASTER
 comment "SPI Master Controller Drivers"
 	depends on SPI_MASTER
 
+config SPI_ALTERA
+	tristate "Altera SPI Controller"
+	depends on SPI_MASTER && EMBEDDED
+	select SPI_BITBANG
+	help
+	  This is the driver for the Altera Avalon SPI Controller.
+
 config SPI_ATMEL
 	tristate "Atmel SPI Controller"
 	depends on (ARCH_AT91 || AVR32) && SPI_MASTER

@@ -1987,6 +1987,16 @@ config XEN_FBDEV_FRONTEND
 	  frame buffer driver.  It communicates with a back-end
 	  in another domain.
 
+config FB_ALTERA_VGA
+	tristate "Altera framebuffer support"
+	depends on FB && EMBEDDED
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	---help---
+	  This is the frame buffer driver for the VGA controller 
+	  in Altera Nios forum and the video pipeline of NEEK.
+
 source "drivers/video/omap/Kconfig"
 
 source "drivers/video/backlight/Kconfig"

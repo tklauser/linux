@@ -887,12 +887,38 @@ config SMC9194
 	  To compile this driver as a module, choose M here. The module
 	  will be called smc9194.
 
+config OPEN_ETH
+	bool "Opencores (Igor) Emac support"
+	help
+	  This is support for the opencores Igor emac driver implemented
+	  in an FPGA.
+
+config MTIP1000_ETH
+	bool "MoreThanIP 10_100_1000 Emac support"
+	help
+	  This is support for the MoreThanIP 10_100_1000 emac driver implemented
+	  in an FPGA.
+
+config ATSE
+	bool "Altera Tripple Speed Ethernet support (EXPERIMENTAL)"
+	help
+
+	  This is support for Altera Tripple Speed (TSE) Ethernet MAC
+	  implemented in an FPGA.
+
+	  If you have one of the following of Development Board
+	  Daughter Cards, say y:
+	  "10/100/1000 Ethernet PHY Daughter Board with Marvell PHY (88E1111)"
+
+	   default n
+	   depends on NIOS2
+
 config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
 	select CRC32
 	select MII
 	depends on ARM || REDWOOD_5 || REDWOOD_6 || M32R || SUPERH || \
-		SOC_AU1X00 || BLACKFIN || MN10300
+		SOC_AU1X00 || BLACKFIN || MN10300 || EMBEDDED
 	help
 	  This is a driver for SMC's 91x series of Ethernet chipsets,
 	  including the SMC91C94 and the SMC91C111. Say Y if you want it
@@ -917,7 +943,7 @@ config NET_NETX
 
 config DM9000
 	tristate "DM9000 support"
-	depends on ARM || BLACKFIN || MIPS
+	depends on ARM || BLACKFIN || MIPS || EMBEDDED
 	select CRC32
 	select MII
 	---help---
