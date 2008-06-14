@@ -93,41 +93,18 @@ my $cpu_selection = $cpulist[request_answer (1, $index - 1) - 1];
 # Grab list of memory devices that $cpu_selection is hooked up to:
 #
 my @modulelist = $system->getSlaveModules ($cpu_selection);
-my %cfiinfo;
 my %meminfo;
 foreach my $module_name (@modulelist) {
 	my $module = $system->getModule ($module_name);
 	my $class = $module->getClass ();
 
 	if ($module->isEnabled ()) {	
-		if ($module->isNonvolatileStorage()) {
-			$cfiinfo{$module_name}{class} = $class;
-			$cfiinfo{$module_name}{size} = $module->getSize();
-		} 
-
 		if ($module->isMemoryDevice()) {
 			$meminfo{$module_name}{class} = $class;
 			$meminfo{$module_name}{size} = $module->getSize();
 		}
 	}
 }
-
-#
-# Select an upload device:
-#
-print "\n--- Please select a device to upload the kernel to:\n\n";
-
-$index = 1;
-foreach my $name (keys (%cfiinfo)) {
-	my $size = hex ($cfiinfo{$name}{size});
-	print "($index) $name\n\tClass: $cfiinfo{$name}{class}\n\tSize: $size bytes\n\n";
-	$index += 1;
-}
-
-my @cfilist = keys (%cfiinfo);
-my $cfi_selected = $cfilist[($index > 1) ? (request_answer (1, $index - 1) - 1) : 0];
-
-delete $meminfo{$cfi_selected};
 
 #
 # Select program memory to execute kernel from:
@@ -147,7 +124,6 @@ my $mem_selected = $memlist[request_answer (1, $index - 1) - 1];
 print "\n--- Summary using\n\n";
 print "PTF: $ptf_filename\n";
 print "CPU:                            $cpu_selection\n";
-print "Device to upload to:            $cfi_selected\n";
 print "Program memory to execute from: $mem_selected\n";
 
 #
@@ -158,7 +134,6 @@ open (HWMK, ">$target_filename") ||
 
 print HWMK "SYSPTF = $ptf_filename\n";
 print HWMK "CPU = $cpu_selection\n";
-print HWMK "UPLMEM = $cfi_selected\n";
 print HWMK "EXEMEM = $mem_selected\n";
 
 close (HWMK);

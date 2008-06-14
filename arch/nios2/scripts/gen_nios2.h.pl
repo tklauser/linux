@@ -4,9 +4,7 @@
 #
 # usage:
 #
-#  [SOPC Builder]$ perl gen_hardware.h.pl <target cpu> <exec location> \
-#                    <upload location>
-#
+#  [SOPC Builder]$ perl gen_hardware.h.pl <target cpu> <exec location>
 
 use PTF::SystemPTF;
 use strict;
@@ -14,7 +12,6 @@ use integer;
 
 my $target_cpu;
 my $exec_location;
-my $upload_location;
 
 if (scalar (@ARGV) < 2) {
 	print STDERR "ERROR: Invalid number of parameters.\n";
@@ -23,7 +20,6 @@ if (scalar (@ARGV) < 2) {
 } else {
 	$target_cpu = $ARGV[0];
 	$exec_location = $ARGV[1];
-	$upload_location = $ARGV[2];
 }
 
 #
@@ -71,13 +67,6 @@ my $exec_module = $system->getModule ($exec_location);
 if (! $exec_module) {
 	print STDERR "ERROR: $exec_location is not a valid module in the system: " . $system->getName() . ".\n";
 	print "#error $exec_location is not a valid module in system: " . $system->getName () . ".\n";
-	exit 1;
-}
-
-my $upload_module = $system->getModule ($upload_location);
-if ($upload_location && ! $upload_module) {
-	print STDERR "ERROR: $upload_location is not a valid module in the system: " . $system->getName() . ".\n";
-	print "#error $upload_location is not a valid module in system: " . $system->getName () . ".\n";
 	exit 1;
 }
 
@@ -245,41 +234,6 @@ printf ("#define %-33s %30s\n",
 	("nasys_program_mem_end", "na_${exec_location}_end"));
 	
 print "\n";
-
-if (!$upload_location || ($upload_location eq "flash_kernel")) {
-	# nothing to do
-	print ("/* Redefinition of CFI flash memory unecessary */\n");
-} else {
-	my $module = $system->getModule ("flash_kernel");
-	if ($module) {
-		# there is a conflicting module in the system, error.
-		print STDERR "Error, a SOPC module named flash_kernel already exists but is not the upload location.\n";
-		print "#error The module name \"flash_kernel\" already exists but isn't the upload location.\n";
-		print "#error This will break the kernel.\n";
-		print "#error Please rename the module to something else in SOPC Builder.\n\n";
-		exit 1;
-	} else {
-		print ("/*\n");
-		print (" * Redefining upload location ($upload_location) to flash_kernel.\n");
-		print (" */\n\n");
-		# undefine the original module names and re-define them here.
-		print ("#undef  na_${upload_location}\n");
-		print ("#undef  na_${upload_location}_size\n");
-		print ("#undef  na_${upload_location}_end\n");
-		
-		my $base_address = $upload_module->getBaseAddress ();
-		printf ("#define %-33s %30s\n",
-			("na_flash_kernel", $base_address));
-			
-		my $mem_size = $upload_module->getSize();
-		printf ("#define %-33s %30s\n",
-			("na_flash_kernel_size", $mem_size));
-			
-		my $mem_end = hex ($base_address) + hex ($mem_size);
-		printf ("#define %-53s %#010x\n",
-			("na_flash_kernel_end", $mem_end));
-	}
-}
 
 print "\n";
 printf ("#define %-33s %30s\n", 
