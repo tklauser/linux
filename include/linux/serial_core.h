@@ -162,6 +162,10 @@
 #define PORT_ALTERA_JTAGUART	83
 #define PORT_ALTERA_UART	84
 
+/* Altera UARTs */
+#define PORT_ALTERA_JTAGUART	83
+#define PORT_ALTERA_UART	84
+
 #ifdef __KERNEL__
 
 #include <linux/compiler.h>
