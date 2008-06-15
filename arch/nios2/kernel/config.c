@@ -204,6 +204,50 @@ static struct platform_device nios2_flash_device = {
 };
 #endif
 
+#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
+#define EPCS_SPI_OFFSET 0x200 /* FIXME */
+static struct resource na_epcs_controller_resource[] = {
+	[0] = {
+		.start = na_epcs_controller + EPCS_SPI_OFFSET,
+		.end   = na_epcs_controller + EPCS_SPI_OFFSET + 31,
+		.flags = IORESOURCE_MEM,
+		},
+	[1] = {
+		.start = na_epcs_controller_irq,
+		.end   = na_epcs_controller_irq,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device na_epcs_controller_device = {
+	.name = "altspi",
+	.id = 0, /* Bus number */
+	.num_resources = ARRAY_SIZE(na_epcs_controller_resource),
+	.resource = na_epcs_controller_resource,
+};
+#endif  /* spi master and devices */
+
+#if defined(CONFIG_MTD_M25P80) || defined(CONFIG_MTD_M25P80_MODULE)
+static struct mtd_partition nios2_spi_flash_partitions[] = {
+	{
+		.name =		"romfs/jffs2",
+		.size =		0x180000,
+		.offset =	0x80000,
+	},{
+		.name =		"fpga configuration",
+		.size =		0x80000,
+		.offset =	0,
+	}
+};
+
+static struct flash_platform_data nios2_spi_flash_data = {
+	.name = "m25p80",
+	.parts = nios2_spi_flash_partitions,
+	.nr_parts = ARRAY_SIZE(nios2_spi_flash_partitions),
+	.type = "m25p16",
+};
+#endif
+
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_touch_panel_spi)
 static struct resource na_touch_panel_spi_resource[] = {
 	[0] = {
@@ -271,6 +315,17 @@ static struct ads7846_platform_data ads_info = {
 #if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
 static struct spi_board_info nios2_spi_devices[] = {
 
+#if defined(CONFIG_MTD_M25P80) || defined(CONFIG_MTD_M25P80_MODULE)
+	{
+		/* the modalias must be the same as spi device driver name */
+		.modalias = "m25p80", /* Name of spi_driver for this device */
+		.max_speed_hz = 25000000,     /* max spi clock (SCK) speed in HZ */
+		.bus_num = 0, /* bus number */
+		.chip_select = 0,
+		.platform_data = &nios2_spi_flash_data,
+	},
+#endif
+
 #if defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)
 	{
 		.modalias	= "ads7846",
@@ -296,6 +351,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 	&nios2_flash_device,
+#endif
+
+#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
+	&na_epcs_controller_device,
 #endif
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_touch_panel_spi)
