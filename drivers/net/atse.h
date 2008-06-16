@@ -121,7 +121,6 @@
 /* PHY ID for Marvell 88E1111 */
 #define ATSE_PHY_ID_MARVELL                 0x0141
 #define ATSE_PHY_VENDOR_NAME_STR_MARVELL    "Marvell 88E1111 PHY"
-#define ATSE_PHY_VENDOR_NAME_STR_NATIONAL   "National DP83865 PHY"
 
 /* Marvell Vendor Specific, according to Altera source code */
 #define ATSE_READ_PHY_MDIO_REG(n)     readl(ATSE_MAC_REG_MDIO_SPACE_0 + (n) * BYTES_IN_WORD)
@@ -131,7 +130,15 @@
 #define ATSE_MVLPHY_IS_FULL_DUP(dat) ( (dat) >> 13) & 0x1
 
 /* PHY ID for National DP83865 */
-#define ATSE_PHY_ID_NATIONAL          0x20005c7a
+#define ATSE_PHY_ID_NATIONAL_1          0x20005c7a
+#define ATSE_PHY_VENDOR_NAME_STR_NATIONAL_1   "National DP83865 PHY"
+
+/* this PHY reportedly comes with Altera NEEK kit board */
+#define ATSE_PHY_ID_NATIONAL_2          0x20005c90
+#define ATSE_PHY_VENDOR_NAME_STR_NATIONAL_2   "National Semiconductor"
+
+/* make up an unknown phy ID */
+#define ATSE_PHY_ID_UNKNOWN             0x12345678
 
 /* na_sgdma_tx is parsed from the PTF file and defined in nios2_syste.h */
 #define ATSE_SGDMA_TX_BASE    ioremap(na_sgdma_tx, 0x400)

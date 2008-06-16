@@ -98,12 +98,41 @@ static struct atse_sgdma_desc *g_rx_desc_next = NULL;
 static struct atse_sgdma_desc *g_tx_desc      = NULL;
 static struct atse_sgdma_desc *g_tx_desc_next = NULL;
 
+
+
+struct atse_phy_device {
+	char *name;
+	u32 phy_id;
+
+	u32 phy_addr;
+	int (*get_link_speed)  (void);
+	int (*link_is_full_dup)(void);
+};
+
+
+#define ATSE_DEBUG_PHY_DEV_FLAG
 /* #define ATSE_DEBUG_FUNC_TRACE_ENTER */
 /* #define ATSE_DEBUG_FUNC_TRACE_EXIT */
 
 /*  #define ATSE_DEBUG_DESC */
 /* #define ATSE_DEBUG_TX_DATA */
 /* #define ATSE_DEBUG_RX_DATA */
+
+#ifdef ATSE_DEBUG_PHY_DEV_FLAG
+#define ATSE_DEBUG_PRINT_PHY_DEV(oui, mod_num, rev_num, phy_dev) atse_debug_pring_phy_dev(__FILE__, __LINE__, oui, mod_num, rev_num, phy_dev)
+static void atse_debug_pring_phy_dev(char *file, int line, int oui, int mod_num, int rev_num, struct atse_phy_device *phy_dev)
+{
+	printk("%s:%d:oui = %x, mod_num = %x, rev_num = %x, phy_name = %s\n", file, line,
+	       oui, mod_num, rev_num, phy_dev->name);
+	       
+
+	return;
+}
+#else
+#define ATSE_DEBUG_PRINT_PHY_DEV(oui, model_num, rev_num, phy_dev)
+#endif
+
+
 
 #ifdef ATSE_DEBUG_DESC
 #define ATSE_DEBUG_PRINT_DESC(this_desc) atse_debug_print_desc(this_desc, __FILE__, __LINE__, #this_desc)
@@ -239,9 +268,9 @@ static void atse_debug_print_rx_data(struct atse_sgdma_desc *rx_desc, unsigned c
 struct atse_board_priv {
 	spinlock_t tx_lock;
 	spinlock_t rx_lock;
-	int        phy_id;
-	int      link_is_full_dup;
-	int      link_is_1000;
+	struct atse_phy_device *phy_dev;
+//	int      link_is_full_dup;
+//	int      link_is_1000;
 	int      link_is_mdix; /* crossover cable */
 	int        tx_pkt_cnt;
 	int        queue_pkt_len;
@@ -537,11 +566,11 @@ static int atse_mac_init(struct net_device *ndev)
 		ATSE_MAC_CC_RX_ERR_DISCD_BIT        |
 		0x0;
 
-	if (bd_priv->link_is_1000)
+	if (bd_priv->phy_dev->get_link_speed() == 1000)
 		dat |= ATSE_MAC_CC_ETH_SPEED_BIT;
 
 
-	if (!bd_priv->link_is_full_dup)
+	if (!bd_priv->phy_dev->link_is_full_dup())
 		dat |= ATSE_MAC_CC_HD_ENA_BIT;
 
 	ATSE_SET_MAC_CMD_CONFIG(dat);
@@ -633,22 +662,27 @@ static irqreturn_t atse_sgdma_rx_irq_handler(int irq, void *dev_id)
 
 static int atse_phy_init(struct net_device *ndev)
 {
-	struct atse_board_priv *bd_priv = netdev_priv(ndev);
-	unsigned int dat;
+	unsigned int stat;
 	int count = 0;
 
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
 
-	dat = ATSE_GET_PHY_MDIO_STATUS();
 	/* see if need reset PHY */
-	if ((dat & ATSE_PHY_MDIO_CONTROL_AUTO_NEG_COMPLETE_BIT) == 0) {
+	if ((ATSE_GET_PHY_MDIO_STATUS() &
+	     ATSE_PHY_MDIO_CONTROL_AUTO_NEG_COMPLETE_BIT) > 0)
+	{
+		/* auto negotiation is complete, so no reset needed */
+		return 0;
+	} else {
+		/* reset now */
 		ATSE_SET_PHY_MDIO_CONTROL(
 			ATSE_PHY_MDIO_CONTROL_RESET_BIT           |
 			ATSE_PHY_MDIO_CONTROL_AUTO_NEGO_ENA_BIT   |
 			0x0
 			);
-		dat = ATSE_GET_PHY_MDIO_STATUS();
-		if ((dat & ATSE_PHY_MDIO_CONTROL_AUTO_NEG_COMPLETE_BIT) == 0) {
+	
+		stat = ATSE_GET_PHY_MDIO_STATUS();
+		if ((stat & ATSE_PHY_MDIO_CONTROL_AUTO_NEG_COMPLETE_BIT) == 0) {
 			printk("ATSE: Waiting on PHY link ......\n");
 			while ((ATSE_GET_PHY_MDIO_STATUS() & 
 				ATSE_PHY_MDIO_CONTROL_AUTO_NEG_COMPLETE_BIT) == 0) {
@@ -662,16 +696,6 @@ static int atse_phy_init(struct net_device *ndev)
 		}
 	}
 
-	if (bd_priv->phy_id == ATSE_PHY_ID_MARVELL) {
-		unsigned int stat;
-		stat = ATSE_GET_MVLPHY_LINK_STATUS();
-		bd_priv->link_is_1000     = ATSE_MVLPHY_IS_1000(stat);
-		bd_priv->link_is_full_dup = ATSE_MVLPHY_IS_FULL_DUP(stat);
-		bd_priv->link_is_mdix     = ATSE_MVLPHY_IS_MDIX(stat);
-	} else {
-		printk("********ATSE:%s:%d:unknown PHY ID 0x%x\n", __FILE__, __LINE__, bd_priv->phy_id);
-		return -1;
-	}
 	return 0;
 }
 
@@ -730,9 +754,9 @@ static int atse_open(struct net_device *ndev)
 	atse_reset_and_enable(ndev);
 	netif_start_queue(ndev);
 
-	printk("%s up, link speed %s, %s duplex",
-	       ndev->name, bd_priv->link_is_1000 == 1 ? "1000":"100",
-	       bd_priv->link_is_full_dup == 1? "full":"half");
+	printk("%s up, link speed %d, %s duplex",
+	       ndev->name, bd_priv->phy_dev->get_link_speed(),
+	       bd_priv->phy_dev->link_is_full_dup() == 1? "full":"half");
 	if (bd_priv->link_is_mdix)
 		printk(", crossover\n");
 	printk(", eth hw addr %s", print_mac(mac_buf, ndev->dev_addr));
@@ -789,54 +813,186 @@ static int atse_close(struct net_device *ndev)
 	return 0;
 }
 
+/* PHY ID, backward compatible */
+#define MTIPPCS_ID      0x00010000  /* MTIP 1000 Base-X PCS */
+#define TDKPHY_ID       0x0300e540  /* TDK 78Q2120 10/100 */
+#define NTLPHY_ID       0x20005c7a  /* National DP83865 */
+//#define ATSE_MARVELL_PHY_ID_88E1111 0x0141
+#define ATSE_MARVELL_PHY_ID_88E1111 0x01410cc2
+#define ATSE_NATIONAL_PHY_ID_83848  0x20005c90 /* National 83848, 10/100 */
+
+
+
+/* PHY ID */
+/* Marvell PHY on PHYWORKX board */
+enum {
+    MV88E1111_OUI       = 0x005043,
+    MV88E1111_MODEL     = 0x0c,
+    MV88E1111_REV       = 0x02
+};
+
+/* Marvell Quad PHY on PHYWORKX board */
+enum {
+    MV88E1145_OUI       = 0x005043,
+    MV88E1145_MODEL     = 0x0d,
+    MV88E1145_REV       = 0x02
+};
+
+/* National PHY on PHYWORKX board */
+enum {
+    DP83865_OUI       = 0x080017,
+    DP83865_MODEL     = 0x07,
+    DP83865_REV       = 0x10
+};
+
+/* National 10/100 PHY on PHYWORKX board */
+enum {
+    DP83848C_OUI       = 0x080017,
+    DP83848C_MODEL     = 0x09,
+    DP83848C_REV       = 0x00
+};
+
+
+
+/* Marvell PHY 88E1111 */
+
+static int atse_phy_marvell_88E1111_get_link_speed(void)
+{
+	unsigned int stat;
+
+	stat = ATSE_GET_MVLPHY_LINK_STATUS();
+	if (ATSE_MVLPHY_IS_1000(stat)) {
+		return 1000;
+	}
+
+	return 100;
+}
+
+static int atse_phy_marvell_88E1111_link_is_full_dup(void)
+{
+	unsigned int stat;
+	stat = ATSE_GET_MVLPHY_LINK_STATUS();
+	return (ATSE_MVLPHY_IS_FULL_DUP(stat));
+}
+
+
+/*  National 83848, 10/100 */
+
+static int atse_phy_national_83848_get_link_speed(void)
+{
+	/* FIXME joe */
+
+	return 100;
+}
+
+static int atse_phy_national_83848_link_is_full_dup(void)
+{
+	/* FIXME joe */
+
+	return 1;
+}
+
+
+static struct atse_phy_device atse_phy_dev_list[] = {
+	[0] = {
+		.name = "Marvell 88E1111 phy",
+		.phy_id = ATSE_MARVELL_PHY_ID_88E1111,
+
+		.get_link_speed   = atse_phy_marvell_88E1111_get_link_speed,
+		.link_is_full_dup = atse_phy_marvell_88E1111_link_is_full_dup,
+	},
+
+	[1] = {
+		.name = "National Semiconductor 83848 10/100 phy",
+		.phy_id = ATSE_NATIONAL_PHY_ID_83848,
+
+		.get_link_speed   = atse_phy_national_83848_get_link_speed,
+		.link_is_full_dup = atse_phy_national_83848_link_is_full_dup,
+
+	}
+};
+
+
+static struct atse_phy_device *
+get_phy_dev(u32 phy_id_1, u32 phy_id_2)
+{
+	int num_of_phys;
+	int i;
+	int oui;
+	int model_num;
+	int rev_num;
+
+	struct atse_phy_device *phy_dev;
+
+	/* calculate OUI, model number, and revision number from phy_id_1 and phy_id_2 */
+	oui = (phy_id_1 << 6) | ((phy_id_2 >> 10) & 0x3F);
+	model_num = ((phy_id_2 >> 4)) & 0x3F;
+	rev_num = phy_id_2 & 0x0F;
+
+		     
+
+	num_of_phys = sizeof(atse_phy_dev_list) / sizeof(atse_phy_dev_list[0]);
+	printk("%s:%d:num_of_phys = %d\n", __FILE__, __LINE__, num_of_phys);
+	for (i = 0; i < num_of_phys; i++) {
+		phy_dev = &(atse_phy_dev_list[i]);
+		printk("%s:%d:phy_dev: name = %s; phy_id = %x\n", __FILE__, __LINE__, phy_dev->name, phy_dev->phy_id);
+		if ((phy_dev->phy_id >> 16) == phy_id_1 && 
+		    ((phy_dev->phy_id & 0xFFFF) == phy_id_2)) {
+			/* found a known phy */
+			goto found_phy_dev;
+		}
+	}
+	
+	printk("%s:%d: failed to find phy dev: phy_id_1 = 0x%x, phy_id_2 = 0x%x\n", __FILE__, __LINE__, phy_id_1, phy_id_2);
+	return NULL;
+found_phy_dev:
+	ATSE_DEBUG_PRINT_PHY_DEV(oui, model_num, rev_num, phy_dev);
+	return phy_dev;
+}
+
+
 /*
  *------------------------------------------------------------------------------
  *  Side Effect:  Write detected PHY address to MAC register mdio_addr_0.
  *
  *------------------------------------------------------------------------------
  */
-static int atse_detect_phy(int *phy_id_out)
+static struct atse_phy_device *
+atse_detect_phy(void)
 {
 	int phy_addr;
 	int phy_id_1;
 	int phy_id_2;
+	int found_phy;
 	
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
-
-	*phy_id_out = 0;
 
 	/* Detect if a valid phy exists */
 	/* probe Marvel PHY MDIO address by blindliy scanning all the
 	 * addresses until a valid PHY ID is abtained.  When a valid
-	 * PHY is detected, the MAC register for mdio_addr_0 will
-	 * keep the valid PHY address from which a valid PHY ID was
-	 * detected.
+	 * PHY is detected, the MAC register for mdio_addr_0 will be
+	 * written with the valid PHY address from which a valid PHY
+	 * ID was detected.
 	 */
 	
+	found_phy = 0;
 	for (phy_addr = 0x0; phy_addr < 0xFF; phy_addr++) {
 		/* set the phy address to the mac map data */
 		writel(phy_addr, ATSE_MAC_REG_MDIO_ADDR_0);
 		phy_id_1 = readl(ATSE_MAC_REG_MDIO_SPACE_0 + ATSE_PHY_ID_1_OFFSET);
 		phy_id_2 = readl(ATSE_MAC_REG_MDIO_SPACE_0 + ATSE_PHY_ID_2_OFFSET);
 		if (phy_id_1 != phy_id_2) {
-//			printk("----ATSE driver:%s:%d:phy_addr, phy_id_1, phy_id_2 = %x, %x, %x\n",
-//			       __FILE__, __LINE__, phy_addr, phy_id_1, phy_id_2);
+			found_phy = 1;
 			break;
 		}
 	}
 
-	if (phy_id_1 == ATSE_PHY_ID_MARVELL) {
-		*phy_id_out = phy_id_1;
-		return 0;
-		
-	} else if ((phy_id_1 == ATSE_PHY_ID_NATIONAL >> 16) && (phy_id_2 == (ATSE_PHY_ID_NATIONAL & 0xFFFF))) {
-		*phy_id_out = ATSE_PHY_ID_NATIONAL;
-		printk("----ATSE driver:found National DP83865 PHY\n");
-		return 0;
+	if (!found_phy) {
+		/* failed to detect phy */
+		return NULL;
 	}
-	
-	printk("++++++++ATSE driver:unknown phy ID: %x\n", phy_id_1);
-	return -1;
+
+	return get_phy_dev(phy_id_1, phy_id_2);
 }
 
 
@@ -1089,7 +1245,6 @@ atse_shutdown(struct net_device *ndev)
 static int atse_probe(struct net_device *ndev)
 {
 	struct atse_board_priv *bd_priv;
-	int phy_id;
 	union {
 		unsigned char c[4];
 		unsigned int i;
@@ -1097,6 +1252,7 @@ static int atse_probe(struct net_device *ndev)
 
 	DECLARE_MAC_BUF(mac_buf);
 	int ret;
+	struct atse_phy_device *phy_dev;
 
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
 
@@ -1104,7 +1260,8 @@ static int atse_probe(struct net_device *ndev)
 	 * PHY Hardware has to be there: When detected, the phy
 	 * address will be written in MAC register, a side effect.
 	 */
-	if (atse_detect_phy(&phy_id) != 0) {
+	phy_dev = atse_detect_phy();
+	if (!phy_dev) {
 		printk("ATSE driver failed to detect an ether phy:%s:%d:%s()\n",
 		       __FILE__, __LINE__, __FUNCTION__);
 		return -1;
@@ -1122,7 +1279,7 @@ static int atse_probe(struct net_device *ndev)
 
 	spin_lock_init(&bd_priv->tx_lock);
 	spin_lock_init(&bd_priv->rx_lock);
-	bd_priv->phy_id = phy_id;
+	bd_priv->phy_dev = phy_dev;
 
 	/* fill in data for net_device stucture */
 	ether_setup(ndev);
@@ -1162,13 +1319,7 @@ static int atse_probe(struct net_device *ndev)
 		printk("%s: %s \n", ndev->name, atse_version_str);
 		printk("%s: Altera Tripple Speed, ether hw addr %s",
 		       ndev->name, print_mac(mac_buf, ndev->dev_addr));
-		if (bd_priv->phy_id == ATSE_PHY_ID_MARVELL)
-			printk(", %s", ATSE_PHY_VENDOR_NAME_STR_MARVELL);
-		else if (bd_priv->phy_id == ATSE_PHY_ID_NATIONAL)
-			printk(", %s", ATSE_PHY_VENDOR_NAME_STR_NATIONAL);
-		else
-			printk(", with unkown PHY");
-
+		printk(", %s", bd_priv->phy_dev->name);
 		printk("\n");
 
 
