@@ -815,12 +815,8 @@ static int atse_close(struct net_device *ndev)
 	return 0;
 }
 
-/* PHY ID, backward compatible */
-#define MTIPPCS_ID      0x00010000  /* MTIP 1000 Base-X PCS */
-#define TDKPHY_ID       0x0300e540  /* TDK 78Q2120 10/100 */
-
-
 #define ATSE_MARVELL_PHY_ID_88E1111 0x01410cc2
+#define ATSE_MARVELL_PHY_ID_88E1145 0x01410dc2
 #define ATSE_NATIONAL_PHY_ID_83848  0x20005c90  /* National 83848, 10/100 */
 #define ATSE_NATIONAL_PHY_ID_83865  0x20005c7a  /* National DP83865 */
 
@@ -926,6 +922,54 @@ static int atse_phy_national_83848_link_is_established(void)
 }
 
 
+/*  National 83865 */
+
+static int atse_phy_national_83865_get_link_speed(void)
+{
+	/* Reference: National DP83865 datasheet */
+	unsigned int stat;
+
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 3 is for Speed Status */
+	if ((stat & (0x1 << 3)) == 0)
+		return 100;
+	else
+		return 100;
+}
+
+static int atse_phy_national_83865_link_is_full_dup(void)
+{
+	/* Reference: National DP83865 datasheet */
+	unsigned int stat;
+
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 1 is for Duples Status  */
+	if ((stat & (0x1 << 1)) == 0)
+		return 0; /* Half duplex mode */
+	
+	/* Full duplex mode */
+	return 1;
+}
+
+static int atse_phy_national_83865_link_is_established(void)
+{
+	/* Reference: National DP83865 datasheet */
+	unsigned int stat;
+
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 2 is for Duples Status  */
+	if ((stat & (0x1 << 2)) == 0)
+		return 0; /* not established */
+	
+	/* established */
+	return 1;
+}
+
+
+
 static struct atse_phy_device atse_phy_dev_list[] = {
 	[0] = {
 		.name = "Marvell 88E1111 PHY",
@@ -937,6 +981,15 @@ static struct atse_phy_device atse_phy_dev_list[] = {
 	},
 
 	[1] = {
+		.name = "Marvell 88E1145 PHY",
+		.phy_id = ATSE_MARVELL_PHY_ID_88E1145,
+		.link_stat_reg_num = 0x11,
+		/* functions are compatible with 88E111, so reuse here */
+		.get_link_speed   = atse_phy_marvell_88E1111_get_link_speed,
+		.link_is_full_dup = atse_phy_marvell_88E1111_link_is_full_dup,
+	},
+
+	[2] = {
 		.name = "National DP83848C PHY",
 		.phy_id = ATSE_NATIONAL_PHY_ID_83848,
 		.link_stat_reg_num = 0x10,
@@ -947,15 +1000,14 @@ static struct atse_phy_device atse_phy_dev_list[] = {
 
 	},
 
-	[2] = {
+	[3] = {
 		.name = "National DP83865 PHY",
 		.phy_id = ATSE_NATIONAL_PHY_ID_83865,
 		.link_stat_reg_num = 0x10,
 
-		/* functions are compatible with 83848, so reuse here */
-		.get_link_speed      = atse_phy_national_83848_get_link_speed,
-		.link_is_full_dup    = atse_phy_national_83848_link_is_full_dup,
-		.link_is_established = atse_phy_national_83848_link_is_established,
+		.get_link_speed      = atse_phy_national_83865_get_link_speed,
+		.link_is_full_dup    = atse_phy_national_83865_link_is_full_dup,
+		.link_is_established = atse_phy_national_83865_link_is_established,
 
 	}
 };
