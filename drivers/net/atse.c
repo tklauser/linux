@@ -103,14 +103,16 @@ static struct atse_sgdma_desc *g_tx_desc_next = NULL;
 struct atse_phy_device {
 	char *name;
 	u32 phy_id;
+	u8  link_stat_reg_num;
 
 	u32 phy_addr;
 	int (*get_link_speed)  (void);
 	int (*link_is_full_dup)(void);
+	int (*link_is_established)(void);
 };
 
 
-#define ATSE_DEBUG_PHY_DEV_FLAG
+/* #define ATSE_DEBUG_PHY_DEV_FLAG */
 /* #define ATSE_DEBUG_FUNC_TRACE_ENTER */
 /* #define ATSE_DEBUG_FUNC_TRACE_EXIT */
 
@@ -816,10 +818,11 @@ static int atse_close(struct net_device *ndev)
 /* PHY ID, backward compatible */
 #define MTIPPCS_ID      0x00010000  /* MTIP 1000 Base-X PCS */
 #define TDKPHY_ID       0x0300e540  /* TDK 78Q2120 10/100 */
-#define NTLPHY_ID       0x20005c7a  /* National DP83865 */
-//#define ATSE_MARVELL_PHY_ID_88E1111 0x0141
+
+
 #define ATSE_MARVELL_PHY_ID_88E1111 0x01410cc2
-#define ATSE_NATIONAL_PHY_ID_83848  0x20005c90 /* National 83848, 10/100 */
+#define ATSE_NATIONAL_PHY_ID_83848  0x20005c90  /* National 83848, 10/100 */
+#define ATSE_NATIONAL_PHY_ID_83865  0x20005c7a  /* National DP83865 */
 
 
 
@@ -880,34 +883,79 @@ static int atse_phy_marvell_88E1111_link_is_full_dup(void)
 
 static int atse_phy_national_83848_get_link_speed(void)
 {
-	/* FIXME joe */
+	/* Reference: National DP83848C datasheet */
+	unsigned int stat;
 
-	return 100;
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 1 is for Speed Status */
+	if ((stat & (0x1 << 1)) == 0)
+		return 100;
+	else
+		return 100;
 }
 
 static int atse_phy_national_83848_link_is_full_dup(void)
 {
-	/* FIXME joe */
+	/* Reference: National DP83848C datasheet */
+	unsigned int stat;
 
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 2 is for Duples Status  */
+	if ((stat & (0x1 << 2)) == 0)
+		return 0; /* Half duplex mode */
+	
+	/* Full duplex mode */
+	return 1;
+}
+
+static int atse_phy_national_83848_link_is_established(void)
+{
+	/* Reference: National DP83848C datasheet */
+	unsigned int stat;
+
+	/* register 0x10 is an Extended Register for PHY Status Register */
+	stat = ATSE_READ_PHY_MDIO_REG(0x10);
+	/* Bit 0 is for Duples Status  */
+	if ((stat & (0x1 << 0)) == 0)
+		return 0; /* not established */
+	
+	/* established */
 	return 1;
 }
 
 
 static struct atse_phy_device atse_phy_dev_list[] = {
 	[0] = {
-		.name = "Marvell 88E1111 phy",
+		.name = "Marvell 88E1111 PHY",
 		.phy_id = ATSE_MARVELL_PHY_ID_88E1111,
+		.link_stat_reg_num = 0x11,
 
 		.get_link_speed   = atse_phy_marvell_88E1111_get_link_speed,
 		.link_is_full_dup = atse_phy_marvell_88E1111_link_is_full_dup,
 	},
 
 	[1] = {
-		.name = "National Semiconductor 83848 10/100 phy",
+		.name = "National DP83848C PHY",
 		.phy_id = ATSE_NATIONAL_PHY_ID_83848,
+		.link_stat_reg_num = 0x10,
 
-		.get_link_speed   = atse_phy_national_83848_get_link_speed,
-		.link_is_full_dup = atse_phy_national_83848_link_is_full_dup,
+		.get_link_speed      = atse_phy_national_83848_get_link_speed,
+		.link_is_full_dup    = atse_phy_national_83848_link_is_full_dup,
+		.link_is_established = atse_phy_national_83848_link_is_established,
+
+	},
+
+	[2] = {
+		.name = "National DP83865 PHY",
+		.phy_id = ATSE_NATIONAL_PHY_ID_83865,
+		.link_stat_reg_num = 0x10,
+
+		/* functions are compatible with 83848, so reuse here */
+		.get_link_speed      = atse_phy_national_83848_get_link_speed,
+		.link_is_full_dup    = atse_phy_national_83848_link_is_full_dup,
+		.link_is_established = atse_phy_national_83848_link_is_established,
 
 	}
 };
@@ -932,10 +980,8 @@ get_phy_dev(u32 phy_id_1, u32 phy_id_2)
 		     
 
 	num_of_phys = sizeof(atse_phy_dev_list) / sizeof(atse_phy_dev_list[0]);
-	printk("%s:%d:num_of_phys = %d\n", __FILE__, __LINE__, num_of_phys);
 	for (i = 0; i < num_of_phys; i++) {
 		phy_dev = &(atse_phy_dev_list[i]);
-		printk("%s:%d:phy_dev: name = %s; phy_id = %x\n", __FILE__, __LINE__, phy_dev->name, phy_dev->phy_id);
 		if ((phy_dev->phy_id >> 16) == phy_id_1 && 
 		    ((phy_dev->phy_id & 0xFFFF) == phy_id_2)) {
 			/* found a known phy */
@@ -943,8 +989,9 @@ get_phy_dev(u32 phy_id_1, u32 phy_id_2)
 		}
 	}
 	
-	printk("%s:%d: failed to find phy dev: phy_id_1 = 0x%x, phy_id_2 = 0x%x\n", __FILE__, __LINE__, phy_id_1, phy_id_2);
+	printk("ATSE Driver:%s:%d: failed to find phy dev: phy_id_1 = 0x%x, phy_id_2 = 0x%x\n", __FILE__, __LINE__, phy_id_1, phy_id_2);
 	return NULL;
+
 found_phy_dev:
 	ATSE_DEBUG_PRINT_PHY_DEV(oui, model_num, rev_num, phy_dev);
 	return phy_dev;
