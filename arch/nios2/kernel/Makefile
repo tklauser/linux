@@ -11,7 +11,7 @@ extra-y := head.o init_task.o vmlinux.lds
 
 obj-y   := entry.o traps.o irq.o syscalltable.o \
 	    process.o signal.o setup.o sys_nios2.o \
-	    usb.o config.o \
+	    usb.o config.o dma-mapping.o \
 	    time.o ptrace.o nios2_ksyms.o
 
 obj-$(CONFIG_MODULES) += module.o

@@ -18,9 +18,9 @@ config GENERIC_HARDIRQS
 config GENERIC_IRQ_PROBE
 	def_bool y
 
-config NO_DMA
-	bool
-	default y
+#config NO_DMA
+#	bool
+#	default y
 
 config UID16
 	bool
