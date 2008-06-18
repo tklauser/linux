@@ -188,8 +188,13 @@ static struct physmap_flash_data nios2_flash_data = {
 };
 
 static struct resource nios2_flash_resource = {
+#if defined(na_cfi_flash_0)
 	.start = na_cfi_flash_0,
 	.end   = na_cfi_flash_0_end - 1, 
+#else
+	.start = na_ext_flash,
+	.end   = na_ext_flash_end - 1, 
+#endif
 	.flags = IORESOURCE_MEM,
 };
 
