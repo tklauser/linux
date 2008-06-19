@@ -79,17 +79,35 @@ static void altera_spi_chipsel(struct spi_device *spi, int value)
 {
 	struct altera_spi *hw = to_hw(spi);
 
-	switch (value) {
-	case BITBANG_CS_INACTIVE:
-		hw->imr &= ~ALTERA_SPI_CONTROL_SSO_MSK;
-		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
-		break;
+	if (spi->mode & SPI_CS_HIGH) {
+		switch (value) {
+		case BITBANG_CS_INACTIVE:
+			writel(1 << spi->chip_select,
+			       hw->base + ALTERA_SPI_SLAVE_SEL);
+			hw->imr |= ALTERA_SPI_CONTROL_SSO_MSK;
+			writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+			break;
 
-	case BITBANG_CS_ACTIVE:
-		writel(1 << spi->chip_select, hw->base + ALTERA_SPI_SLAVE_SEL);
-		hw->imr |= ALTERA_SPI_CONTROL_SSO_MSK;
-		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
-		break;
+		case BITBANG_CS_ACTIVE:
+			hw->imr &= ~ALTERA_SPI_CONTROL_SSO_MSK;
+			writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+			writel(1 << 15, hw->base + ALTERA_SPI_SLAVE_SEL);
+			break;
+		}
+	} else {
+		switch (value) {
+		case BITBANG_CS_INACTIVE:
+			hw->imr &= ~ALTERA_SPI_CONTROL_SSO_MSK;
+			writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+			break;
+
+		case BITBANG_CS_ACTIVE:
+			writel(1 << spi->chip_select,
+			       hw->base + ALTERA_SPI_SLAVE_SEL);
+			hw->imr |= ALTERA_SPI_CONTROL_SSO_MSK;
+			writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+			break;
+		}
 	}
 }
 
@@ -108,7 +126,7 @@ static int altera_spi_setupxfer(struct spi_device *spi, struct spi_transfer *t)
 }
 
 /* the spi->mode bits understood by this driver: */
-#define MODEBITS (SPI_CPOL | SPI_CPHA)
+#define MODEBITS (SPI_CPOL | SPI_CPHA | SPI_CS_HIGH)
 
 static int altera_spi_setup(struct spi_device *spi)
 {
@@ -184,7 +202,8 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	hw->count++;
 
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
-	if (hw->rx) hw->rx[count] = rxd;
+	if (hw->rx)
+		hw->rx[count] = rxd;
 
 	count++;
 
@@ -193,7 +212,7 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	else
 		complete(&hw->done);
 
-irq_done:
+      irq_done:
 	return IRQ_HANDLED;
 }
 
@@ -222,6 +241,7 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 
 	/* setup the master state. */
 
+	master->bus_num = pdev->id;
 	master->num_chipselect = 16;
 
 	/* setup the state for the bitbang driver */
@@ -268,11 +288,11 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 	}
 
 	/* program defaults into the registers */
-	hw->imr = 0; /* disable spi interrupts */
+	hw->imr = 0;		/* disable spi interrupts */
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 	writel(0, hw->base + ALTERA_SPI_STATUS);	/* clear status reg */
 	if (readl(hw->base + ALTERA_SPI_STATUS) & ALTERA_SPI_STATUS_RRDY_MSK)
-		readl(hw->base + ALTERA_SPI_RXDATA); /* flush rxdata */
+		readl(hw->base + ALTERA_SPI_RXDATA);	/* flush rxdata */
 
 	err = request_irq(hw->irq, altera_spi_irq, 0, pdev->name, hw);
 	if (err) {
@@ -280,7 +300,7 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 		goto err_no_irq;
 	}
 
-	hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK; /* enable receive interrupt */
+	hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;	/* enable receive interrupt */
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 
 	/* register our spi controller */
@@ -293,20 +313,20 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_register:
+      err_register:
 	free_irq(hw->irq, hw);
 
-err_no_irq:
+      err_no_irq:
 	iounmap((void *)hw->base);
 
-err_no_iomap:
+      err_no_iomap:
 	release_resource(hw->ioarea);
 	kfree(hw->ioarea);
 
-err_no_iores:
+      err_no_iores:
 	spi_master_put(hw->master);;
 
-err_nomem:
+      err_nomem:
 	return err;
 }
 
