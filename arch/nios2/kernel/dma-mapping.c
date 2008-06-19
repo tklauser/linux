@@ -9,10 +9,11 @@
 #include <linux/mm.h>
 #include <linux/string.h>
 #include <linux/device.h>
+#include <linux/dma-mapping.h>
 #include <asm/io.h>
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
-			   dma_addr_t *dma_handle, int gfp)
+			 dma_addr_t * dma_handle, gfp_t gfp)
 {
 	void *ret;
 	/* ignore region specifiers */
@@ -24,13 +25,53 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 
 	if (ret != NULL) {
 		memset(ret, 0, size);
-		*dma_handle = ioremap(ret,size);
+		*dma_handle = ioremap(ret, size);
 	}
 	return ret;
 }
 
 void dma_free_coherent(struct device *dev, size_t size,
-			 void *vaddr, dma_addr_t dma_handle)
+		       void *vaddr, dma_addr_t dma_handle)
 {
 	free_pages((unsigned long)vaddr, get_order(size));
+}
+
+/* FIXME: the following dma sync and map need updates */
+
+void dma_sync_single_for_cpu(struct device *dev, dma_addr_t handle,
+			     size_t size, enum dma_data_direction dir)
+{
+}
+
+void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
+			 int nents, enum dma_data_direction dir)
+{
+}
+
+int dma_mapping_error(dma_addr_t handle)
+{
+	return 0;
+}
+
+dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
+			  enum dma_data_direction direction)
+{
+	return ptr;
+}
+
+void dma_unmap_single(struct device *dev, dma_addr_t addr,
+		      size_t size, enum dma_data_direction dir)
+{
+}
+
+dma_addr_t dma_map_page(struct device *dev, struct page *page,
+			unsigned long offset, size_t size,
+			enum dma_data_direction direction)
+{
+	return page_to_phys(page);
+}
+
+void dma_unmap_page(struct device *dev, dma_addr_t address,
+		    size_t size, enum dma_data_direction dir)
+{
 }
