@@ -91,7 +91,7 @@ static void altera_spi_chipsel(struct spi_device *spi, int value)
 		case BITBANG_CS_ACTIVE:
 			hw->imr &= ~ALTERA_SPI_CONTROL_SSO_MSK;
 			writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
-			writel(1 << 15, hw->base + ALTERA_SPI_SLAVE_SEL);
+			writel(0, hw->base + ALTERA_SPI_SLAVE_SEL);
 			break;
 		}
 	} else {
