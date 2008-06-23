@@ -56,14 +56,5 @@ typedef volatile struct
 #define NIOS_MMC_XFER_CTL_BYTE_COUNT_SHIFT (12)
 #define NIOS_MMC_XFER_CTL_BLOCK_COUNT_SHIFT (22)
 
-/********** Function prototypes ************/
-int nios_mmc_host_cmd_resp(NIOS_MMC_HOST *nios_mmc_host, unsigned char cmd, unsigned int arg,
-unsigned int *arg_out);
-int nios_mmc_host_init(NIOS_MMC_HOST *nios_mmc_host);
-int nios_mmc_read_extended(NIOS_MMC_HOST *nios_mmc_host, unsigned int addr, unsigned char cmd, unsigned int arg, 
-int bytes, int blocks, unsigned char dat_width, unsigned int *arg_out);
-void nios_mmc_host_set_clk_div(NIOS_MMC_HOST *nios_mmc_host, int div);
-int nios_mmc_write_extended(NIOS_MMC_HOST *nios_mmc_host, unsigned int addr, unsigned char cmd, unsigned int arg, 
-int bytes, int blocks, unsigned char dat_width, unsigned int *arg_out);
 
 #endif /*SDIO_HOST_H_*/

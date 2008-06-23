@@ -45,14 +45,14 @@
 	printk("Crit. error in %s(): %s. Halting\n",__func__,x);\
 	while(1);\
 }
-
+/********** Function prototypes ************/
 static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 /***************************** Start of main functions ********************************/
 
-void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
+static void nios_mmc_end_cmd(NIOS_MMC_HOST *host, unsigned int stat)
 {
-	unsigned int tmp,ret;	
+	unsigned int ret;	
 	struct mmc_command *cmd = host->cmd;
 	struct mmc_data *data = cmd->data;
 	struct mmc_command *stop = data->stop;
@@ -64,31 +64,29 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	if (cmd == NULL)
 	{
 		MMC_CRIT_ERR("CMD is null when it shouldn't be!");
-		while(1);
 	}
-	tmp = readl(host->base + NIOS_MMC_REG_CTLSTAT);
 	/* Interrupt flags will be cleared in ISR routine, so we don't have to touch them */
-	if (tmp & NIOS_MMC_CTLSTAT_TIMEOUTERR_IF)
+	if (stat & NIOS_MMC_CTLSTAT_TIMEOUTERR_IF)
 	{
 		MMC_DEBUG(1,"Timeout error\n");
 		ret = -ETIMEDOUT;
 	}
-	else if (tmp & NIOS_MMC_CTLSTAT_FRMERR_IF)
+	else if (stat & NIOS_MMC_CTLSTAT_FRMERR_IF)
 	{
 		MMC_DEBUG(1,"Framing error\n");
 		ret = -EILSEQ;
 	}
-	else if (tmp & NIOS_MMC_CTLSTAT_CRCERR_IF)
+	else if (stat & NIOS_MMC_CTLSTAT_CRCERR_IF)
 	{
 		MMC_DEBUG(1,"CRC Error\n");
 		ret = -EILSEQ;
 	}
-	else if (tmp & NIOS_MMC_CTLSTAT_FIFO_UNDERRUN_IF)
+	else if (stat & NIOS_MMC_CTLSTAT_FIFO_UNDERRUN_IF)
 	{
 		MMC_DEBUG(1,"FIFO Underrun error\n");
 		ret = -EINVAL;
 	}
-	else if (tmp & NIOS_MMC_CTLSTAT_FIFO_OVERRUN_IF)
+	else if (stat & NIOS_MMC_CTLSTAT_FIFO_OVERRUN_IF)
 	{
 		MMC_DEBUG(1,"FIFO Overrun error\n");	
 		ret = -EINVAL;
@@ -135,7 +133,7 @@ void nios_mmc_end_cmd(NIOS_MMC_HOST *host)
 	}
 }
 /* nios_mmc_execute_cmd(): Key function that interacts with MMC Host to carry out command */
-void nios_mmc_execute_cmd(NIOS_MMC_HOST *host, unsigned char cmd, unsigned int arg_in, 
+static void nios_mmc_execute_cmd(NIOS_MMC_HOST *host, unsigned char cmd, unsigned int arg_in, 
 		unsigned char resp_type, unsigned char nocrc, 
 		unsigned int bytes, unsigned int blocks, unsigned char rwn, unsigned int buf)
 {
@@ -158,25 +156,28 @@ void nios_mmc_execute_cmd(NIOS_MMC_HOST *host, unsigned char cmd, unsigned int a
 	if (host->dat_width) xfer_ctl |= NIOS_MMC_XFER_CTL_DAT_WIDTH;
 	cmdidx = (xfer_ctl >> NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT)&0x3F;
 	/* Setup DMA base */
-	writel(buf | (1<<31), host->base + NIOS_MMC_REG_DMA_BASE);
+	dcache_push(buf, bytes * blocks);
+	writel(buf, host->base + NIOS_MMC_REG_DMA_BASE);
 	MMC_DEBUG(1,"XFER_CTL: 0x%X (CMD%d), DMA_BASE(%c): 0x%X, ARG_IN: 0x%X\n",
 			xfer_ctl,cmdidx,
 		       	(xfer_ctl&NIOS_MMC_XFER_CTL_DAT_RWn)?'R':'W',buf, arg_in);
 	/* Execute command */
 	writel(xfer_ctl, host->base + NIOS_MMC_REG_XFER_CTL);
 }
-static irqreturn_t nios_mmc_irq(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t nios_mmc_irq(int irq, void *dev_id)
 {
 	NIOS_MMC_HOST *host = dev_id;
-	unsigned int ret;
+	unsigned int stat;
 
-	ret = readl(host->base + NIOS_MMC_REG_CTLSTAT);	
-	MMC_DEBUG(2,"IRQ, ctlstat: 0x%X\n",ret);
+	stat = readl(host->base + NIOS_MMC_REG_CTLSTAT);	
+	/* Clear the interrupt */
+	writel(stat, host->base + NIOS_MMC_REG_CTLSTAT);
+	MMC_DEBUG(2,"IRQ, ctlstat: 0x%X\n",stat);
 
-	if (ret & NIOS_MMC_CTLSTAT_CD_IF)
+	if (stat & NIOS_MMC_CTLSTAT_CD_IF)
 	{
 		/* Card-detect interrupt */
-		if (ret & NIOS_MMC_CTLSTAT_CD)
+		if (stat & NIOS_MMC_CTLSTAT_CD)
 		{
 			MMC_DEBUG(1,"HOT-PLUG: Card inserted\n");
 		}
@@ -186,15 +187,13 @@ static irqreturn_t nios_mmc_irq(int irq, void *dev_id, struct pt_regs *regs)
 		}
 		mmc_detect_change(host->mmc, 100);
 	}
-	if (ret & NIOS_MMC_CTLSTAT_XFER_IF)
+	if (stat & NIOS_MMC_CTLSTAT_XFER_IF)
 	{
 		MMC_DEBUG(3,"Detected XFER Interrupt\n");
 		/* Transfer has completed */
-		nios_mmc_end_cmd(host);	
+		nios_mmc_end_cmd(host, stat);	
 	}
 
-	/* Clear the interrupt after everyone has had a chance to look at it! */
-	writel(ret, host->base + NIOS_MMC_REG_CTLSTAT);
 	return IRQ_HANDLED;
 }
 /* Function to start the CMD process */
@@ -233,7 +232,7 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd)
 	}
 
 	sg = data->sg;
-	current_address = (unsigned int) sg_virt(sg);
+	current_address = (unsigned int) sg_phys(sg);
 	cmd->error = 0;
 	if (data)
 	{
