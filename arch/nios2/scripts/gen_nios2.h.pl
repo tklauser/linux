@@ -116,7 +116,7 @@ foreach my $module_name (@module_names) {
 	}
 	push @{$found_classes{$module_class}}, $module_name;
 	
-	if (scalar (@module_ports) == 1) {
+	if (scalar (@module_ports) > 0) {
 		my $base_address;
 		my $mem_size;
 		my $mem_end;
@@ -148,7 +148,8 @@ foreach my $module_name (@module_names) {
 			$text_printed = 1;
 		}
 
-	} else {
+	}
+	if (scalar (@module_ports) > 1) {
 		# if device has multiple ports
 		foreach my $port_name (@module_ports) {
 			# base address information
