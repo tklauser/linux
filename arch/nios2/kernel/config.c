@@ -4,6 +4,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
@@ -389,6 +390,59 @@ static struct spi_board_info nios2_spi_devices[] = {
 };
 #endif
 
+#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+static struct pata_platform_info na_cf_platform_data = {
+	.ioport_shift = 2,
+};
+
+static struct resource na_cf_resources[] = {
+	{
+	 .start = na_cf_ide,
+	 .end = na_cf_ide + 31,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ide + 56,
+	 .end = na_cf_ide + 56 + 3,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ide_irq,
+	 .end = na_cf_ide_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+};
+
+static struct platform_device na_cf_device = {
+	.name = "pata_platform",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(na_cf_resources),
+	.resource = na_cf_resources,
+	.dev = {
+		.platform_data = &na_cf_platform_data,
+		}
+};
+
+#define ALTERA_CF_CTL_STATUS            	0
+#define ALTERA_CF_IDE_CTL               	4
+#define ALTERA_CF_CTL_STATUS_PRESENT_MSK       (0x1)
+#define ALTERA_CF_CTL_STATUS_POWER_MSK         (0x2)
+#define ALTERA_CF_CTL_STATUS_RESET_MSK         (0x4)
+#define ALTERA_CF_CTL_STATUS_IRQ_EN_MSK        (0x8)
+#define ALTERA_CF_IDE_CTL_IRQ_EN_MSK           (0x1)
+
+static void __init cf_init(unsigned ctl_base)
+{
+	unsigned ctl = ioremap(ctl_base, 16);
+	writel(0, ctl + ALTERA_CF_IDE_CTL);	/* disable ide irq */
+	writel(ALTERA_CF_CTL_STATUS_RESET_MSK, ctl + ALTERA_CF_CTL_STATUS);	/* power down */
+	msleep(500);		/* 0.5 sec delay */
+	writel(ALTERA_CF_CTL_STATUS_POWER_MSK, ctl + ALTERA_CF_CTL_STATUS);	/* power up */
+	msleep(500);		/* 0.5 sec delay */
+	writel(ALTERA_CF_IDE_CTL_IRQ_EN_MSK, ctl + ALTERA_CF_IDE_CTL);	/* enable ide irq */
+}
+#endif
+
 /*
  *	Nios2 platform devices
  */
@@ -414,10 +468,17 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_mmc_spi_device,
 #endif
 
+#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+	&na_cf_device,
+#endif
+
 };
 
 static int __init init_BSP(void)
 {
+#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+	cf_init(na_cf_ctl);
+#endif
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
 
 #if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
