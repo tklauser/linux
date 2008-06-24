@@ -10,6 +10,8 @@
 #include <linux/string.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/scatterlist.h>
+#include <asm/cacheflush.h>
 #include <asm/io.h>
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
@@ -56,6 +58,7 @@ int dma_mapping_error(dma_addr_t handle)
 dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
 			  enum dma_data_direction direction)
 {
+	dcache_push((unsigned long)ptr, size);
 	return ptr;
 }
 
@@ -74,4 +77,28 @@ dma_addr_t dma_map_page(struct device *dev, struct page *page,
 void dma_unmap_page(struct device *dev, dma_addr_t address,
 		    size_t size, enum dma_data_direction dir)
 {
+}
+
+
+int
+dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
+	   enum dma_data_direction direction)
+{
+	int i;
+
+	BUG_ON(direction == DMA_NONE);
+
+	for (i = 0; i < nents; i++, sg++) {
+		sg->dma_address = (dma_addr_t) sg_virt(sg);
+
+		dcache_push(sg_dma_address(sg),	sg_dma_len(sg));
+	}
+
+	return nents;
+}
+
+void dma_unmap_sg(struct device *dev, struct scatterlist *sg,
+		int nhwentries, enum dma_data_direction direction)
+{
+	BUG_ON(direction == DMA_NONE);
 }
