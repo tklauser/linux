@@ -1,6 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Linux kernel version: 2.6.26-rc6
+# Linux kernel version: 2.6.26-rc7
+# Wed Jun 25 11:34:44 2008
 #
 # CONFIG_FPU is not set
 CONFIG_ZONE_DMA=y
@@ -117,6 +118,7 @@ CONFIG_NIOS2=y
 # CONFIG_ALTERA_STRATIX_PRO is not set
 # CONFIG_ALTERA_STRATIX_II is not set
 # CONFIG_ALTERA_CYCLONE is not set
+# CONFIG_ALTERA_CYCLONE_II is not set
 # CONFIG_ALTERA_CYCLONE_1C12_EVAL is not set
 CONFIG_ALTERA_DE2=y
 # CONFIG_ALTERA_NEEK_C3 is not set

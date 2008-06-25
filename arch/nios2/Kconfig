@@ -153,6 +153,13 @@ config ALTERA_CYCLONE
 	  Support for the Altera Cyclone Development board. Includes
 	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
 
+config ALTERA_CYCLONE_II
+	bool "Altera CYCLONE II Development board support"
+	depends on NIOS2
+	help
+	  Support for the Altera CYCLONE II Development board. Includes
+	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
+
 config ALTERA_CYCLONE_1C12_EVAL
 	bool "Altera Cyclone 1C12 Evaluation board support"
 	depends on NIOS2

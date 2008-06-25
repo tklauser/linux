@@ -88,7 +88,7 @@ static struct platform_device nios2_uart = {
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 static struct mtd_partition nios2_partitions[] = {
-#ifdef CONFIG_ALTERA_STRATIX_II
+#if defined(CONFIG_ALTERA_STRATIX_II) || defined(CONFIG_ALTERA_CYCLONE_II)
 	{
 	 .name = "romfs/jffs2",
 	 .size = 0x600000,
@@ -247,6 +247,18 @@ static struct platform_device na_epcs_controller_device = {
 
 #if defined(CONFIG_MTD_M25P80) || defined(CONFIG_MTD_M25P80_MODULE)
 static struct mtd_partition nios2_spi_flash_partitions[] = {
+#if defined(CONFIG_ALTERA_STRATIX_II) || defined(CONFIG_ALTERA_CYCLONE_II)
+	{
+	 .name = "romfs/jffs2",
+	 .size = 0x400000,
+	 .offset = 0x400000,
+	 },
+	{
+	 .name = "fpga configuration",
+	 .size = 0x400000,
+	 .offset = 0,
+	 }
+#else
 	{
 	 .name = "romfs/jffs2",
 	 .size = 0x180000,
@@ -257,13 +269,18 @@ static struct mtd_partition nios2_spi_flash_partitions[] = {
 	 .size = 0x80000,
 	 .offset = 0,
 	 }
+#endif
 };
 
 static struct flash_platform_data nios2_spi_flash_data = {
 	.name = "m25p80",
 	.parts = nios2_spi_flash_partitions,
 	.nr_parts = ARRAY_SIZE(nios2_spi_flash_partitions),
+#if defined(CONFIG_ALTERA_STRATIX_II) || defined(CONFIG_ALTERA_CYCLONE_II)
+	.type = "m25p64",	/* depend on the actual size of spi flash */
+#else
 	.type = "m25p16",	/* depend on the actual size of spi flash */
+#endif
 };
 #endif
 
