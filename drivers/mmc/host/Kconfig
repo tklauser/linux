@@ -132,7 +132,7 @@ config MMC_SPI
 
 config MMC_NIOS
 	tristate "NIOS SD/SDIO/MMC Host"
-	depends on NIOS_SD_HOST
+	depends on NIOS2
 	help
 		Device driver for the FPS-Tech SD/SDIO/MMC Host for Altera NIOS systems
 

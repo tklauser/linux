@@ -16,9 +16,4 @@ config I2C_NIOS2_GPIO
 	help
 	  Say Y here if you use GPIO lines for an I2C bus.
 
-config NIOS_SD_HOST
-	tristate "NIOS SD/SDIO/MMC Host"
-	depends on NIOS || NIOS2
-	help
-		This driver supports the FPS-Tech SD/SDIO/MMC Host IP
 
