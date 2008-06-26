@@ -350,8 +350,8 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 	mmc->ops = &nios_mmc_ops;
 	MMC_DEBUG(3,"Done initial probe\n");
-	mmc->f_max = nasys_clock_freq/4;
-	mmc->f_min = nasys_clock_freq/(1<<16);
+	mmc->f_max = na_cpu_clock_freq/4;
+	mmc->f_min = na_cpu_clock_freq/(1<<16);
 	mmc->max_phys_segs = NR_SG;
 	mmc->max_seg_size = 256;
 
