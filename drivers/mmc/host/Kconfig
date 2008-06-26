@@ -148,3 +148,11 @@ config NIOS_MMC_NOBLK_PREFETCH
 		memory system. 
 
 		If unsure, say N here
+
+config NIOS_MMC_FORCE_1BIT
+	tristate "Force 1-bit DAT Mode"
+	depends on MMC_NIOS
+	help
+		Force 4-bit SD Host to act like a 1-bit Host only
+
+		If unsure, say N here

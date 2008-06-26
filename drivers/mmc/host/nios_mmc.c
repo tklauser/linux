@@ -387,8 +387,12 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	printk("NIOS_MMC: F_MAX: %d Hz, F_MIN: %d Hz\n",mmc->f_max,mmc->f_min);
 	ret = readl(host->base + NIOS_MMC_REG_CTLSTAT);
 	printk("NIOS_MMC: Host built with %s DAT driver\n",(ret & NIOS_MMC_CTLSTAT_HOST_4BIT)?"4-bit":"1-bit");
+#if defined(CONFIG_NIOS_MMC_FORCE_1BIT)
+	mmc->caps = 0;
+	printk("NIOS_MMC: Forcing 1-bit DAT width\n");
+#else
 	mmc->caps = (ret&NIOS_MMC_CTLSTAT_HOST_4BIT)?MMC_CAP_4_BIT_DATA:0;
-
+#endif
 	/* Execute soft-reset on core */
 	writel(NIOS_MMC_CTLSTAT_SOFT_RST,host->base + NIOS_MMC_REG_CTLSTAT);
 
