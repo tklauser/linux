@@ -51,7 +51,6 @@
  */
 #define current_text_addr() ({ __label__ _l; _l: &&_l;})
 
-#include <linux/a.out.h>
 #include <linux/string.h>
 
 #include <asm/ptrace.h>
