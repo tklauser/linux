@@ -1511,6 +1511,9 @@ restart:
 	if (page)
 		goto got_pg;
 
+#ifndef CONFIG_MMU
+	drop_pagecache();
+#endif
 	/* This allocation should allow future memory freeing. */
 
 rebalance:
@@ -1613,6 +1616,9 @@ nofail_alloc:
 				pages_reclaimed < (1 << order))
 					do_retry = 1;
 		}
+#ifndef CONFIG_MMU
+		drop_pagecache();
+#endif
 		if (gfp_mask & __GFP_NOFAIL)
 			do_retry = 1;
 	}
