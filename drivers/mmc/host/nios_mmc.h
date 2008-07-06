@@ -9,9 +9,8 @@ typedef volatile struct
 	spinlock_t lock;
 	struct resource *res;
 	int irq;
-	int dma;
 	unsigned char dat_width;	/* 1=4-bit mode, 0=1-bit */
-
+	unsigned char prof_en;
 	/* This should point to current cmd we are processing */
 	struct mmc_command *cmd;
 } NIOS_MMC_HOST;
@@ -24,6 +23,9 @@ typedef volatile struct
 #define NIOS_MMC_REG_CMD_ARG3 5*4
 #define NIOS_MMC_REG_DMA_BASE 6*4
 #define NIOS_MMC_REG_XFER_CTL 7*4
+#define NIOS_MMC_REG_MISC 8*4
+#define NIOS_MMC_REG_PROF_CNT0 9*4
+#define NIOS_MMC_REG_PROF_CNT1 10*4
 #define NIOS_MMC_REG_VERSION_INFO 15*4
 
 #define NIOS_MMC_CTLSTAT_BUSY (1<<0)
@@ -37,6 +39,7 @@ typedef volatile struct
 #define NIOS_MMC_CTLSTAT_TIMEOUTERR_IF (1<<8)
 #define NIOS_MMC_CTLSTAT_FIFO_OVERRUN_IF (1<<9)
 #define NIOS_MMC_CTLSTAT_FIFO_UNDERRUN_IF (1<<10)
+#define NIOS_MMC_CTLSTAT_PROF_EN (1<<13)
 #define NIOS_MMC_CTLSTAT_HOST_4BIT (1<<14)
 #define NIOS_MMC_CTLSTAT_CD_IE (1<<16)
 #define NIOS_MMC_CTLSTAT_XFER_IE (1<<18)
@@ -56,5 +59,7 @@ typedef volatile struct
 #define NIOS_MMC_XFER_CTL_BYTE_COUNT_SHIFT (12)
 #define NIOS_MMC_XFER_CTL_BLOCK_COUNT_SHIFT (22)
 
+#define NIOS_MMC_MISC_PROF_RESET (1<<0)
+#define NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT (1)
 
 #endif /*SDIO_HOST_H_*/

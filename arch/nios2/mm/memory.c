@@ -20,7 +20,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/slab.h>
-
+#include <linux/module.h>
 #include <asm/setup.h>
 #include <asm/segment.h>
 #include <asm/page.h>
@@ -160,7 +160,7 @@ void dcache_push(unsigned long vaddr, int len)
 {
 	cache_invalidate_data(vaddr, len);
 }
-
+EXPORT_SYMBOL(dcache_push);
 /*
  * icache_push() semantics: Invalidate instruction cache in the range.
  */

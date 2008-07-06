@@ -613,7 +613,9 @@ arch_initcall(i2c_gpio_device_init);
 #define na_sdio_irq na_sdio_host_inst_irq
 #endif
 
-#if defined(CONFIG_MMC_NIOS) && defined(na_sdio)
+/* We don't check for defined(CONFIG_MMC_NIOS) in case we are building
+ * kernel module */
+#if defined(na_sdio)
 static struct resource nios_mmc_resources[] = {
 	[0] = {
 		.start = na_sdio,

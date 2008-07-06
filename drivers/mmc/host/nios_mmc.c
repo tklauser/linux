@@ -27,7 +27,6 @@
 
 #include "nios_mmc.h"
 #define DRIVER_NAME	"nios_mmc"
-#define debug_level 1
 #define NR_SG 1
 
 #if defined(CONFIG_MMC_DEBUG)
@@ -48,6 +47,11 @@
 /********** Function prototypes ************/
 static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
+static int nios_mmc_procinit(NIOS_MMC_HOST * host);
+static void nios_mmc_procclose(void);
+static unsigned int debug_level = 0;
+static unsigned int max_blk_size = 512;
+static unsigned int max_blk_count = 128;
 /***************************** Start of main functions ********************************/
 
 static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
@@ -250,6 +254,29 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 
 }
 
+/* Profiling functions */
+void nios_mmc_clear_prof(NIOS_MMC_HOST * host)
+{
+	unsigned int misc_reg;
+	misc_reg = readl(host->base + NIOS_MMC_REG_MISC);
+	misc_reg |= NIOS_MMC_MISC_PROF_RESET;
+	writel(misc_reg, host->base + NIOS_MMC_REG_MISC);
+}
+unsigned long long nios_mmc_prof_cnt(NIOS_MMC_HOST * host, unsigned char cnt)
+{
+	unsigned long long tmp = 0;
+	unsigned int misc_reg;
+	/* Select the counter first */
+	misc_reg = readl(host->base + NIOS_MMC_REG_MISC);
+	misc_reg &= ~(0x7 << NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT);
+	misc_reg |= (cnt << NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT);
+	writel(misc_reg, host->base + NIOS_MMC_REG_MISC);
+	tmp = readl(host->base + NIOS_MMC_REG_PROF_CNT1);
+	tmp <<= 32;
+	tmp |= readl(host->base + NIOS_MMC_REG_PROF_CNT0);
+	return tmp;
+}
+
 /****************** Driver-level interface *****************/
 
 /* This function is called from the driver level above */
@@ -343,12 +370,18 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	MMC_DEBUG(3, "Done initial probe\n");
 	mmc->f_max = na_cpu_clock_freq / 4;
 	mmc->f_min = na_cpu_clock_freq / (1 << 16);
-	mmc->max_phys_segs = NR_SG;
-	mmc->max_seg_size = 256;
+	/* SG DMA Caps */
+	mmc->max_phys_segs = 1;
+	mmc->max_hw_segs = 1;
+	/* Maximum size in one block */
+	mmc->max_blk_size = max_blk_size;
+	/* Maximum blocks per request */
+	mmc->max_blk_count = max_blk_count;
+	mmc->max_seg_size = mmc->max_blk_size * mmc->max_blk_count;
+	mmc->max_req_size = mmc->max_seg_size;
 
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
-	host->dma = -1;
 	host->dat_width = 0;
 	host->cmd = NULL;
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
@@ -373,13 +406,18 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto out;
 	}
-	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host Core, version %d.%d\n",
+	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
 	       ret >> 24, (ret >> 16) & 0xff);
 	printk("NIOS_MMC: F_MAX: %d KHz, F_MIN: %d Hz\n", mmc->f_max / 1000,
 	       mmc->f_min);
 	ret = readl(host->base + NIOS_MMC_REG_CTLSTAT);
 	printk("NIOS_MMC: Host built with %s DAT driver\n",
 	       (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? "4-bit" : "1-bit");
+	if (ret & NIOS_MMC_CTLSTAT_PROF_EN) {
+		printk("NIOS_MMC: Host built with profiling capabilities\n");
+		host->prof_en = 1;
+	} else
+		host->prof_en = 0;
 #if defined(CONFIG_NIOS_MMC_FORCE_1BIT)
 	mmc->caps = 0;
 	printk("NIOS_MMC: Forcing 1-bit DAT width\n");
@@ -413,6 +451,10 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
+#ifdef CONFIG_PROC_FS
+	/* Setup Proc file system */
+	nios_mmc_procinit(host);
+#endif
 	MMC_DEBUG(3, "Completed full probe successfully\n");
 	return 0;
 
@@ -431,12 +473,14 @@ static int nios_mmc_remove(struct platform_device *pdev)
 
 	if (mmc) {
 		NIOS_MMC_HOST *host = mmc_priv(mmc);
-
 		mmc_remove_host(mmc);
 		free_irq(host->irq, (void *)host);
 		iounmap(host->base);
 		release_resource(host->res);
 		mmc_free_host(mmc);
+#ifdef CONFIG_PROC_FS
+		nios_mmc_procclose();
+#endif
 	}
 	return 0;
 }
@@ -474,5 +518,76 @@ static void __exit nios_mmc_exit(void)
 module_init(nios_mmc_init);
 module_exit(nios_mmc_exit);
 
-MODULE_DESCRIPTION("NIOS MMC Host Driver");
+module_param(debug_level, uint, 0444);
+MODULE_PARM_DESC(debug_level, "Debug level for driver");
+
+module_param(max_blk_size, uint, 0444);
+MODULE_PARM_DESC(max_blk_size, "Maximum Block Size");
+
+module_param(max_blk_count, uint, 0444);
+MODULE_PARM_DESC(max_blk_count, "Maximum Block Count per transfer");
+
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("NIOS MMC Host Driver");
+
+/********** PROC FS Stuff **************/
+#ifdef CONFIG_PROC_FS
+#include <linux/proc_fs.h>
+#define procfs_name "mmc_stats"
+
+static struct proc_dir_entry *mmc_proc_file;
+static struct proc_dir_entry *mmc_proc_root = NULL;
+
+int
+procfile_read(char *buffer, char **buffer_location, off_t offset,
+	      int buffer_length, int *eof, void *data)
+{
+	int ret;
+	unsigned long long xfer_len, busy_wait_len, bus_wait_len;
+
+	NIOS_MMC_HOST *host = (NIOS_MMC_HOST *) data;
+	if (offset > 0)
+		ret = 0;
+	else if (!host->prof_en) {
+		ret = sprintf(buffer, "Host does not have profiling enabled\n");
+	} else {
+		xfer_len = nios_mmc_prof_cnt(host, 0);
+		busy_wait_len = nios_mmc_prof_cnt(host, 1);
+		bus_wait_len = nios_mmc_prof_cnt(host, 2);
+		ret =
+		    sprintf(buffer,
+			    "Profiling Counters:\nXFER_LEN: %llds\nBUSY_WAIT_LEN: %llds\nBUS_WAIT_LEN: %llds\n",
+			    xfer_len / nasys_clock_freq,
+			    busy_wait_len / nasys_clock_freq,
+			    bus_wait_len / nasys_clock_freq);
+		nios_mmc_clear_prof(host);
+	}
+	return ret;
+}
+
+static int nios_mmc_procinit(NIOS_MMC_HOST * host)
+{
+	mmc_proc_root = proc_mkdir("nios_mmc", NULL);
+	mmc_proc_file = create_proc_entry(procfs_name, 0644, mmc_proc_root);
+	if (!mmc_proc_file || !mmc_proc_root) {
+		remove_proc_entry(procfs_name, mmc_proc_root);
+		printk("NIOS_MMC: Could not init. /proc/%s\n", procfs_name);
+		return -ENOMEM;
+	}
+	MMC_DEBUG(2, "/proc/%s added\n", procfs_name);
+	mmc_proc_file->read_proc = procfile_read;
+	mmc_proc_file->owner = THIS_MODULE;
+	mmc_proc_file->mode = S_IFREG | S_IRUGO;
+	mmc_proc_file->uid = 0;
+	mmc_proc_file->gid = 0;
+	mmc_proc_file->data = (void *)host;
+
+	return 0;
+}
+
+static void nios_mmc_procclose()
+{
+	remove_proc_entry(procfs_name, mmc_proc_root);
+	remove_proc_entry("nios_mmc", NULL);
+}
+#endif
