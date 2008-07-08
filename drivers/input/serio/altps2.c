@@ -133,7 +133,7 @@ static int ps2_probe(struct platform_device *dev)
 		ret = -EBUSY;
 		goto free;
 	}
-	ps2if->base = dev->resource[0].start;
+	ps2if->base = (unsigned) ioremap(dev->resource[0].start, 4);
 	ps2if->irq  = dev->resource[1].start;
 	printk("altps2 : base %08x irq %d\n",ps2if->base,ps2if->irq);
 	// clear fifo
