@@ -148,6 +148,14 @@ foreach my $module_name (@module_names) {
 			$text_printed = 1;
 		}
 
+		# clock information 
+		$result = $system->getClockFreq($module_name);
+		if (defined ($result)) {
+			$output .= sprintf ("#define na_%-30s %30s\n", 
+				($module_name . "_clock_freq", $result));
+			$text_printed = 1;
+		}
+
 	}
 	if (scalar (@module_ports) > 1) {
 		# if device has multiple ports
