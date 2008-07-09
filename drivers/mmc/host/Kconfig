@@ -136,23 +136,3 @@ config MMC_NIOS
 	help
 		Device driver for the FPS-Tech SD/SDIO/MMC Host for Altera NIOS systems
 
-config NIOS_MMC_NOBLK_PREFETCH
-	tristate "Disable Block pre-fetching"
-	depends on MMC_NIOS
-	help	
-		The NIOS SD Host will pre-fetch a complete block from memory
-		before writing on the SD interface. The pre-fetch is performed
-		for systems that have high memory access times (eg: DDR-based systems).
-		For configurations with low-latency memory access (eg: SSRAM), pre-fetching
-		shouldn't be required. Disable Block pre-fetching only if you have a low-latency
-		memory system. 
-
-		If unsure, say N here
-
-config NIOS_MMC_FORCE_1BIT
-	tristate "Force 1-bit DAT Mode"
-	depends on MMC_NIOS
-	help
-		Force 4-bit SD Host to act like a 1-bit Host only
-
-		If unsure, say N here
