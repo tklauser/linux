@@ -50,6 +50,9 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 static int nios_mmc_procinit(NIOS_MMC_HOST * host);
 static void nios_mmc_procclose(void);
+unsigned int max_blk_count = 8;
+unsigned int max_req_size = 0;
+unsigned int max_seg_size = 256;
 /***************************** Start of main functions ********************************/
 
 static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
@@ -369,20 +372,16 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	mmc->f_max = na_cpu_clock_freq / 4;
 	mmc->f_min = na_cpu_clock_freq / (1 << 16);
 	/* SG DMA Caps */
+	/* Setup block-related parameters on host */
 	mmc->max_phys_segs = 1;
 	mmc->max_hw_segs = 1;
-	/* Until we can get this figured out, leave max_seg_size
-	 * at 256. There are errors if set to anything else */
-#if 0
-	/* Maximum size in one block */
-	mmc->max_blk_size = max_blk_size;
-	/* Maximum blocks per request */
+	mmc->max_blk_size = 512;
 	mmc->max_blk_count = max_blk_count;
-	mmc->max_seg_size = mmc->max_blk_size * mmc->max_blk_count;
-	mmc->max_req_size = mmc->max_seg_size;
-#else
-	mmc->max_seg_size = 256;
-#endif
+	if (max_seg_size)
+		mmc->max_seg_size = max_seg_size;
+	if (max_req_size)
+		mmc->max_req_size = max_req_size;
+
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
 	host->dat_width = 0;
@@ -454,6 +453,10 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
+	printk("NIOS_MMC: max_blk_cnt: %d max_seg_size: %d max_req_size: %d\n",
+			mmc->max_blk_count,
+			mmc->max_seg_size,
+			mmc->max_req_size);
 #ifdef CONFIG_PROC_FS
 	/* Setup Proc file system */
 	nios_mmc_procinit(host);
@@ -520,6 +523,10 @@ static void __exit nios_mmc_exit(void)
 
 module_init(nios_mmc_init);
 module_exit(nios_mmc_exit);
+
+module_param(max_blk_count, uint, 0444);
+module_param(max_req_size, uint, 0444);
+module_param(max_seg_size, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");
