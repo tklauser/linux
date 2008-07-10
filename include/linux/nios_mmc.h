@@ -1,6 +1,14 @@
 #ifndef SDIO_HOST_H_
 #define SDIO_HOST_H_
 
+#include <linux/platform_device.h>
+
+struct nios_mmc_platform_mmc {
+	unsigned long mapbase;	/* Physical address base */
+	void __iomem *membase;	/* Virtual address if mapped */
+	unsigned int irq;	/* Interrupt vector */
+	unsigned int clk_src;	/* Source clock rate */
+};
 /******* SDIO Core defines *******/
 typedef volatile struct
 {
@@ -13,6 +21,7 @@ typedef volatile struct
 	unsigned char prof_en;
 	/* This should point to current cmd we are processing */
 	struct mmc_command *cmd;
+	unsigned int clock_freq;
 } NIOS_MMC_HOST;
 
 #define NIOS_MMC_REG_CTLSTAT 0*4

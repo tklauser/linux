@@ -25,7 +25,8 @@
 #include <asm/scatterlist.h>
 #include <linux/scatterlist.h>
 
-#include "nios_mmc.h"
+#include <linux/nios_mmc.h>
+
 #define DRIVER_NAME	"nios_mmc"
 #define NR_SG 1
 #define debug_level 0
@@ -50,9 +51,12 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 static int nios_mmc_procinit(NIOS_MMC_HOST * host);
 static void nios_mmc_procclose(void);
-unsigned int max_blk_count = 8;
-unsigned int max_req_size = 0;
-unsigned int max_seg_size = 256;
+unsigned int max_blk_count = 128;
+unsigned int max_req_size = 512*128;
+unsigned int max_seg_size = 512*128;
+unsigned int dat_width = 1;
+unsigned int blk_prefetch = 1;
+static unsigned int irq_count;
 /***************************** Start of main functions ********************************/
 
 static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
@@ -191,7 +195,7 @@ static irqreturn_t nios_mmc_irq(int irq, void *dev_id)
 		/* Transfer has completed */
 		nios_mmc_end_cmd(host, stat);
 	}
-
+	irq_count++;
 	return IRQ_HANDLED;
 }
 
@@ -321,7 +325,9 @@ static void nios_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (ios->clock) {
 		/* FIXME: Look at divider calculation! */
 		MMC_DEBUG(3, "Requesting clock: %d\n", ios->clock);
-		div = (nasys_clock_freq / (2 * ios->clock)) - 1;
+		div = (host->clock_freq / (2 * ios->clock)) - 1;
+		/* Check if div is less than 1 */
+		if (div < 1) div = 1;
 		writel((div & 0xFFFF) | NIOS_MMC_CLK_CTL_CLK_EN,
 		       host->base + NIOS_MMC_REG_CLK_CTL);
 	} else {
@@ -349,6 +355,7 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	struct mmc_host *mmc;
 	struct resource *r;
 	NIOS_MMC_HOST *host = NULL;
+	struct nios_mmc_platform_mmc *platp = pdev->dev.platform_data;
 	int ret, irq;
 
 	MMC_DEBUG(3, "Starting NIOS_MMC Probe\n");
@@ -369,8 +376,6 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 	mmc->ops = &nios_mmc_ops;
 	MMC_DEBUG(3, "Done initial probe\n");
-	mmc->f_max = na_cpu_clock_freq / 4;
-	mmc->f_min = na_cpu_clock_freq / (1 << 16);
 	/* SG DMA Caps */
 	/* Setup block-related parameters on host */
 	mmc->max_phys_segs = 1;
@@ -408,6 +413,10 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto out;
 	}
+	/* Setup clock frequency support */
+	host->clock_freq = platp->clk_src;
+	mmc->f_max = host->clock_freq / 4;
+	mmc->f_min = host->clock_freq / (1 << 16);
 	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
 	       ret >> 24, (ret >> 16) & 0xff);
 	printk("NIOS_MMC: F_MAX: %d KHz, F_MIN: %d Hz\n", mmc->f_max / 1000,
@@ -420,12 +429,16 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		host->prof_en = 1;
 	} else
 		host->prof_en = 0;
-#if defined(CONFIG_NIOS_MMC_FORCE_1BIT)
-	mmc->caps = 0;
-	printk("NIOS_MMC: Forcing 1-bit DAT width\n");
-#else
-	mmc->caps = (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
-#endif
+	if (!dat_width) {
+		/* Force dat_width to 1-bit */
+		mmc->caps = 0;
+		printk("NIOS_MMC: Forcing 1-bit DAT width\n");
+	}
+	else {
+		/* Set dat_width based on host capabilities */
+		mmc->caps = 
+			(ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
+	}
 	/* Execute soft-reset on core */
 	writel(NIOS_MMC_CTLSTAT_SOFT_RST, host->base + NIOS_MMC_REG_CTLSTAT);
 
@@ -434,9 +447,8 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	/* This section sets up CTLSTAT for the rest of the driver.
 	 * Make sure all further writes to CTLSTAT are using bitwise OR!!! */
 	ret = NIOS_MMC_CTLSTAT_CD_IE | NIOS_MMC_CTLSTAT_XFER_IE;
-#if !defined(CONFIG_NIOS_MMC_NOBLK_PREFETCH)
-	ret |= NIOS_MMC_CTLSTAT_BLK_PREFETCH;
-#endif
+	if (blk_prefetch)
+		ret |= NIOS_MMC_CTLSTAT_BLK_PREFETCH;
 	/* Execute write to CTLSTAT here */
 	writel(ret, host->base + NIOS_MMC_REG_CTLSTAT);
 	if (ret & NIOS_MMC_CTLSTAT_BLK_PREFETCH) {
@@ -527,6 +539,8 @@ module_exit(nios_mmc_exit);
 module_param(max_blk_count, uint, 0444);
 module_param(max_req_size, uint, 0444);
 module_param(max_seg_size, uint, 0444);
+module_param(dat_width, uint, 0444);
+module_param(blk_prefetch, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");
@@ -557,11 +571,13 @@ procfile_read(char *buffer, char **buffer_location, off_t offset,
 		bus_wait_len = nios_mmc_prof_cnt(host, 2);
 		ret =
 		    sprintf(buffer,
-			    "Profiling Counters:\nXFER_LEN: %llds\nBUSY_WAIT_LEN: %llds\nBUS_WAIT_LEN: %llds\n",
-			    xfer_len / nasys_clock_freq,
-			    busy_wait_len / nasys_clock_freq,
-			    bus_wait_len / nasys_clock_freq);
+			    "Profiling Counters:\nInterrupts: %d\nXFER_LEN: %llds\nBUSY_WAIT_LEN: %llds\nBUS_WAIT_LEN: %llds\n",
+			    irq_count,
+			    xfer_len / host->clock_freq,
+			    busy_wait_len / host->clock_freq,
+			    bus_wait_len / host->clock_freq);
 		nios_mmc_clear_prof(host);
+		irq_count = 0;
 	}
 	return ret;
 }
@@ -582,6 +598,7 @@ static int nios_mmc_procinit(NIOS_MMC_HOST * host)
 	mmc_proc_file->uid = 0;
 	mmc_proc_file->gid = 0;
 	mmc_proc_file->data = (void *)host;
+	irq_count = 0;
 
 	return 0;
 }

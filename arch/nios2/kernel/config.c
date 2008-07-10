@@ -23,7 +23,7 @@
 #include <linux/io.h>
 #include <linux/altjuart.h>
 #include <linux/altuart.h>
-
+#include <linux/nios_mmc.h>
 /*
  *	Altera JTAG UART
  */
@@ -460,6 +460,47 @@ static void __init cf_init(unsigned ctl_base)
 }
 #endif
 
+/* SD/SDIO/MMC Host Platform Device */
+/* Map na_sdio_host_inst to na_sdio if it exists */
+#if defined(na_sdio_host_inst)
+#define na_sdio na_sdio_host_inst
+#define na_sdio_irq na_sdio_host_inst_irq
+#define na_sdio_clock_freq na_sdio_host_inst_clock_freq
+#endif
+
+/* We don't check for defined(CONFIG_MMC_NIOS) in case we are building
+ * kernel module */
+#if defined(na_sdio)
+
+static struct nios_mmc_platform_mmc nios2_mmc_platform[] = {
+	{
+	 .mapbase = (unsigned long)na_sdio,
+	 .irq = na_sdio_irq,
+	 .clk_src = na_sdio_clock_freq,
+	 },
+};
+
+static struct resource nios_mmc_resources[] = {
+	[0] = {
+		.start = na_sdio,
+		.end = na_sdio + (16*4-1),
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_sdio_irq,
+		.end = na_sdio_irq,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+static struct platform_device nios_mmc_device = {
+	.name = "nios_mmc",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(nios_mmc_resources),
+	.resource = nios_mmc_resources,
+	.dev.platform_data = nios2_mmc_platform,
+};
+
+#endif
 /*
  *	Nios2 platform devices
  */
@@ -489,6 +530,9 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_cf_device,
 #endif
 
+#if (defined(na_sdio))
+	&nios_mmc_device,
+#endif
 };
 
 static int __init init_BSP(void)
