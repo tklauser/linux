@@ -67,7 +67,7 @@ KBUILD_CFLAGS += -fno-optimize-sibling-calls
 #
 KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
 KBUILD_CFLAGS += -fno-builtin
-KBUILD_CFLAGS += -O2 -g -G 0
+KBUILD_CFLAGS += -G 0
 KBUILD_CFLAGS += -DUTS_SYSNAME=\"uClinux\"
 
 CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
