@@ -468,9 +468,7 @@ static void __init cf_init(unsigned ctl_base)
 #define na_sdio_clock_freq na_sdio_host_inst_clock_freq
 #endif
 
-/* We don't check for defined(CONFIG_MMC_NIOS) in case we are building
- * kernel module */
-#if defined(na_sdio)
+#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
 
 static struct nios_mmc_platform_mmc nios2_mmc_platform[] = {
 	{
@@ -530,7 +528,7 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_cf_device,
 #endif
 
-#if (defined(na_sdio))
+#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
 	&nios_mmc_device,
 #endif
 };
