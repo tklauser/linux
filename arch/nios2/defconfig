@@ -1,7 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux kernel version: 2.6.26-rc7
-# Wed Jun 25 11:34:44 2008
+# Linux kernel version: 2.6.26
 #
 # CONFIG_FPU is not set
 CONFIG_ZONE_DMA=y
@@ -131,9 +130,7 @@ CONFIG_NIOS2_HW_MUL=y
 #
 # CONFIG_AVALON_DMA is not set
 # CONFIG_PCI_ALTPCI is not set
-# CONFIG_SERIO_ALTPS2 is not set
 # CONFIG_I2C_NIOS2_GPIO is not set
-# CONFIG_NIOS_SD_HOST is not set
 
 #
 # Miscellaneous Options
@@ -271,6 +268,8 @@ CONFIG_DEFAULT_TCP_CONG="cubic"
 #
 CONFIG_STANDALONE=y
 CONFIG_PREVENT_FIRMWARE_BUILD=y
+# CONFIG_DEBUG_DRIVER is not set
+# CONFIG_DEBUG_DEVRES is not set
 # CONFIG_SYS_HYPERVISOR is not set
 # CONFIG_CONNECTOR is not set
 # CONFIG_MTD is not set
@@ -387,6 +386,7 @@ CONFIG_LEGACY_PTY_COUNT=10
 # CONFIG_POWER_SUPPLY is not set
 # CONFIG_HWMON is not set
 # CONFIG_THERMAL is not set
+# CONFIG_THERMAL_HWMON is not set
 # CONFIG_WATCHDOG is not set
 
 #
@@ -539,11 +539,30 @@ CONFIG_FRAME_WARN=1024
 # CONFIG_UNUSED_SYMBOLS is not set
 # CONFIG_DEBUG_FS is not set
 # CONFIG_HEADERS_CHECK is not set
-# CONFIG_DEBUG_KERNEL is not set
-# CONFIG_FRAME_POINTER is not set
+CONFIG_DEBUG_KERNEL=y
+# CONFIG_DEBUG_SHIRQ is not set
+CONFIG_DETECT_SOFTLOCKUP=y
+CONFIG_SCHED_DEBUG=y
+# CONFIG_SCHEDSTATS is not set
+# CONFIG_TIMER_STATS is not set
+# CONFIG_DEBUG_OBJECTS is not set
+# CONFIG_DEBUG_SLAB is not set
+# CONFIG_DEBUG_RT_MUTEXES is not set
+# CONFIG_RT_MUTEX_TESTER is not set
+# CONFIG_DEBUG_SPINLOCK is not set
+# CONFIG_DEBUG_MUTEXES is not set
+# CONFIG_DEBUG_SPINLOCK_SLEEP is not set
+# CONFIG_DEBUG_LOCKING_API_SELFTESTS is not set
+# CONFIG_DEBUG_KOBJECT is not set
+CONFIG_DEBUG_INFO=y
+# CONFIG_DEBUG_VM is not set
+# CONFIG_DEBUG_WRITECOUNT is not set
+# CONFIG_DEBUG_LIST is not set
+# CONFIG_DEBUG_SG is not set
+# CONFIG_BOOT_PRINTK_DELAY is not set
+# CONFIG_BACKTRACE_SELF_TEST is not set
+# CONFIG_FAULT_INJECTION is not set
 # CONFIG_SAMPLES is not set
-# CONFIG_FULLDEBUG is not set
-# CONFIG_NO_KERNEL_MSG is not set
 
 #
 # Security options
