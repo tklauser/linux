@@ -306,7 +306,8 @@ static struct platform_device na_touch_panel_spi_device = {
 };
 #endif /* spi master and devices */
 
-#if defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)
+#if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
+	defined(na_touch_panel_pen_irq_n)
 
 #define ALTERA_PIO_IO_EXTENT      16
 #define ALTERA_PIO_DATA           0
@@ -384,7 +385,8 @@ static struct spi_board_info nios2_spi_devices[] = {
 	 },
 #endif
 
-#if defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)
+#if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
+	defined(na_touch_panel_pen_irq_n)
 	{
 	 .modalias = "ads7846",
 	 .chip_select = 0,
@@ -542,7 +544,8 @@ static int __init init_BSP(void)
 
 #if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
 
-#if defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)
+#if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
+	defined(na_touch_panel_pen_irq_n)
 	ads7843_pendown_init();
 #endif
 
