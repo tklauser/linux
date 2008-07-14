@@ -18,6 +18,7 @@
 #endif
 #include <linux/ata_platform.h>
 #include <linux/i2c.h>
+#include <linux/i2c-ocores.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -501,6 +502,67 @@ static struct platform_device nios_mmc_device = {
 };
 
 #endif
+
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
+static struct resource na_i2c_0_resources[] = {
+	[0] = {
+	       .start = na_i2c_0,
+	       .end = na_i2c_0 + 31,
+	       .flags = IORESOURCE_MEM,
+	       },
+	[1] = {
+	       .start = na_i2c_0_irq,
+	       .end = na_i2c_0_irq,
+	       .flags = IORESOURCE_IRQ,
+	       },
+};
+
+static struct ocores_i2c_platform_data na_i2c_0_platform_data = {
+	.regstep = 4,		/* four bytes between registers */
+	.clock_khz = na_i2c_0_clock_freq,	/* input clock */
+};
+
+static struct platform_device na_i2c_0_device = {
+	.name = "ocores-i2c",
+	.id = 0,
+	.dev = {
+		.platform_data = &na_i2c_0_platform_data,
+		},
+	.num_resources = ARRAY_SIZE(na_i2c_0_resources),
+	.resource = na_i2c_0_resources,
+};
+#endif
+
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_1)
+static struct resource na_i2c_1_resources[] = {
+	[0] = {
+	       .start = na_i2c_1,
+	       .end = na_i2c_1 + 31,
+	       .flags = IORESOURCE_MEM,
+	       },
+	[1] = {
+	       .start = na_i2c_1_irq,
+	       .end = na_i2c_1_irq,
+	       .flags = IORESOURCE_IRQ,
+	       },
+};
+
+static struct ocores_i2c_platform_data na_i2c_1_platform_data = {
+	.regstep = 4,		/* four bytes between registers */
+	.clock_khz = na_i2c_1_clock_freq,	/* input clock */
+};
+
+static struct platform_device na_i2c_1_device = {
+	.name = "ocores-i2c",
+	.id = 1,
+	.dev = {
+		.platform_data = &na_i2c_1_platform_data,
+		},
+	.num_resources = ARRAY_SIZE(na_i2c_1_resources),
+	.resource = na_i2c_1_resources,
+};
+#endif
+
 /*
  *	Nios2 platform devices
  */
@@ -533,6 +595,14 @@ static struct platform_device *nios2_devices[] __initdata = {
 #if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
 	&nios_mmc_device,
 #endif
+
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
+	&na_i2c_0_device,
+#endif
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_1)
+	&na_i2c_1_device,
+#endif
+
 };
 
 static int __init init_BSP(void)
