@@ -519,7 +519,7 @@ static struct resource na_i2c_0_resources[] = {
 
 static struct ocores_i2c_platform_data na_i2c_0_platform_data = {
 	.regstep = 4,		/* four bytes between registers */
-	.clock_khz = na_i2c_0_clock_freq,	/* input clock */
+	.clock_khz = na_i2c_0_clock_freq / 1000,	/* input clock */
 };
 
 static struct platform_device na_i2c_0_device = {
@@ -549,7 +549,7 @@ static struct resource na_i2c_1_resources[] = {
 
 static struct ocores_i2c_platform_data na_i2c_1_platform_data = {
 	.regstep = 4,		/* four bytes between registers */
-	.clock_khz = na_i2c_1_clock_freq,	/* input clock */
+	.clock_khz = na_i2c_1_clock_freq / 1000,	/* input clock */
 };
 
 static struct platform_device na_i2c_1_device = {
