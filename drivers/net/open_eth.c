@@ -54,6 +54,7 @@
 #include <linux/skbuff.h>
 #include <linux/init.h>
 #include <linux/mii.h>
+#include <linux/ethtool.h>
 #include <linux/crc32.h>
 
 #include <asm/irq.h>
@@ -199,6 +200,8 @@ struct oeth_private {
     struct mii_if_info mii;
     spinlock_t       lock;
 };
+
+void oeth_phymac_synch (struct net_device *dev, int callerflg);
 
 #ifdef SANCHKEPKT
 
@@ -670,6 +673,8 @@ static int mii_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 
 	spin_lock_irq(&np->lock);
 	rc = generic_mii_ioctl(&np->mii, if_mii(rq), cmd, NULL);
+	if (cmd == SIOCSMIIREG)
+	    oeth_phymac_synch(dev, 0);/* synchronize MAC if MII updated */
 	spin_unlock_irq(&np->lock);
 
 	return rc;
@@ -742,11 +747,12 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
     volatile oeth_regs  *regs = (oeth_regs *)dev->base_addr;
     unsigned long        ulmoderval;
     unsigned long        ulmr1sts;
-    #if defined(TDK78Q2120PHY)
+#if defined(TDK78Q2120PHY)
     unsigned long        ulphydiagval;
-    #else
-    unsigned long        bmcrval;
-    #endif
+#else
+    struct oeth_private  *cep = (struct oeth_private *)dev->priv;
+    struct ethtool_cmd   ecmd;
+#endif
 
     ulmr1sts = eth_mdread(dev, PHY_ADDRESS, MII_BMSR);
     /* Read twice to get CURRENT status                                 */
@@ -754,17 +760,15 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
 
     ulmoderval = regs->moder;
 
-    #if defined(TDK78Q2120PHY)
-      ulphydiagval = eth_mdread(dev, PHY_ADDRESS, 18);
-    #else
-      bmcrval = eth_mdread(dev, PHY_ADDRESS, MII_BMCR);
-    #endif
+#if defined(TDK78Q2120PHY)
+    ulphydiagval = eth_mdread(dev, PHY_ADDRESS, 18);
+#endif
 
     if(callerflg == 0)
       {
         // Caller = NOT Phy interrupt handler
 
-        if((ulmr1sts & BMSR_LSTATUS) != 0)
+	if((ulmr1sts & BMSR_LSTATUS) != 0)
           {
             // Link is ostensibly OK
 
@@ -776,8 +780,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                   {
                     // Auto negotiation ostensibly has completed
 
-                    #if defined(TDK78Q2120PHY)
-
+#if defined(TDK78Q2120PHY)
                       if((ulphydiagval & 0x1000) != 0)
                         {
                           // Auto negotiation ostensibly has failed
@@ -819,7 +822,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                               return;
                             }
                         }
-                    #endif /* defined(TDK78Q2120PHY) */
+#endif /* defined(TDK78Q2120PHY) */
                   }
               }
           }
@@ -882,7 +885,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
          *          3, or 0x12 ?))
          */
 
-        #if defined(TDK78Q2120PHY)
+#if defined(TDK78Q2120PHY)
 
           if((ulphydiagval & 0x0800) != 0)
             {
@@ -938,41 +941,29 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                    (ulphydiagval & 0x0400) ? "100BASE-TX" : "10BASE-T");
           #endif
 
-        #else /* generic PHY, use MR0 */
+#else /* generic PHY, use generic MII functions */
+	    mii_ethtool_gset(&cep->mii, &ecmd);
 
-
-	    if((bmcrval & (BMCR_FULLDPLX)) != 0)
+	    if (ecmd.duplex)
             {
-              /* Phy MR0 indicates              */
-              /*  link is (now) running full duplex.                    */
-
-              if((ulmoderval & (OETH_MODER_FULLD)) == 0)
+	      if (!(ulmoderval & OETH_MODER_FULLD))
                 {
-                  regs->moder = ((unsigned long) (ulmoderval |
-                                                  (OETH_MODER_FULLD)));
+                  regs->moder = ulmoderval | OETH_MODER_FULLD;
                 }
-              // FIXME:...
-              // ...Note manual says not supposed to "change
-              // ... registers after ModeR's TxEn or RxEn
-              // ...  bit(s) have been set"
               if(regs->ipgt != ((unsigned long) (0x00000015)))
                 {
                   regs->ipgt = ((unsigned long) (0x00000015));
                 }
 
-              #if defined(ANNOUNCEPHYINT)
+# if defined(ANNOUNCEPHYINT)
                 printk("             FullD\n");
-              #endif
+# endif
             }
-            else
+            else	/* half duplex */
             {
-              /* Phy MR0 indicates              */
-              /*  link is (now) running half duplex.                    */
-
-              if((ulmoderval & (OETH_MODER_FULLD)) != 0)
+              if (ulmoderval & OETH_MODER_FULLD)
                 {
-                  regs->moder = ((unsigned long) (ulmoderval &
-                                                  (~(OETH_MODER_FULLD))));
+                  regs->moder = ulmoderval & ~OETH_MODER_FULLD;
                 }
               // FIXME:...
               // ...Note manual says not supposed to "change
@@ -983,17 +974,16 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
                   regs->ipgt = ((unsigned long) (0x00000012));
                 }
 
-              #if defined(ANNOUNCEPHYINT)
+# if defined(ANNOUNCEPHYINT)
                 printk("             HalfD\n");
-              #endif
+# endif
             }
 
-          #if defined(ANNOUNCEPHYINT)
-            printk("             %s\n",
-                   (bmcrval & BMCR_SPEED100) ? "100BASE-TX" : "10BASE-T");
-          #endif
+# if defined(ANNOUNCEPHYINT)
+            printk("             %s\n", (ecmd.speed == 100) ? "100BASE-TX" : "10BASE-T");
+# endif
 
-        #endif /* defined(TDK78Q2120PHY) */
+#endif /* generic PHY */
       }
     #if defined(ANNOUNCEPHYINT)
       else
@@ -1017,14 +1007,14 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
  */
 static irqreturn_t oeth_PhyInterrupt(int             irq,
                                      void           *dev_id)
-  {
-    #if defined(TDK78Q2120PHY)
-
-      unsigned long                  ulmr17sts;
+{
       struct   net_device           *dev        = dev_id;
-      volatile struct oeth_private  *cep;
 
-      cep = (struct oeth_private *)dev->priv;
+#if defined(TDK78Q2120PHY)
+      volatile struct oeth_private  *cep =
+	  (struct oeth_private *)dev->priv;
+      unsigned long                  ulmr17sts;
+
 
       ulmr17sts = eth_mdread(((struct net_device *) dev_id),
                              PHY_ADDRESS, 17);
@@ -1035,7 +1025,7 @@ static irqreturn_t oeth_PhyInterrupt(int             irq,
           cep->stats.rx_frame_errors++;
         }
 
-      #if defined(ANNOUNCEPHYINT)
+# if defined(ANNOUNCEPHYINT)
         printk("\noeth_PhyInterrupt:%s  MR17: 0x%08lX\n",
                dev->name,
                ulmr17sts);
@@ -1071,11 +1061,11 @@ static irqreturn_t oeth_PhyInterrupt(int             irq,
           {
             printk("                               Anegcomp\n");
           }
-      #endif
+# endif
 
       oeth_phymac_synch((struct net_device *) dev_id,
                         1);  // Caller = Phy interrupt handler
-    #endif  /* defined(TDK78Q2120PHY) */
+#endif  /* defined(TDK78Q2120PHY) */
 
     return IRQ_HANDLED;
   }
@@ -1650,7 +1640,7 @@ oeth_close(struct net_device *dev)
 
     /* Free phy interrupt handler
      */
-    #if defined(PHYIRQ_NUM)
+#if defined(PHYIRQ_NUM)
         (*(volatile unsigned long *)
              (((unsigned long *)
                   ((((char *)
@@ -1660,7 +1650,7 @@ oeth_close(struct net_device *dev)
           // Disable phy interrupt pass thru to PHYIRQ_NUM
 
         free_irq(PHYIRQ_NUM, (void *)dev);
-    #endif
+#endif
 
     /* Free interrupt hadler
      */
@@ -2201,7 +2191,7 @@ static int __init oeth_probe(struct net_device *dev)
     regbase = (unsigned long)ioremap(ETH_BASE_ADD, OETH_IO_EXTENT);
 
     if (regbase == 0) {
-    	dev_err(dev,"failed to ioremap mac reg\n");
+	printk(KERN_ERR "%s: " "failed to ioremap mac reg\n", dev->name);
       	return -EINVAL;
     }
 
@@ -2402,7 +2392,7 @@ static int __init oeth_probe(struct net_device *dev)
      */
     ether_setup(dev);
 
-    dev->base_addr = (void *)regbase;
+    dev->base_addr = regbase;
 
     /* The Open Ethernet specific entries in the device structure.
      */
