@@ -62,7 +62,7 @@ static inline pgtable_t pte_alloc_one(struct mm_struct *mm,
 		pgtable_page_ctor(pte);
       /* FIXME: This is only here for the iss, to avoid alias at address 0
        */
-#if 0
+#if 1
 		clear_highpage(pte);
 #else
       pte_t *p = kmap_atomic(pte, KM_USER0);
