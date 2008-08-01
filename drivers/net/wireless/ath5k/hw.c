@@ -31,14 +31,14 @@
 #include "base.h"
 #include "debug.h"
 
-/*Rate tables*/
+/* Rate tables */
 static const struct ath5k_rate_table ath5k_rt_11a = AR5K_RATES_11A;
 static const struct ath5k_rate_table ath5k_rt_11b = AR5K_RATES_11B;
 static const struct ath5k_rate_table ath5k_rt_11g = AR5K_RATES_11G;
 static const struct ath5k_rate_table ath5k_rt_turbo = AR5K_RATES_TURBO;
 static const struct ath5k_rate_table ath5k_rt_xr = AR5K_RATES_XR;
 
-/*Prototypes*/
+/* Prototypes */
 static int ath5k_hw_nic_reset(struct ath5k_hw *, u32);
 static int ath5k_hw_nic_wakeup(struct ath5k_hw *, int, bool);
 static int ath5k_hw_setup_4word_tx_desc(struct ath5k_hw *, struct ath5k_desc *,
@@ -1440,6 +1440,7 @@ int ath5k_hw_stop_tx_dma(struct ath5k_hw *ah, unsigned int queue)
 
 		/* Stop queue */
 		ath5k_hw_reg_write(ah, tx_queue, AR5K_CR);
+		ath5k_hw_reg_read(ah, AR5K_CR);
 	} else {
 		/*
 		 * Schedule TX disable and wait until queue is empty
@@ -1456,6 +1457,8 @@ int ath5k_hw_stop_tx_dma(struct ath5k_hw *ah, unsigned int queue)
 
 		/* Clear register */
 		ath5k_hw_reg_write(ah, 0, AR5K_QCU_TXD);
+		if (pending)
+			return -EBUSY;
 	}
 
 	/* TODO: Check for success else return error */
@@ -1716,6 +1719,7 @@ enum ath5k_int ath5k_hw_set_intr(struct ath5k_hw *ah, enum ath5k_int new_mask)
 
 	/* ..re-enable interrupts */
 	ath5k_hw_reg_write(ah, AR5K_IER_ENABLE, AR5K_IER);
+	ath5k_hw_reg_read(ah, AR5K_IER);
 
 	return old_mask;
 }
