@@ -30,6 +30,7 @@
 
 #include <linux/sched.h>  /* for jiffies */
 #include <linux/kernel.h>
+#include <linux/mm.h>
 #include <linux/signal.h>
 #include <linux/module.h>
 
