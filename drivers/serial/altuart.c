@@ -270,7 +270,7 @@ static void altera_uart_rx_chars(struct altera_uart *pp)
 				 flag);
 	}
 
-	tty_flip_buffer_push(port->info->tty);
+ 	tty_flip_buffer_push(port->info->port.tty);
 }
 
 static void altera_uart_tx_chars(struct altera_uart *pp)
