@@ -33,12 +33,6 @@
 
 #include <asm/setup.h>
 
-#if PAGE_SHIFT < 13
-#define THREAD_SIZE (8192)
-#else
-#define THREAD_SIZE PAGE_SIZE
-#endif
- 
 #ifndef __ASSEMBLY__
  
 #define get_user_page(vaddr)		__get_free_page(GFP_KERNEL)

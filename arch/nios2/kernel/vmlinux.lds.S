@@ -6,6 +6,7 @@
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/nios2.h>
 #include <asm/page.h>
+#include <asm/thread_info.h>
 		
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
 
