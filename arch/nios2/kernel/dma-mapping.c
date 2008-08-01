@@ -27,7 +27,8 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 
 	if (ret != NULL) {
 		memset(ret, 0, size);
-		*dma_handle = ioremap(ret, size);
+		*dma_handle = (dma_addr_t)ret;
+		ret = ioremap((unsigned long)ret, size);
 	}
 	return ret;
 }
@@ -35,7 +36,7 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 void dma_free_coherent(struct device *dev, size_t size,
 		       void *vaddr, dma_addr_t dma_handle)
 {
-	free_pages((unsigned long)vaddr, get_order(size));
+	free_pages((unsigned long)dma_handle, get_order(size));
 }
 
 /* FIXME: the following dma sync and map need updates */
@@ -59,7 +60,7 @@ dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
 			  enum dma_data_direction direction)
 {
 	dcache_push((unsigned long)ptr, size);
-	return ptr;
+	return (dma_addr_t)ptr;
 }
 
 void dma_unmap_single(struct device *dev, dma_addr_t addr,
