@@ -358,8 +358,14 @@
 #define __NR_fallocate		322
 #define __NR_timerfd_settime	323
 #define __NR_timerfd_gettime	324
+#define __NR_signalfd4		325
+#define __NR_eventfd2		326
+#define __NR_epoll_create1	327
+#define __NR_dup3		328
+#define __NR_pipe2		329
+#define __NR_inotify_init1	330
 
-#define NR_syscalls		325
+#define NR_syscalls		331
 
 /* Not relevant on no-mmu */
 #define __IGNORE_msync
