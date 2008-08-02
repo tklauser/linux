@@ -6,7 +6,7 @@
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/nios2.h>
 #include <asm/page.h>
-#include <asm/thread_info.h>
+#define THREAD_SIZE 8192
 		
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
 
