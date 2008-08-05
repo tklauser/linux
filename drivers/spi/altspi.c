@@ -58,6 +58,7 @@ struct altera_spi {
 	int irq;
 	int len;
 	int count;
+    int bytesPerWord;
 	unsigned long imr;
 
 	/* data buffers */
@@ -155,7 +156,15 @@ static int altera_spi_setup(struct spi_device *spi)
 
 static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 {
-	return hw->tx ? hw->tx[count] : 0;
+    if (hw->tx)
+        switch (hw->bytesPerWord)
+        {
+            case 1:
+                return hw->tx[count];
+            case 2:
+                return (hw->tx[count * 2] | (hw->tx[count * 2 + 1] << 8));
+        }
+    else return 0;
 }
 
 static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
@@ -167,8 +176,9 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 
 	hw->tx = t->tx_buf;
 	hw->rx = t->rx_buf;
-	hw->len = t->len;
 	hw->count = 0;
+    hw->bytesPerWord = (t->bits_per_word ? : spi->bits_per_word) / 8;
+	hw->len = t->len / hw->bytesPerWord;
 
 	init_completion(&hw->done);
 
@@ -177,7 +187,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 
 	wait_for_completion(&hw->done);
 
-	return hw->count;
+	return hw->count * hw->bytesPerWord;
 }
 
 static irqreturn_t altera_spi_irq(int irq, void *dev)
@@ -203,7 +213,16 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
 	if (hw->rx)
-		hw->rx[count] = rxd;
+        switch (hw->bytesPerWord)
+        {
+            case 1:
+                hw->rx[count] = rxd;
+                break;
+            case 2:
+                hw->rx[count * 2] = rxd;
+                hw->rx[count * 2 + 1] = rxd >> 8;
+                break;
+        }
 
 	count++;
 
