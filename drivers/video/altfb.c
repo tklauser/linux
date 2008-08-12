@@ -68,14 +68,6 @@ static struct fb_var_screeninfo altfb_default __initdata = {
 	.activate = FB_ACTIVATE_NOW,
 	.height = -1,
 	.width = -1,
-	/* timing useless ? */
-	.pixclock = 20000,
-	.left_margin = 64,
-	.right_margin = 64,
-	.upper_margin = 32,
-	.lower_margin = 32,
-	.hsync_len = 64,
-	.vsync_len = 2,
 	.vmode = FB_VMODE_NONINTERLACED,
 };
 
@@ -84,19 +76,7 @@ static struct fb_fix_screeninfo altfb_fix __initdata = {
 	.type = FB_TYPE_PACKED_PIXELS,
 	.visual = FB_VISUAL_TRUECOLOR,
 	.line_length = (XRES * (BPX >> 3)),
-	.xpanstep = 0,
-	.ypanstep = 0,
-	.ywrapstep = 0,
 	.accel = FB_ACCEL_NONE,
-};
-
-static int altfb_mmap(struct fb_info *info, struct vm_area_struct *vma);
-
-static struct fb_ops altfb_ops = {
-	.fb_fillrect = cfb_fillrect,
-	.fb_copyarea = cfb_copyarea,
-	.fb_imageblit = cfb_imageblit,
-	.fb_mmap = altfb_mmap,
 };
 
 /* We implement our own mmap to set MAY_SHARE and add the correct size */
@@ -108,6 +88,51 @@ static int altfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	vma->vm_end = vma->vm_start + info->fix.smem_len;
 	return 0;
 }
+
+static int altfb_setcolreg(unsigned regno, unsigned red, unsigned green,
+			   unsigned blue, unsigned transp,
+			   struct fb_info *info)
+{
+    /*
+     *  Set a single color register. The values supplied have a 32/16 bit
+     *  magnitude.
+     *  Return != 0 for invalid regno.
+     */
+
+    if (regno > 255)
+	    return 1;
+#if (BPX == 16)
+    red>>=11;
+    green>>=10;
+    blue>>=11;
+
+    if (regno < 255) {
+	((u32 *)info->pseudo_palette)[regno] = ((red & 31) <<11) |
+					       ((green & 63) << 5) |
+					       (blue & 31);
+    }
+#else
+    red>>=8;
+    green>>=8;
+    blue>>=8;
+
+    if (regno < 255) {
+	((u32 *)info->pseudo_palette)[regno] = ((red & 255) <<16) |
+					       ((green & 255) << 8) |
+					       (blue & 255);
+    }
+#endif
+    return 0;
+}
+
+static struct fb_ops altfb_ops = {
+	.owner		= THIS_MODULE,
+	.fb_fillrect = cfb_fillrect,
+	.fb_copyarea = cfb_copyarea,
+	.fb_imageblit = cfb_imageblit,
+	.fb_mmap = altfb_mmap,
+	.fb_setcolreg = altfb_setcolreg,
+};
 
 static void altfb_platform_release(struct device *device)
 {
@@ -221,12 +246,12 @@ static int __init altfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	int retval = -ENOMEM;
+	void * fbmem_virt;
 
 	altfb_fix.smem_len = VIDEOMEMSIZE;
-	altfb_fix.smem_start =
-	    (unsigned long)kzalloc(altfb_fix.smem_len, GFP_KERNEL);
-	if (!altfb_fix.smem_start) {
-		printk("Unable to allocate %d Bytes fb memory\n",
+	if (!(fbmem_virt = dma_alloc_coherent(NULL, altfb_fix.smem_len, 
+			&altfb_fix.smem_start, GFP_KERNEL))) {
+		printk("altfb: unable to allocate %d Bytes fb memory\n",
 		       altfb_fix.smem_len);
 		return -ENOMEM;
 	}
@@ -235,7 +260,7 @@ static int __init altfb_probe(struct platform_device *dev)
 	if (!info)
 		goto err;
 
-	info->screen_base = ioremap(altfb_fix.smem_start, altfb_fix.smem_len);
+	info->screen_base = fbmem_virt;
 	info->fbops = &altfb_ops;
 	info->var = altfb_default;
 	info->fix = altfb_fix;
@@ -261,10 +286,10 @@ static int __init altfb_probe(struct platform_device *dev)
       err2:
 	fb_dealloc_cmap(&info->cmap);
       err1:
-	iounmap((void *)altfb_fix.smem_start);
 	framebuffer_release(info);
       err:
-	kfree((void *)altfb_fix.smem_start);
+	dma_free_coherent(NULL, altfb_fix.smem_len, fbmem_virt, 
+		altfb_fix.smem_start);
 	return retval;
 }
 
@@ -274,8 +299,8 @@ static int altfb_remove(struct platform_device *dev)
 
 	if (info) {
 		unregister_framebuffer(info);
-		iounmap((void *)info->fix.smem_start);
-		free_pages(info->fix.smem_start, get_order(info->fix.smem_len));
+		dma_free_coherent(NULL, info->fix.smem_len, info->screen_base, 
+			info->fix.smem_start);
 		framebuffer_release(info);
 	}
 	return 0;
