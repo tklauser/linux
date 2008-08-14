@@ -528,6 +528,55 @@ arch_initcall(atse_device_init);
 #endif /* CONFIG_ATSE */
 
 
+/* Altera Triple Speed Ethernet (SLS) */
+
+#if defined (CONFIG_ALT_TSE)
+
+#define TSE_RESOURCE_MAC_DEV      "Altera_tse_resource_mac_dev"
+#define TSE_RESOURCE_SGDMA_RX_DEV "Altera_tse_resource_sgdma_rx_dev"
+#define TSE_RESOURCE_SGDMA_TX_DEV "Altera_tse_resource_sgdma_tx_dev"
+
+static struct resource alt_tse_resource[] = {
+	[0] = {
+	       .start = na_tse_mac_control_port,
+	       .end = na_tse_mac_control_port + 0x400 - 1,	/* hard number as per system sopc file */
+	       .name = TSE_RESOURCE_MAC_DEV,
+	       .flags = IORESOURCE_MEM,
+	       },
+	[1] = {
+	       .start = na_sgdma_rx_csr,
+	       .end = na_sgdma_rx_csr + 0x400 - 1,	/* hard number as per system sopc file */
+	       .name = TSE_RESOURCE_SGDMA_RX_DEV,
+	       .flags = IORESOURCE_MEM,
+	       },
+	[2] = {
+	       .start = na_sgdma_tx,
+	       .end = na_sgdma_tx + 0x400 - 1,	/* hard number as per system sopc file */
+	       .name = TSE_RESOURCE_SGDMA_TX_DEV,
+	       .flags = IORESOURCE_MEM,
+	       },
+};
+
+static struct platform_device alt_tse_device = {
+	/* the name string must be the same as in struct patform_driver */
+	.name = "altera_tse",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(alt_tse_resource),
+	.resource = alt_tse_resource,
+	.dev = {
+		.platform_data = NULL,
+		}
+};
+
+static int __init tse_device_init(void)
+{
+	platform_device_register(&alt_tse_device);
+	return 0;
+}
+
+arch_initcall(tse_device_init);
+#endif /* CONFIG_ALT_TSE */
+
 #if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
 
 static struct resource altps2_0_resources[] = {

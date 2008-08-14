@@ -909,6 +909,41 @@ config ATSE
 	   default n
 	   depends on NIOS2
 
+config ALT_TSE
+	tristate "Altera Triple Speed Ethernet MAC support(SLS)"
+	depends on NIOS2
+	---help---
+	  This is support for Altera Triple Speed Ethernet MAC driver implemented
+	  for uClinux.
+	  
+config DECS_MEMORY_SELECT
+	tristate "External memory support as SGDMA Descriptor memory"
+	depends on ALT_TSE
+	---help---
+	If you want to use external memory as descriptor then select this.
+
+config DECS_MEMORY_BASE
+	hex "external memory address as descriptor memory"
+	depends on DECS_MEMORY_SELECT
+	default "0x0C040000"
+	help
+	  This option allows you to set the external address as descriptor memory.
+	  You have to give proper address other wise it will corrupt kernel execution.
+
+config PHY_IRQ_PRESENCE
+	tristate "Board phy irq connection"
+	depends on ALT_TSE
+	help
+	 Select if Board have a phy irq connection.Don't select if you are using on
+	 board ethernet of 3C120 board as it hasn't phy irq line.	
+
+config PHY_IRQ_NO
+	hex "Give phy interrupt No"
+	depends on PHY_IRQ_PRESENCE
+	default "10"
+	help
+	  Give PHY irq number as per system.
+	  
 config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
 	select CRC32

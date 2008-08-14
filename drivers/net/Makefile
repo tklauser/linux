@@ -224,6 +224,7 @@ obj-$(CONFIG_PASEMI_MAC) += pasemi_mac_driver.o
 pasemi_mac_driver-objs := pasemi_mac.o pasemi_mac_ethtool.o
 obj-$(CONFIG_MLX4_CORE) += mlx4/
 obj-$(CONFIG_ATSE) += atse.o
+obj-$(CONFIG_ALT_TSE) += altera_tse.o
 obj-$(CONFIG_ENC28J60) += enc28j60.o
 
 obj-$(CONFIG_MACB) += macb.o
