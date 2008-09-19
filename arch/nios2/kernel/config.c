@@ -464,11 +464,11 @@ static void __init cf_init(unsigned ctl_base)
 #endif
 
 /* SD/SDIO/MMC Host Platform Device */
-/* Map na_sdio_host_inst to na_sdio if it exists */
-#if defined(na_sdio_host_inst)
-#define na_sdio na_sdio_host_inst
-#define na_sdio_irq na_sdio_host_inst_irq
-#define na_sdio_clock_freq na_sdio_host_inst_clock_freq
+/* Map na_sdio_host to na_sdio if it exists */
+#if defined(na_sdio_host)
+#define na_sdio na_sdio_host
+#define na_sdio_irq na_sdio_host_irq
+#define na_sdio_clock_freq na_sdio_host_clock_freq
 #endif
 
 #if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)

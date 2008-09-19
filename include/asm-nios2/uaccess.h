@@ -40,8 +40,9 @@
 
 static inline int _access_ok(unsigned long addr, unsigned long size)
 {
-	return (((unsigned long)addr < (unsigned long)nasys_program_mem_end) &&
-		(((unsigned long)addr >= (unsigned long)nasys_program_mem)));
+	addr &= ~0x8000000;	/* ignore 'uncached' bit */
+	return ((addr + size <= (unsigned long)nasys_program_mem_end) &&
+		((addr >= (unsigned long)nasys_program_mem)));
 }
 
 extern inline int verify_area(int type, const void * addr, unsigned long size)

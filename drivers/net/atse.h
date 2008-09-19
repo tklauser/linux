@@ -137,6 +137,10 @@
 #define ATSE_PHY_ID_NATIONAL_2          0x20005c90
 #define ATSE_PHY_VENDOR_NAME_STR_NATIONAL_2   "National Semiconductor"
 
+/* Microtronix Ethernet PHY Design Kit, added by Eintisy */
+#define ATSE_PHY_ID_TDK_78Q2120C        0x000e70c5
+#define ATSE_PHY_VENDOR_NAME_MICROTRONIX      "Microtronix Ethernet PHY"
+
 /* make up an unknown phy ID */
 #define ATSE_PHY_ID_UNKNOWN             0x12345678
 

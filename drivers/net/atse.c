@@ -22,6 +22,11 @@
  *
  */
 
+/*
+ * Modified by: Eintisy Chuang (eintisy.chuang@gfec.com.tw) 
+ * Updated: 1. Add TDK78Q2120CPHY infor for Microtronix Ethernet PHY Design Kit
+ */
+
 #include <linux/init.h>
 #include <linux/module.h>
 MODULE_LICENSE("GPL");
@@ -51,8 +56,8 @@ MODULE_LICENSE("GPL");
 
 static const char atse_version_str[] =
 	"atse.c: v1.1, June 3, 2008 by Joseph (Camel) Chen <joe4camel@gmail.com>";
-
-
+static const char atse_version_str1[] =
+	"atse.c: modified version by Eintisy Chuang <eintisy.chuang@gfec.com.tw>";
 
 
 /* static struct sk_buff *g_skb_array[ATSE_SGDMA_RX_DESC_CHAIN_SIZE]; */
@@ -641,7 +646,7 @@ static irqreturn_t atse_sgdma_rx_irq_handler(int irq, void *dev_id)
 	 */
 	uncached_rx_data_buffer_ptr = (unsigned char *)ioremap_nocache((unsigned long)uncached_rx_data_buffer_ptr, 1234);
 	rx_desc = (struct atse_sgdma_desc *) ioremap_nocache((unsigned long)rx_desc, 1234);
-	ATSE_DEBUG_PRINT_RX_DATA(rx_desc,uncached_rx_data_buffer);
+	ATSE_DEBUG_PRINT_RX_DATA(rx_desc,uncached_rx_data_buffer_ptr);
 
 	atse_mac_rcv(ndev, rx_desc, uncached_rx_data_buffer_ptr);
 	/* done with received packet, prepare for the next receiving enevent */
@@ -819,6 +824,7 @@ static int atse_close(struct net_device *ndev)
 #define ATSE_MARVELL_PHY_ID_88E1145 0x01410dc2
 #define ATSE_NATIONAL_PHY_ID_83848  0x20005c90  /* National 83848, 10/100 */
 #define ATSE_NATIONAL_PHY_ID_83865  0x20005c7a  /* National DP83865 */
+#define ATSE_TDK_PHY_ID_78Q2120C    0x000e70c5  /* TDK 78Q2120 10/100 PHY */
 
 
 
@@ -968,6 +974,69 @@ static int atse_phy_national_83865_link_is_established(void)
 	return 1;
 }
 
+/*  TDK 78Q2120C PHY */
+
+static int atse_phy_tdk_78Q2120_get_link_speed(void)
+{
+	/* Reference: TDK 78Q2120C datasheet */
+	unsigned int stat;
+
+	/* Using MR1 (Status Register) to check ANEGC */
+	stat = ATSE_READ_PHY_MDIO_REG(0x01);
+	/* MR1.5 ANEGC: Auto-Negotiation Complete */
+	if((stat & (0x01 << 5)) == 1) {
+
+	  /* Using MR0 (Control Register) */
+	  stat = ATSE_READ_PHY_MDIO_REG(0x00);
+	  /* Bit 13 is for Speed Selection */
+	  if ((stat & (0x1 << 13)) == 0)
+	    return 10;
+	  else
+	    return 100;
+
+	}
+
+	return 100; // Default to 100MB
+
+}
+
+static int atse_phy_tdk_78Q2120_link_is_full_dup(void)
+{
+	/* Reference: TDK 78Q2120C datasheet */
+	unsigned int stat;
+
+	/* Using MR1 (Status Register) to check ANEGC */
+	stat = ATSE_READ_PHY_MDIO_REG(0x01);
+	/* MR1.5 ANEGC: Auto-Negotiation Complete */
+	if((stat & (0x01 << 5)) == 1) {
+
+	  /* Using MR0 (Control Register) */
+	  stat = ATSE_READ_PHY_MDIO_REG(0x00);
+	  /* Bit 13 is for Speed Selection */
+	  if ((stat & (0x1 << 8)) == 0)
+	    return 0;
+	  else
+	    return 1;
+
+	}
+
+	return 1; // Default to Full-Duplex
+}
+
+static int atse_phy_tdk_78Q2120_link_is_established(void)
+{
+	/* Reference: TDK 78Q2120C datasheet */
+	unsigned int stat;
+
+	/* Using MR1 (Status Register) to check LINK */
+	stat = ATSE_READ_PHY_MDIO_REG(0x01);
+	/* MR1.5 ANEGC: Auto-Negotiation Complete */
+	if((stat & (0x01 << 2)) == 0)
+	    return 0; /* not established / link is not ready */
+	else
+	    return 1; /* ok */
+	    
+}
 
 
 static struct atse_phy_device atse_phy_dev_list[] = {
@@ -1008,6 +1077,17 @@ static struct atse_phy_device atse_phy_dev_list[] = {
 		.get_link_speed      = atse_phy_national_83865_get_link_speed,
 		.link_is_full_dup    = atse_phy_national_83865_link_is_full_dup,
 		.link_is_established = atse_phy_national_83865_link_is_established,
+
+	},
+
+	[4] = {
+		.name = "TDK 78Q2120 PHY",
+		.phy_id = ATSE_TDK_PHY_ID_78Q2120C,
+		.link_stat_reg_num = 0x01,
+
+		.get_link_speed      = atse_phy_tdk_78Q2120_get_link_speed,
+		.link_is_full_dup    = atse_phy_tdk_78Q2120_link_is_full_dup,
+		.link_is_established = atse_phy_tdk_78Q2120_link_is_established,
 
 	}
 };
@@ -1416,6 +1496,7 @@ static int atse_probe(struct net_device *ndev)
 		 *
 		 */
 		printk("%s: %s \n", ndev->name, atse_version_str);
+		printk("%s: %s \n", ndev->name, atse_version_str1);
 		printk("%s: Altera Tripple Speed, ether hw addr %s",
 		       ndev->name, print_mac(mac_buf, ndev->dev_addr));
 		printk(", %s", bd_priv->phy_dev->name);

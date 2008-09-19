@@ -740,7 +740,7 @@ static struct resource altps2_0_resources[] = {
 };
 static struct platform_device altps2_0_device = {
 	.name		= "altps2",
-	.id		= -1,
+	.id		= 0,
 	.num_resources	= ARRAY_SIZE(altps2_0_resources),
 	.resource	= altps2_0_resources,
 };
@@ -760,7 +760,7 @@ static struct resource altps2_1_resources[] = {
 };
 static struct platform_device altps2_1_device = {
 	.name		= "altps2",
-	.id		= -1,
+	.id		= 1,
 	.num_resources	= ARRAY_SIZE(altps2_1_resources),
 	.resource	= altps2_1_resources,
 };
