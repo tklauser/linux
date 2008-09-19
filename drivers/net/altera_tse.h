@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2008 Altera Corporation.
  *  History:
- *   0  SLS  - Linux 2.6.23
+ *    o  SLS  - Linux 2.6.27-rc3
  *
  *
  *  All rights reserved.
@@ -28,9 +28,35 @@
 #ifndef _ALTERA_TSE_H_
   #define _ALTERA_TSE_H_
 
+  
+#include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/string.h>
+#include <linux/errno.h>
+#include <linux/slab.h>
+#include <linux/interrupt.h>
+#include <linux/init.h>
+#include <linux/delay.h>
+#include <linux/netdevice.h>
+#include <linux/etherdevice.h>
+#include <linux/skbuff.h>
+#include <linux/spinlock.h>
+#include <linux/mm.h>
+#include <linux/mii.h>
+#include <linux/phy.h>
+
+#include <asm/io.h>
+#include <asm/irq.h>
+#include <asm/uaccess.h>
+#include <linux/module.h>
+#include <linux/crc32.h>
+#include <linux/workqueue.h>
+#include <linux/ethtool.h>
+#include <linux/fsl_devices.h>  
+
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
-#define REMAP_CACHED(address) ((unsigned int) address | 0x80000000)
+//#define REMAP_CACHED(address) ((unsigned int) address | 0x80000000)
 
 /*** Define global return types ***/
 
@@ -38,55 +64,45 @@
 #define ENP_RESOURCE      -22  /* unavailable resource error */
 #define SOURCE_BUSY       -23
 
-#define TSE_RESOURCE_MAC_DEV      "Altera_tse_resource_mac_dev"
-#define TSE_RESOURCE_SGDMA_RX_DEV "Altera_tse_resource_sgdma_rx_dev"
-#define TSE_RESOURCE_SGDMA_TX_DEV "Altera_tse_resource_sgdma_tx_dev"
+#define ALT_TSE_NAME               "altera_tse"
+#define ALT_TSE_MDIO_NAME               "altera_tse_mdio"
+#define TSE_RESOURCE_MAC_DEV       "Altera_tse_resource_mac_dev"
+#define TSE_RESOURCE_SGDMA_RX_DEV  "Altera_tse_resource_sgdma_rx_dev"
+#define TSE_RESOURCE_SGDMA_TX_DEV  "Altera_tse_resource_sgdma_tx_dev"
+#define TSE_RESOURCE_SGDMA_RX_IRQ  "Altera_tse_resource_sgdma_rx_irq"
+#define TSE_RESOURCE_SGDMA_TX_IRQ  "Altera_tse_resource_sgdma_tx_irq"
+#define TSE_RESOURCE_FIFO_DEV      "Altera_tse_resource_fifo_dev"
+#define TSE_RESOURCE_SGDMA_DES_DEV "Altera_tse_resource_descriptor_dev"
+#define TSE_RESOURCE_SGDMA_PHY_DEV "Altera_tse_resource_sgdma_phy_dev"
+#define TSE_RESOURCE_SGDMA_PHY_IRQ "Altera_tse_resource_sgdma_phy_irq"
 
 /*** Define architecture specific parameters ***/
 
-#define MAC_UNITS                            8
+#define MAC_UNITS                       8
+#define ALT_TSE_TOTAL_SGDMA_DESC_COUNT  256        /* Maximum number of descriptors for TX and RX*/
+#define ALT_TSE_TX_SGDMA_DESC_COUNT     128       /* Maximum number of descriptors for TX */
+#define ALT_TSE_RX_SGDMA_DESC_COUNT     128       /* Maximum number of descriptors for RX*/
+#define ALT_TSE_TOTAL_SGDMA_DESC_SIZE   (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
+#define ALT_TX_RING_MOD_MASK 		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
+#define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
 
-#define ALT_TSE_TOTAL_SGDMA_DESC_COUNT       4        /* Maximum number of descriptors for TX and RX*/
-
-#define ALT_TSE_TX_SGDMA_DESC_COUNT          2        /* Maximum number of descriptors for TX */
-
-#define ALT_TSE_RX_SGDMA_DESC_COUNT          2        /* Maximum number of descriptors for RX*/
-
-#define ALT_TSE_TOTAL_SGDMA_DESC_SIZE        (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
 
 #define ALIGNED_BYTES                        2
 
+#define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
+
 #ifdef  CONFIG_DECS_MEMORY_SELECT
-    #define DECS_MEMORY_BASE_ADDR            CONFIG_DECS_MEMORY_BASE
+  #define  DECS_MEMORY_BASE_ADDR    CONFIG_DECS_MEMORY_BASE
 #endif
 
-/* System Parameters for TSE System */
-struct alt_tse_system_info {
-  unsigned int   tse_mac_base;                     /* Base address of TSE MAC                               */
-  unsigned short tse_tx_depth;                     /* TX Receive FIFO depth                                 */
-  unsigned short tse_rx_depth;                     /* RX Receive FIFO depth                                 */
+/* define Mac address */
 
-  unsigned char  tse_multichannel_mac;             /* MAC group together for MDIO block sharing             */
-  unsigned char  tse_num_of_channel;               /* Number of channel for Multi-channel MAC               */
-  unsigned char  tse_mdio_shared;                  /* is MDIO block shared                                  */
-  unsigned char  tse_number_of_mac_mdio_shared;    /* Number of MAC sharing the MDIO block                  */
-
-  unsigned int   sgdma_tx_base;                    /* SGDMA TX name                                         */
-  unsigned int   sgdma_rx_base;                    /* SGDMA RX name                                         */
-  unsigned short tse_sgdma_tx_irq;                 /* SGDMA TX IRQ                                          */
-  unsigned short tse_sgdma_rx_irq;                 /* SGDMA RX IRQ                                          */
-
-  unsigned int   desc_mem_base;                    /* Base address of Descriptor Memory                     */
-
-  unsigned char  use_shared_fifo;                  /* is Shared FIFO used in the system                     */
-  unsigned char  shared_fifo_ctrl_base;            /* Base address of Shared FIFO Ctrl                      */
-  unsigned int   shared_fifo_stat_base;            /* Base address of Shared FIFO Fill Level                */
-
-  unsigned char  mac_add[6];                       /* MAC address i.e. 12-12-12-12-12-12*/
-
-  unsigned int   alarm_link_base;
-  unsigned int   alarm_link_irq;
-} ;
+#define  MAC_0_OCTET 0x12
+#define  MAC_1_OCTET 0x12
+#define  MAC_2_OCTET 0x12
+#define  MAC_3_OCTET 0x12
+#define  MAC_4_OCTET 0x12
+#define  MAC_5_OCTET 0x12
 
 /* Stop compile if nios2.h is not generated with the Altera TSE-SGDMA FPGA design */
 #ifndef na_tse_mac_control_port
@@ -95,41 +111,6 @@ struct alt_tse_system_info {
   #error "@If your system contains different name then You need to fill following structure as "
   #error "@components name declared in nios2.h "
 #endif
-
-struct alt_tse_system_info tse_system_array[MAC_UNITS]=
-                    {
-                      {
-                        na_tse_mac_control_port,
-                        1024,
-                        1024,
-                        0,
-                        0,
-                        0,
-                        0,
-                        na_sgdma_tx,
-                        na_sgdma_rx_csr,
-                        na_sgdma_tx_irq,
-                        na_sgdma_rx_csr_irq,
-#ifdef CONFIG_DECS_MEMORY_SELECT
-                        DECS_MEMORY_BASE_ADDR,
-#else
-			0,
-#endif
-                        0,
-                        0,
-                        0,
-                        {0x12,0x12,0x12,0x12,0x12,0x12},
-
-                        #ifdef CONFIG_PHY_IRQ_PRESENCE
-                          0,
-                          CONFIG_PHY_IRQ_NO,
-                        #else
-                          na_tse_phy_check_timer,//na_phy_timer,//na_tse_phy_check_timer,
-                          na_tse_phy_check_timer_irq,//na_phy_timer_irq,//na_tse_phy_check_timer_irq,
-                        #endif
-
-                      },{0}
-                    };
 
 /************************************************************************/
 /*                                                                      */
@@ -170,7 +151,7 @@ typedef volatile union __alt_tse_command_config {
                   pause_frame_ignore      :1, /* bit 8     ignore pause frame quanta */
                   set_mac_address_on_tx   :1, /* bit 9     overwrite source MAC address in transmit frame as per setting in MAC core*/
                   halfduplex_enable       :1, /* bit 10    enable half duplex mode */
-                  excessive_collision     :1, /* bit 11    discard frame after detecting collision on 16 consecutive retransmitions */
+                  excessive_collision     :1, /* bit 11    discard frame after detecting collision on 16 consecutive retransmit ions */
                   late_collision          :1, /* bit 12    detects a collision after 64 bytes are transmitted, and discards the frame*/
                   software_reset          :1, /* bit 13    disable the transmit and receive logic, flush the receive FIFO, and reset the statistics counters.*/
                   multicast_hash_mode_sel :1, /* bit 14    select multicasts address-resolution hash-code mode.*/
@@ -219,7 +200,6 @@ typedef volatile union __alt_tse_command_config {
 /* Bits (30..27) reserved */
 #define ALTERA_TSE_CMD_CNT_RESET_MSK        (0x80000000)
 
-
 /* Tx_Cmd_Stat Register Bit Definitions */
 
 typedef volatile union __alt_tse_tx_cmd_stat {
@@ -232,7 +212,8 @@ typedef volatile union __alt_tse_tx_cmd_stat {
 
   }__packed_1_ bits;
 } alt_tse_tx_cmd_stat;
-
+#define ALTERA_TSE_TX_CMD_STAT_TX_SHIFT16   (0x00040000)
+#define ALTERA_TSE_TX_CMD_STAT_OMIT_CRC     (0x00020000)
 
 /* Rx_Cmd_Stat Register Bit Definitions */
 
@@ -245,7 +226,7 @@ typedef volatile union __alt_tse_rx_cmd_stat {
 
   }__packed_1_ bits;
 } alt_tse_rx_cmd_stat;
-
+#define ALTERA_TSE_RX_CMD_STAT_RX_SHIFT16   (0x02000000)
 
 /* MDIO registers within MAC register Space */
 
@@ -285,6 +266,7 @@ struct alt_tse_mdio{
   unsigned int reg1f;
 
 } ;
+
 
 
 /* MAC register Space */
@@ -335,7 +317,7 @@ typedef volatile struct {
   unsigned int            ifInMulticastPkts;              /*Number of valid received multicasts frames (without pause).*/
   unsigned int            ifInBroadcastPkts;              /*Number of valid received broadcast frames.*/
   unsigned int            ifOutDiscards;
-  unsigned int            ifOutUcastPkts;
+  unsigned int            ifOutUcastPkts;                                             
   unsigned int            ifOutMulticastPkts;
   unsigned int            ifOutBroadcastPkts;
 
@@ -387,25 +369,117 @@ typedef volatile struct {
   unsigned int            reservedx320[56];
 } alt_tse_mac;
 
+
+
+/* TSE Setup info mainly for phy, but need to also report supported TSE modes */
+struct alt_tse_config {
+	unsigned int mii_id;			//id for mii bus, pdev->id
+	unsigned int phy_addr;			//phy's mdio address
+	unsigned int tse_supported_modes;	//supported modes for the TSE as defined in phy.h
+	phy_interface_t interface;		//Physical insterface MII/RMII/RGMII/SGMII
+	unsigned int flags;			//flags to pass to the phy config functions
+	int autoneg;
+	int speed;
+	int duplex;
+};
+	
+
+/*
+* This structure is private to each device. It is used to pass
+* packets in and out, so there is place for a packet
+*/
+struct alt_tse_private {
+	struct net_device_stats status;
+	struct net_device *dev;
+
+/* NAPI struct for NAPI interface */
+	struct napi_struct napi;
+	                           
+	alt_tse_mac *mac_dev;
+
+	volatile struct alt_sgdma_registers *rx_sgdma_dev;
+	volatile struct alt_sgdma_registers *tx_sgdma_dev;
+
+	struct alt_tse_phy_profile *pphy_profile;
+	unsigned int phy_address;
+
+	unsigned int tx_fifo_interrupt;
+	unsigned int rx_fifo_interrupt;
+	unsigned char tx_shift_16_ok;
+	unsigned char rx_shift_16_ok;
+	unsigned char last_tx_shift_16;
+	unsigned char last_rx_shift_16;
+	
+	unsigned int desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
+	unsigned int chain_loop;
+
+	unsigned int tse_tx_depth;	/* TX Receive FIFO depth                                 */
+	unsigned int tse_rx_depth;	/* RX Receive FIFO depth                                 */
+
+// Location for the SGDMA Descriptors
+	volatile struct alt_sgdma_descriptor *desc;
+	volatile struct alt_sgdma_descriptor *sgdma_rx_desc;
+	volatile struct alt_sgdma_descriptor *sgdma_tx_desc;
+
+	volatile struct alt_sgdma_descriptor *desc_pointer;
+
+	unsigned int current_mtu;
+	
+	unsigned int rx_sgdma_imask;
+	unsigned int tx_sgdma_imask;
+	
+	unsigned int rx_sgdma_descriptor_tail;
+	unsigned int rx_sgdma_descriptor_head;
+
+	//unsigned int tse_tx_sgdma_cur;
+	unsigned int tx_sgdma_descriptor_tail;
+	unsigned int tx_sgdma_descriptor_head;
+
+	struct sk_buff *rx_skb[ALT_TSE_RX_SGDMA_DESC_COUNT];
+	struct sk_buff *tx_skb[ALT_TSE_TX_SGDMA_DESC_COUNT];
+	
+/* Tasklets for handling hardware IRQ related operations outside hw IRQ handler */
+//	struct tasklet_struct tse_rx_tasklet;
+//	int sem;
+	spinlock_t rx_lock;
+	spinlock_t tx_lock;
+
+/* system info */
+	struct phy_device *phydev;
+	struct mii_bus *mii_bus;
+	int oldspeed;
+	int oldduplex;
+	int oldlink;
+	
+/*	unsigned int link_status;
+	unsigned int speed;
+	unsigned int duplex;
+	unsigned int phy_speed;
+	unsigned int phy_duplex;
+	unsigned int antoneg_enable;
+*/
+
+	struct alt_tse_config *tse_config;
+	
+/*link info */
+//	unsigned int alarm_irq;
+//	struct timer_reg *alarm_link_check;
+	unsigned int tse_up;
+	
+	uint32_t msg_enable;
+
+};
+
 /*----------------------------------------------------------------------*/
 
 
 /************************************************************************/
 /*                                                                      */
-/* Altera SG-DMA related definations                                    */
+/* Altera SG-DMA related definitions                                    */
 /*                                                                      */
 /************************************************************************/
 
-/* SG-DMA Control/Status Slave registers map */
 
-volatile struct alt_sgdma_registers {
-  unsigned int      status;
-  unsigned int      status_pad[3];
-  unsigned int      control;
-  unsigned int      control_pad[3];
-  unsigned int      next_descriptor_pointer;
-  unsigned int      descriptor_pad[3];
-} ;
 
 #define ALT_SGDMA_STATUS_ERROR_MSK                            (0x00000001)
 #define ALT_SGDMA_STATUS_EOP_ENCOUNTERED_MSK                  (0x00000002)
@@ -427,7 +501,6 @@ volatile struct alt_sgdma_registers {
 #define ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK                 (0x80000000)
 
 #define ALTERA_TSE_SGDMA_INTR_MASK  ( ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK \
-                                    | ALT_SGDMA_CONTROL_IE_EOP_ENCOUNTERED_MSK \
                                     | ALT_SGDMA_STATUS_DESC_COMPLETED_MSK      \
                                     | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK )
 
@@ -440,7 +513,7 @@ volatile struct alt_sgdma_registers {
  * of padding directly above each address; each pad must
  * be cleared when initializing a descriptor.
  */
-volatile struct alt_sgdma_descriptor{
+struct alt_sgdma_descriptor{
   unsigned int     *source;                 /*Specifies the address of data to be read.*/
   unsigned int     source_pad;
 
@@ -458,7 +531,7 @@ volatile struct alt_sgdma_descriptor{
   unsigned char    descriptor_status;
   unsigned char    descriptor_control;
 
-} __packed_1_ ;
+}__packed_1_;
 
 
 /*
@@ -490,230 +563,24 @@ volatile struct alt_sgdma_descriptor{
 #define ALT_SGDMA_DESCRIPTOR_STATUS_E_MSOP_MSK                (0x00000040)
 #define ALT_SGDMA_DESCRIPTOR_STATUS_TERMINATED_BY_EOP_MSK     (0x00000080)
 #define ALT_SGDMA_DESCRIPTOR_STATUS_ERROR_MSK                 (0x0000007F)
-/*----------------------------------------------------------------------*/
 
+/* SG-DMA Control/Status Slave registers map */
 
-/************************************************************************/
-/*                                                                      */
-/* Gigabit Ethernet PHY related definations                             */
-/*                                                                      */
-/************************************************************************/
-
-
-#define TSE_MAX_PHY_PROFILE                           4
-
-/* PHY ID */
-/* Marvell PHY on PHYWORKX board */
-#define    MV88E1111_OUI                              0x005043
-#define    MV88E1111_MODEL                            0x0c
-#define    MV88E1111_REV                              0x02
-
-/* Marvell Quad PHY on PHYWORKX board */
-#define    MV88E1145_OUI                              0x005043
-#define    MV88E1145_MODEL                            0x0d
-#define    MV88E1145_REV                              0x02
-
-/* National PHY on PHYWORKX board */
-#define    DP83865_OUI                                0x080017
-#define    DP83865_MODEL                              0x07
-#define    DP83865_REV                                0x10
-
-
-/* National 10/100 PHY on PHYWORKX board */
-#define    DP83848C_OUI                               0x080017
-#define    DP83848C_MODEL                             0x09
-#define    DP83848C_REV                               0x00
-
-/* PHY register definition */
-#define    TSE_PHY_MDIO_CONTROL                       0
-#define    TSE_PHY_MDIO_STATUS                        1
-#define    TSE_PHY_MDIO_PHY_ID1                       2
-#define    TSE_PHY_MDIO_PHY_ID2                       3
-#define    TSE_PHY_MDIO_ADV                           4
-#define    TSE_PHY_MDIO_REMADV                        5
-#define    TSE_PHY_MDIO_1000BASE_T_CTRL               9
-#define    TSE_PHY_MDIO_1000BASE_T_STATUS             10
-#define    TSE_PHY_MDIO_EXT_STATUS                    15
-
-/* MDIO CONTROL bit number */
-#define    TSE_PHY_MDIO_CONTROL_RESET                 15
-#define    TSE_PHY_MDIO_CONTROL_LOOPBACK              14
-#define    TSE_PHY_MDIO_CONTROL_SPEED_LSB             13
-#define    TSE_PHY_MDIO_CONTROL_AN_ENA                12
-#define    TSE_PHY_MDIO_CONTROL_POWER_DOWN            11
-#define    TSE_PHY_MDIO_CONTROL_ISOLATE               10
-#define    TSE_PHY_MDIO_CONTROL_RESTART_AN             9
-#define    TSE_PHY_MDIO_CONTROL_DUPLEX                 8
-#define    TSE_PHY_MDIO_CONTROL_SPEED_MSB              6
-
-/* MDIO STATUS bit number */
-#define    TSE_PHY_MDIO_STATUS_100BASE_T4             15
-#define    TSE_PHY_MDIO_STATUS_100BASE_X_FULL         14
-#define    TSE_PHY_MDIO_STATUS_100BASE_X_HALF         13
-#define    TSE_PHY_MDIO_STATUS_10BASE_T_FULL          12
-#define    TSE_PHY_MDIO_STATUS_10BASE_T_HALF          11
-#define    TSE_PHY_MDIO_STATUS_100BASE_T2_FULL        10
-#define    TSE_PHY_MDIO_STATUS_100BASE_T2_HALF         9
-#define    TSE_PHY_MDIO_STATUS_EXT_STATUS              8
-#define    TSE_PHY_MDIO_STATUS_AN_COMPLETE             5
-#define    TSE_PHY_MDIO_STATUS_AN_ABILITY              3
-#define    TSE_PHY_MDIO_STATUS_LINK_STATUS             2
-
-/* AN Advertisement bit number */
-/* and also */
-/* Link Partner Ability bit number */
-#define    TSE_PHY_MDIO_ADV_100BASE_T4                 9
-#define    TSE_PHY_MDIO_ADV_100BASE_TX_FULL            8
-#define    TSE_PHY_MDIO_ADV_100BASE_TX_HALF            7
-#define    TSE_PHY_MDIO_ADV_10BASE_TX_FULL             6
-#define    TSE_PHY_MDIO_ADV_10BASE_TX_HALF             5
-
-/* 1000BASE-T Control bit number */
-#define    TSE_PHY_MDIO_1000BASE_T_CTRL_FULL_ADV       9
-#define    TSE_PHY_MDIO_1000BASE_T_CTRL_HALF_ADV       8
-
-/* 1000BASE-T Status bit number */
-#define    TSE_PHY_MDIO_1000BASE_T_STATUS_LP_FULL_ADV 11
-#define    TSE_PHY_MDIO_1000BASE_T_STATUS_LP_HALF_ADV 10
-
-/* Extended Status bit number */
-#define    TSE_PHY_MDIO_EXT_STATUS_1000BASE_X_FULL    15
-#define    TSE_PHY_MDIO_EXT_STATUS_1000BASE_X_HALF    14
-#define    TSE_PHY_MDIO_EXT_STATUS_1000BASE_T_FULL    13
-#define    TSE_PHY_MDIO_EXT_STATUS_1000BASE_T_HALF    12
-
-/* PHY Status definition */
-#define    TSE_PHY_MAP_SUCCESS                         0
-#define    TSE_PHY_MAP_ERROR                          -1
-
-#define    TSE_PHY_AN_COMPLETE                         0
-#define    TSE_PHY_AN_NOT_COMPLETE                    -1
-#define    TSE_PHY_AN_NOT_CAPABLE                     -2
-
-#define    TSE_PHY_SPEED_10                            0
-#define    TSE_PHY_SPEED_100                           1
-#define    TSE_PHY_SPEED_1000                          2
-
-#define    TSE_PHY_SPEED_NO_COMMON                    -1
-
-
-#define    ALT_TSE_E_AN_NOT_COMPLETE                  0x00000020
-#define    ALT_TSE_E_NO_PHY_PROFILE                   0x00000010
-
-
-/* PHY profile*/
-unsigned int marvell_phy_cfg(alt_tse_mac *);
-
-/* PHY structure for PHY detection */
-struct alt_tse_phy_profile{
-
-    /* PHY name */
-    char name[80];
-
-    /* PHY OUI (Organizationally Unique Identififier) */
-    unsigned int oui;
-
-    /* PHY model number */
-    unsigned char model_number;
-
-    /* PHY revision number */
-    unsigned char revision_number;
-
-    /* Location of PHY Specific Status Register */
-    unsigned char status_reg_location;
-
-    /* Location of Speed Status bit in PHY Specific Status Register */
-    unsigned char speed_lsb_location;
-
-    /* Location of Speed Status bit in PHY Specific Status Register */
-    unsigned char speed_bits_length;
-
-
-    /* Location of Duplex Status bit in PHY Specific Status Register */
-    unsigned char duplex_bit_location;
-
-    /* Location of Link Status bit in PHY Specific Status Register */
-    unsigned char link_bit_location;
-
-    /* Function pointer to execute additional initialization */
-    /* Profile specific */
-    unsigned int (*phy_cfg)(alt_tse_mac *pmac);
-
-} ;
-
-struct alt_tse_phy_profile phy_profiles[TSE_MAX_PHY_PROFILE]={
-    /* ------------------------------ */
-    /* Marvell PHY on PHYWORKX board  */
-    /* ------------------------------ */
-    {   "Marvell 88E1111",        /* Marvell 88E1111                           */
-        MV88E1111_OUI,            /* OUI                                       */
-        MV88E1111_MODEL,          /* Vender Model Number                       */
-        MV88E1111_REV,            /* Model Revision Number                     */
-        0x11,                     /* Location of Status Register               */
-        14,                       /* Location of Speed Status                  */
-        2,                        /* Location of Speed Status length           */
-        13,                       /* Location of Duplex Status                 */
-        10,                       /* Location of Link Status                   */
-        &marvell_phy_cfg,         /* Function pointer to configure Marvell PHY */
-    },
-    /* ---------------------------------- */
-    /* Marvell Quad PHY on PHYWORKX board */
-    /* ---------------------------------- */
-    {  "Marvell Quad PHY 88E1145",/* Marvell 88E1145                           */
-        MV88E1145_OUI,            /* OUI                                       */
-        MV88E1145_MODEL,          /* Vender Model Number                       */
-        MV88E1145_REV,            /* Model Revision Number                     */
-        0x11,                     /* Location of Status Register               */
-        14,                       /* Location of Speed Status                  */
-        2,                        /* Location of Speed Status length           */
-        13,                       /* Location of Duplex Status                 */
-        10,                       /* Location of Link Status                   */
-        &marvell_phy_cfg,         /* Function pointer to configure Marvell PHY */
-    },
-    /* ------------------------------------- */
-    /* National 10/100 PHY on PHYWORKX board */
-    /* ------------------------------------- */
-    {  "National PHY 83848C",     /* National 10/100                           */
-        DP83848C_OUI,             /* OUI                                       */
-        DP83848C_MODEL,           /* Vender Model Number                       */
-        DP83848C_REV,             /* Model Revision Number                     */
-        0x10,                     /* Location of Status Register               */
-        1,                        /* Location of Speed Status                  */
-        1,                        /* Location of Speed Status length           */
-        2,                        /* Location of Duplex Status                 */
-        0                         /* Location of Link Status                   */
-    },
-    /* ---------------------------------- */
-    /* National PHY on PHYWORKX board     */
-    /* ---------------------------------- */
-    {  "National PHY 83865",      /* National PHY                              */
-        DP83865_OUI,              /* OUI                                       */
-        DP83865_MODEL,            /* Vender Model Number                       */
-        DP83865_REV,              /* Model Revision Number                     */
-        0x11,                     /* Location of Status Register               */
-        3,                        /* Location of Speed Status                  */
-        2,                        /* Location of Speed Status length           */
-        1,                        /* Location of Duplex Status                 */
-        2                         /* Location of Link Status                   */
-    },
-
-};
-/*----------------------------------------------------------------------*/
-
-struct timer_reg
-{
-   unsigned int   status;
-   unsigned int   control;
-   unsigned int   periodl;
-   unsigned int   periodh;
-   unsigned int   snapl;
-   unsigned int   snaph;
+struct alt_sgdma_registers {
+  unsigned int      status;
+  unsigned int      status_pad[3];
+  unsigned int      control;
+  unsigned int      control_pad[3];
+//  struct alt_sgdma_descriptor      *next_descriptor_pointer;
+  unsigned int      next_descriptor_pointer;
+  unsigned int      descriptor_pad[3];
 };
 
-#define TIMER_CONTROL_ITO_MSK 0x01
-#define TIMER_CONTROL_CONT_MSK 0x02
-#define TIMER_CONTROL_START_MSK 0x04
-#define TIMER_CONTROL_STOP_MSK 0x08
+/*----------------------------------------------------------------------*/
+//MDIO stuff
 
+struct alt_tse_mdio_private {
+	int irq[32];
+};
 
 #endif /* _ALTERA_TSE_H_ */

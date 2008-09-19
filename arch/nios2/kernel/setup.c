@@ -49,6 +49,8 @@
 #include <linux/bootmem.h>
 #include <linux/initrd.h>
 #include <linux/seq_file.h>
+#include <linux/mii.h>
+#include <linux/phy.h>
 
 #include <asm/irq.h>
 #include <asm/byteorder.h>
@@ -527,55 +529,200 @@ static int __init atse_device_init(void)
 arch_initcall(atse_device_init);
 #endif /* CONFIG_ATSE */
 
-
 /* Altera Triple Speed Ethernet (SLS) */
 
 #if defined (CONFIG_ALT_TSE)
 
-#define TSE_RESOURCE_MAC_DEV      "Altera_tse_resource_mac_dev"
-#define TSE_RESOURCE_SGDMA_RX_DEV "Altera_tse_resource_sgdma_rx_dev"
-#define TSE_RESOURCE_SGDMA_TX_DEV "Altera_tse_resource_sgdma_tx_dev"
+#include         "../drivers/net/altera_tse.h"
 
 static struct resource alt_tse_resource[] = {
-	[0] = {
-	       .start = na_tse_mac_control_port,
-	       .end = na_tse_mac_control_port + 0x400 - 1,	/* hard number as per system sopc file */
-	       .name = TSE_RESOURCE_MAC_DEV,
-	       .flags = IORESOURCE_MEM,
-	       },
-	[1] = {
-	       .start = na_sgdma_rx_csr,
-	       .end = na_sgdma_rx_csr + 0x400 - 1,	/* hard number as per system sopc file */
-	       .name = TSE_RESOURCE_SGDMA_RX_DEV,
-	       .flags = IORESOURCE_MEM,
-	       },
-	[2] = {
-	       .start = na_sgdma_tx,
-	       .end = na_sgdma_tx + 0x400 - 1,	/* hard number as per system sopc file */
-	       .name = TSE_RESOURCE_SGDMA_TX_DEV,
-	       .flags = IORESOURCE_MEM,
-	       },
+
+  [0] = {
+    .start = na_tse_mac_control_port,
+    .end   = na_tse_mac_control_port + 0x400 - 1, /* hard number as per system sopc file */
+    .name  = TSE_RESOURCE_MAC_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [1] = {
+    .start = na_sgdma_rx_csr,
+    .end   = na_sgdma_rx_csr + 0x400 - 1,         /* hard number as per system sopc file */
+    .name  = TSE_RESOURCE_SGDMA_RX_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [2] = {
+    .start = na_sgdma_tx,
+    .end   = na_sgdma_tx + 0x400 - 1,             /* hard number as per system sopc file */
+    .name  = TSE_RESOURCE_SGDMA_TX_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [3] = {
+    .start = na_sgdma_rx_csr_irq,
+    .end   = na_sgdma_rx_csr_irq,
+    .name  = TSE_RESOURCE_SGDMA_RX_IRQ,
+    .flags = IORESOURCE_IRQ,
+  },
+  [4] = {
+    .start = na_sgdma_tx_irq,
+    .end   = na_sgdma_tx_irq,
+    .name  = TSE_RESOURCE_SGDMA_TX_IRQ,
+    .flags = IORESOURCE_IRQ,
+  },
+  [5] = {
+    .start = ALT_TSE_TX_RX_FIFO_DEPTH,            /* hard number as per system sopc file */
+    .end   = ALT_TSE_TX_RX_FIFO_DEPTH,            /* This macro is defined altera_tse.h file */
+    .name  = TSE_RESOURCE_FIFO_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+
+  #ifdef  CONFIG_DECS_MEMORY_SELECT
+  [6] = {
+      .start = DECS_MEMORY_BASE_ADDR,
+      .end   = DECS_MEMORY_BASE_ADDR+ALT_TSE_TOTAL_SGDMA_DESC_SIZE,      /* hard number as per system sopc file */
+      .name  = TSE_RESOURCE_SGDMA_DES_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+  #else
+  [6] = {
+      .start = 0,
+      .end   = 0,                                 /* hard number as per system sopc file */
+      .name  = TSE_RESOURCE_SGDMA_DES_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+  #endif
+
+  #ifdef CONFIG_PHY_IRQ_PRESENCE
+  [7] = {
+      .start = 0,
+      .end   = 0,                                 /* hard number as per system sopc file */
+      .name  = TSE_RESOURCE_SGDMA_PHY_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+  [8] = {
+      .start = 0,
+      .end   = 0,                                 /* hard number as per system sopc file */
+      .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
+      .flags = IORESOURCE_IRQ,
+  },
+  #endif
+
+};
+
+    
+static struct alt_tse_mdio_private alt_tse_mdio_private = {
+	.irq = {
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+	}
+};
+
+     
+static struct platform_device alt_tse_mdio_device = {
+	.name	= ALT_TSE_MDIO_NAME,
+	.id	= 0,
+	.num_resources  = ARRAY_SIZE(alt_tse_resource),
+	.resource = alt_tse_resource,
+	.dev	= {
+	  .platform_data = &alt_tse_mdio_private,
+	}
+};
+
+//all of this, except mii_id can be changed with ethtool
+static struct alt_tse_config tse_config = {
+	.mii_id = 0, //should match alt_tse_mdio_device->id from above
+	.phy_addr = 18,
+	.tse_supported_modes =  PHY_GBIT_FEATURES,
+/*
+	supported modes can be 
+		SUPPORTED_10baseT_Half 
+		SUPPORTED_10baseT_Full 
+		SUPPORTED_100baseT_Half 
+		SUPPORTED_100baseT_Full 
+		SUPPORTED_Autoneg 
+		SUPPORTED_TP 
+		SUPPORTED_MII  ----------  Up to here is PHY_BASIC_FEATURES
+		SUPPORTED_1000baseT_Half
+		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
+*/
+	.interface = PHY_INTERFACE_MODE_RGMII_RXID,
+/*	Interfaces can be
+		PHY_INTERFACE_MODE_MII
+		PHY_INTERFACE_MODE_GMII
+		PHY_INTERFACE_MODE_SGMII
+		PHY_INTERFACE_MODE_TBI
+		PHY_INTERFACE_MODE_RMII
+		PHY_INTERFACE_MODE_RGMII
+		PHY_INTERFACE_MODE_RGMII_ID
+		PHY_INTERFACE_MODE_RGMII_RXID
+		PHY_INTERFACE_MODE_RGMII_TXID
+		PHY_INTERFACE_MODE_RTBI
+*/
+	.flags = 0,  //these are apparently phy specific...
+	
+	.autoneg = AUTONEG_ENABLE,
+	//speed and duplex only valid if autoneg is AUTONED_DISABLE
+	.speed = SPEED_100, //SPEED_10, SPEED_100, SPEED_1000
+	.duplex = DUPLEX_HALF, //DUPLEX_HALF, DUPLEX_FULL
 };
 
 static struct platform_device alt_tse_device = {
-	/* the name string must be the same as in struct patform_driver */
-	.name = "altera_tse",
-	.id = 0,
-	.num_resources = ARRAY_SIZE(alt_tse_resource),
-	.resource = alt_tse_resource,
-	.dev = {
-		.platform_data = NULL,
-		}
-};
+  /* the name string must be the same as in struct patform_driver */
+  .name   = ALT_TSE_NAME,
+  .id   = 0,
+  .num_resources  = ARRAY_SIZE(alt_tse_resource),
+  .resource = alt_tse_resource,
+  .dev    = {
+    .platform_data = &tse_config,
+  }
+};   
+
 
 static int __init tse_device_init(void)
 {
-	platform_device_register(&alt_tse_device);
-	return 0;
+                                                
+  #ifndef  CONFIG_DECS_MEMORY_SELECT
+    alt_tse_resource[6].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
+    alt_tse_resource[6].end   = alt_tse_resource[6].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
+  #endif
+  
+  platform_device_register(&alt_tse_mdio_device);
+  platform_device_register(&alt_tse_device);
+  return 0;
 }
 
 arch_initcall(tse_device_init);
-#endif /* CONFIG_ALT_TSE */
+#endif 
+
+
 
 #if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
 

@@ -10,7 +10,7 @@ menuconfig NETDEVICES
 	---help---
 	  You can say N here if you don't intend to connect your Linux box to
 	  any other computer at all.
-
+      
 	  You'll have to say Y if your computer contains a network card that
 	  you want to use under Linux. If you are going to run SLIP or PPP over
 	  telephone line or null modem cable you need say Y here. Connecting
@@ -912,6 +912,7 @@ config ATSE
 config ALT_TSE
 	tristate "Altera Triple Speed Ethernet MAC support(SLS)"
 	depends on NIOS2
+	select PHYLIB
 	---help---
 	  This is support for Altera Triple Speed Ethernet MAC driver implemented
 	  for uClinux.
@@ -930,19 +931,19 @@ config DECS_MEMORY_BASE
 	  This option allows you to set the external address as descriptor memory.
 	  You have to give proper address other wise it will corrupt kernel execution.
 
-config PHY_IRQ_PRESENCE
-	tristate "Board phy irq connection"
-	depends on ALT_TSE
-	help
-	 Select if Board have a phy irq connection.Don't select if you are using on
-	 board ethernet of 3C120 board as it hasn't phy irq line.	
-
-config PHY_IRQ_NO
-	hex "Give phy interrupt No"
-	depends on PHY_IRQ_PRESENCE
-	default "10"
-	help
-	  Give PHY irq number as per system.
+#config PHY_IRQ_PRESENCE
+#	tristate "Board phy irq connection"
+#	depends on ALT_TSE
+#	help
+#	 Select if Board have a phy irq connection.Don't select if you are using on
+#	 board ethernet of 3C120 board as it hasn't phy irq line.	
+#
+#config PHY_IRQ_NO
+#	hex "Give phy interrupt No"
+#	depends on PHY_IRQ_PRESENCE
+#	default "10"
+#	help
+#	  Give PHY irq number as per system.
 	  
 config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
