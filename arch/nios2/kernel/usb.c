@@ -259,12 +259,17 @@ static int __init usb_udc_init(void)
 subsys_initcall(usb_udc_init);
 #endif
 
-#if defined(na_ISP1362_avalonS)  // for DE2 dev board, FIX ME otehrwise
+#if defined(na_ISP1362)  // for DE2-70 dev board, FIX ME otherwise
+#define na_usb na_ISP1362
+#define na_usb_irq na_ISP1362_irq
+#endif
+
+#if defined(na_ISP1362_avalonS)  // for DE2 dev board, FIX ME otherwise
 #define na_usb na_ISP1362_avalonS
 #define na_usb_irq na_ISP1362_avalonS_irq
 #endif
 
-#if defined(na_ISP1362_avalon_slave_0)  // for DE2 dev board, FIX ME otehrwise
+#if defined(na_ISP1362_avalon_slave_0)  // for DE2 dev board, FIX ME otherwise
 #define na_usb na_ISP1362_avalon_slave_0
 #define na_usb_irq na_ISP1362_avalon_slave_0_irq
 #endif
