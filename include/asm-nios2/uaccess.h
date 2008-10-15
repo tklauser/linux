@@ -40,7 +40,7 @@
 
 static inline int _access_ok(unsigned long addr, unsigned long size)
 {
-	addr &= ~0x8000000;	/* ignore 'uncached' bit */
+	addr &= ~0x80000000;	/* ignore 'uncached' bit */
 	return ((addr + size <= (unsigned long)nasys_program_mem_end) &&
 		((addr >= (unsigned long)nasys_program_mem)));
 }
