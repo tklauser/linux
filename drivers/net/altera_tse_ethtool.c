@@ -5,7 +5,7 @@
 * Copyright (C) 2008 Altera Corporation.
 *
 * History:
-*    o  SLS  - Linux 2.6.27-rc3
+*    o  SLS  - Linux 2.6.27
 *
 *  All rights reserved.
 *

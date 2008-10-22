@@ -5,7 +5,7 @@
 * Copyright (C) 2008 Altera Corporation.
 *
 * History:
-*    o  SLS  - Linux 2.6.27-rc3
+*    o  SLS  - Linux 2.6.27
 *
 *  All rights reserved.
 *
@@ -120,7 +120,7 @@ static int tse_mdio_probe(struct platform_device *pdev)
 	if (NULL == pdev)
 		return -EINVAL;
 	
-	new_bus = kzalloc(sizeof(struct mii_bus), GFP_KERNEL);
+	new_bus = mdiobus_alloc();
         
 	if (NULL == new_bus)
 		return -ENOMEM;
@@ -153,7 +153,11 @@ static int tse_mdio_probe(struct platform_device *pdev)
 
 	new_bus->irq = tse_mdio_priv->irq;
 
-	new_bus->dev = dev;
+//	new_bus->dev =  dev;
+//	dev_set_drvdata(dev, new_bus);
+	platform_set_drvdata(pdev, new_bus);
+	
+	ret =  mdiobus_register(new_bus);
 	
 	//probe bus, report phys
 	for(i = 31; i > 0; i--)
@@ -176,9 +180,6 @@ static int tse_mdio_probe(struct platform_device *pdev)
 	}
 	
 	
-	platform_set_drvdata(pdev, new_bus);
-	
-	ret =  mdiobus_register(new_bus);
 	
 	if (0 != ret) {
 		printk (KERN_ERR "%s: Cannot register as MDIO bus\n",

@@ -673,7 +673,7 @@ static struct alt_tse_config tse_config = {
 		SUPPORTED_1000baseT_Half
 		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
 */
-	.interface = PHY_INTERFACE_MODE_RGMII_RXID,
+	.interface = PHY_INTERFACE_MODE_RGMII,
 /*	Interfaces can be
 		PHY_INTERFACE_MODE_MII
 		PHY_INTERFACE_MODE_GMII

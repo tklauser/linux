@@ -4,7 +4,7 @@
 * Copyright (C) 2008 Altera Corporation.
 *
 * History:
-*    o  SLS  - Linux 2.6.27-rc3                                                            
+*    o  SLS  - Linux 2.6.27                                                            
 *
 *  All rights reserved.
 *
@@ -462,12 +462,14 @@ static int tse_poll(struct napi_struct *napi, int budget)
 
 		netif_rx_status = netif_receive_skb(skb);
 		
-		if ((netif_rx_status == NET_RX_DROP) &&
-			(netif_msg_rx_err(tse_priv)))
+		if (netif_rx_status == NET_RX_DROP)
 		{
-			printk(KERN_WARNING "%s :NET_RX_DROP occurred\n",
-				dev->name);
-			//tse_priv->status.rx_dropped++;
+			if(netif_msg_rx_err(tse_priv))
+				printk(KERN_WARNING "%s :NET_RX_DROP occurred\n",
+					dev->name);
+			
+	//		tse_priv->mac_dev->command_config.image |= ALTERA_TSE_CMD_XOFF_GEN_MSK;	
+			tse_priv->status.rx_dropped++;
 		}                      
 
 		//next descriptor
@@ -1006,11 +1008,15 @@ static int init_mac(struct net_device *dev)
 		return -1;
 	}	
 	
+	//pause quanta??
+	//tse_priv->mac_dev->pause_quanta=10;
+	
 	/* enable MAC */
 	dat = 0;
 	dat = ALTERA_TSE_CMD_TX_ENA_MSK | ALTERA_TSE_CMD_RX_ENA_MSK |
 
-	
+	//enable pause frame generation
+//		ALTERA_TSE_CMD_XOFF_GEN_MSK |	
 #if ENABLE_PHY_LOOPBACK
 		ALTERA_TSE_CMD_PROMIS_EN_MSK |	// promiscuous mode
 		ALTERA_TSE_CMD_LOOPBACK_MSK |	// loopback mode
