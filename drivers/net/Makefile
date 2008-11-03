@@ -233,6 +233,8 @@ obj-$(CONFIG_ALT_TSE) += altera_tse_ethtool.o
 obj-$(CONFIG_ALT_TSE) += altera_tse.o
 obj-$(CONFIG_ENC28J60) += enc28j60.o
 
+obj-$(CONFIG_XTENSA_XT2000_SONIC) += xtsonic.o
+
 obj-$(CONFIG_MACB) += macb.o
 
 obj-$(CONFIG_ARM) += arm/

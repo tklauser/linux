@@ -1282,25 +1282,25 @@ void __init e820_reserve_resources(void)
 	e820_res = res;
 	for (i = 0; i < e820.nr_map; i++) {
 		end = e820.map[i].addr + e820.map[i].size - 1;
-#ifndef CONFIG_RESOURCES_64BIT
-		if (end > 0x100000000ULL) {
+		if (end != (resource_size_t)end) {
 			res++;
 			continue;
 		}
-#endif
 		res->name = e820_type_to_string(e820.map[i].type);
 		res->start = e820.map[i].addr;
 		res->end = end;
 
-		res->flags = IORESOURCE_MEM | IORESOURCE_BUSY;
+		res->flags = IORESOURCE_MEM;
 
 		/*
 		 * don't register the region that could be conflicted with
 		 * pci device BAR resource and insert them later in
 		 * pcibios_resource_survey()
 		 */
-		if (e820.map[i].type != E820_RESERVED || res->start < (1ULL<<20))
+		if (e820.map[i].type != E820_RESERVED || res->start < (1ULL<<20)) {
+			res->flags |= IORESOURCE_BUSY;
 			insert_resource(&iomem_resource, res);
+		}
 		res++;
 	}
 
@@ -1320,7 +1320,7 @@ void __init e820_reserve_resources_late(void)
 	res = e820_res;
 	for (i = 0; i < e820.nr_map; i++) {
 		if (!res->parent && res->end)
-			reserve_region_with_split(&iomem_resource, res->start, res->end, res->name);
+			insert_resource_expand_to_fit(&iomem_resource, res);
 		res++;
 	}
 }

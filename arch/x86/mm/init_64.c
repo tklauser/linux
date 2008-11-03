@@ -89,7 +89,7 @@ early_param("gbpages", parse_direct_gbpages_on);
 
 int after_bootmem;
 
-unsigned long __supported_pte_mask __read_mostly = ~0UL;
+pteval_t __supported_pte_mask __read_mostly = ~_PAGE_IOMAP;
 EXPORT_SYMBOL_GPL(__supported_pte_mask);
 
 static int do_not_nx __cpuinitdata;
@@ -196,9 +196,6 @@ set_pte_vaddr_pud(pud_t *pud_page, unsigned long vaddr, pte_t new_pte)
 	}
 
 	pte = pte_offset_kernel(pmd, vaddr);
-	if (!pte_none(*pte) && pte_val(new_pte) &&
-	    pte_val(*pte) != (pte_val(new_pte) & __supported_pte_mask))
-		pte_ERROR(*pte);
 	set_pte(pte, new_pte);
 
 	/*
@@ -313,7 +310,7 @@ static __ref void *alloc_low_page(unsigned long *phys)
 	if (pfn >= table_top)
 		panic("alloc_low_page: ran out of memory");
 
-	adr = early_ioremap(pfn * PAGE_SIZE, PAGE_SIZE);
+	adr = early_memremap(pfn * PAGE_SIZE, PAGE_SIZE);
 	memset(adr, 0, PAGE_SIZE);
 	*phys  = pfn * PAGE_SIZE;
 	return adr;
@@ -353,8 +350,10 @@ phys_pte_init(pte_t *pte_page, unsigned long addr, unsigned long end,
 		 * pagetable pages as RO. So assume someone who pre-setup
 		 * these mappings are more intelligent.
 		 */
-		if (pte_val(*pte))
+		if (pte_val(*pte)) {
+			pages++;
 			continue;
+		}
 
 		if (0)
 			printk("   pte=%p addr=%lx pte=%016lx\n",
@@ -421,8 +420,10 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long address, unsigned long end,
 			 * not differ with respect to page frame and
 			 * attributes.
 			 */
-			if (page_size_mask & (1 << PG_LEVEL_2M))
+			if (page_size_mask & (1 << PG_LEVEL_2M)) {
+				pages++;
 				continue;
+			}
 			new_prot = pte_pgprot(pte_clrhuge(*(pte_t *)pmd));
 		}
 
@@ -502,8 +503,10 @@ phys_pud_init(pud_t *pud_page, unsigned long addr, unsigned long end,
 			 * not differ with respect to page frame and
 			 * attributes.
 			 */
-			if (page_size_mask & (1 << PG_LEVEL_1G))
+			if (page_size_mask & (1 << PG_LEVEL_1G)) {
+				pages++;
 				continue;
+			}
 			prot = pte_pgprot(pte_clrhuge(*(pte_t *)pud));
 		}
 
@@ -668,12 +671,13 @@ unsigned long __init_refok init_memory_mapping(unsigned long start,
 	unsigned long last_map_addr = 0;
 	unsigned long page_size_mask = 0;
 	unsigned long start_pfn, end_pfn;
+	unsigned long pos;
 
 	struct map_range mr[NR_RANGE_MR];
 	int nr_range, i;
 	int use_pse, use_gbpages;
 
-	printk(KERN_INFO "init_memory_mapping\n");
+	printk(KERN_INFO "init_memory_mapping: %016lx-%016lx\n", start, end);
 
 	/*
 	 * Find space for the kernel direct mapping tables.
@@ -707,35 +711,50 @@ unsigned long __init_refok init_memory_mapping(unsigned long start,
 
 	/* head if not big page alignment ?*/
 	start_pfn = start >> PAGE_SHIFT;
-	end_pfn = ((start + (PMD_SIZE - 1)) >> PMD_SHIFT)
+	pos = start_pfn << PAGE_SHIFT;
+	end_pfn = ((pos + (PMD_SIZE - 1)) >> PMD_SHIFT)
 			<< (PMD_SHIFT - PAGE_SHIFT);
-	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
+	if (start_pfn < end_pfn) {
+		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
+		pos = end_pfn << PAGE_SHIFT;
+	}
 
 	/* big page (2M) range*/
-	start_pfn = ((start + (PMD_SIZE - 1))>>PMD_SHIFT)
+	start_pfn = ((pos + (PMD_SIZE - 1))>>PMD_SHIFT)
 			 << (PMD_SHIFT - PAGE_SHIFT);
-	end_pfn = ((start + (PUD_SIZE - 1))>>PUD_SHIFT)
+	end_pfn = ((pos + (PUD_SIZE - 1))>>PUD_SHIFT)
 			 << (PUD_SHIFT - PAGE_SHIFT);
-	if (end_pfn > ((end>>PUD_SHIFT)<<(PUD_SHIFT - PAGE_SHIFT)))
-		end_pfn = ((end>>PUD_SHIFT)<<(PUD_SHIFT - PAGE_SHIFT));
-	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
-			page_size_mask & (1<<PG_LEVEL_2M));
+	if (end_pfn > ((end>>PMD_SHIFT)<<(PMD_SHIFT - PAGE_SHIFT)))
+		end_pfn = ((end>>PMD_SHIFT)<<(PMD_SHIFT - PAGE_SHIFT));
+	if (start_pfn < end_pfn) {
+		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
+				page_size_mask & (1<<PG_LEVEL_2M));
+		pos = end_pfn << PAGE_SHIFT;
+	}
 
 	/* big page (1G) range */
-	start_pfn = end_pfn;
-	end_pfn = (end>>PUD_SHIFT) << (PUD_SHIFT - PAGE_SHIFT);
-	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
+	start_pfn = ((pos + (PUD_SIZE - 1))>>PUD_SHIFT)
+			 << (PUD_SHIFT - PAGE_SHIFT);
+	end_pfn = (end >> PUD_SHIFT) << (PUD_SHIFT - PAGE_SHIFT);
+	if (start_pfn < end_pfn) {
+		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
 				page_size_mask &
 				 ((1<<PG_LEVEL_2M)|(1<<PG_LEVEL_1G)));
+		pos = end_pfn << PAGE_SHIFT;
+	}
 
 	/* tail is not big page (1G) alignment */
-	start_pfn = end_pfn;
-	end_pfn = (end>>PMD_SHIFT) << (PMD_SHIFT - PAGE_SHIFT);
-	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
-			page_size_mask & (1<<PG_LEVEL_2M));
+	start_pfn = ((pos + (PMD_SIZE - 1))>>PMD_SHIFT)
+			 << (PMD_SHIFT - PAGE_SHIFT);
+	end_pfn = (end >> PMD_SHIFT) << (PMD_SHIFT - PAGE_SHIFT);
+	if (start_pfn < end_pfn) {
+		nr_range = save_mr(mr, nr_range, start_pfn, end_pfn,
+				page_size_mask & (1<<PG_LEVEL_2M));
+		pos = end_pfn << PAGE_SHIFT;
+	}
 
 	/* tail is not big page (2M) alignment */
-	start_pfn = end_pfn;
+	start_pfn = pos>>PAGE_SHIFT;
 	end_pfn = end>>PAGE_SHIFT;
 	nr_range = save_mr(mr, nr_range, start_pfn, end_pfn, 0);
 
@@ -749,7 +768,7 @@ unsigned long __init_refok init_memory_mapping(unsigned long start,
 		old_start = mr[i].start;
 		memmove(&mr[i], &mr[i+1],
 			 (nr_range - 1 - i) * sizeof (struct map_range));
-		mr[i].start = old_start;
+		mr[i--].start = old_start;
 		nr_range--;
 	}
 
@@ -834,12 +853,12 @@ int arch_add_memory(int nid, u64 start, u64 size)
 	unsigned long nr_pages = size >> PAGE_SHIFT;
 	int ret;
 
-	last_mapped_pfn = init_memory_mapping(start, start + size-1);
+	last_mapped_pfn = init_memory_mapping(start, start + size);
 	if (last_mapped_pfn > max_pfn_mapped)
 		max_pfn_mapped = last_mapped_pfn;
 
 	ret = __add_pages(zone, start_pfn, nr_pages);
-	WARN_ON(1);
+	WARN_ON_ONCE(ret);
 
 	return ret;
 }
@@ -881,6 +900,7 @@ static struct kcore_list kcore_mem, kcore_vmalloc, kcore_kernel,
 void __init mem_init(void)
 {
 	long codesize, reservedpages, datasize, initsize;
+	unsigned long absent_pages;
 
 	start_periodic_check_for_corruption();
 
@@ -896,8 +916,9 @@ void __init mem_init(void)
 #else
 	totalram_pages = free_all_bootmem();
 #endif
-	reservedpages = max_pfn - totalram_pages -
-					absent_pages_in_range(0, max_pfn);
+
+	absent_pages = absent_pages_in_range(0, max_pfn);
+	reservedpages = max_pfn - totalram_pages - absent_pages;
 	after_bootmem = 1;
 
 	codesize =  (unsigned long) &_etext - (unsigned long) &_text;
@@ -914,10 +935,11 @@ void __init mem_init(void)
 				 VSYSCALL_END - VSYSCALL_START);
 
 	printk(KERN_INFO "Memory: %luk/%luk available (%ldk kernel code, "
-				"%ldk reserved, %ldk data, %ldk init)\n",
+			 "%ldk absent, %ldk reserved, %ldk data, %ldk init)\n",
 		(unsigned long) nr_free_pages() << (PAGE_SHIFT-10),
 		max_pfn << (PAGE_SHIFT-10),
 		codesize >> 10,
+		absent_pages << (PAGE_SHIFT-10),
 		reservedpages << (PAGE_SHIFT-10),
 		datasize >> 10,
 		initsize >> 10);
