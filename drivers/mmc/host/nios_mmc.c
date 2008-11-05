@@ -46,6 +46,8 @@
 	printk("Crit. error in %s(): %s. Halting\n",__func__,x);\
 	while(1);\
 }
+#define SD_MAX_FREQ 25000000
+
 /********** Function prototypes ************/
 static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
@@ -56,6 +58,7 @@ unsigned int max_req_size = 512*128;
 unsigned int max_seg_size = 512*128;
 unsigned int dat_width = 1;
 unsigned int blk_prefetch = 1;
+unsigned int fmax = SD_MAX_FREQ;
 static unsigned int irq_count;
 /***************************** Start of main functions ********************************/
 
@@ -416,6 +419,10 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	/* Setup clock frequency support */
 	host->clock_freq = platp->clk_src;
 	mmc->f_max = host->clock_freq / 4;
+	/* Assign FMAX to be minimum of cpu_clk/4 and 'fmax' variable */
+	if (mmc->f_max > fmax) {
+		mmc->f_max = fmax;
+	}
 	mmc->f_min = host->clock_freq / (1 << 16);
 	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
 	       ret >> 24, (ret >> 16) & 0xff);
@@ -541,6 +548,7 @@ module_param(max_req_size, uint, 0444);
 module_param(max_seg_size, uint, 0444);
 module_param(dat_width, uint, 0444);
 module_param(blk_prefetch, uint, 0444);
+module_param(fmax, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");
