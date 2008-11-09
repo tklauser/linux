@@ -54,8 +54,8 @@ static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 static int nios_mmc_procinit(NIOS_MMC_HOST * host);
 static void nios_mmc_procclose(void);
 unsigned int max_blk_count = 128;
-unsigned int max_req_size = 512*128;
-unsigned int max_seg_size = 512*128;
+unsigned int max_req_size = 512 * 128;
+unsigned int max_seg_size = 512 * 128;
 unsigned int dat_width = 1;
 unsigned int blk_prefetch = 1;
 unsigned int fmax = SD_MAX_FREQ;
@@ -330,7 +330,8 @@ static void nios_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		MMC_DEBUG(3, "Requesting clock: %d\n", ios->clock);
 		div = (host->clock_freq / (2 * ios->clock)) - 1;
 		/* Check if div is less than 1 */
-		if (div < 1) div = 1;
+		if (div < 1)
+			div = 1;
 		writel((div & 0xFFFF) | NIOS_MMC_CLK_CTL_CLK_EN,
 		       host->base + NIOS_MMC_REG_CLK_CTL);
 	} else {
@@ -424,15 +425,17 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		mmc->f_max = fmax;
 	}
 	mmc->f_min = host->clock_freq / (1 << 16);
-	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
-	       ret >> 24, (ret >> 16) & 0xff);
-	printk("NIOS_MMC: F_MAX: %d KHz, F_MIN: %d Hz\n", mmc->f_max / 1000,
-	       mmc->f_min);
+	printk("%s: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
+	       mmc_hostname(host->mmc), ret >> 24, (ret >> 16) & 0xff);
+	printk("%s: F_MAX: %d KHz, F_MIN: %d Hz\n", mmc_hostname(host->mmc),
+	       mmc->f_max / 1000, mmc->f_min);
 	ret = readl(host->base + NIOS_MMC_REG_CTLSTAT);
-	printk("NIOS_MMC: Host built with %s DAT driver\n",
+	printk("%s: Host built with %s DAT driver\n",
+	       mmc_hostname(host->mmc),
 	       (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? "4-bit" : "1-bit");
 	if (ret & NIOS_MMC_CTLSTAT_PROF_EN) {
-		printk("NIOS_MMC: Host built with profiling capabilities\n");
+		MMC_DEBUG(1,
+			  "NIOS_MMC: Host built with profiling capabilities\n");
 		host->prof_en = 1;
 	} else
 		host->prof_en = 0;
@@ -440,11 +443,10 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		/* Force dat_width to 1-bit */
 		mmc->caps = 0;
 		printk("NIOS_MMC: Forcing 1-bit DAT width\n");
-	}
-	else {
+	} else {
 		/* Set dat_width based on host capabilities */
-		mmc->caps = 
-			(ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
+		mmc->caps =
+		    (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
 	}
 	/* Execute soft-reset on core */
 	writel(NIOS_MMC_CTLSTAT_SOFT_RST, host->base + NIOS_MMC_REG_CTLSTAT);
@@ -459,9 +461,9 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	/* Execute write to CTLSTAT here */
 	writel(ret, host->base + NIOS_MMC_REG_CTLSTAT);
 	if (ret & NIOS_MMC_CTLSTAT_BLK_PREFETCH) {
-		printk("NIOS_MMC: Using block-prefetching\n");
+		MMC_DEBUG(1, "NIOS_MMC: Using block-prefetching\n");
 	} else {
-		printk("NIOS_MMC: Block-prefetching disabled!\n");
+		MMC_DEBUG(1, "NIOS_MMC: Block-prefetching disabled!\n");
 	}
 
 	ret =
@@ -472,10 +474,9 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
-	printk("NIOS_MMC: max_blk_cnt: %d max_seg_size: %d max_req_size: %d\n",
-			mmc->max_blk_count,
-			mmc->max_seg_size,
-			mmc->max_req_size);
+	MMC_DEBUG(1,
+		  "NIOS_MMC: max_blk_cnt: %d max_seg_size: %d max_req_size: %d\n",
+		  mmc->max_blk_count, mmc->max_seg_size, mmc->max_req_size);
 #ifdef CONFIG_PROC_FS
 	/* Setup Proc file system */
 	nios_mmc_procinit(host);
