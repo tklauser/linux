@@ -109,6 +109,7 @@ struct oem_table {
 };
 
 extern int find_unisys_acpi_oem_table(unsigned long *oem_addr);
+extern void unmap_unisys_acpi_oem_table(unsigned long oem_addr);
 #endif
 
 struct mip_reg {
@@ -243,20 +244,30 @@ parse_unisys_oem (char *oemptr)
 }
 
 #ifdef CONFIG_ACPI
-int __init
-find_unisys_acpi_oem_table(unsigned long *oem_addr)
+static unsigned long oem_addrX;
+static unsigned long oem_size;
+int __init find_unisys_acpi_oem_table(unsigned long *oem_addr)
 {
 	struct acpi_table_header *header = NULL;
 	int i = 0;
+
 	while (ACPI_SUCCESS(acpi_get_table("OEM1", i++, &header))) {
 		if (!memcmp((char *) &header->oem_id, "UNISYS", 6)) {
 			struct oem_table *t = (struct oem_table *)header;
-			*oem_addr = (unsigned long)__acpi_map_table(t->OEMTableAddr,
-								    t->OEMTableSize);
+
+			oem_addrX = t->OEMTableAddr;
+			oem_size = t->OEMTableSize;
+
+			*oem_addr = (unsigned long)__acpi_map_table(oem_addrX,
+								    oem_size);
 			return 0;
 		}
 	}
 	return -1;
+}
+
+void __init unmap_unisys_acpi_oem_table(unsigned long oem_addr)
+{
 }
 #endif
 

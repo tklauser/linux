@@ -1348,10 +1348,8 @@ static void ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 	    (ifsta->flags & IEEE80211_STA_WMM_ENABLED)) {
 		struct ieee80211_ht_bss_info bss_info;
 		ieee80211_ht_cap_ie_to_ht_info(
-				(struct ieee80211_ht_cap *)
 				elems.ht_cap_elem, &sta->sta.ht_info);
 		ieee80211_ht_addt_info_ie_to_ht_bss_info(
-				(struct ieee80211_ht_addt_info *)
 				elems.ht_info_elem, &bss_info);
 		ieee80211_handle_ht(local, 1, &sta->sta.ht_info, &bss_info);
 	}
@@ -1709,7 +1707,6 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data *sdata,
 		struct ieee80211_ht_bss_info bss_info;
 
 		ieee80211_ht_addt_info_ie_to_ht_bss_info(
-				(struct ieee80211_ht_addt_info *)
 				elems.ht_info_elem, &bss_info);
 		changed |= ieee80211_handle_ht(local, 1, &conf->ht_conf,
 					       &bss_info);
@@ -2563,25 +2560,3 @@ void ieee80211_mlme_notify_scan_completed(struct ieee80211_local *local)
 		ieee80211_restart_sta_timer(sdata);
 	rcu_read_unlock();
 }
-
-/* driver notification call */
-void ieee80211_notify_mac(struct ieee80211_hw *hw,
-			  enum ieee80211_notification_types  notif_type)
-{
-	struct ieee80211_local *local = hw_to_local(hw);
-	struct ieee80211_sub_if_data *sdata;
-
-	switch (notif_type) {
-	case IEEE80211_NOTIFY_RE_ASSOC:
-		rcu_read_lock();
-		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-			if (sdata->vif.type != NL80211_IFTYPE_STATION)
-				continue;
-
-			ieee80211_sta_req_auth(sdata, &sdata->u.sta);
-		}
-		rcu_read_unlock();
-		break;
-	}
-}
-EXPORT_SYMBOL(ieee80211_notify_mac);

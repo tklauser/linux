@@ -96,7 +96,7 @@ static void net_free(struct net *net)
 		return;
 	}
 #endif
-
+	kfree(net->gen);
 	kmem_cache_free(net_cachep, net);
 }
 
@@ -324,6 +324,38 @@ void unregister_pernet_subsys(struct pernet_operations *module)
 	mutex_unlock(&net_mutex);
 }
 EXPORT_SYMBOL_GPL(unregister_pernet_subsys);
+
+int register_pernet_gen_subsys(int *id, struct pernet_operations *ops)
+{
+	int rv;
+
+	mutex_lock(&net_mutex);
+again:
+	rv = ida_get_new_above(&net_generic_ids, 1, id);
+	if (rv < 0) {
+		if (rv == -EAGAIN) {
+			ida_pre_get(&net_generic_ids, GFP_KERNEL);
+			goto again;
+		}
+		goto out;
+	}
+	rv = register_pernet_operations(first_device, ops);
+	if (rv < 0)
+		ida_remove(&net_generic_ids, *id);
+	mutex_unlock(&net_mutex);
+out:
+	return rv;
+}
+EXPORT_SYMBOL_GPL(register_pernet_gen_subsys);
+
+void unregister_pernet_gen_subsys(int id, struct pernet_operations *ops)
+{
+	mutex_lock(&net_mutex);
+	unregister_pernet_operations(ops);
+	ida_remove(&net_generic_ids, id);
+	mutex_unlock(&net_mutex);
+}
+EXPORT_SYMBOL_GPL(unregister_pernet_gen_subsys);
 
 /**
  *      register_pernet_device - register a network namespace device

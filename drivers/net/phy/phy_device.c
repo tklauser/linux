@@ -227,8 +227,8 @@ struct phy_device * get_phy_device(struct mii_bus *bus, int addr)
 	if (r)
 		return ERR_PTR(r);
 
-	/* If the phy_id is all Fs, there is no device there */
-	if (0xffffffff == phy_id)
+	/* If the phy_id is all Fs or all 0s, there is no device there */
+	if ((0xffff == phy_id) || (0x00 == phy_id))
 		return NULL;
 
 	dev = phy_device_create(bus, addr, phy_id);
@@ -309,11 +309,6 @@ void phy_disconnect(struct phy_device *phydev)
 }
 EXPORT_SYMBOL(phy_disconnect);
 
-static int phy_compare_id(struct device *dev, void *data)
-{
-	return strcmp((char *)data, dev->bus_id) ? 0 : 1;
-}
-
 /**
  * phy_attach - attach a network device to a particular PHY device
  * @dev: network device to attach
@@ -337,8 +332,7 @@ struct phy_device *phy_attach(struct net_device *dev,
 
 	/* Search the list of PHY devices on the mdio bus for the
 	 * PHY with the requested name */
-	d = bus_find_device(bus, NULL, (void *)bus_id, phy_compare_id);
-
+	d = bus_find_device_by_name(bus, NULL, bus_id);
 	if (d) {
 		phydev = to_phy_device(d);
 	} else {
@@ -557,6 +551,7 @@ int genphy_restart_aneg(struct phy_device *phydev)
 
 	return ctl;
 }
+EXPORT_SYMBOL(genphy_restart_aneg);
 
 
 /**
@@ -569,20 +564,32 @@ int genphy_restart_aneg(struct phy_device *phydev)
  */
 int genphy_config_aneg(struct phy_device *phydev)
 {
-	int result = 0;
+	int result;
 
-	if (AUTONEG_ENABLE == phydev->autoneg) {
-		int result = genphy_config_advert(phydev);
+	if (AUTONEG_ENABLE != phydev->autoneg)
+		return genphy_setup_forced(phydev);
 
-		if (result < 0) /* error */
-			return result;
+	result = genphy_config_advert(phydev);
 
-		/* Only restart aneg if we are advertising something different
-		 * than we were before.	 */
-		if (result > 0)
-			result = genphy_restart_aneg(phydev);
-	} else
-		result = genphy_setup_forced(phydev);
+	if (result < 0) /* error */
+		return result;
+
+	if (result == 0) {
+		/* Advertisment hasn't changed, but maybe aneg was never on to
+		 * begin with?  Or maybe phy was isolated? */
+		int ctl = phy_read(phydev, MII_BMCR);
+
+		if (ctl < 0)
+			return ctl;
+
+		if (!(ctl & BMCR_ANENABLE) || (ctl & BMCR_ISOLATE))
+			result = 1; /* do restart aneg */
+	}
+
+	/* Only restart aneg if we are advertising something different
+	 * than we were before.	 */
+	if (result > 0)
+		result = genphy_restart_aneg(phydev);
 
 	return result;
 }

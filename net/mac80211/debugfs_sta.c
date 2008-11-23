@@ -199,7 +199,7 @@ static ssize_t sta_agg_status_write(struct file *file,
 		/* toggle Rx aggregation command */
 		tid_num = tid_num - 100;
 		if (tid_static_rx[tid_num] == 1) {
-			strcpy(state, "off ");
+			strcpy(state, "off");
 			ieee80211_sta_stop_rx_ba_session(sta->sdata, da, tid_num, 0,
 					WLAN_REASON_QSTA_REQUIRE_SETUP);
 			sta->ampdu_mlme.tid_state_rx[tid_num] |=
@@ -249,11 +249,22 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 	DECLARE_MAC_BUF(mbuf);
 	u8 *mac;
 
+	sta->debugfs.add_has_run = true;
+
 	if (!stations_dir)
 		return;
 
 	mac = print_mac(mbuf, sta->sta.addr);
 
+	/*
+	 * This might fail due to a race condition:
+	 * When mac80211 unlinks a station, the debugfs entries
+	 * remain, but it is already possible to link a new
+	 * station with the same address which triggers adding
+	 * it to debugfs; therefore, if the old station isn't
+	 * destroyed quickly enough the old station's debugfs
+	 * dir might still be around.
+	 */
 	sta->debugfs.dir = debugfs_create_dir(mac, stations_dir);
 	if (!sta->debugfs.dir)
 		return;

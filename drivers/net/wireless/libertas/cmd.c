@@ -605,9 +605,9 @@ int lbs_get_tx_power(struct lbs_private *priv, s16 *curlevel, s16 *minlevel,
 	if (ret == 0) {
 		*curlevel = le16_to_cpu(cmd.curlevel);
 		if (minlevel)
-			*minlevel = le16_to_cpu(cmd.minlevel);
+			*minlevel = cmd.minlevel;
 		if (maxlevel)
-			*maxlevel = le16_to_cpu(cmd.maxlevel);
+			*maxlevel = cmd.maxlevel;
 	}
 
 	lbs_deb_leave(LBS_DEB_CMD);
@@ -823,7 +823,9 @@ int lbs_update_channel(struct lbs_private *priv)
 int lbs_set_channel(struct lbs_private *priv, u8 channel)
 {
 	struct cmd_ds_802_11_rf_channel cmd;
+#ifdef DEBUG
 	u8 old_channel = priv->curbssparams.channel;
+#endif
 	int ret = 0;
 
 	lbs_deb_enter(LBS_DEB_CMD);
