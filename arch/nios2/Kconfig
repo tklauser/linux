@@ -57,9 +57,6 @@ config HOTPLUG_CPU
 	bool
 	default n
 
-config ARCH_SUPPORTS_AOUT
-	def_bool y
-
 source "init/Kconfig"
 
 menu "Processor type and features"
