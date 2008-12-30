@@ -59,6 +59,8 @@ config HOTPLUG_CPU
 
 source "init/Kconfig"
 
+source "kernel/Kconfig.freezer"
+
 menu "Processor type and features"
 
 comment 'Platform dependant setup'
