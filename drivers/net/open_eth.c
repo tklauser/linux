@@ -750,7 +750,7 @@ void oeth_phymac_synch (struct net_device *dev, int callerflg)
 #if defined(TDK78Q2120PHY)
     unsigned long        ulphydiagval;
 #else
-    struct oeth_private  *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private  *cep = (struct oeth_private *)netdev_priv(dev);
     struct ethtool_cmd   ecmd;
 #endif
 
@@ -1012,7 +1012,7 @@ static irqreturn_t oeth_PhyInterrupt(int             irq,
 
 #if defined(TDK78Q2120PHY)
       volatile struct oeth_private  *cep =
-	  (struct oeth_private *)dev->priv;
+	(struct oeth_private *)netdev_priv(dev);
       unsigned long                  ulmr17sts;
 
 
@@ -1086,7 +1086,7 @@ oeth_tx(unsigned long devn)
     struct  sk_buff *skb;
 #endif
 
-    cep = (struct oeth_private *)dev->priv;
+    cep = (struct oeth_private *)netdev_priv(dev);
 
     // Cycles over the TX BDs, starting at the first one that would've been sent. -TS
     while (1)
@@ -1170,7 +1170,7 @@ oeth_rx(unsigned long devn)
     struct          sk_buff      *small_skb;
   #endif
 
-    cep = (struct oeth_private *)dev->priv;
+    cep = (struct oeth_private *)netdev_priv(dev);
 
     /* First, grab all of the stats for the incoming packet.
      * These get messed up if we get called due to a busy condition.
@@ -1506,7 +1506,7 @@ static irqreturn_t oeth_interrupt(int             irq,
     struct oeth_private *cep;
     uint    int_events;
 
-    cep = (struct oeth_private *)dev->priv;
+    cep = (struct oeth_private *)netdev_priv(dev);
 
     /* Get the interrupt events that caused us to be here.
      */
@@ -1538,7 +1538,7 @@ static int
 oeth_open(struct net_device *dev)
 {
     volatile oeth_regs *regs = (oeth_regs *)dev->base_addr;
-    struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)netdev_priv(dev);
 
 #ifndef RXBUFF_PREALLOC
     struct  sk_buff *skb;
@@ -1631,7 +1631,7 @@ oeth_open(struct net_device *dev)
 static int
 oeth_close(struct net_device *dev)
 {
-    struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)netdev_priv(dev);
     volatile oeth_regs *regs = (oeth_regs *)dev->base_addr;
     volatile oeth_bd *bdp;
     int i;
@@ -1705,7 +1705,7 @@ oeth_close(struct net_device *dev)
 static int
 oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-    volatile struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    volatile struct oeth_private *cep = (struct oeth_private *)netdev_priv(dev);
     volatile        oeth_bd      *bdp;
     unsigned        int           lenSkbDataByts;
 
@@ -1912,7 +1912,7 @@ static int calc_crc(char *mac_addr)
 
 static struct net_device_stats *oeth_get_stats(struct net_device *dev)
 {
-    struct oeth_private *cep = (struct oeth_private *)dev->priv;
+    struct oeth_private *cep = (struct oeth_private *)netdev_priv(dev);
 
     return &cep->stats;
 }
@@ -1922,7 +1922,7 @@ static void oeth_set_multicast_list(struct net_device *dev)
     volatile struct oeth_private *cep;
     volatile oeth_regs *regs;
 
-    cep = (struct oeth_private *)dev->priv;
+    cep = (struct oeth_private *)netdev_priv(dev);
 
     /* Get pointer of controller registers.
      */
@@ -2173,7 +2173,7 @@ static int __init oeth_probe(struct net_device *dev)
 
 /*     SET_MODULE_OWNER (dev); */
 
-    cep = (struct oeth_private *)dev->priv;
+    cep = (struct oeth_private *)netdev_priv(dev);
 
     if (!request_region(ETH_BASE_ADD,
                         OETH_IO_EXTENT,
