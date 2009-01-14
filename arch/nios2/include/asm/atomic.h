@@ -1,13 +1,13 @@
 #ifndef _ASM_NIOS2_ATOMIC_H
 #define _ASM_NIOS2_ATOMIC_H
 
+#include <linux/types.h>
+
 /*
  * Atomic operations that C can't guarantee us.  Useful for
  * resource counting etc..
  *
  */
-
-typedef struct { volatile int counter; } atomic_t;
 
 #define ATOMIC_INIT(i)	( (atomic_t) { (i) } )
 
