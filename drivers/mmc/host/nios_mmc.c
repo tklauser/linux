@@ -46,17 +46,30 @@
 	printk("Crit. error in %s(): %s. Halting\n",__func__,x);\
 	while(1);\
 }
+#define SD_MAX_FREQ 25000000	/* Set the max frequency to 25MHz (std. speed) */
+#define SD_MIN_FREQ 375000	/* Set the minimum frequency to 375Khz */
+
 /********** Function prototypes ************/
 static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 static int nios_mmc_procinit(NIOS_MMC_HOST * host);
 static void nios_mmc_procclose(void);
 unsigned int max_blk_count = 128;
-unsigned int max_req_size = 512*128;
-unsigned int max_seg_size = 512*128;
+unsigned int max_req_size = 512 * 128;
+unsigned int max_seg_size = 512 * 128;
 unsigned int dat_width = 1;
 unsigned int blk_prefetch = 1;
+unsigned int fmax = SD_MAX_FREQ;
 static unsigned int irq_count;
+/**************************** Low-level register access ******************************/
+static void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
+{
+	writel(val, host->base + off);
+}
+static unsigned int nios_mmc_readl(NIOS_MMC_HOST *host, unsigned char off)
+{
+	return readl(host->base + off);
+}
 /***************************** Start of main functions ********************************/
 
 static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
@@ -98,17 +111,17 @@ static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
 	if (ret) {
 		MMC_DEBUG(1, "Error executing CMD%d\n", cmd->opcode);
 		MMC_DEBUG(2, "Response argument: 0x%X\n",
-			  readl(host->base + NIOS_MMC_REG_CMD_ARG0));
+			  nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG0));
 	}
 	/* Load response into command structure */
 	cmd->error = ret;
 	if (mmc_resp_type(cmd) == MMC_RSP_R2) {
-		cmd->resp[0] = readl(host->base + NIOS_MMC_REG_CMD_ARG3);
-		cmd->resp[1] = readl(host->base + NIOS_MMC_REG_CMD_ARG2);
-		cmd->resp[2] = readl(host->base + NIOS_MMC_REG_CMD_ARG1);
-		cmd->resp[3] = readl(host->base + NIOS_MMC_REG_CMD_ARG0);
+		cmd->resp[0] = nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG3);
+		cmd->resp[1] = nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG2);
+		cmd->resp[2] = nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG1);
+		cmd->resp[3] = nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG0);
 	} else
-		cmd->resp[0] = readl(host->base + NIOS_MMC_REG_CMD_ARG0);
+		cmd->resp[0] = nios_mmc_readl(host, NIOS_MMC_REG_CMD_ARG0);
 	/* Check if this was a data transaction */
 	if (data) {
 		if (cmd->error == 0)
@@ -139,11 +152,11 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 	u_char cmdidx;
 
 	/* Do a sanity check that the core isn't busy... why should it be since we haven't started a cmd?? */
-	if (readl(host->base + NIOS_MMC_REG_CTLSTAT) & NIOS_MMC_CTLSTAT_BUSY) {
+	if (nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT) & NIOS_MMC_CTLSTAT_BUSY) {
 		MMC_CRIT_ERR("Core is busy when it shouldn't be!");
 	}
 	xfer_ctl = (cmd & 0x3F) << NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT;
-	writel(arg_in, host->base + NIOS_MMC_REG_CMD_ARG0);
+	nios_mmc_writel(arg_in, host, NIOS_MMC_REG_CMD_ARG0);
 	xfer_ctl |= (resp_type & 0x3) << NIOS_MMC_XFER_CTL_RESP_CODE_SHIFT;
 	if (nocrc)
 		xfer_ctl |= NIOS_MMC_XFER_CTL_RESP_NOCRC;
@@ -157,7 +170,7 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 	cmdidx = (xfer_ctl >> NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT) & 0x3F;
 	/* Setup DMA base */
 	dcache_push(buf, bytes * blocks);
-	writel(buf, host->base + NIOS_MMC_REG_DMA_BASE);
+	nios_mmc_writel(buf, host, NIOS_MMC_REG_DMA_BASE);
 	if (bytes) {
 		MMC_DEBUG(1,
 			  "XFER_CTL: 0x%X (CMD%d), DMA_BASE(%c): 0x%X, ARG_IN: 0x%X, %d/%db\n",
@@ -169,16 +182,16 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 			  xfer_ctl, cmdidx, arg_in);
 	}
 	/* Execute command */
-	writel(xfer_ctl, host->base + NIOS_MMC_REG_XFER_CTL);
+	nios_mmc_writel(xfer_ctl, host, NIOS_MMC_REG_XFER_CTL);
 }
 static irqreturn_t nios_mmc_irq(int irq, void *dev_id)
 {
 	NIOS_MMC_HOST *host = dev_id;
 	unsigned int stat;
 
-	stat = readl(host->base + NIOS_MMC_REG_CTLSTAT);
+	stat = nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT);
 	/* Clear the interrupt */
-	writel(stat, host->base + NIOS_MMC_REG_CTLSTAT);
+	nios_mmc_writel(stat, host, NIOS_MMC_REG_CTLSTAT);
 	MMC_DEBUG(2, "IRQ, ctlstat: 0x%X\n", stat);
 
 	if (stat & NIOS_MMC_CTLSTAT_CD_IF) {
@@ -263,22 +276,22 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 void nios_mmc_clear_prof(NIOS_MMC_HOST * host)
 {
 	unsigned int misc_reg;
-	misc_reg = readl(host->base + NIOS_MMC_REG_MISC);
+	misc_reg = nios_mmc_readl(host, NIOS_MMC_REG_MISC);
 	misc_reg |= NIOS_MMC_MISC_PROF_RESET;
-	writel(misc_reg, host->base + NIOS_MMC_REG_MISC);
+	nios_mmc_writel(misc_reg, host, NIOS_MMC_REG_MISC);
 }
 unsigned long long nios_mmc_prof_cnt(NIOS_MMC_HOST * host, unsigned char cnt)
 {
 	unsigned long long tmp = 0;
 	unsigned int misc_reg;
 	/* Select the counter first */
-	misc_reg = readl(host->base + NIOS_MMC_REG_MISC);
+	misc_reg = nios_mmc_readl(host, NIOS_MMC_REG_MISC);
 	misc_reg &= ~(0x7 << NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT);
 	misc_reg |= (cnt << NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT);
-	writel(misc_reg, host->base + NIOS_MMC_REG_MISC);
-	tmp = readl(host->base + NIOS_MMC_REG_PROF_CNT1);
+	nios_mmc_writel(misc_reg, host, NIOS_MMC_REG_MISC);
+	tmp = nios_mmc_readl(host, NIOS_MMC_REG_PROF_CNT1);
 	tmp <<= 32;
-	tmp |= readl(host->base + NIOS_MMC_REG_PROF_CNT0);
+	tmp |= nios_mmc_readl(host, NIOS_MMC_REG_PROF_CNT0);
 	return tmp;
 }
 
@@ -312,7 +325,7 @@ static int nios_mmc_get_ro(struct mmc_host *mmc)
 	int ctlstat;
 	NIOS_MMC_HOST *host = mmc_priv(mmc);
 	MMC_DEBUG(3, "Get RO\n");
-	ctlstat = readl(host->base + NIOS_MMC_REG_CTLSTAT);
+	ctlstat = nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT);
 	if (ctlstat & NIOS_MMC_CTLSTAT_WP)
 		return 1;
 	return 0;
@@ -327,13 +340,14 @@ static void nios_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		MMC_DEBUG(3, "Requesting clock: %d\n", ios->clock);
 		div = (host->clock_freq / (2 * ios->clock)) - 1;
 		/* Check if div is less than 1 */
-		if (div < 1) div = 1;
-		writel((div & 0xFFFF) | NIOS_MMC_CLK_CTL_CLK_EN,
-		       host->base + NIOS_MMC_REG_CLK_CTL);
+		if (div < 1)
+			div = 1;
+		nios_mmc_writel((div & 0xFFFF) | NIOS_MMC_CLK_CTL_CLK_EN,
+		       host, NIOS_MMC_REG_CLK_CTL);
 	} else {
 		/* Stop the clock */
 		MMC_DEBUG(3, "Request stop clock\n");
-		writel(0, host->base + NIOS_MMC_REG_CLK_CTL);
+		nios_mmc_writel(0, host, NIOS_MMC_REG_CLK_CTL);
 	}
 
 	if (ios->bus_width)
@@ -407,7 +421,7 @@ static int nios_mmc_probe(struct platform_device *pdev)
 
 	/* Check that SD/MMC Core is present */
 	ret = 0;
-	ret = readl(host->base + NIOS_MMC_REG_VERSION_INFO);
+	ret = nios_mmc_readl(host, NIOS_MMC_REG_VERSION_INFO);
 	if ((ret & 0xFFFF) != 0xBEEF) {
 		MMC_DEBUG(3, "Core not present\n");
 		ret = -ENXIO;
@@ -416,16 +430,22 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	/* Setup clock frequency support */
 	host->clock_freq = platp->clk_src;
 	mmc->f_max = host->clock_freq / 4;
-	mmc->f_min = host->clock_freq / (1 << 16);
-	printk("NIOS_MMC: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
-	       ret >> 24, (ret >> 16) & 0xff);
-	printk("NIOS_MMC: F_MAX: %d KHz, F_MIN: %d Hz\n", mmc->f_max / 1000,
-	       mmc->f_min);
-	ret = readl(host->base + NIOS_MMC_REG_CTLSTAT);
-	printk("NIOS_MMC: Host built with %s DAT driver\n",
+	/* Assign FMAX to be minimum of cpu_clk/4 and 'fmax' variable */
+	if (mmc->f_max > fmax) {
+		mmc->f_max = fmax;
+	}
+	mmc->f_min = SD_MIN_FREQ;
+	printk("%s: FPS-Tech SD/SDIO/MMC Host, IP version %d.%d\n",
+	       mmc_hostname(host->mmc), ret >> 24, (ret >> 16) & 0xff);
+	printk("%s: F_MAX: %d KHz, F_MIN: %d KHz\n", mmc_hostname(host->mmc),
+	       mmc->f_max / 1000, mmc->f_min / 1000);
+	ret = nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT);
+	printk("%s: Host built with %s DAT driver\n",
+	       mmc_hostname(host->mmc),
 	       (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? "4-bit" : "1-bit");
 	if (ret & NIOS_MMC_CTLSTAT_PROF_EN) {
-		printk("NIOS_MMC: Host built with profiling capabilities\n");
+		MMC_DEBUG(1,
+			  "NIOS_MMC: Host built with profiling capabilities\n");
 		host->prof_en = 1;
 	} else
 		host->prof_en = 0;
@@ -433,14 +453,13 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		/* Force dat_width to 1-bit */
 		mmc->caps = 0;
 		printk("NIOS_MMC: Forcing 1-bit DAT width\n");
-	}
-	else {
+	} else {
 		/* Set dat_width based on host capabilities */
-		mmc->caps = 
-			(ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
+		mmc->caps =
+		    (ret & NIOS_MMC_CTLSTAT_HOST_4BIT) ? MMC_CAP_4_BIT_DATA : 0;
 	}
 	/* Execute soft-reset on core */
-	writel(NIOS_MMC_CTLSTAT_SOFT_RST, host->base + NIOS_MMC_REG_CTLSTAT);
+	nios_mmc_writel(NIOS_MMC_CTLSTAT_SOFT_RST, host, NIOS_MMC_REG_CTLSTAT);
 
 	/* Enable interrupts on CD and XFER_IF only */
 	/* Use BLK_PREFETCH for linux unless disabled */
@@ -450,25 +469,24 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	if (blk_prefetch)
 		ret |= NIOS_MMC_CTLSTAT_BLK_PREFETCH;
 	/* Execute write to CTLSTAT here */
-	writel(ret, host->base + NIOS_MMC_REG_CTLSTAT);
+	nios_mmc_writel(ret, host, NIOS_MMC_REG_CTLSTAT);
 	if (ret & NIOS_MMC_CTLSTAT_BLK_PREFETCH) {
-		printk("NIOS_MMC: Using block-prefetching\n");
+		MMC_DEBUG(1, "NIOS_MMC: Using block-prefetching\n");
 	} else {
-		printk("NIOS_MMC: Block-prefetching disabled!\n");
+		MMC_DEBUG(1, "NIOS_MMC: Block-prefetching disabled!\n");
 	}
 
 	ret =
-	    request_irq(host->irq, nios_mmc_irq, 0, DRIVER_NAME, (void *)host);
+	    request_irq(host->irq, nios_mmc_irq, IRQF_SHARED | IRQF_DISABLED, DRIVER_NAME, (void *)host);
 	if (ret) {
 		MMC_DEBUG(3, "Error allocating interrupt\n");
 		goto out;
 	}
 	platform_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
-	printk("NIOS_MMC: max_blk_cnt: %d max_seg_size: %d max_req_size: %d\n",
-			mmc->max_blk_count,
-			mmc->max_seg_size,
-			mmc->max_req_size);
+	MMC_DEBUG(1,
+		  "NIOS_MMC: max_blk_cnt: %d max_seg_size: %d max_req_size: %d\n",
+		  mmc->max_blk_count, mmc->max_seg_size, mmc->max_req_size);
 #ifdef CONFIG_PROC_FS
 	/* Setup Proc file system */
 	nios_mmc_procinit(host);
@@ -541,6 +559,7 @@ module_param(max_req_size, uint, 0444);
 module_param(max_seg_size, uint, 0444);
 module_param(dat_width, uint, 0444);
 module_param(blk_prefetch, uint, 0444);
+module_param(fmax, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");

@@ -271,6 +271,11 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 		goto add_adapter_failed;
 	}
 
+	printk(KERN_INFO "i2c-%d: I2C OpenCores Bus Adapter, MMIO = 0x%X, irq = %d\n",
+			i2c_adapter_id(&i2c->adap), (int) res->start, (int) res2->start);
+	printk(KERN_INFO "i2c-%d: Using %dkHz clock source\n", i2c_adapter_id(&i2c->adap),
+			i2c->clock_khz);
+
 	return 0;
 
 add_adapter_failed:
