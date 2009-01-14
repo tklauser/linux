@@ -1,13 +1,13 @@
-#ifndef __ASM_SH_ATOMIC_H
-#define __ASM_SH_ATOMIC_H
+#ifndef __ASM_NIOS2_ATOMIC_H
+#define __ASM_NIOS2_ATOMIC_H
+
+#include <linux/types.h>
 
 /*
  * Atomic operations that C can't guarantee us.  Useful for
  * resource counting etc..
  *
  */
-
-typedef struct { volatile int counter; } atomic_t;
 
 #define ATOMIC_INIT(i)	( (atomic_t) { (i) } )
 
@@ -143,4 +143,4 @@ static __inline__ void atomic_set_mask(unsigned int mask, atomic_t *v)
 #define smp_mb__after_atomic_inc()	barrier()
 
 #include <asm-generic/atomic.h>
-#endif /* __ASM_SH_ATOMIC_H */
+#endif /* __ASM_NIOS2_ATOMIC_H */
