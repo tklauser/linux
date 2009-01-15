@@ -215,6 +215,10 @@ sub getIRQ {
 	}
 	
 	my @irq_masters = $SBI->getSections('IRQ_MASTER');
+	if (! @irq_masters) {
+		# this device has no associated IRQ_MASTER
+		return;
+	}
 	return $irq_masters[0]->getAssignment('IRQ_Number');
 }
 
