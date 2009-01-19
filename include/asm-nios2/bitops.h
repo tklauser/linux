@@ -8,4 +8,6 @@
 #define smp_mb__after_clear_bit()	barrier()
 #endif /* __KERNEL__ */
 
+#include <asm-generic/bitops/__fls.h>
+
 #endif /* __ASM_NIOS2_BITOPS_H */
