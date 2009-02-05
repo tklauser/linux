@@ -11,3 +11,11 @@ config I2C_NIOS2_GPIO
 	  Say Y here if you use GPIO lines for an I2C bus.
 
 
+config ALTERA_REMOTE_UPDATE
+	bool "Remote update support"
+	depends on NIOS2
+	default N
+	help
+	  This driver provides support for automatic reconfiguration of a 
+	  CycloneIII FPGA (Possibly others too).
+

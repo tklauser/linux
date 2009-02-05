@@ -805,4 +805,27 @@ arch_initcall(i2c_gpio_device_init);
 
 #endif // CONFIG_I2C_NIOS2_GPIO
 
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(na_altremote)
 
+static struct resource altremote_resources[] = {
+  [0] = {
+    .start    = na_altremote,
+    .end    = na_altremote + 0x200 - 1,
+    .flags    = IORESOURCE_MEM,
+  },
+};
+static struct platform_device altremote_device = {
+  .name   = "altremote",
+  .id   = 0,
+  .num_resources  = ARRAY_SIZE(altremote_resources),
+  .resource = altremote_resources,
+};
+
+static int __init altremote_device_init(void)
+{
+  /* customizes platform devices, or adds new ones */
+  platform_device_register(&altremote_device);
+  return 0;
+}
+arch_initcall(altremote_device_init);
+#endif //remote update

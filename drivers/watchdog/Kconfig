@@ -766,6 +766,18 @@ config TXX9_WDT
 	help
 	  Hardware driver for the built-in watchdog timer on TXx9 MIPS SoCs.
 
+# NIOS Architecture
+
+config ALTERA_REMOTE_UPDATE_WATCHDOG
+	bool "Enable Remote update watchdog"
+	depends on ALTERA_REMOTE_UPDATE
+	default y
+	help
+	  When enable this feature adds a watchdog device to your system which needs to
+	  be serviced in order for the Remote Update component not to time-out.
+	  If unsure say y.
+
+
 # PARISC Architecture
 
 # POWERPC Architecture
