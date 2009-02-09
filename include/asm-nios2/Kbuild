@@ -2,4 +2,3 @@ include include/asm-generic/Kbuild.asm
 
 header-y += traps.h
 header-y += io.h
-unifdef-y += swab.h
