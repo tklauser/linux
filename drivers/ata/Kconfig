@@ -734,5 +734,16 @@ config PATA_BF54X
 
 	  If unsure, say N.
 
+config PATA_ALTERA_CF
+	tristate "Altera SOPC Builder CompactFlash support (Experimental)"
+	depends on NIOS2 && EXPERIMENTAL
+	help
+	  This option enables support for the CompactFlash core in an
+	  Altera SOPC Builder system.  It supports insertion and removal
+	  of CompactFlash cards.  It can be used instead of the generic
+	  PATA platform device support if this functionality is desired.
+
+	  If unsure, say N.
+
 endif # ATA_SFF
 endif # ATA
