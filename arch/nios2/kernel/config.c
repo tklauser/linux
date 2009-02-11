@@ -410,7 +410,48 @@ static struct spi_board_info nios2_spi_devices[] = {
 };
 #endif
 
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+#if defined(na_cf_ide)
+/* Use PATA_ALTERA_CF in preference to PATA_PLATFORM */
+#if defined(CONFIG_PATA_ALTERA_CF) || defined(CONFIG_PATA_ALTERA_CF_MODULE)
+#define USE_PATA_ALTERA_CF
+#elif defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
+#define USE_PATA_PLATFORM
+#endif
+#endif
+
+#ifdef USE_PATA_ALTERA_CF
+static struct resource na_cf_resources[] = {
+	{
+	 .start = na_cf_ide,
+	 .end = na_cf_ide + 63,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ide_irq,
+	 .end = na_cf_ide_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+	{
+	 .start = na_cf_ctl,
+	 .end = na_cf_ctl + 15,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ctl_irq,
+	 .end = na_cf_ctl_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+};
+
+static struct platform_device na_cf_device = {
+	.name = "pata_altera_cf",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(na_cf_resources),
+	.resource = na_cf_resources,
+};
+#endif
+
+#ifdef USE_PATA_PLATFORM
 static struct pata_platform_info na_cf_platform_data = {
 	.ioport_shift = 2,
 };
@@ -588,7 +629,7 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_mmc_spi_device,
 #endif
 
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+#if defined(USE_PATA_PLATFORM) || defined(USE_PATA_ALTERA_CF)
 	&na_cf_device,
 #endif
 
@@ -607,7 +648,7 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 static int __init init_BSP(void)
 {
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+#ifdef USE_PATA_PLATFORM
 	cf_init(na_cf_ctl);
 #endif
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
