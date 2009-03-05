@@ -45,16 +45,19 @@ void dma_sync_single_for_cpu(struct device *dev, dma_addr_t handle,
 			     size_t size, enum dma_data_direction dir)
 {
 }
+EXPORT_SYMBOL(dma_sync_single_for_cpu);
 
 void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 			 int nents, enum dma_data_direction dir)
 {
 }
+EXPORT_SYMBOL(dma_sync_sg_for_cpu);
 
 int dma_mapping_error(struct device *dev, dma_addr_t handle)
 {
 	return 0;
 }
+EXPORT_SYMBOL(dma_mapping_error);
 
 dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
 			  enum dma_data_direction direction)
@@ -62,11 +65,13 @@ dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
 	dcache_push((unsigned long)ptr, size);
 	return (dma_addr_t)ptr;
 }
+EXPORT_SYMBOL(dma_map_single);
 
 void dma_unmap_single(struct device *dev, dma_addr_t addr,
 		      size_t size, enum dma_data_direction dir)
 {
 }
+EXPORT_SYMBOL(dma_unmap_single);
 
 dma_addr_t dma_map_page(struct device *dev, struct page *page,
 			unsigned long offset, size_t size,
@@ -74,11 +79,13 @@ dma_addr_t dma_map_page(struct device *dev, struct page *page,
 {
 	return page_to_phys(page);
 }
+EXPORT_SYMBOL(dma_map_page);
 
 void dma_unmap_page(struct device *dev, dma_addr_t address,
 		    size_t size, enum dma_data_direction dir)
 {
 }
+EXPORT_SYMBOL(dma_unmap_page);
 
 
 int
@@ -97,9 +104,11 @@ dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 
 	return nents;
 }
+EXPORT_SYMBOL(dma_map_sg);
 
 void dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 		int nhwentries, enum dma_data_direction direction)
 {
 	BUG_ON(direction == DMA_NONE);
 }
+EXPORT_SYMBOL(dma_unmap_sg);
