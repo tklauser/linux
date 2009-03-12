@@ -23,53 +23,112 @@
 #define __raw_writew writew
 #define __raw_writel writel
 
+#ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
+#define __IO_USE_DUFFS
+#endif
+
+#ifdef __IO_USE_DUFFS
+
+/* Use "Duff's Device" to unroll the loops. */
+#define __IO_OUT_LOOP(a, b, l)				\
+	do {						\
+		if (l > 0) {				\
+			int _n = (l + 7) / 8;		\
+			switch (l % 8) {		\
+			case 0: do {	*a = *b++;	\
+			case 7:		*a = *b++;	\
+			case 6:		*a = *b++;	\
+			case 5:		*a = *b++;	\
+			case 4:		*a = *b++;	\
+			case 3:		*a = *b++;	\
+			case 2:		*a = *b++;	\
+			case 1:		*a = *b++;	\
+				} while (--_n > 0);	\
+			}				\
+		}					\
+	} while (0)
+
+#define __IO_IN_LOOP(a, b, l)				\
+	do {						\
+		if (l > 0) {				\
+			int _n = (l + 7) / 8;		\
+			switch (l % 8) {		\
+			case 0: do {	*b++ = *a;	\
+			case 7:		*b++ = *a;	\
+			case 6:		*b++ = *a;	\
+			case 5:		*b++ = *a;	\
+			case 4:		*b++ = *a;	\
+			case 3:		*b++ = *a;	\
+			case 2:		*b++ = *a;	\
+			case 1:		*b++ = *a;	\
+				} while (--_n > 0);	\
+			}				\
+		}					\
+	} while (0)
+
+#else
+
+/* Use simple loops. */
+#define __IO_OUT_LOOP(a, b, l)				\
+	do {						\
+		while (l--) 				\
+			*a = *b++;			\
+	} while (0)
+
+#define __IO_IN_LOOP(a, b, l)				\
+	do {						\
+		while (l--)				\
+			*b++ = *a;			\
+	} while (0)
+
+#endif
+
+
 static inline void io_outsb(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned char *ap = (volatile unsigned char *)addr;
 	unsigned char *bp = (unsigned char *)buf;
-	while (len--)
-		*ap = *bp++;
+	__IO_OUT_LOOP(ap, bp, len);
 }
 
 static inline void io_outsw(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned short *ap = (volatile unsigned short *)addr;
 	unsigned short *bp = (unsigned short *)buf;
-	while (len--)
-		*ap = *bp++;
+	__IO_OUT_LOOP(ap, bp, len);
 }
 
 static inline void io_outsl(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned int *ap = (volatile unsigned int *)addr;
 	unsigned int *bp = (unsigned int *)buf;
-	while (len--)
-		*ap = *bp++;
+	__IO_OUT_LOOP(ap, bp, len);
 }
 
 static inline void io_insb(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned char *ap = (volatile unsigned char *)addr;
 	unsigned char *bp = (unsigned char *)buf;
-	while (len--)
-		*bp++ = *ap;
+	__IO_IN_LOOP(ap, bp, len);
 }
 
 static inline void io_insw(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned short *ap = (volatile unsigned short *)addr;
 	unsigned short *bp = (unsigned short *)buf;
-	while (len--)
-		*bp++ = *ap;
+	__IO_IN_LOOP(ap, bp, len);
 }
 
 static inline void io_insl(unsigned int addr, void *buf, int len)
 {
 	volatile unsigned int *ap = (volatile unsigned int *)addr;
 	unsigned int *bp = (unsigned int *)buf;
-	while (len--)
-		*bp++ = *ap;
+	__IO_IN_LOOP(ap, bp, len);
 }
+
+#undef __IO_OUT_LOOP
+#undef __IO_IN_LOOP
+#undef __IO_USE_DUFFS
 
 #define mmiowb()
 
