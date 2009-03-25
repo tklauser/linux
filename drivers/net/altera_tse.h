@@ -79,9 +79,9 @@
 /*** Define architecture specific parameters ***/
 
 #define MAC_UNITS                       8
-#define ALT_TSE_TOTAL_SGDMA_DESC_COUNT  256        /* Maximum number of descriptors for TX and RX*/
-#define ALT_TSE_TX_SGDMA_DESC_COUNT     128       /* Maximum number of descriptors for TX */
-#define ALT_TSE_RX_SGDMA_DESC_COUNT     128       /* Maximum number of descriptors for RX*/
+#define ALT_TSE_TOTAL_SGDMA_DESC_COUNT  128        /* Maximum number of descriptors for TX and RX*/
+#define ALT_TSE_TX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for TX */
+#define ALT_TSE_RX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for RX*/
 #define ALT_TSE_TOTAL_SGDMA_DESC_SIZE   (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
 #define ALT_TX_RING_MOD_MASK 		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
 #define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
@@ -97,20 +97,20 @@
 
 /* define Mac address */
 
-#define  MAC_0_OCTET 0x12
-#define  MAC_1_OCTET 0x12
-#define  MAC_2_OCTET 0x12
-#define  MAC_3_OCTET 0x12
-#define  MAC_4_OCTET 0x12
-#define  MAC_5_OCTET 0x12
+#define  MAC_0_OCTET 0x00
+#define  MAC_1_OCTET 0x07
+#define  MAC_2_OCTET 0x11
+#define  MAC_3_OCTET 0x01
+#define  MAC_4_OCTET 0x02
+#define  MAC_5_OCTET 0x03
 
-/* Stop compile if nios2.h is not generated with the Altera TSE-SGDMA FPGA design */
-#ifndef na_tse_mac_control_port
-  #error "@This build has not been configured with Altera example design of TSE-SGDMA."
-  #error "@You need to unselect ATSE Ethernet driver with make menuconfig or use proper system"
-  #error "@If your system contains different name then You need to fill following structure as "
-  #error "@components name declared in nios2.h "
-#endif
+// /* Stop compile if nios2.h is not generated with the Altera TSE-SGDMA FPGA design */
+// #ifndef na_tse_mac_control_port
+  // #error "@This build has not been configured with Altera example design of TSE-SGDMA."
+  // #error "@You need to unselect ATSE Ethernet driver with make menuconfig or use proper system"
+  // #error "@If your system contains different name then You need to fill following structure as "
+  // #error "@components name declared in nios2.h "
+// #endif
 
 /************************************************************************/
 /*                                                                      */
@@ -381,6 +381,9 @@ struct alt_tse_config {
 	int autoneg;
 	int speed;
 	int duplex;
+	int rx_fifo_depth;
+	int tx_fifo_depth;
+	char ethaddr[6];
 };
 	
 

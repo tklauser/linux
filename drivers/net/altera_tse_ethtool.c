@@ -130,6 +130,11 @@ static void tse_gstrings(struct net_device *dev, u32 stringset, u8 * buf)
 	
 }
 
+static int tse_stats_count(struct net_device *dev)
+{
+   return TSE_STATS_LEN;
+}
+
 static void tse_fill_stats(struct net_device *dev, struct ethtool_stats *dummy, u64 * buf)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
@@ -218,7 +223,7 @@ void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbu
 
 static int tse_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
-	struct alt_tse_private *tse_priv = (struct alt_tse_private *)dev->priv;
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	struct phy_device *phydev = tse_priv->phydev;
 	
 	if (NULL == phydev)                                              

@@ -51,6 +51,8 @@
 #include <linux/seq_file.h>
 #include <linux/mii.h>
 #include <linux/phy.h>
+#include <linux/types.h>
+#include <linux/ctype.h>
 
 #include <asm/irq.h>
 #include <asm/byteorder.h>
@@ -567,22 +569,16 @@ static struct resource alt_tse_resource[] = {
     .name  = TSE_RESOURCE_SGDMA_TX_IRQ,
     .flags = IORESOURCE_IRQ,
   },
-  [5] = {
-    .start = ALT_TSE_TX_RX_FIFO_DEPTH,            /* hard number as per system sopc file */
-    .end   = ALT_TSE_TX_RX_FIFO_DEPTH,            /* This macro is defined altera_tse.h file */
-    .name  = TSE_RESOURCE_FIFO_DEV,
-    .flags = IORESOURCE_MEM,
-  },
 
   #ifdef  CONFIG_DECS_MEMORY_SELECT
-  [6] = {
+  [5] = {
       .start = DECS_MEMORY_BASE_ADDR,
-      .end   = DECS_MEMORY_BASE_ADDR+ALT_TSE_TOTAL_SGDMA_DESC_SIZE,      /* hard number as per system sopc file */
+      .end   = DECS_MEMORY_BASE_ADDR+ALT_TSE_TOTAL_SGDMA_DESC_SIZE -1,      /* hard number as per system sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
   #else
-  [6] = {
+  [5] = {
       .start = 0,
       .end   = 0,                                 /* hard number as per system sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
@@ -591,13 +587,13 @@ static struct resource alt_tse_resource[] = {
   #endif
 
   #ifdef CONFIG_PHY_IRQ_PRESENCE
-  [7] = {
+  [6] = {
       .start = 0,
       .end   = 0,                                 /* hard number as per system sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_DEV,
       .flags = IORESOURCE_MEM,
   },
-  [8] = {
+  [7] = {
       .start = 0,
       .end   = 0,                                 /* hard number as per system sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
@@ -656,8 +652,8 @@ static struct platform_device alt_tse_mdio_device = {
 	}
 };
 
-//all of this, except mii_id can be changed with ethtool
-static struct alt_tse_config tse_config = {
+//all of this, except mii_id can be changed with ethtool & fifo depth
+static struct alt_tse_config tsemac0_config = {
 	.mii_id = 0, //should match alt_tse_mdio_device->id from above
 	.phy_addr = 18,
 	.tse_supported_modes =  PHY_GBIT_FEATURES,
@@ -673,7 +669,12 @@ static struct alt_tse_config tse_config = {
 		SUPPORTED_1000baseT_Half
 		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
 */
-	.interface = PHY_INTERFACE_MODE_RGMII,
+	/* Note, this should really be PHY_INTERFACE_MODE_RGMII_ID
+	 * but this is not present in include/linux/phy.h for 2.6.21
+	 * I've moddified marvell.c instead fo changing generic headers
+	 * to set  RX/TX DELAY  even for this mode
+	 */ 
+	.interface = 		PHY_INTERFACE_MODE_RGMII_ID,
 /*	Interfaces can be
 		PHY_INTERFACE_MODE_MII
 		PHY_INTERFACE_MODE_GMII
@@ -691,7 +692,11 @@ static struct alt_tse_config tse_config = {
 	.autoneg = AUTONEG_ENABLE,
 	//speed and duplex only valid if autoneg is AUTONED_DISABLE
 	.speed = SPEED_100, //SPEED_10, SPEED_100, SPEED_1000
-	.duplex = DUPLEX_HALF, //DUPLEX_HALF, DUPLEX_FULL
+	.duplex = DUPLEX_FULL, //DUPLEX_HALF, DUPLEX_FULL
+
+	.rx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+	.tx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+	.ethaddr = {0x00 , 0x70 , 0xed , 0x11 , 0x12 , 0x12},
 };
 
 static struct platform_device alt_tse_device = {
@@ -701,10 +706,47 @@ static struct platform_device alt_tse_device = {
   .num_resources  = ARRAY_SIZE(alt_tse_resource),
   .resource = alt_tse_resource,
   .dev    = {
-    .platform_data = &tse_config,
+    .platform_data = &tsemac0_config,
   }
 };   
 
+static void __init parse_mac_addr(struct alt_tse_config *tse_config, char *macstr)
+{
+        int i, j;
+        unsigned char result, value;
+
+        for (i = 0; i < 6; i++) {
+                result = 0;
+
+                if (i != 5 && *(macstr + 2) != ':')
+                        return;
+
+                for (j = 0; j < 2; j++) {
+                        if (isxdigit(*macstr)
+                            && (value =
+                                isdigit(*macstr) ? *macstr -
+                                '0' : toupper(*macstr) - 'A' + 10) < 16) {
+                                result = result * 16 + value;
+                                macstr++;
+                        } else
+                                return;
+                }
+
+                macstr++;
+//                tse_config->ethaddr[i] = result;
+                tse_config->ethaddr[i] = result;
+        }
+
+}
+
+static int __init setup_tsemac0(char *s)
+{
+	printk(KERN_INFO "Altera TSE MAC 0 ethaddr = %s\n", s);
+	parse_mac_addr((struct alt_tse_config*) &tsemac0_config, s);
+	return 0;
+}
+
+__setup("tsemac0=", setup_tsemac0);
 
 static int __init tse_device_init(void)
 {
