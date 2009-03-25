@@ -166,6 +166,53 @@ static struct mtd_partition nios2_partitions[] = {
 	 .offset = 0x020000,
 	 .mask_flags = MTD_WRITEABLE,	/* force read-only */
 	 }
+#elif defined(CONFIG_ALTERA_CYCLONE_III)
+	{
+	 .name = "userspace",
+	 .size =   0x02800000, /* 40Mb */
+	 .offset = 0x00000000,
+	},
+	{
+	 .name = "U-Boot",
+	 .size =   0x00100000, 
+	 .offset = 0x02800000,
+	},
+	{
+	 .name = "uImage1",
+	 .size =   0x00400000, 
+	 .offset = 0x02900000,
+	},
+	{
+	 .name = "uImage2",
+	 .size =   0x00400000, 
+	 .offset = 0x02d00000,
+	},
+	{
+	 .name = "uImage3",
+	 .size =   0x00400000, 
+	 .offset = 0x03100000,
+	},
+	
+	{
+	 .name = "DEFAULT_MMU",
+	 .size =   0x00380000,
+	 .offset = 0x03500000,
+	 },
+	{
+	 .name = "MAXIMUM_MMU",
+	 .size =   0x00380000,
+	 .offset = 0x03880000,
+	 },
+	{
+	 .name = "USER_IMAGE",
+	 .size =   0x00380000,
+	 .offset = 0x03c00000,
+	 },
+	{
+	  .name = "options-bits",
+	  .size =   0x00020000,
+	  .offset = 0x03f80000,
+	}
 #else
 	{
 	 .name = "romfs/jffs2",
@@ -192,7 +239,7 @@ static struct mtd_partition nios2_partitions[] = {
 };
 
 static struct physmap_flash_data nios2_flash_data = {
-#if defined(CONFIG_ALTERA_NEEK_C3)
+#if defined(CONFIG_ALTERA_NEEK_C3) || defined(CONFIG_ALTERA_CYCLONE_III)
 	.width = 2,		/* 16 bits data bus */
 #else
 	.width = 1,		/* 8 bits data bus */

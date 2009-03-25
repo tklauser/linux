@@ -180,6 +180,13 @@ config ALTERA_NEEK_C3
 	  Support for the Altera Nios II Embedded Evaluation Kit. Includes
 	  support for 10/100 ethernet, FLASH, SDRAM, LCD, VGA, I2C.
 
+config ALTERA_CYCLONE_III
+	bool "Altera CYCLONE III 3C120 Development board support"
+	depends on NIOS2
+	help
+	  Support for the Altera CYCLONE III 3C120 Development board. Includes
+	  support for 10/100/1000 ethernet, FLASH, DDR2 SDRAM.
+
 endchoice
 
 choice
