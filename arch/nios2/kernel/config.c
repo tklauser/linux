@@ -7,6 +7,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/mtd/mtd.h>
+#include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/spi.h>
@@ -268,6 +269,87 @@ static struct platform_device nios2_flash_device = {
 	.num_resources = 1,
 	.resource = &nios2_flash_resource,
 };
+#endif
+
+#if defined(CONFIG_MTD_NAND_PLATFORM) || defined(CONFIG_MTD_NAND_PLATFORM_MODULE)
+#ifdef CONFIG_MTD_PARTITIONS
+static struct mtd_partition nios2_plat_nand_partitions[] = {
+	{
+		.name   = "linux kernel(nand)",
+		.size   = 0x400000,
+		.offset = 0,
+	}, {
+		.name   = "file system(nand)",
+		.size   = MTDPART_SIZ_FULL,
+		.offset = MTDPART_OFS_APPEND,
+	},
+};
+#endif
+
+#define NIOS2_NAND_PLAT_CLE 2
+#define NIOS2_NAND_PLAT_ALE 3
+static void nios2_plat_nand_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
+{
+	struct nand_chip *this = mtd->priv;
+
+	if (cmd == NAND_CMD_NONE)
+		return;
+
+	if (ctrl & NAND_CLE)
+		writeb(cmd, this->IO_ADDR_W + (1 << NIOS2_NAND_PLAT_CLE));
+	else
+		writeb(cmd, this->IO_ADDR_W + (1 << NIOS2_NAND_PLAT_ALE));
+}
+
+#undef NIOS2_NAND_PLAT_READY    /* def gpio to read R/B status from NAND chip */
+#ifdef NIOS2_NAND_PLAT_READY 
+static int nios2_plat_nand_dev_ready(struct mtd_info *mtd)
+{
+	return gpio_get_value(NIOS2_NAND_PLAT_READY);
+}
+#endif
+
+static struct platform_nand_data nios2_plat_nand_data = {
+	.chip = {
+		.chip_delay = 30, /* FIXME: tR of your nand chip */
+#ifdef CONFIG_MTD_PARTITIONS
+		.partitions = nios2_plat_nand_partitions,
+		.nr_partitions = ARRAY_SIZE(nios2_plat_nand_partitions),
+#endif
+	},
+	.ctrl = {
+		.cmd_ctrl  = nios2_plat_nand_cmd_ctrl,
+#ifdef NIOS2_NAND_PLAT_READY
+		.dev_ready = nios2_plat_nand_dev_ready,
+#endif
+	},
+};
+
+#define MAX(x, y) (x > y ? x : y)
+static struct resource nios2_plat_nand_resources = {
+	.start = na_nand_flash_0,
+	.end   = na_nand_flash_0 + 12,
+	.flags = IORESOURCE_MEM,
+};
+
+static struct platform_device nios2_async_nand_device = {
+	.name = "gen_nand",
+	.id = -1,
+	.num_resources = 1,
+	.resource = &nios2_plat_nand_resources,
+	.dev = {
+		.platform_data = &nios2_plat_nand_data,
+	},
+};
+
+static void nios2_plat_nand_init(void)
+{
+#ifdef NIOS2_NAND_PLAT_READY
+	gpio_request(NIOS2_NAND_PLAT_READY, "nios2_nand_plat");
+#endif
+}
+#else
+static void nios2_plat_nand_init(void) {}
 #endif
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
@@ -664,6 +746,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&nios2_flash_device,
 #endif
 
+#if defined(CONFIG_MTD_NAND_PLATFORM) || defined(CONFIG_MTD_NAND_PLATFORM_MODULE)
+	&nios2_async_nand_device,
+#endif
+
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
 	&na_epcs_controller_device,
 #endif
@@ -698,6 +784,7 @@ static int __init init_BSP(void)
 #ifdef USE_PATA_PLATFORM
 	cf_init(na_cf_ctl);
 #endif
+	nios2_plat_nand_init();
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
 
 #if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
