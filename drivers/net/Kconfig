@@ -923,20 +923,6 @@ config ALT_TSE
 	---help---
 	  This is support for Altera Triple Speed Ethernet MAC driver implemented
 	  for uClinux.
-	  
-config DECS_MEMORY_SELECT
-	tristate "External memory support as SGDMA Descriptor memory"
-	depends on ALT_TSE
-	---help---
-	If you want to use external memory as descriptor then select this.
-
-config DECS_MEMORY_BASE
-	hex "external memory address as descriptor memory"
-	depends on DECS_MEMORY_SELECT
-	default "0x0C040000"
-	help
-	  This option allows you to set the external address as descriptor memory.
-	  You have to give proper address other wise it will corrupt kernel execution.
 
 #config PHY_IRQ_PRESENCE
 #	tristate "Board phy irq connection"

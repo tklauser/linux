@@ -91,10 +91,6 @@
 
 #define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
 
-#ifdef  CONFIG_DECS_MEMORY_SELECT
-  #define  DECS_MEMORY_BASE_ADDR    CONFIG_DECS_MEMORY_BASE
-#endif
-
 /* define Mac address */
 
 #define  MAC_0_OCTET 0x12

@@ -1119,23 +1119,23 @@ static struct resource alt_tse_resource[] = {
     .flags = IORESOURCE_MEM,
   },
 
-  #ifdef  CONFIG_DECS_MEMORY_SELECT
+#ifdef na_descriptor_memory
   [6] = {
-      .start = DECS_MEMORY_BASE_ADDR,
-      .end   = DECS_MEMORY_BASE_ADDR+ALT_TSE_TOTAL_SGDMA_DESC_SIZE,      /* code from sopc file */
+      .start = na_descriptor_memory,
+      .end   = na_descriptor_memory + na_descriptor_memory_size - 1,      /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
-  #else
+#else
   [6] = {
       .start = 0,
       .end   = 0,                                 /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
-  #endif
+#endif
 
-  #ifdef CONFIG_PHY_IRQ_PRESENCE
+#ifdef CONFIG_PHY_IRQ_PRESENCE
   [7] = {
       .start = 0,
       .end   = 0,                                 /* code from sopc file */
@@ -1148,7 +1148,7 @@ static struct resource alt_tse_resource[] = {
       .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
       .flags = IORESOURCE_IRQ,
   },
-  #endif
+#endif
 
 };
 
@@ -1252,11 +1252,13 @@ static struct platform_device alt_tse_device = {
 
 
 static void tse_device_init(void)
-{                                                
-  #ifndef  CONFIG_DECS_MEMORY_SELECT
-    alt_tse_resource[6].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
-    alt_tse_resource[6].end   = alt_tse_resource[6].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
-  #endif
+{
+#ifndef na_descriptor_memory
+	alt_tse_resource[6].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
+	if (!alt_tse_resource[6].start)
+		return -ENOMEM;
+	alt_tse_resource[6].end   = alt_tse_resource[6].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
+#endif
 }
 #else
 static void tse_device_init(void) {}
