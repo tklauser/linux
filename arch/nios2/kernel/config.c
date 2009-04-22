@@ -27,6 +27,7 @@
 #include <linux/altuart.h>
 #include <linux/nios_mmc.h>
 #include <linux/gpio.h>
+#include <linux/leds.h>
 
 /*
  *	Altera JTAG UART
@@ -105,6 +106,28 @@ static void nios2_gpio_init(void)
 #else
 static void nios2_gpio_init(void) {}
 #endif /* CONFIG_GENERIC_GPIO */
+
+#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
+static struct gpio_led nios2_led_pins[] = {
+	{
+		.name		= "led0",
+		.default_trigger = "heartbeat", /* optional */
+		.gpio		= 2, /* FIXME: gpio pin assignment */
+		.active_low	= 1,
+	},
+};
+
+static struct gpio_led_platform_data nios2_led_data = {
+	.num_leds		= ARRAY_SIZE(nios2_led_pins),
+	.leds			= nios2_led_pins,
+};
+
+static struct platform_device nios2_leds = {
+	.name			= "leds-gpio",
+	.id			= -1,
+	.dev.platform_data	= &nios2_led_data,
+};
+#endif
 
 /*
  *	MTD map, CFI flash, NAND flash, SPI/EPCS flash
@@ -1206,6 +1229,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&nios2_jtaguart,
 
 	&nios2_uart,
+
+#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
+	&nios2_leds,
+#endif
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 	&nios2_flash_device,
