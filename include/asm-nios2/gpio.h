@@ -65,7 +65,7 @@ static inline void gpio_set_value(unsigned gpio, int value)
 
 static inline int gpio_cansleep(unsigned gpio)
 {
-	return 1;
+	return 0;
 }
 
 static inline int gpio_get_value_cansleep(unsigned gpio)
