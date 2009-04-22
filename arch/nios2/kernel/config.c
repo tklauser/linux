@@ -26,6 +26,8 @@
 #include <linux/altjuart.h>
 #include <linux/altuart.h>
 #include <linux/nios_mmc.h>
+#include <linux/gpio.h>
+
 /*
  *	Altera JTAG UART
  */
@@ -87,6 +89,18 @@ static struct platform_device nios2_uart = {
 	.id = 0,
 	.dev.platform_data = nios2_uart_platform,
 };
+
+#ifdef CONFIG_GENERIC_GPIO
+resource_size_t nios2_gpio_mapbase;
+spinlock_t nios2_gpio_lock = SPIN_LOCK_UNLOCKED;
+
+static void nios2_gpio_init(void)
+{
+	nios2_gpio_mapbase = ioremap(na_pio_0,32);
+}
+#else
+static void nios2_gpio_init(void) {}
+#endif /* CONFIG_GENERIC_GPIO */
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 static struct mtd_partition nios2_partitions[] = {
@@ -781,6 +795,7 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 static int __init init_BSP(void)
 {
+	nios2_gpio_init();
 #ifdef USE_PATA_PLATFORM
 	cf_init(na_cf_ctl);
 #endif

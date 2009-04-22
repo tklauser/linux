@@ -3,5 +3,4 @@
 #
 
 obj-$(CONFIG_PCI)		+= pci/
-obj-$(CONFIG_I2C_NIOS2_GPIO)	+= i2c-gpio.o
 obj-$(CONFIG_ALTERA_REMOTE_UPDATE)	+= altremote.o

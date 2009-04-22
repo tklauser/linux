@@ -2,15 +2,6 @@
 
 source "arch/nios2/drivers/pci/Kconfig"
 
-config I2C_NIOS2_GPIO
-	tristate "GPIO-Based I2C Interface"
-	default N
-	select I2C
-	select I2C_ALGOBIT
-	help
-	  Say Y here if you use GPIO lines for an I2C bus.
-
-
 config ALTERA_REMOTE_UPDATE
 	bool "Remote update support"
 	depends on NIOS2

@@ -221,6 +221,13 @@ endchoice
 
 comment 'Platform drivers Options'
 
+config GENERIC_GPIO
+	bool "GPIO interface"
+	default n
+	help
+	  This enables support of Altera's PIO controller with Avalon
+	  interface, v9.0 or later with set/clear regs.
+
 config AVALON_DMA
 	bool "Support of DMA controller with Avalon interface"
 	default y
