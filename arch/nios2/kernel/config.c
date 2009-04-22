@@ -102,6 +102,12 @@ spinlock_t nios2_gpio_lock = SPIN_LOCK_UNLOCKED;
 static void nios2_gpio_init(void)
 {
 	nios2_gpio_mapbase = (resource_size_t)ioremap((unsigned long)na_pio_0, 32);
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+	gpio_direction_output(6,1); /* output only I2C SCLK on NEEK */
+	gpio_direction_output(0,1);
+	gpio_direction_output(4,1);
+	gpio_direction_output(3,0);
+#endif
 }
 #else
 static void nios2_gpio_init(void) {}
@@ -804,19 +810,54 @@ static struct platform_device na_i2c_1_device = {
 #if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
 #include <linux/i2c-gpio.h>
 
-static struct i2c_gpio_platform_data i2c_gpio_data = {
+static struct i2c_gpio_platform_data i2c_gpio_0_data = {
+	.sda_pin		= 7, /* FIXME: gpio pin assignment */
+	.scl_pin		= 6, /* FIXME: gpio pin assignment */
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_0_device = {
+	.name		= "i2c-gpio",
+	.id		= 0,
+	.dev		= {
+		.platform_data	= &i2c_gpio_0_data,
+	},
+};
+
+static struct i2c_gpio_platform_data i2c_gpio_1_data = {
 	.sda_pin		= 1, /* FIXME: gpio pin assignment */
 	.scl_pin		= 0, /* FIXME: gpio pin assignment */
 	.sda_is_open_drain	= 0,
 	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
 	.udelay			= 40,
 };
 
-static struct platform_device i2c_gpio_device = {
+static struct platform_device i2c_gpio_1_device = {
 	.name		= "i2c-gpio",
-	.id		= 0,
+	.id		= 1,
 	.dev		= {
-		.platform_data	= &i2c_gpio_data,
+		.platform_data	= &i2c_gpio_1_data,
+	},
+};
+
+static struct i2c_gpio_platform_data i2c_gpio_2_data = {
+	.sda_pin		= 5, /* FIXME: gpio pin assignment */
+	.scl_pin		= 4, /* FIXME: gpio pin assignment */
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_2_device = {
+	.name		= "i2c-gpio",
+	.id		= 2,
+	.dev		= {
+		.platform_data	= &i2c_gpio_2_data,
 	},
 };
 #endif
@@ -1270,7 +1311,9 @@ static struct platform_device *nios2_devices[] __initdata = {
 #endif
 
 #if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
-	&i2c_gpio_device,
+	&i2c_gpio_0_device,
+	&i2c_gpio_1_device,
+	&i2c_gpio_2_device,
 #endif
 
 #if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
