@@ -97,11 +97,10 @@ static struct platform_device nios2_uart = {
 
 #ifdef CONFIG_GENERIC_GPIO
 resource_size_t nios2_gpio_mapbase;
-spinlock_t nios2_gpio_lock = SPIN_LOCK_UNLOCKED;
 
 static void nios2_gpio_init(void)
 {
-	nios2_gpio_mapbase = (resource_size_t)ioremap((unsigned long)na_pio_0, 32);
+	nios2_gpio_mapbase = (resource_size_t)ioremap((unsigned long)na_gpio_0, 32);
 #if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
 	gpio_direction_output(6,1); /* output only I2C SCLK on NEEK */
 	gpio_direction_output(0,1);
