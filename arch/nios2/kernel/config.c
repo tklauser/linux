@@ -739,10 +739,19 @@ static void __init cf_init(unsigned ctl_base)
  *	Opencore I2C , gpio I2C
  */
 
-static struct i2c_board_info __initdata nios2_i2c_board_info[] = {
+/* if you have multiple i2c buses, you may have to register different board info for each of them */
+static struct i2c_board_info __initdata nios2_i2c_0_board_info[] = {
 #if defined(CONFIG_RTC_DRV_DS1307) || defined(CONFIG_RTC_DRV_DS1307_MODULE)
 	{
 		I2C_BOARD_INFO("ds1307", 0x68),
+	},
+#endif
+};
+
+static struct i2c_board_info __initdata nios2_i2c_1_board_info[] = {
+#if defined(CONFIG_EEPROM_AT24) || defined(CONFIG_EEPROM_MODULE)
+	{
+		I2C_BOARD_INFO("24c00", 0x50), /* microchip 24lc00 */
 	},
 #endif
 };
@@ -1357,8 +1366,10 @@ static int __init init_BSP(void)
 	nios2_plat_nand_init();
 	atse_device_init();
 	tse_device_init();
-	i2c_register_board_info(0, nios2_i2c_board_info,
-				ARRAY_SIZE(nios2_i2c_board_info));
+	i2c_register_board_info(0, nios2_i2c_0_board_info,
+				ARRAY_SIZE(nios2_i2c_0_board_info));
+	i2c_register_board_info(1, nios2_i2c_1_board_info,
+				ARRAY_SIZE(nios2_i2c_1_board_info));
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
 
 #if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
