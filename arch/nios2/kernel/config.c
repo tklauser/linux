@@ -898,6 +898,25 @@ static struct platform_device i2c_gpio_2_device = {
 #endif
 
 /*
+ *	One wire
+ */
+
+#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
+#include <linux/w1-gpio.h>
+
+static struct w1_gpio_platform_data nios2_w1_gpio_0_data = {
+	.pin		= 7, /* FIXME: gpio pin assignment */
+	.is_open_drain	= 0,
+};
+
+static struct platform_device nios2_w1_gpio_0_device = {
+	.name			= "w1-gpio",
+	.id			= -1,
+	.dev.platform_data	= &nios2_w1_gpio_0_data,
+};
+#endif
+
+/*
  *	Altera PS2
  */
 
@@ -1355,6 +1374,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&i2c_gpio_0_device,
 	&i2c_gpio_1_device,
 	&i2c_gpio_2_device,
+#endif
+
+#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
+	&nios2_w1_gpio_0_device,
 #endif
 
 #if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
