@@ -28,6 +28,7 @@
 #include <linux/nios_mmc.h>
 #include <linux/gpio.h>
 #include <linux/leds.h>
+#include <linux/gpio_mouse.h>
 
 /*
  *	Altera JTAG UART
@@ -92,7 +93,7 @@ static struct platform_device nios2_uart = {
 };
 
 /*
- *	Altera PIO
+ *	openip gpio
  */
 
 #ifdef CONFIG_GENERIC_GPIO
@@ -131,6 +132,32 @@ static struct platform_device nios2_leds = {
 	.name			= "leds-gpio",
 	.id			= -1,
 	.dev.platform_data	= &nios2_led_data,
+};
+#endif
+
+#if defined(CONFIG_MOUSE_GPIO) || defined(CONFIG_MOUSE_GPIO_MODULE)
+static struct gpio_mouse_platform_data nios2_gpio_mouse_data = {
+	.polarity	= GPIO_MOUSE_POLARITY_ACT_LOW,
+	{
+		{
+			.up		= 8, /* FIXME: gpio pin assignment */
+			.down		= 9,
+			.left		= 10,
+			.right		= 11,
+			.bleft		= 12,
+			.bmiddle	= 13,
+			.bright		= 14,
+		},
+	},
+	.scan_ms	= 10,
+};
+
+static struct platform_device nios2_gpio_mouse_device = {
+	.name		= "gpio_mouse",
+	.id		= 0,
+	.dev		= {
+		.platform_data = &nios2_gpio_mouse_data,
+	},
 };
 #endif
 
@@ -1283,6 +1310,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 #if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
 	&nios2_leds,
+#endif
+
+#if defined(CONFIG_MOUSE_GPIO) || defined(CONFIG_MOUSE_GPIO_MODULE)
+	&nios2_gpio_mouse_device,
 #endif
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
