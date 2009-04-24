@@ -582,7 +582,26 @@ static struct platform_device na_mmc_spi_device = {
 };
 #endif /* spi master and devices */
 
-#if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
+#if defined(CONFIG_SPI_GPIO) || defined(CONFIG_SPI_GPIO_MODULE)
+#include <linux/spi/spi_gpio.h>
+
+struct spi_gpio_platform_data nios2_spi_gpio_3_platform_data = {
+	.sck = 8, /* FIXME: gpio pin assignment */
+	.mosi = 9,
+	.miso = 10,
+	.num_chipselect = 1,
+};
+
+static struct platform_device nios2_spi_gpio_3_device = {
+	.name		= "spi_gpio",
+	.id = 3,		/* Bus number */
+	.dev	= {
+		.platform_data	= &nios2_spi_gpio_3_platform_data,
+	},
+};
+#endif
+
+#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
 static struct spi_board_info nios2_spi_devices[] = {
 
 #if defined(CONFIG_MTD_M25P80) || defined(CONFIG_MTD_M25P80_MODULE)
@@ -1355,6 +1374,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_mmc_spi_device,
 #endif
 
+#if defined(CONFIG_SPI_GPIO) || defined(CONFIG_SPI_GPIO_MODULE)
+	&nios2_spi_gpio_3_device,
+#endif
+
 #if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
 	&nios_mmc_device,
 #endif
@@ -1425,7 +1448,7 @@ static int __init init_BSP(void)
 				ARRAY_SIZE(nios2_i2c_1_board_info));
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
 
-#if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
+#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
 
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
 	defined(na_touch_panel_pen_irq_n)
