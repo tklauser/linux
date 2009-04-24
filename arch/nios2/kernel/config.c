@@ -633,7 +633,17 @@ static struct spi_board_info nios2_spi_devices[] = {
 	 .max_speed_hz = 25000000,
 	 .bus_num = 2,		/* must match spi host bus number of mmc spi  */
 	 .chip_select = 0,
-	 }
+	 },
+#endif
+
+#if defined(CONFIG_EEPROM_AT25) || defined(CONFIG_EEPROM_AT25_MODULE)
+	{
+	 .modalias = "at25",
+	 .max_speed_hz = 25000000,
+	 .bus_num = 3,		/* must match spi host bus*/
+	 .chip_select = 0,
+	 .controller_data = (void *) 11, /* FIXME: gpio pin assignment of CS */
+	 },
 #endif
 
 };
