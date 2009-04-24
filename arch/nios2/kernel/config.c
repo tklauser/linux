@@ -794,7 +794,7 @@ static struct i2c_board_info __initdata nios2_i2c_0_board_info[] = {
 };
 
 static struct i2c_board_info __initdata nios2_i2c_1_board_info[] = {
-#if defined(CONFIG_EEPROM_AT24) || defined(CONFIG_EEPROM_MODULE)
+#if defined(CONFIG_EEPROM_AT24) || defined(CONFIG_EEPROM_AT24_MODULE)
 	{
 		I2C_BOARD_INFO("24c00", 0x50), /* microchip 24lc00 */
 	},
