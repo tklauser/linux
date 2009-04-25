@@ -2151,6 +2151,16 @@ static void init_mdio(struct net_device *dev) {
 }
 #endif
 
+static const struct net_device_ops oeth_netdev_ops = {
+	.ndo_open               = oeth_open,
+	.ndo_stop               = oeth_close,
+	.ndo_start_xmit         = oeth_start_xmit,
+	.ndo_set_multicast_list = oeth_set_multicast_list,
+	.ndo_set_mac_address    = oeth_set_mac_add,
+	.ndo_get_stats          = oeth_get_stats,
+	.ndo_do_ioctl           = mii_ioctl,
+};
+
 /*-----------------------------------------------------------
  | Entry condition: Cpu interrupts ENabled
  |                   (in SPITE of claims disabled).
@@ -2396,15 +2406,9 @@ static int __init oeth_probe(struct net_device *dev)
 
     /* The Open Ethernet specific entries in the device structure.
      */
-    dev->open = oeth_open;
-    dev->hard_start_xmit = oeth_start_xmit;
-    dev->stop = oeth_close;
-    dev->get_stats = oeth_get_stats;
-    dev->set_multicast_list = oeth_set_multicast_list;
-    dev->set_mac_address = oeth_set_mac_add;
+    dev->netdev_ops = &oeth_netdev_ops;
 
     bmcr_val = eth_mdread(dev, PHY_ADDRESS, MII_BMCR);
-    dev->do_ioctl = mii_ioctl;
     cep->mii.dev = dev;
     cep->mii.mdio_read = eth_mdread;
     cep->mii.mdio_write = eth_mdwrite;
