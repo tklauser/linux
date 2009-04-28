@@ -84,42 +84,42 @@
 #endif
 
 
-static inline void io_outsb(unsigned int addr, void *buf, int len)
+static inline void io_outsb(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned char *ap = (volatile unsigned char *)addr;
 	unsigned char *bp = (unsigned char *)buf;
 	__IO_OUT_LOOP(ap, bp, len);
 }
 
-static inline void io_outsw(unsigned int addr, void *buf, int len)
+static inline void io_outsw(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned short *ap = (volatile unsigned short *)addr;
 	unsigned short *bp = (unsigned short *)buf;
 	__IO_OUT_LOOP(ap, bp, len);
 }
 
-static inline void io_outsl(unsigned int addr, void *buf, int len)
+static inline void io_outsl(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned int *ap = (volatile unsigned int *)addr;
 	unsigned int *bp = (unsigned int *)buf;
 	__IO_OUT_LOOP(ap, bp, len);
 }
 
-static inline void io_insb(unsigned int addr, void *buf, int len)
+static inline void io_insb(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned char *ap = (volatile unsigned char *)addr;
 	unsigned char *bp = (unsigned char *)buf;
 	__IO_IN_LOOP(ap, bp, len);
 }
 
-static inline void io_insw(unsigned int addr, void *buf, int len)
+static inline void io_insw(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned short *ap = (volatile unsigned short *)addr;
 	unsigned short *bp = (unsigned short *)buf;
 	__IO_IN_LOOP(ap, bp, len);
 }
 
-static inline void io_insl(unsigned int addr, void *buf, int len)
+static inline void io_insl(void __iomem *addr, void *buf, int len)
 {
 	volatile unsigned int *ap = (volatile unsigned int *)addr;
 	unsigned int *bp = (unsigned int *)buf;
