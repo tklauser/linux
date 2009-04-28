@@ -33,8 +33,6 @@ typedef struct {
 
 #include <linux/irq_cpustat.h>	/* Standard mappings for irq_cpustat_t above */
 
-#define HARDIRQ_BITS	8
-
 #ifdef CONFIG_SMP
 # error nios2 SMP is not available
 #endif /* CONFIG_SMP */
