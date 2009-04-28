@@ -169,6 +169,9 @@
 /* NWPSERIAL */
 #define PORT_NWPSERIAL	85
 
+/* MAX3100 */
+#define PORT_MAX3100    86
+
 #ifdef __KERNEL__
 
 #include <linux/compiler.h>
@@ -282,7 +285,7 @@ struct uart_port {
 	struct uart_icount	icount;			/* statistics */
 
 	struct console		*cons;			/* struct console, if any */
-#ifdef CONFIG_SERIAL_CORE_CONSOLE
+#if defined(CONFIG_SERIAL_CORE_CONSOLE) || defined(SUPPORT_SYSRQ)
 	unsigned long		sysrq;			/* sysrq timeout */
 #endif
 
