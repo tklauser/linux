@@ -22,6 +22,11 @@ sub getClass {
 	return $self->{ptf}->getAssignment ('class');
 }
 
+sub getGtfClass {
+  my ($self) = @_;
+  
+  return $self->{ptf}->getAssignment ('gtf_class_name');
+}
 sub getPorts {
 	my ($self) = @_;
 	

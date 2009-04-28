@@ -112,11 +112,11 @@ config ATA_PIIX
 	  If unsure, say N.
 
 config SATA_MV
-	tristate "Marvell SATA support (HIGHLY EXPERIMENTAL)"
-	depends on EXPERIMENTAL
+	tristate "Marvell SATA support"
 	help
 	  This option enables support for the Marvell Serial ATA family.
-	  Currently supports 88SX[56]0[48][01] chips.
+	  Currently supports 88SX[56]0[48][01] PCI(-X) chips,
+	  as well as the newer [67]042 PCI-X/PCIe and SOC devices.
 
 	  If unsure, say N.
 
@@ -698,6 +698,15 @@ config PATA_IXP4XX_CF
 
 	  If unsure, say N.
 
+config PATA_OCTEON_CF
+	tristate "OCTEON Boot Bus Compact Flash support"
+	depends on CPU_CAVIUM_OCTEON
+	help
+	  This option enables a polled compact flash driver for use with
+	  compact flash cards attached to the OCTEON boot bus.
+
+	  If unsure, say N.
+
 config PATA_SCC
 	tristate "Toshiba's Cell Reference Set IDE support"
 	depends on PCI && PPC_CELLEB
@@ -722,6 +731,17 @@ config PATA_BF54X
 	help
 	  This option enables support for the built-in ATAPI controller on
 	  Blackfin 54x family chips.
+
+	  If unsure, say N.
+
+config PATA_ALTERA_CF
+	tristate "Altera SOPC Builder CompactFlash support (Experimental)"
+	depends on NIOS2 && EXPERIMENTAL
+	help
+	  This option enables support for the CompactFlash core in an
+	  Altera SOPC Builder system.  It supports insertion and removal
+	  of CompactFlash cards.  It can be used instead of the generic
+	  PATA platform device support if this functionality is desired.
 
 	  If unsure, say N.
 

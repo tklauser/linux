@@ -2,12 +2,11 @@
 
 source "arch/nios2/drivers/pci/Kconfig"
 
-config I2C_NIOS2_GPIO
-	tristate "GPIO-Based I2C Interface"
+config ALTERA_REMOTE_UPDATE
+	bool "Remote update support"
+	depends on NIOS2
 	default N
-	select I2C
-	select I2C_ALGOBIT
 	help
-	  Say Y here if you use GPIO lines for an I2C bus.
-
+	  This driver provides support for automatic reconfiguration of a 
+	  CycloneIII FPGA (Possibly others too).
 

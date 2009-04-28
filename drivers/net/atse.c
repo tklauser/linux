@@ -1,7 +1,7 @@
 /*
  *  linux/drivers/net/atse.c
  *
- *  Copyright (C) 2008       Joseph "Camel" Chen (joe4camel@gmail.com)
+ *  Copyright (C) 2008       Joseph "Camel" Chen (camel4joe@gmail.com)
  *
  *  All rights reserved.
  *
@@ -1419,6 +1419,13 @@ atse_shutdown(struct net_device *ndev)
 
 }
 
+static const struct net_device_ops atse_netdev_ops = {
+	.ndo_open               = atse_open,
+	.ndo_stop               = atse_close,
+	.ndo_start_xmit         = atse_hard_start_xmit,
+	.ndo_tx_timeout         = atse_timeout,
+	.ndo_set_multicast_list = atse_set_multicast_list,
+};
 
 
 static int atse_probe(struct net_device *ndev)
@@ -1453,7 +1460,7 @@ static int atse_probe(struct net_device *ndev)
 	/* Set up network device data structure*/
 
 	/* Set up the board priv data */
-	bd_priv = (struct atse_board_priv *)ndev->priv;
+	bd_priv = (struct atse_board_priv *)netdev_priv(ndev);
 	memset(bd_priv, 0, sizeof(*bd_priv));
 
 	spin_lock_init(&bd_priv->tx_lock);
@@ -1472,14 +1479,8 @@ static int atse_probe(struct net_device *ndev)
 	ndev->dev_addr[3] = mac_addr_0.c[3];
 	ndev->dev_addr[4] = mac_addr_1.c[0];
 	ndev->dev_addr[5] = mac_addr_1.c[1];
-
-	ndev->open            = atse_open;
-	ndev->stop            = atse_close;
-	ndev->hard_start_xmit = atse_hard_start_xmit;
-	ndev->tx_timeout = atse_timeout;
 	ndev->get_stats = atse_query_stats;
-	ndev->set_multicast_list = atse_set_multicast_list;
-	
+	ndev->netdev_ops = &atse_netdev_ops;
 
 	ret = register_netdev(ndev);
 	if (ret != 0) {
@@ -1540,7 +1541,7 @@ static void atse_release_board(struct platform_device *pdev, struct atse_board_p
 static int atse_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
-	struct atse_board_priv *bd_priv = ndev->priv;
+	struct atse_board_priv *bd_priv = netdev_priv(ndev);
 
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
 
@@ -1575,7 +1576,7 @@ atse_drv_suspend(struct platform_device *dev, pm_message_t state)
  */
 static void atse_init_atse(struct net_device *ndev)
 {
-	struct atse_board_priv *bd_priv = (struct atse_board_priv *) ndev->priv;
+  struct atse_board_priv *bd_priv = (struct atse_board_priv *) netdev_priv(ndev);
 
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
 	printk("++++JoeCamel:%s:%d:%s: FIXME\n", __FILE__, __LINE__, __FUNCTION__);
@@ -1612,7 +1613,7 @@ static void atse_reset(struct atse_board_priv *bd_priv)
 static int atse_drv_resume(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
-	struct atse_board_priv *bd_priv = (struct atse_board_priv *) ndev->priv;
+	struct atse_board_priv *bd_priv = (struct atse_board_priv *) netdev_priv(ndev);
 
 	ATSE_DEBUG_PRINT_FUNC_TRACE_ENTER();
 	printk("++++JoeCamel:%s:%d:%s: FIXME\n", __FILE__, __LINE__, __FUNCTION__);

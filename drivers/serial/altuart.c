@@ -327,7 +327,7 @@ static void altera_uart_config_port(struct uart_port *port, int flags)
 	writeb(0, port->membase + ALTERA_UART_CONTROL_REG);
 
 	if (request_irq
-	    (port->irq, altera_uart_interrupt, IRQF_DISABLED | IRQF_SHARED,
+	    (port->irq, altera_uart_interrupt, IRQF_DISABLED,
 	     "UART", port))
 		printk(KERN_ERR "ALTERA_UART: unable to attach Altera UART %d "
 		       "interrupt vector=%d\n", port->line, port->irq);

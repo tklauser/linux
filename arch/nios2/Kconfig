@@ -180,6 +180,13 @@ config ALTERA_NEEK_C3
 	  Support for the Altera Nios II Embedded Evaluation Kit. Includes
 	  support for 10/100 ethernet, FLASH, SDRAM, LCD, VGA, I2C.
 
+config ALTERA_CYCLONE_III
+	bool "Altera CYCLONE III 3C120 Development board support"
+	depends on NIOS2
+	help
+	  Support for the Altera CYCLONE III 3C120 Development board. Includes
+	  support for 10/100/1000 ethernet, FLASH, DDR2 SDRAM.
+
 endchoice
 
 choice
@@ -213,6 +220,13 @@ config NIOS2_HW_MULX
 endchoice
 
 comment 'Platform drivers Options'
+
+config GENERIC_GPIO
+	bool "GPIO interface"
+	default n
+	help
+	  This enables support of Altera's PIO controller with Avalon
+	  interface, v9.0 or later with set/clear regs.
 
 config AVALON_DMA
 	bool "Support of DMA controller with Avalon interface"

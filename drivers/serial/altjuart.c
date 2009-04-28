@@ -231,7 +231,7 @@ static void altera_jtaguart_config_port(struct uart_port *port, int flags)
 	writeb(0, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 
 	if (request_irq
-	    (port->irq, altera_jtaguart_interrupt, IRQF_DISABLED | IRQF_SHARED,
+	    (port->irq, altera_jtaguart_interrupt, IRQF_DISABLED,
 	     "JTAGUART", port))
 		printk(KERN_ERR
 		       "ALTERA_JTAGUART: unable to attach Altera JTAG UART %d "

@@ -7,6 +7,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/mtd/mtd.h>
+#include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/physmap.h>
 #include <linux/spi/spi.h>
@@ -25,6 +26,10 @@
 #include <linux/altjuart.h>
 #include <linux/altuart.h>
 #include <linux/nios_mmc.h>
+#include <linux/gpio.h>
+#include <linux/leds.h>
+#include <linux/gpio_mouse.h>
+
 /*
  *	Altera JTAG UART
  */
@@ -86,6 +91,79 @@ static struct platform_device nios2_uart = {
 	.id = 0,
 	.dev.platform_data = nios2_uart_platform,
 };
+
+/*
+ *	openip gpio
+ */
+
+#ifdef CONFIG_GENERIC_GPIO
+resource_size_t nios2_gpio_mapbase;
+
+static void nios2_gpio_init(void)
+{
+	nios2_gpio_mapbase = (resource_size_t)ioremap((unsigned long)na_gpio_0, 32);
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+	gpio_direction_output(6,1); /* output only I2C SCLK on NEEK */
+	gpio_direction_output(0,1);
+	gpio_direction_output(4,1);
+	gpio_direction_output(3,0);
+#endif
+}
+#else
+static void nios2_gpio_init(void) {}
+#endif /* CONFIG_GENERIC_GPIO */
+
+#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
+static struct gpio_led nios2_led_pins[] = {
+	{
+		.name		= "led0",
+		.default_trigger = "heartbeat", /* optional */
+		.gpio		= 2, /* FIXME: gpio pin assignment */
+		.active_low	= 1,
+	},
+};
+
+static struct gpio_led_platform_data nios2_led_data = {
+	.num_leds		= ARRAY_SIZE(nios2_led_pins),
+	.leds			= nios2_led_pins,
+};
+
+static struct platform_device nios2_leds = {
+	.name			= "leds-gpio",
+	.id			= -1,
+	.dev.platform_data	= &nios2_led_data,
+};
+#endif
+
+#if defined(CONFIG_MOUSE_GPIO) || defined(CONFIG_MOUSE_GPIO_MODULE)
+static struct gpio_mouse_platform_data nios2_gpio_mouse_data = {
+	.polarity	= GPIO_MOUSE_POLARITY_ACT_LOW,
+	{
+		{
+			.up		= 8, /* FIXME: gpio pin assignment */
+			.down		= 9,
+			.left		= 10,
+			.right		= 11,
+			.bleft		= 12,
+			.bmiddle	= 13,
+			.bright		= 14,
+		},
+	},
+	.scan_ms	= 10,
+};
+
+static struct platform_device nios2_gpio_mouse_device = {
+	.name		= "gpio_mouse",
+	.id		= 0,
+	.dev		= {
+		.platform_data = &nios2_gpio_mouse_data,
+	},
+};
+#endif
+
+/*
+ *	MTD map, CFI flash, NAND flash, SPI/EPCS flash
+ */
 
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 static struct mtd_partition nios2_partitions[] = {
@@ -166,6 +244,53 @@ static struct mtd_partition nios2_partitions[] = {
 	 .offset = 0x020000,
 	 .mask_flags = MTD_WRITEABLE,	/* force read-only */
 	 }
+#elif defined(CONFIG_ALTERA_CYCLONE_III)
+	{
+	 .name = "userspace",
+	 .size =   0x02800000, /* 40Mb */
+	 .offset = 0x00000000,
+	},
+	{
+	 .name = "U-Boot",
+	 .size =   0x00100000, 
+	 .offset = 0x02800000,
+	},
+	{
+	 .name = "uImage1",
+	 .size =   0x00400000, 
+	 .offset = 0x02900000,
+	},
+	{
+	 .name = "uImage2",
+	 .size =   0x00400000, 
+	 .offset = 0x02d00000,
+	},
+	{
+	 .name = "uImage3",
+	 .size =   0x00400000, 
+	 .offset = 0x03100000,
+	},
+	
+	{
+	 .name = "DEFAULT_MMU",
+	 .size =   0x00380000,
+	 .offset = 0x03500000,
+	 },
+	{
+	 .name = "MAXIMUM_MMU",
+	 .size =   0x00380000,
+	 .offset = 0x03880000,
+	 },
+	{
+	 .name = "USER_IMAGE",
+	 .size =   0x00380000,
+	 .offset = 0x03c00000,
+	 },
+	{
+	  .name = "options-bits",
+	  .size =   0x00020000,
+	  .offset = 0x03f80000,
+	}
 #else
 	{
 	 .name = "romfs/jffs2",
@@ -192,7 +317,7 @@ static struct mtd_partition nios2_partitions[] = {
 };
 
 static struct physmap_flash_data nios2_flash_data = {
-#if defined(CONFIG_ALTERA_NEEK_C3)
+#if defined(CONFIG_ALTERA_NEEK_C3) || defined(CONFIG_ALTERA_CYCLONE_III)
 	.width = 2,		/* 16 bits data bus */
 #else
 	.width = 1,		/* 8 bits data bus */
@@ -221,6 +346,87 @@ static struct platform_device nios2_flash_device = {
 	.num_resources = 1,
 	.resource = &nios2_flash_resource,
 };
+#endif
+
+#if defined(CONFIG_MTD_NAND_PLATFORM) || defined(CONFIG_MTD_NAND_PLATFORM_MODULE)
+#ifdef CONFIG_MTD_PARTITIONS
+static struct mtd_partition nios2_plat_nand_partitions[] = {
+	{
+		.name   = "linux kernel(nand)",
+		.size   = 0x400000,
+		.offset = 0,
+	}, {
+		.name   = "file system(nand)",
+		.size   = MTDPART_SIZ_FULL,
+		.offset = MTDPART_OFS_APPEND,
+	},
+};
+#endif
+
+#define NIOS2_NAND_PLAT_CLE 2
+#define NIOS2_NAND_PLAT_ALE 3
+static void nios2_plat_nand_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
+{
+	struct nand_chip *this = mtd->priv;
+
+	if (cmd == NAND_CMD_NONE)
+		return;
+
+	if (ctrl & NAND_CLE)
+		writeb(cmd, this->IO_ADDR_W + (1 << NIOS2_NAND_PLAT_CLE));
+	else
+		writeb(cmd, this->IO_ADDR_W + (1 << NIOS2_NAND_PLAT_ALE));
+}
+
+#undef NIOS2_NAND_PLAT_READY    /* FIXME: define gpio pin assignment to R/B NAND */
+#ifdef NIOS2_NAND_PLAT_READY 
+static int nios2_plat_nand_dev_ready(struct mtd_info *mtd)
+{
+	return gpio_get_value(NIOS2_NAND_PLAT_READY);
+}
+#endif
+
+static struct platform_nand_data nios2_plat_nand_data = {
+	.chip = {
+		.chip_delay = 30, /* FIXME: tR of your nand chip */
+#ifdef CONFIG_MTD_PARTITIONS
+		.partitions = nios2_plat_nand_partitions,
+		.nr_partitions = ARRAY_SIZE(nios2_plat_nand_partitions),
+#endif
+	},
+	.ctrl = {
+		.cmd_ctrl  = nios2_plat_nand_cmd_ctrl,
+#ifdef NIOS2_NAND_PLAT_READY
+		.dev_ready = nios2_plat_nand_dev_ready,
+#endif
+	},
+};
+
+#define MAX(x, y) (x > y ? x : y)
+static struct resource nios2_plat_nand_resources = {
+	.start = na_nand_flash_0,
+	.end   = na_nand_flash_0 + 12,
+	.flags = IORESOURCE_MEM,
+};
+
+static struct platform_device nios2_async_nand_device = {
+	.name = "gen_nand",
+	.id = -1,
+	.num_resources = 1,
+	.resource = &nios2_plat_nand_resources,
+	.dev = {
+		.platform_data = &nios2_plat_nand_data,
+	},
+};
+
+static void nios2_plat_nand_init(void)
+{
+#ifdef NIOS2_NAND_PLAT_READY
+	gpio_request(NIOS2_NAND_PLAT_READY, "nios2_nand_plat");
+#endif
+}
+#else
+static void nios2_plat_nand_init(void) {}
 #endif
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
@@ -284,6 +490,10 @@ static struct flash_platform_data nios2_spi_flash_data = {
 #endif
 };
 #endif
+
+/*
+ *	Altera SPI, MMC
+ */
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_touch_panel_spi)
 static struct resource na_touch_panel_spi_resource[] = {
@@ -372,7 +582,26 @@ static struct platform_device na_mmc_spi_device = {
 };
 #endif /* spi master and devices */
 
-#if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
+#if defined(CONFIG_SPI_GPIO) || defined(CONFIG_SPI_GPIO_MODULE)
+#include <linux/spi/spi_gpio.h>
+
+struct spi_gpio_platform_data nios2_spi_gpio_3_platform_data = {
+	.sck = 8, /* FIXME: gpio pin assignment */
+	.mosi = 9,
+	.miso = 10,
+	.num_chipselect = 1,
+};
+
+static struct platform_device nios2_spi_gpio_3_device = {
+	.name		= "spi_gpio",
+	.id = 3,		/* Bus number */
+	.dev	= {
+		.platform_data	= &nios2_spi_gpio_3_platform_data,
+	},
+};
+#endif
+
+#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
 static struct spi_board_info nios2_spi_devices[] = {
 
 #if defined(CONFIG_MTD_M25P80) || defined(CONFIG_MTD_M25P80_MODULE)
@@ -404,13 +633,111 @@ static struct spi_board_info nios2_spi_devices[] = {
 	 .max_speed_hz = 25000000,
 	 .bus_num = 2,		/* must match spi host bus number of mmc spi  */
 	 .chip_select = 0,
-	 }
+	 },
+#endif
+
+#if defined(CONFIG_EEPROM_AT25) || defined(CONFIG_EEPROM_AT25_MODULE)
+	{
+	 .modalias = "at25",
+	 .max_speed_hz = 25000000,
+	 .bus_num = 3,		/* must match spi host bus*/
+	 .chip_select = 0,
+	 .controller_data = (void *) 11, /* FIXME: gpio pin assignment of CS */
+	 },
 #endif
 
 };
 #endif
 
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+/*
+ *	PFS Tech SD/SDIO/MMC Host
+ */
+
+/* Map na_sdio_host to na_sdio if it exists */
+#if defined(na_sdio_host)
+#define na_sdio na_sdio_host
+#define na_sdio_irq na_sdio_host_irq
+#define na_sdio_clock_freq na_sdio_host_clock_freq
+#endif
+
+#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
+
+static struct nios_mmc_platform_mmc nios2_mmc_platform[] = {
+	{
+	 .mapbase = (unsigned long)na_sdio,
+	 .irq = na_sdio_irq,
+	 .clk_src = na_sdio_clock_freq,
+	 },
+};
+
+static struct resource nios_mmc_resources[] = {
+	[0] = {
+		.start = na_sdio,
+		.end = na_sdio + (16*4-1),
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_sdio_irq,
+		.end = na_sdio_irq,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+static struct platform_device nios_mmc_device = {
+	.name = "nios_mmc",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(nios_mmc_resources),
+	.resource = nios_mmc_resources,
+	.dev.platform_data = nios2_mmc_platform,
+};
+
+#endif
+
+/*
+ *	Altera CF IDE
+ */
+
+#if defined(na_cf_ide)
+/* Use PATA_ALTERA_CF in preference to PATA_PLATFORM */
+#if defined(CONFIG_PATA_ALTERA_CF) || defined(CONFIG_PATA_ALTERA_CF_MODULE)
+#define USE_PATA_ALTERA_CF
+#elif defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)
+#define USE_PATA_PLATFORM
+#endif
+#endif
+
+#ifdef USE_PATA_ALTERA_CF
+static struct resource na_cf_resources[] = {
+	{
+	 .start = na_cf_ide,
+	 .end = na_cf_ide + 63,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ide_irq,
+	 .end = na_cf_ide_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+	{
+	 .start = na_cf_ctl,
+	 .end = na_cf_ctl + 15,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_cf_ctl_irq,
+	 .end = na_cf_ctl_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+};
+
+static struct platform_device na_cf_device = {
+	.name = "pata_altera_cf",
+	.id = -1,
+	.num_resources = ARRAY_SIZE(na_cf_resources),
+	.resource = na_cf_resources,
+};
+#endif
+
+#ifdef USE_PATA_PLATFORM
 static struct pata_platform_info na_cf_platform_data = {
 	.ioport_shift = 2,
 };
@@ -463,45 +790,26 @@ static void __init cf_init(unsigned ctl_base)
 }
 #endif
 
-/* SD/SDIO/MMC Host Platform Device */
-/* Map na_sdio_host to na_sdio if it exists */
-#if defined(na_sdio_host)
-#define na_sdio na_sdio_host
-#define na_sdio_irq na_sdio_host_irq
-#define na_sdio_clock_freq na_sdio_host_clock_freq
-#endif
+/*
+ *	Opencore I2C , gpio I2C
+ */
 
-#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
-
-static struct nios_mmc_platform_mmc nios2_mmc_platform[] = {
+/* if you have multiple i2c buses, you may have to register different board info for each of them */
+static struct i2c_board_info __initdata nios2_i2c_0_board_info[] = {
+#if defined(CONFIG_RTC_DRV_DS1307) || defined(CONFIG_RTC_DRV_DS1307_MODULE)
 	{
-	 .mapbase = (unsigned long)na_sdio,
-	 .irq = na_sdio_irq,
-	 .clk_src = na_sdio_clock_freq,
-	 },
-};
-
-static struct resource nios_mmc_resources[] = {
-	[0] = {
-		.start = na_sdio,
-		.end = na_sdio + (16*4-1),
-		.flags = IORESOURCE_MEM,
+		I2C_BOARD_INFO("ds1307", 0x68),
 	},
-	[1] = {
-		.start = na_sdio_irq,
-		.end = na_sdio_irq,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-static struct platform_device nios_mmc_device = {
-	.name = "nios_mmc",
-	.id = 0,
-	.num_resources = ARRAY_SIZE(nios_mmc_resources),
-	.resource = nios_mmc_resources,
-	.dev.platform_data = nios2_mmc_platform,
-};
-
 #endif
+};
+
+static struct i2c_board_info __initdata nios2_i2c_1_board_info[] = {
+#if defined(CONFIG_EEPROM_AT24) || defined(CONFIG_EEPROM_AT24_MODULE)
+	{
+		I2C_BOARD_INFO("24c00", 0x50), /* microchip 24lc00 */
+	},
+#endif
+};
 
 #if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
 static struct resource na_i2c_0_resources[] = {
@@ -563,6 +871,482 @@ static struct platform_device na_i2c_1_device = {
 };
 #endif
 
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+#include <linux/i2c-gpio.h>
+
+static struct i2c_gpio_platform_data i2c_gpio_0_data = {
+	.sda_pin		= 7, /* FIXME: gpio pin assignment */
+	.scl_pin		= 6, /* FIXME: gpio pin assignment */
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_0_device = {
+	.name		= "i2c-gpio",
+	.id		= 0,
+	.dev		= {
+		.platform_data	= &i2c_gpio_0_data,
+	},
+};
+
+static struct i2c_gpio_platform_data i2c_gpio_1_data = {
+	.sda_pin		= 1, /* FIXME: gpio pin assignment */
+	.scl_pin		= 0, /* FIXME: gpio pin assignment */
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_1_device = {
+	.name		= "i2c-gpio",
+	.id		= 1,
+	.dev		= {
+		.platform_data	= &i2c_gpio_1_data,
+	},
+};
+
+static struct i2c_gpio_platform_data i2c_gpio_2_data = {
+	.sda_pin		= 5, /* FIXME: gpio pin assignment */
+	.scl_pin		= 4, /* FIXME: gpio pin assignment */
+	.sda_is_open_drain	= 0,
+	.scl_is_open_drain	= 0,
+	.scl_is_output_only	= 1,
+	.udelay			= 40,
+};
+
+static struct platform_device i2c_gpio_2_device = {
+	.name		= "i2c-gpio",
+	.id		= 2,
+	.dev		= {
+		.platform_data	= &i2c_gpio_2_data,
+	},
+};
+#endif
+
+/*
+ *	One wire
+ */
+
+#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
+#include <linux/w1-gpio.h>
+
+static struct w1_gpio_platform_data nios2_w1_gpio_0_data = {
+	.pin		= 7, /* FIXME: gpio pin assignment */
+	.is_open_drain	= 0,
+};
+
+static struct platform_device nios2_w1_gpio_0_device = {
+	.name			= "w1-gpio",
+	.id			= -1,
+	.dev.platform_data	= &nios2_w1_gpio_0_data,
+};
+#endif
+
+/*
+ *	Altera PS2
+ */
+
+#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
+static struct resource altps2_0_resources[] = {
+	[0] = {
+		.start		= na_ps2_0,
+		.end		= na_ps2_0 + 0x8 - 1,
+		.flags		= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start		= na_ps2_0_irq,
+		.end		= na_ps2_0_irq,
+		.flags		= IORESOURCE_IRQ,
+	},
+};
+static struct platform_device altps2_0_device = {
+	.name		= "altps2",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(altps2_0_resources),
+	.resource	= altps2_0_resources,
+};
+
+#if defined(na_ps2_1)
+static struct resource altps2_1_resources[] = {
+	[0] = {
+		.start		= na_ps2_1,
+		.end		= na_ps2_1 + 0x8 - 1,
+		.flags		= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start		= na_ps2_1_irq,
+		.end		= na_ps2_1_irq,
+		.flags		= IORESOURCE_IRQ,
+	},
+};
+static struct platform_device altps2_1_device = {
+	.name		= "altps2",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(altps2_1_resources),
+	.resource	= altps2_1_resources,
+};
+#endif
+#endif
+
+/*
+ *	Altera Remote update
+ */
+
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(na_altremote)
+static struct resource altremote_resources[] = {
+  [0] = {
+    .start    = na_altremote,
+    .end    = na_altremote + 0x200 - 1,
+    .flags    = IORESOURCE_MEM,
+  },
+};
+static struct platform_device altremote_device = {
+  .name   = "altremote",
+  .id   = 0,
+  .num_resources  = ARRAY_SIZE(altremote_resources),
+  .resource = altremote_resources,
+};
+#endif
+
+/*
+ *	Ethernet, Altera TSE
+ */
+
+#if defined(CONFIG_SMC91X) && defined(na_enet)
+#ifndef LAN91C111_REGISTERS_OFFSET
+#define LAN91C111_REGISTERS_OFFSET 0x300
+#endif
+
+static struct resource smc91x_resources[] = {
+	[0] = {
+		.start		= na_enet + LAN91C111_REGISTERS_OFFSET,
+		.end		= na_enet + LAN91C111_REGISTERS_OFFSET + 0x100 - 1,
+		.flags		= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start		= na_enet_irq,
+		.end		= na_enet_irq,
+		.flags		= IORESOURCE_IRQ,
+	},
+};
+static struct platform_device smc91x_device = {
+	.name		= "smc91x",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(smc91x_resources),
+	.resource	= smc91x_resources,
+};
+#endif
+
+#if defined(na_DM9000A) && !defined(na_dm9000)   /* defs for DE2 */
+#define na_dm9000 na_DM9000A
+#define na_dm9000_irq na_DM9000A_irq
+#endif
+
+#if defined(CONFIG_DM9000) && defined(na_dm9000)
+#include <linux/dm9000.h>
+static struct resource dm9k_resource[] = {
+	[0] = {
+		.start = na_dm9000,
+		.end   = na_dm9000 + 3,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_dm9000 + 4,
+		.end   = na_dm9000 + 4 + 3,
+		.flags = IORESOURCE_MEM,
+	},
+	[2] = {
+		.start = na_dm9000_irq,
+		.end   = na_dm9000_irq,
+		.flags = IORESOURCE_IRQ | IRQF_TRIGGER_HIGH,
+	}
+
+};
+static struct dm9000_plat_data dm9k_platdata = {
+	.flags		= DM9000_PLATF_16BITONLY,
+};
+static struct platform_device dm9k_device = {
+	.name		= "dm9000",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(dm9k_resource),
+	.resource	= dm9k_resource,
+	.dev		= {
+		.platform_data = &dm9k_platdata,
+	}
+};
+#endif
+
+#if defined (CONFIG_ATSE)
+/* Altera Triple Speed Ethernet */
+#include         "../drivers/net/atse.h"
+static struct resource atse_resource[] = {
+	[0] = {
+		.start = na_descriptor_memory_s1,
+		.end   = na_descriptor_memory_s1 + 0x2000 - 1,   /* code from sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_DESC_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = na_sgdma_rx_csr,
+		.end   = na_sgdma_rx_csr + 0x400 - 1,  /* code from sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_RX_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[2] = {
+		.start = na_sgdma_tx,
+		.end   = na_sgdma_tx + 0x400 - 1,  /* code from sopc file */
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_TX_MEM,
+		.flags = IORESOURCE_MEM,
+	},
+	[3] = {
+		.start = na_sgdma_rx_csr_irq,
+		.end   = na_sgdma_rx_csr_irq,
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_RX_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+	[4] = {
+		.start = na_sgdma_tx_irq,
+		.end   = na_sgdma_tx_irq,
+		.name  = ATSE_RESOURCE_NAME_STR_SGDMA_TX_IRQ,
+		.flags = IORESOURCE_IRQ,
+	}
+};
+
+static struct atse_plat_data atse_platdata = {
+	.flags		= 1,
+};
+
+static struct platform_device atse_device = {
+	/* the name string must be the same as in struct patform_driver */
+	.name		= ATSE_CARDNAME,
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(atse_resource),
+	.resource	= atse_resource,
+	.dev		= {
+		.platform_data = &atse_platdata,
+	}
+};
+static void atse_device_init(void)
+{
+	/* write eth hardware address to MAC registers */
+	unsigned int mac_reg_0;
+	unsigned int mac_reg_1 = 0x0;
+	/*
+	mac_reg_0 = excalibur_enet_hwaddr[0]   | 
+		excalibur_enet_hwaddr[1] << 8  |
+		excalibur_enet_hwaddr[2] << 16 |
+		excalibur_enet_hwaddr[3] << 24;
+
+	mac_reg_1 = excalibur_enet_hwaddr[4] | excalibur_enet_hwaddr[5] << 8;
+	*/
+	mac_reg_0 = 0x00   |
+		0x07 << 8  |
+		0xED << 16 |
+		0x0D << 24;
+
+	mac_reg_1 = 0x09   |
+		0x19 << 8  ;
+
+	writel(mac_reg_0, ATSE_MAC_REG_MAC_ADDR_0);
+	writel(mac_reg_1, ATSE_MAC_REG_MAC_ADDR_1);
+}
+#else
+static void atse_device_init(void) {}
+#endif /* CONFIG_ATSE */
+
+/* Altera Triple Speed Ethernet (SLS) */
+
+#if defined (CONFIG_ALT_TSE)
+
+#include         "../drivers/net/altera_tse.h"
+
+static struct resource alt_tse_resource[] = {
+
+  [0] = {
+    .start = na_tse_mac_control_port,
+    .end   = na_tse_mac_control_port + 0x400 - 1, /* code from sopc file */
+    .name  = TSE_RESOURCE_MAC_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [1] = {
+    .start = na_sgdma_rx_csr,
+    .end   = na_sgdma_rx_csr + 0x400 - 1,         /* code from sopc file */
+    .name  = TSE_RESOURCE_SGDMA_RX_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [2] = {
+    .start = na_sgdma_tx,
+    .end   = na_sgdma_tx + 0x400 - 1,             /* code from sopc file */
+    .name  = TSE_RESOURCE_SGDMA_TX_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+  [3] = {
+    .start = na_sgdma_rx_csr_irq,
+    .end   = na_sgdma_rx_csr_irq,
+    .name  = TSE_RESOURCE_SGDMA_RX_IRQ,
+    .flags = IORESOURCE_IRQ,
+  },
+  [4] = {
+    .start = na_sgdma_tx_irq,
+    .end   = na_sgdma_tx_irq,
+    .name  = TSE_RESOURCE_SGDMA_TX_IRQ,
+    .flags = IORESOURCE_IRQ,
+  },
+  [5] = {
+    .start = ALT_TSE_TX_RX_FIFO_DEPTH,            /* code from sopc file */
+    .end   = ALT_TSE_TX_RX_FIFO_DEPTH,            /* This macro is defined altera_tse.h file */
+    .name  = TSE_RESOURCE_FIFO_DEV,
+    .flags = IORESOURCE_MEM,
+  },
+
+#ifdef na_descriptor_memory
+  [6] = {
+      .start = na_descriptor_memory,
+      .end   = na_descriptor_memory + na_descriptor_memory_size - 1,      /* code from sopc file */
+      .name  = TSE_RESOURCE_SGDMA_DES_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+#else
+  [6] = {
+      .start = 0,
+      .end   = 0,                                 /* code from sopc file */
+      .name  = TSE_RESOURCE_SGDMA_DES_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+#endif
+
+#ifdef CONFIG_PHY_IRQ_PRESENCE
+  [7] = {
+      .start = 0,
+      .end   = 0,                                 /* code from sopc file */
+      .name  = TSE_RESOURCE_SGDMA_PHY_DEV,
+      .flags = IORESOURCE_MEM,
+  },
+  [8] = {
+      .start = 0,
+      .end   = 0,                                 /* code from sopc file */
+      .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
+      .flags = IORESOURCE_IRQ,
+  },
+#endif
+
+};
+
+    
+static struct alt_tse_mdio_private alt_tse_mdio_private = {
+	.irq = {
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+		PHY_POLL,
+	}
+};
+
+     
+static struct platform_device alt_tse_mdio_device = {
+	.name	= ALT_TSE_MDIO_NAME,
+	.id	= 0,
+	.num_resources  = ARRAY_SIZE(alt_tse_resource),
+	.resource = alt_tse_resource,
+	.dev	= {
+	  .platform_data = &alt_tse_mdio_private,
+	}
+};
+
+/* all of this, except mii_id can be changed with ethtool */
+static struct alt_tse_config tse_config = {
+	.mii_id = 0, /* should match alt_tse_mdio_device->id from above */
+	.phy_addr = 18,
+	.tse_supported_modes =  PHY_GBIT_FEATURES,
+/*
+	supported modes can be 
+		SUPPORTED_10baseT_Half 
+		SUPPORTED_10baseT_Full 
+		SUPPORTED_100baseT_Half 
+		SUPPORTED_100baseT_Full 
+		SUPPORTED_Autoneg 
+		SUPPORTED_TP 
+		SUPPORTED_MII  ----------  Up to here is PHY_BASIC_FEATURES
+		SUPPORTED_1000baseT_Half
+		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
+*/
+	.interface = PHY_INTERFACE_MODE_RGMII,
+/*	Interfaces can be
+		PHY_INTERFACE_MODE_MII
+		PHY_INTERFACE_MODE_GMII
+		PHY_INTERFACE_MODE_SGMII
+		PHY_INTERFACE_MODE_TBI
+		PHY_INTERFACE_MODE_RMII
+		PHY_INTERFACE_MODE_RGMII
+		PHY_INTERFACE_MODE_RGMII_ID
+		PHY_INTERFACE_MODE_RGMII_RXID
+		PHY_INTERFACE_MODE_RGMII_TXID
+		PHY_INTERFACE_MODE_RTBI
+*/
+	.flags = 0,  /* these are apparently phy specific... */
+	
+	.autoneg = AUTONEG_ENABLE,
+	/* speed and duplex only valid if autoneg is AUTONED_DISABLE */
+	.speed = SPEED_100, /* SPEED_10, SPEED_100, SPEED_1000 */
+	.duplex = DUPLEX_HALF, /* DUPLEX_HALF, DUPLEX_FULL */
+};
+
+static struct platform_device alt_tse_device = {
+  /* the name string must be the same as in struct patform_driver */
+  .name   = ALT_TSE_NAME,
+  .id   = 0,
+  .num_resources  = ARRAY_SIZE(alt_tse_resource),
+  .resource = alt_tse_resource,
+  .dev    = {
+    .platform_data = &tse_config,
+  }
+};   
+
+
+static void tse_device_init(void)
+{
+#ifndef na_descriptor_memory
+	alt_tse_resource[6].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
+	if (!alt_tse_resource[6].start)
+		return -ENOMEM;
+	alt_tse_resource[6].end   = alt_tse_resource[6].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
+#endif
+}
+#else
+static void tse_device_init(void) {}
+#endif 
+
 /*
  *	Nios2 platform devices
  */
@@ -572,8 +1356,20 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 	&nios2_uart,
 
+#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
+	&nios2_leds,
+#endif
+
+#if defined(CONFIG_MOUSE_GPIO) || defined(CONFIG_MOUSE_GPIO_MODULE)
+	&nios2_gpio_mouse_device,
+#endif
+
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 	&nios2_flash_device,
+#endif
+
+#if defined(CONFIG_MTD_NAND_PLATFORM) || defined(CONFIG_MTD_NAND_PLATFORM_MODULE)
+	&nios2_async_nand_device,
 #endif
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(na_epcs_controller)
@@ -588,12 +1384,16 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_mmc_spi_device,
 #endif
 
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
-	&na_cf_device,
+#if defined(CONFIG_SPI_GPIO) || defined(CONFIG_SPI_GPIO_MODULE)
+	&nios2_spi_gpio_3_device,
 #endif
 
 #if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
 	&nios_mmc_device,
+#endif
+
+#if defined(USE_PATA_PLATFORM) || defined(USE_PATA_ALTERA_CF)
+	&na_cf_device,
 #endif
 
 #if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
@@ -603,16 +1403,62 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&na_i2c_1_device,
 #endif
 
+#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
+	&i2c_gpio_0_device,
+	&i2c_gpio_1_device,
+	&i2c_gpio_2_device,
+#endif
+
+#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
+	&nios2_w1_gpio_0_device,
+#endif
+
+#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
+	&altps2_0_device,
+#endif
+#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_1)
+	&altps2_1_device,
+#endif
+
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(na_altremote)
+	&altremote_device,
+#endif
+
+#if defined(CONFIG_SMC91X) && defined(na_enet)
+	&smc91x_device,
+#endif
+
+#if defined(CONFIG_DM9000) && defined(na_dm9000)
+	&dm9k_device,
+#endif
+
+#if defined (CONFIG_ATSE)
+	&atse_device,
+#endif
+
+#if defined (CONFIG_ALT_TSE)
+	&alt_tse_mdio_device,
+	&alt_tse_device,
+#endif
 };
 
 static int __init init_BSP(void)
 {
-#if (defined(CONFIG_PATA_PLATFORM) || defined(CONFIG_PATA_PLATFORM_MODULE)) && defined(na_cf_ide)
+	printk(KERN_INFO "%s(): registering device resources\n", __func__);
+	nios2_gpio_init();
+#ifdef USE_PATA_PLATFORM
 	cf_init(na_cf_ctl);
 #endif
+	nios2_plat_nand_init();
+	atse_device_init();
+	tse_device_init();
+	i2c_register_board_info(0, nios2_i2c_0_board_info,
+				ARRAY_SIZE(nios2_i2c_0_board_info));
+	i2c_register_board_info(1, nios2_i2c_1_board_info,
+				ARRAY_SIZE(nios2_i2c_1_board_info));
 	platform_add_devices(nios2_devices, ARRAY_SIZE(nios2_devices));
 
-#if defined(CONFIG_SPI_ALTERA) || defined(CONFIG_SPI_ALTERA_MODULE)
+#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
 
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
 	defined(na_touch_panel_pen_irq_n)
