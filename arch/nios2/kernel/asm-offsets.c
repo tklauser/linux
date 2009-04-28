@@ -90,9 +90,6 @@ int main(void)
 	DEFINE(NIOS2_STATUS_U_MSK_ASM, NIOS2_STATUS_U_MSK);    
 	DEFINE(NIOS2_STATUS_U_OFST_ASM, NIOS2_STATUS_U_OFST);   
 
-	/* offsets into the kernel_stat struct */
-	DEFINE(STAT_IRQ, offsetof(struct kernel_stat, irqs));
-
 	/* Offsets in thread_info structure, used in assembly code */
 	DEFINE(TI_TASK, offsetof(struct thread_info, task));
 	DEFINE(TI_EXECDOMAIN, offsetof(struct thread_info, exec_domain));
