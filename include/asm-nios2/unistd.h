@@ -364,8 +364,10 @@
 #define __NR_dup3		328
 #define __NR_pipe2		329
 #define __NR_inotify_init1	330
+#define __NR_preadv		331
+#define __NR_pwritev    	332
 
-#define NR_syscalls		331
+#define NR_syscalls		333
 
 /* Not relevant on no-mmu */
 #define __IGNORE_msync

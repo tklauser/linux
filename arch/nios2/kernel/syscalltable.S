@@ -364,8 +364,10 @@ ENTRY(sys_call_table)
 	.long sys_dup3
 	.long sys_pipe2
 	.long sys_inotify_init1		/* 330 */
+	.long sys_preadv
+	.long sys_pwritev
 
-	.rept NR_syscalls - 331
+	.rept NR_syscalls - 333
 		.long sys_ni_syscall
 	.endr
 
