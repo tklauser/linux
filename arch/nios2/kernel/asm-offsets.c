@@ -29,9 +29,6 @@ int main(void)
 	DEFINE(TASK_MM, offsetof(struct task_struct, mm));
 	DEFINE(TASK_ACTIVE_MM, offsetof(struct task_struct, active_mm));
 
-	/* offsets into the kernel_stat struct */
-	DEFINE(STAT_IRQ, offsetof(struct kernel_stat, irqs));
-
 	/* offsets into the irq_cpustat_t struct */
 	DEFINE(CPUSTAT_SOFTIRQ_PENDING, offsetof(irq_cpustat_t, __softirq_pending));
 
@@ -87,9 +84,6 @@ int main(void)
 	DEFINE(NIOS2_STATUS_PIE_OFST_ASM, NIOS2_STATUS_PIE_OFST); 
 	DEFINE(NIOS2_STATUS_U_MSK_ASM, NIOS2_STATUS_U_MSK);    
 	DEFINE(NIOS2_STATUS_U_OFST_ASM, NIOS2_STATUS_U_OFST);   
-
-	/* offsets into the kernel_stat struct */
-	DEFINE(STAT_IRQ, offsetof(struct kernel_stat, irqs));
 
 	/* Offsets in thread_info structure, used in assembly code */
 	DEFINE(TI_TASK, offsetof(struct thread_info, task));
