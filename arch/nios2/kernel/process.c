@@ -279,7 +279,7 @@ asmlinkage int nios2_clone(struct pt_regs* regs)
 	               parent_tidptr, child_tidptr);
 }
 
-int copy_thread(int nr, unsigned long clone_flags,
+int copy_thread(unsigned long clone_flags,
 		unsigned long usp, unsigned long topstk,
 		struct task_struct * p, struct pt_regs * regs)
 {
