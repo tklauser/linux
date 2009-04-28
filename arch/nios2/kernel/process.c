@@ -302,7 +302,7 @@ asmlinkage int nios2_clone(struct pt_regs *regs)
         return do_fork(clone_flags, newsp, regs, 0, NULL, NULL);
 }
 
-int copy_thread(int nr, unsigned long clone_flags,
+int copy_thread(unsigned long clone_flags,
 		unsigned long usp, unsigned long topstk,
 		struct task_struct * p, struct pt_regs * regs)
 {
