@@ -610,8 +610,8 @@ static int tse_poll(struct napi_struct *napi, int budget)
 		if (netif_msg_intr(tse_priv))
 			printk(KERN_WARNING "%s :NAPI Complete, did %d packets with budget = %d\n", 
 				dev->name, howmany, budget);
-		netif_rx_complete(napi);
-		
+		napi_complete(napi);
+
 		/* turn on desc irqs again */
 		tse_priv->rx_sgdma_imask |= ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 		tse_priv->rx_sgdma_dev->control |= ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
@@ -642,7 +642,7 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
 		printk(KERN_WARNING "%s :TSE IRQ TX head = %d, tail = %d\n", 
 			dev->name, tse_priv->tx_sgdma_descriptor_head, tse_priv->tx_sgdma_descriptor_tail);
 	//turn off desc irqs and enable napi rx 
-	if (netif_rx_schedule_prep(&tse_priv->napi)) {
+	if (napi_schedule_prep(&tse_priv->napi)) {
 		if (netif_msg_intr(tse_priv))
 			printk(KERN_WARNING "%s :NAPI Starting\n", dev->name);
 		tse_priv->rx_sgdma_imask &= ~ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
@@ -651,7 +651,7 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
 		tse_priv->tx_sgdma_imask &= ~ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 		tse_priv->tx_sgdma_dev->control &= ~ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 #endif
-		__netif_rx_schedule(&tse_priv->napi);
+		__napi_schedule(&tse_priv->napi);
 	} else {
 	//if we get here, we received another irq while processing NAPI
 		if (netif_msg_intr(tse_priv))
@@ -768,11 +768,11 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 				dev->name, tse_priv->tx_sgdma_descriptor_tail, tse_priv->tx_sgdma_descriptor_head);
 		if (!netif_queue_stopped(dev))
 			netif_stop_queue(dev);
-		if (netif_rx_schedule_prep(&tse_priv->napi)) {
-			__netif_rx_schedule(&tse_priv->napi);
+		if (napi_schedule_prep(&tse_priv->napi)) {
+			__napi_schedule(&tse_priv->napi);
 		}
-	} 
-	
+	}
+
 	tse_priv->tx_skb[head] = skb;
 
 	//wait till tx is done, change shift 16
