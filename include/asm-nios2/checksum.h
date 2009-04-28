@@ -218,8 +218,8 @@ out:
   }
 
 /*these 2 functions are now in checksum.c */
-unsigned int csum_partial(const unsigned char * buff, int len, unsigned int sum);
-unsigned int csum_partial_copy(const char *src, char *dst, int len, int sum);
+__wsum csum_partial(const void * buff, int len, __wsum sum);
+__wsum csum_partial_copy(const void *src, void *dst, int len, __wsum sum);
 
 /*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
@@ -229,8 +229,9 @@ unsigned int csum_partial_copy(const char *src, char *dst, int len, int sum);
  * here even more important to align src and dst on a 32-bit (or even
  * better 64-bit) boundary
  */
-extern inline unsigned int
-csum_partial_copy_from_user(const char *src, char *dst, int len, int sum, int *csum_err)
+extern inline __wsum
+csum_partial_copy_from_user(const void __user *src, void *dst,
+			    int len, __wsum sum, int *csum_err)
 {
     barrier();
 	if (csum_err) *csum_err = 0;
@@ -248,10 +249,10 @@ csum_partial_copy_from_user(const char *src, char *dst, int len, int sum, int *c
  * in icmp.c
  */
 
-extern inline __sum16 ip_compute_csum(unsigned char * buff, int len)
+extern inline __sum16 ip_compute_csum(const void * buff, int len)
 {
     barrier();
- return ~from32to16(do_csum(buff,len));
+    return ~from32to16(do_csum(buff,len));
     barrier();
 }
 
@@ -269,7 +270,7 @@ extern inline __sum16 ip_compute_csum(unsigned char * buff, int len)
 /*
  *	Fold a partial checksum without adding pseudo headers
  */
-extern __inline__ __sum16 csum_fold(unsigned int sum)
+static inline __sum16 csum_fold(__wsum sum)
 {
     barrier();
 	__asm__ __volatile__(
@@ -289,11 +290,11 @@ extern __inline__ __sum16 csum_fold(unsigned int sum)
 /*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
-extern __inline__ unsigned long csum_tcpudp_nofold(unsigned long saddr,
+static inline __wsum csum_tcpudp_nofold(unsigned long saddr,
 						   unsigned long daddr,
 						   unsigned short len,
 						   unsigned short proto,
-						   unsigned int sum)
+						   __wsum sum)
 {
     barrier();
 	__asm__ __volatile__(
