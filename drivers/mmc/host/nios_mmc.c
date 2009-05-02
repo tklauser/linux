@@ -612,7 +612,6 @@ static int nios_mmc_procinit(NIOS_MMC_HOST * host)
 	}
 	MMC_DEBUG(2, "/proc/%s added\n", procfs_name);
 	mmc_proc_file->read_proc = procfile_read;
-	mmc_proc_file->owner = THIS_MODULE;
 	mmc_proc_file->mode = S_IFREG | S_IRUGO;
 	mmc_proc_file->uid = 0;
 	mmc_proc_file->gid = 0;
