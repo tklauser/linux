@@ -165,8 +165,10 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			PRINTK_DEBUG("%s POKETEXT: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
 			ret = 0;
 			copied = access_process_vm(child, addr, &data, sizeof(data), 1);
-			if (request == PTRACE_POKETEXT)
-				cache_push(addr, sizeof(data));
+			if (request == PTRACE_POKETEXT) {
+				flush_dcache_range(addr, addr + sizeof(data));
+				flush_icache_range(addr, addr + sizeof(data));
+			}
 			PRINTK_DEBUG("%s POKETEXT: copied size = %d\n", __FUNCTION__, copied);
 			if (copied == sizeof(data))
 				break;

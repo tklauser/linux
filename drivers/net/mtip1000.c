@@ -400,8 +400,8 @@ void dma_start_RxFifo2Tmp(void)
     //  to Mtip_DmaState_RxFifo2Tmp (under semaphore),
     //  and disabled Rx ready interrupts.
 
-    dcache_push (((unsigned long) (gpMtipRxData)),
-                 gMtipRxSkbframelenbyts);
+    flush_dcache_range (((unsigned long) (gpMtipRxData)),
+                 ((unsigned long) (gpMtipRxData)) + gMtipRxSkbframelenbyts);
 
     dma_start
         (4,                               // Byts per transfer
@@ -420,8 +420,8 @@ void dma_start_TxSkb2Tmp(void)
     // Caller must have already set gMtipDmaState
     //  to Mtip_DmaState_TxSkb2Tmp (under semaphore)
 
-    dcache_push (((unsigned long) (gpMtipTxData)),
-                 gMtipTxSkbframelenbyts);
+    flush_dcache_range (((unsigned long) (gpMtipTxData)),
+                 ((unsigned long) (gpMtipTxData)) + gMtipTxSkbframelenbyts);
     dma_start
         (2,                               // Byts per transfer
          gpMtipTxData,                    // 16 bit aligned src,

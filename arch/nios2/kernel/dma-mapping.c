@@ -13,6 +13,7 @@
 #include <linux/scatterlist.h>
 #include <asm/cacheflush.h>
 #include <asm/io.h>
+#include <asm/cacheflush.h>
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
 			 dma_addr_t * dma_handle, gfp_t gfp)
@@ -62,7 +63,7 @@ EXPORT_SYMBOL(dma_mapping_error);
 dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
 			  enum dma_data_direction direction)
 {
-	dcache_push((unsigned long)ptr, size);
+	flush_dcache_range((unsigned long)ptr, (unsigned long)ptr+size);
 	return (dma_addr_t)ptr;
 }
 EXPORT_SYMBOL(dma_map_single);
@@ -99,7 +100,7 @@ dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 	for (i = 0; i < nents; i++, sg++) {
 		sg->dma_address = (dma_addr_t) sg_virt(sg);
 
-		dcache_push(sg_dma_address(sg),	sg_dma_len(sg));
+		flush_dcache_range(sg_dma_address(sg),	sg_dma_address(sg) + sg_dma_len(sg));
 	}
 
 	return nents;

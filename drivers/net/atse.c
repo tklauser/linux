@@ -422,7 +422,8 @@ static int atse_sgdma_rx_enable_async_read(struct atse_sgdma_desc *rx_desc)
 	ATSE_CLEAR_SGDMA_RX_STATUS();
 
 	/* flush the descriptor out of the cache */
-	dcache_push((unsigned long)rx_desc, sizeof(struct atse_sgdma_desc));
+	flush_dcache_range((unsigned long)rx_desc, 
+		(unsigned long)rx_desc + sizeof(struct atse_sgdma_desc));
 
 	/* Point the controller at the descriptor */
 	ATSE_SET_SGDMA_RX_WITH_DESC((u32)rx_desc);
@@ -1213,7 +1214,7 @@ static int atse_hw_send_data(char *data, int len, struct net_device *ndev)
 	/* clear bit 31, if any, to get rid of uncashed flag.  Not portable, FIXMEJOE*/
 	data = (char *)ioremap_fullcache((unsigned long)data, 1234);
 	/* flush data out of cache */
-	dcache_push((unsigned long)data, len);
+	flush_dcache_range((unsigned long)data, (unsigned long)data + len);
 
 	/* prepare mem-to-stream memory buffer descriptores */
 	/*
@@ -1263,8 +1264,10 @@ static int atse_hw_send_data(char *data, int len, struct net_device *ndev)
 		);
 	
 	/* flush the cached descriptos to the physical memory */
-	dcache_push((unsigned long)cur_desc, sizeof(struct atse_sgdma_desc));
-	dcache_push((unsigned long)next_desc, sizeof(struct atse_sgdma_desc));
+	flush_dcache_range((unsigned long)cur_desc, 
+		(unsigned long)cur_desc + sizeof(struct atse_sgdma_desc));
+	flush_dcache_range((unsigned long)next_desc, 
+		(unsigned long)next_desc + sizeof(struct atse_sgdma_desc));
 
 	/*
 	 * Now to do Synchronous SGDMA copy from buffer memory into

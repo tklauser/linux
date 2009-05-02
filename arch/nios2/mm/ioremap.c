@@ -37,7 +37,7 @@ void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag)
 	if (cacheflag == IOMAP_FULL_CACHING) {
 		return (void *)(physaddr & ~0x80000000);
 	} else {
-		dcache_push(physaddr, size);
+		flush_dcache_range(physaddr, physaddr + size);
 		return (void *)(physaddr | 0x80000000);
 	}
 }

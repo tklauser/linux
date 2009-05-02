@@ -1191,8 +1191,8 @@ oeth_rx(unsigned long devn)
             {
                 bdp->addr = (unsigned long) skb->tail;
 
-                dcache_push (((unsigned long) (bdp->addr)),
-                             MAX_FRAME_SIZE);
+                flush_dcache_range (((unsigned long) (bdp->addr)),
+                             ((unsigned long) (bdp->addr)) + MAX_FRAME_SIZE);
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
             }
@@ -1280,8 +1280,8 @@ oeth_rx(unsigned long devn)
           {
             bdp->len_status &= ~OETH_RX_BD_STATS;
 
-            dcache_push (((unsigned long) (bdp->addr)),
-                         OETH_RX_BUFF_SIZE);
+            flush_dcache_range (((unsigned long) (bdp->addr)),
+                         ((unsigned long) (bdp->addr)) + OETH_RX_BUFF_SIZE);
 
             bdp->len_status |= OETH_RX_BD_EMPTY;
 
@@ -1420,8 +1420,8 @@ oeth_rx(unsigned long devn)
 	    cep->stats.rx_bytes += pkt_len;
           }
 
-        dcache_push (((unsigned long) (bdp->addr)),
-                     pkt_len);
+        flush_dcache_range (((unsigned long) (bdp->addr)),
+                     ((unsigned long) (bdp->addr)) + pkt_len);
 
         bdp->len_status &= ~OETH_RX_BD_STATS;
         bdp->len_status |= OETH_RX_BD_EMPTY;
@@ -1451,8 +1451,8 @@ oeth_rx(unsigned long devn)
                 cep->stats.rx_dropped++;
               }
 
-            dcache_push (((unsigned long) (bdp->addr)),
-                         pkt_len);
+            flush_dcache_range (((unsigned long) (bdp->addr)),
+                         ((unsigned long) (bdp->addr)) + pkt_len);
 
             bdp->len_status &= ~OETH_RX_BD_STATS;
             bdp->len_status |=  OETH_RX_BD_EMPTY;
@@ -1479,8 +1479,8 @@ oeth_rx(unsigned long devn)
 
                 bdp->addr = (unsigned long)skb->tail;
 
-                dcache_push (((unsigned long) (bdp->addr)),
-                             MAX_FRAME_SIZE);
+                flush_dcache_range (((unsigned long) (bdp->addr)),
+                             ((unsigned long) (bdp->addr)) + MAX_FRAME_SIZE);
 
                 bdp->len_status |= OETH_RX_BD_EMPTY;
               }
@@ -1554,8 +1554,8 @@ oeth_open(struct net_device *dev)
         if (skb == NULL)
             rx_bd[i].len_status = (0 << 16) | OETH_RX_BD_IRQ;
         else
-            dcache_push (((unsigned long) (rx_bd[i].addr)),
-                         MAX_FRAME_SIZE);
+            flush_dcache_range (((unsigned long) (rx_bd[i].addr)),
+                         ((unsigned long) (rx_bd[i].addr)) + MAX_FRAME_SIZE);
 
             rx_bd[i].len_status = (0 << 16)         |
                                   OETH_RX_BD_EMPTY  |
@@ -1843,8 +1843,8 @@ oeth_start_xmit(struct sk_buff *skb, struct net_device *dev)
     /* Send it on its way.  Tell controller its ready, interrupt when done,
      * and to put the CRC on the end.
      */
-    dcache_push (((unsigned long) (bdp->addr)),
-                 lenSkbDataByts);
+    flush_dcache_range (((unsigned long) (bdp->addr)),
+                 ((unsigned long) (bdp->addr)) + lenSkbDataByts);
 
     local_bh_disable();
 
@@ -2340,8 +2340,8 @@ static int __init oeth_probe(struct net_device *dev)
           {
             rx_bd[k].addr = __pa(mem_addr);
 
-            dcache_push (((unsigned long) (rx_bd[k].addr)),
-                         OETH_RX_BUFF_SIZE);
+            flush_dcache_range (((unsigned long) (rx_bd[k].addr)),
+                         ((unsigned long) (rx_bd[k].addr)) + OETH_RX_BUFF_SIZE);
 
             rx_bd[k].len_status = OETH_RX_BD_EMPTY | OETH_RX_BD_IRQ;
               // FIXME...Should we really let the rx ring

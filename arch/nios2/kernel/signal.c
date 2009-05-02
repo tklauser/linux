@@ -47,6 +47,7 @@
 #include <asm/pgtable.h>
 #include <asm/traps.h>
 #include <asm/ucontext.h>
+#include <asm/cacheflush.h>
 
 #define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
 
@@ -438,11 +439,10 @@ static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 	return err;
 }
 
-extern void cache_push_v (unsigned long vaddr, int len);
-
 static inline void push_cache (unsigned long vaddr)
 {
-	cache_push_v(vaddr,12);
+   flush_dcache_range(vaddr, vaddr+12);
+   flush_icache_range(vaddr, vaddr+12);
 }
 
 static inline void *

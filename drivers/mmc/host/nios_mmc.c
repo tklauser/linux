@@ -169,7 +169,7 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 		xfer_ctl |= NIOS_MMC_XFER_CTL_DAT_WIDTH;
 	cmdidx = (xfer_ctl >> NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT) & 0x3F;
 	/* Setup DMA base */
-	dcache_push(buf, bytes * blocks);
+	flush_dcache_range(buf, buf + bytes * blocks);
 	nios_mmc_writel(buf, host, NIOS_MMC_REG_DMA_BASE);
 	if (bytes) {
 		MMC_DEBUG(1,
