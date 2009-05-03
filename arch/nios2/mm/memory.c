@@ -14,7 +14,7 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 	/* 
 	 * For an unaligned flush request, we've got one more line left.
 	 */
-	if (start & (nasys_dcache_line_size - 1)) {
+	if (end & (nasys_dcache_line_size - 1)) {
 		__asm__ volatile ("flushd 0(%0)"::"r" (addr));
 	}
 }
@@ -33,7 +33,7 @@ void flush_icache_range(unsigned long start, unsigned long end)
 	/* 
 	 * For an unaligned flush request, we've got one more line left.
 	 */
-	if (start & (nasys_icache_line_size - 1)) {
+	if (end & (nasys_icache_line_size - 1)) {
 		__asm__ volatile ("flushi %0"::"r" (addr));
 	}
 	__asm__ __volatile("flushp");
