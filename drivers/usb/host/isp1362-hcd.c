@@ -2860,7 +2860,7 @@ static int __init isp1362_probe(struct platform_device *pdev)
 	}
 
 	/* allocate and initialize hcd */
-	hcd = usb_create_hcd(&isp1362_hc_driver, &pdev->dev, pdev->dev.bus_id);
+	hcd = usb_create_hcd(&isp1362_hc_driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd) {
 		retval = -ENOMEM;
 		goto err5;
