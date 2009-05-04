@@ -130,11 +130,6 @@ static void tse_gstrings(struct net_device *dev, u32 stringset, u8 * buf)
 	
 }
 
-static int tse_stats_count(struct net_device *dev)
-{
-   return TSE_STATS_LEN;
-}
-
 static void tse_fill_stats(struct net_device *dev, struct ethtool_stats *dummy, u64 * buf)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
