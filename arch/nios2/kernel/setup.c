@@ -290,9 +290,9 @@ static void cpuinfo_stop (struct seq_file *m, void *v)
 }
 
 const struct seq_operations cpuinfo_op = {
-	start:	cpuinfo_start,
-	next:	cpuinfo_next,
-	stop:	cpuinfo_stop,
-	show:	show_cpuinfo
+	.start	= cpuinfo_start,
+	.next	= cpuinfo_next,
+	.stop	= cpuinfo_stop,
+	.show	= show_cpuinfo
 };
 
