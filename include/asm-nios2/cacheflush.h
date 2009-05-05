@@ -19,6 +19,7 @@ static inline void flush_cache_all(void)
 	flush_icache_range(0, nasys_icache_size);
 }
 
+#define flush_dcache_all()			flush_dcache_range(0, nasys_dcache_size)
 #define flush_cache_mm(mm)			do { } while (0)
 #define flush_cache_page(vma, vmaddr)		do { } while (0)
 #define flush_dcache_page(page)			do { } while (0)
