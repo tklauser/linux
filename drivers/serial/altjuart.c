@@ -126,7 +126,7 @@ static int altera_jtaguart_startup(struct uart_port *port)
 
 	/* Enable RX interrupts now */
 	pp->imr = ALTERA_JTAGUART_CONTROL_RE_MSK;
-	writew(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 
 	spin_unlock_irqrestore(&port->lock, flags);
 
@@ -181,7 +181,7 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 
 	if (port->x_char) {
 		/* Send special char - probably flow control */
-		writeb(port->x_char, port->membase + ALTERA_JTAGUART_DATA_REG);
+		writel(port->x_char, port->membase + ALTERA_JTAGUART_DATA_REG);
 		port->x_char = 0;
 		port->icount.tx++;
 		return;
@@ -191,7 +191,7 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 	       ALTERA_JTAGUART_CONTROL_WSPACE_MSK) {
 		if (xmit->head == xmit->tail)
 			break;
-		writeb(xmit->buf[xmit->tail],
+		writel(xmit->buf[xmit->tail],
 		       port->membase + ALTERA_JTAGUART_DATA_REG);
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 		port->icount.tx++;
@@ -202,7 +202,7 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 
 	if (xmit->head == xmit->tail) {
 		pp->imr &= ~ALTERA_JTAGUART_CONTROL_WE_MSK;
-		writeb(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+		writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 	}
 }
 
@@ -228,7 +228,7 @@ static void altera_jtaguart_config_port(struct uart_port *port, int flags)
 	port->type = PORT_ALTERA_JTAGUART;
 
 	/* Clear mask, so no surprise interrupts. */
-	writeb(0, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+	writel(0, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 
 	if (request_irq
 	    (port->irq, altera_jtaguart_interrupt, IRQF_DISABLED,
@@ -322,7 +322,7 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 		if ((status & ALTERA_JTAGUART_CONTROL_AC_MSK) == 0)
 			return;	/* no connection activity */
 	}
-	writeb(c, port->membase + ALTERA_JTAGUART_DATA_REG);
+	writel(c, port->membase + ALTERA_JTAGUART_DATA_REG);
 }
 #else
 static void altera_jtaguart_console_putc(struct console *co, const char c)
@@ -331,7 +331,7 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 
 	while ((readl(port->membase + ALTERA_JTAGUART_CONTROL_REG) &
 		ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) ;
-	writeb(c, port->membase + ALTERA_JTAGUART_DATA_REG);
+	writel(c, port->membase + ALTERA_JTAGUART_DATA_REG);
 }
 #endif
 
