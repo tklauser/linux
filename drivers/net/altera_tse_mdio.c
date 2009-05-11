@@ -160,7 +160,7 @@ static int tse_mdio_probe(struct platform_device *pdev)
 	ret =  mdiobus_register(new_bus);
 	
 	//probe bus, report phys
-	for(i = 31; i > 0; i--)
+	for(i = 31; i >= 0; i--)
 	{
 		u32 phy_id;
 		u32 phy_id_bottom;
