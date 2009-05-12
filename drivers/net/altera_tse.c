@@ -382,7 +382,7 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	//current MTU + 4 b/c input packet is aligned by 2;
 	skb = dev_alloc_skb(tse_priv->current_mtu + 4);
 	flush_dcache_range((unsigned long)skb->data, 
-			   ((unsigned long)skb->data) + skb->len - 1);
+			   ((unsigned long)skb->data) + skb->len);
 	if (skb == NULL) {
 		if (netif_msg_rx_err(tse_priv))
 			printk(KERN_WARNING "%s :ENOMEM:::skb_size=%d\n", 
@@ -748,7 +748,7 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	 * since it's not actually part of the data and/or checksum
 	 */	
 	//Flush raw data from data cache	
-	flush_dcache_range(aligned_tx_buffer, aligned_tx_buffer + len -1);
+	flush_dcache_range(aligned_tx_buffer, aligned_tx_buffer + len);
 	
 	spin_lock_irqsave(&tse_priv->tx_lock, flags);
 	//get the heads
