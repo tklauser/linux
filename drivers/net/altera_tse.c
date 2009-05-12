@@ -312,6 +312,7 @@ static int sgdma_async_read(struct alt_tse_private *tse_priv,
 
 	/* Wait for the descriptor (chain) to complete */
 	while (tse_priv->rx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) {
+		ndelay(100);
 		if (timeout++ == ALT_TSE_SGDMA_BUSY_WATCHDOG_CNTR) {
 			if (netif_msg_rx_status(tse_priv))
 				printk(KERN_WARNING "%s :RX SGDMA Timeout\n", dev->name);
@@ -346,6 +347,7 @@ static int sgdma_async_write(struct alt_tse_private *tse_priv,
 
 	/* Wait for the descriptor (chain) to complete */
 	while (tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) {
+		ndelay(100);
 		if (timeout++ == ALT_TSE_SGDMA_BUSY_WATCHDOG_CNTR) {
 			if (netif_msg_rx_status(tse_priv))
 				printk(KERN_WARNING "%s :TX SGDMA Timeout\n", dev->name);
@@ -983,6 +985,7 @@ static int init_mac(struct net_device *dev)
 	
 	counter = 0;
 	while (tse_priv->mac_dev->command_config.bits.software_reset) {
+		ndelay(100);
 		if (counter++ > ALT_TSE_SW_RESET_WATCHDOG_CNTR)
 			break;
 	}
@@ -1459,6 +1462,7 @@ static int tse_shutdown(struct net_device *dev)
 
 	counter = 0;
 	while (tse_priv->mac_dev->command_config.bits.software_reset) {
+		ndelay(100);
 		if (counter++ > ALT_TSE_SW_RESET_WATCHDOG_CNTR)
 			break;
 	}
