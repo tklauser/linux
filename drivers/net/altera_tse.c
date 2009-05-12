@@ -381,14 +381,14 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 
 	//current MTU + 4 b/c input packet is aligned by 2;
 	skb = dev_alloc_skb(tse_priv->current_mtu + 4);
-	flush_dcache_range((unsigned long)skb->data, 
-			   ((unsigned long)skb->data) + skb->len);
 	if (skb == NULL) {
 		if (netif_msg_rx_err(tse_priv))
 			printk(KERN_WARNING "%s :ENOMEM:::skb_size=%d\n", 
 				dev->name, tse_priv->current_mtu + 4);
 		return -ENOMEM;
 	}
+	flush_dcache_range((unsigned long)skb->data,
+			   ((unsigned long)skb->data) + skb->len);
 	skb->dev = dev;
 	
 	tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_head] = skb;
