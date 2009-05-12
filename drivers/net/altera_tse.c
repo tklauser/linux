@@ -1360,11 +1360,15 @@ static int tse_open(struct net_device *dev)
 	
 	
 	/* Reset and configure TSE MAC and probe associated PHY */ 
-	if(init_phy(dev))
+	if(init_phy(dev)) {
+		napi_disable(&tse_priv->napi);
 		return -EAGAIN;
+	}
 
-	if(init_mac(dev))
+	if(init_mac(dev)) {
+		napi_disable(&tse_priv->napi);
 		return -EAGAIN;  	
+	}
 
 	
 
@@ -1397,8 +1401,9 @@ static int tse_open(struct net_device *dev)
 			0, "SGDMA_TX", dev);
 	if (retval) {
 		printk
-		    ("%s:Unable to register RX SGDMA interrupt %d (retval=%d).\n",
+		    ("%s:Unable to register TX SGDMA interrupt %d (retval=%d).\n",
 		     dev->name, tse_priv->tx_fifo_interrupt, retval);
+		free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
 		napi_disable(&tse_priv->napi);
 		return -EAGAIN;
 	}
@@ -1413,6 +1418,8 @@ static int tse_open(struct net_device *dev)
 //		PRINTK3
 //		    ("%s:Unable to register timer interrupt %d (retval=%d).\n",
 //		     "TSE_ALARM_LINK", tse_priv->alarm_irq, retval);
+//		free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
+//		free_irq(tse_priv->tx_fifo_interrupt, (void *)dev);
 //		napi_disable(&tse_priv->napi);
 //		return -EAGAIN;
 //	}
