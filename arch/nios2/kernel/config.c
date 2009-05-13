@@ -1393,6 +1393,43 @@ static void tse_device_init(void)
 static void tse_device_init(void) {}
 #endif 
 
+#if defined(CONFIG_ETHOC) || defined(CONFIG_ETHOC_MODULE)
+#include <linux/etherdevice.h>
+#include <net/ethoc.h>
+static struct ethoc_platform_data ethoc_platdata = {
+	.phy_id = -1,
+};
+
+static struct resource ethoc_resources[] = {
+	{
+	 .start = na_igor_mac,
+	 .end = na_igor_mac + 0xfff,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_ssram,
+	 .end = na_ssram_end -1,
+	 .flags = IORESOURCE_MEM,
+	 },
+	{
+	 .start = na_igor_mac_irq,
+	 .end = na_igor_mac_irq,
+	 .flags = IORESOURCE_IRQ,
+	 },
+};
+
+static struct platform_device ethoc_device = {
+	.name = "ethoc",
+	.id = -1,
+	.dev = {
+		.platform_data = &ethoc_platdata,
+		},
+	.num_resources = ARRAY_SIZE(ethoc_resources),
+	.resource = ethoc_resources,
+};
+#endif
+
+
 /*
  *	Nios2 platform devices
  */
@@ -1485,6 +1522,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 #if defined (CONFIG_ALT_TSE)
 	&alt_tse_mdio_device,
 	&alt_tse_device,
+#endif
+
+#if defined(CONFIG_ETHOC) || defined(CONFIG_ETHOC_MODULE)
+	&ethoc_device,
 #endif
 };
 
