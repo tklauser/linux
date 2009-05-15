@@ -9,6 +9,10 @@
 #
 # Copyright (C) 1994 David S. Miller (davem@caip.rutgers.edu)
 #
+
+LDFLAGS		:=
+LDFLAGS_vmlinux	:=
+
 KERNELLOAD = ${shell echo `grep "nasys_program_mem " include/asm/nios.h | sed 's/^.*\*)//' | sed 's/)//'`}
 
 HARDWARE_MK = arch/$(ARCH)/hardware.mk
