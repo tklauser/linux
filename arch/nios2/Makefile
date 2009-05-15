@@ -16,6 +16,8 @@
 #
 
 cflags-y :=
+LDFLAGS		:=
+LDFLAGS_vmlinux	:=
 
 KBUILD_AFLAGS += $(cflags-y)
 KBUILD_CFLAGS += -pipe -D__linux__ -D__ELF__ $(cflags-y)
