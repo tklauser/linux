@@ -75,6 +75,16 @@ extern int is_in_rom(unsigned long);
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)		\
 		remap_pfn_range(vma, vaddr, pfn, size, prot)
 
+extern inline void flush_cache_mm(struct mm_struct *mm)
+{
+}
+
+extern inline void flush_cache_range(struct mm_struct *mm,
+				     unsigned long start,
+				     unsigned long end)
+{
+}
+
 /* Push the page at kernel virtual address and clear the icache */
 extern inline void flush_page_to_ram (unsigned long address)
 {
