@@ -169,6 +169,7 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 {
 	struct uart_port *port = &pp->port;
 	struct circ_buf *xmit = &port->info->xmit;
+	unsigned int pending, count;
 
 	spin_lock(&port->lock);
 
@@ -181,20 +182,27 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 		return;
 	}
 
-	while (readl(port->membase + ALTERA_JTAGUART_CONTROL_REG) &
-	       ALTERA_JTAGUART_CONTROL_WSPACE_MSK) {
-		if (xmit->head == xmit->tail)
-			break;
-		writel(xmit->buf[xmit->tail],
-		       port->membase + ALTERA_JTAGUART_DATA_REG);
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		port->icount.tx++;
+	pending = uart_circ_chars_pending(xmit);
+	if (pending > 0) {
+		count = (readl(port->membase + ALTERA_JTAGUART_CONTROL_REG) &
+				ALTERA_JTAGUART_CONTROL_WSPACE_MSK) >>
+			ALTERA_JTAGUART_CONTROL_WSPACE_OFST;
+		if (count > pending)
+			count = pending;
+		if (count > 0) {
+			pending -= count;
+			while (count--) {
+				writel(xmit->buf[xmit->tail],
+					port->membase + ALTERA_JTAGUART_DATA_REG);
+				xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+				port->icount.tx++;
+			}
+			if (pending < WAKEUP_CHARS)
+				uart_write_wakeup(port);
+		}
 	}
 
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(port);
-
-	if (xmit->head == xmit->tail) {
+	if (pending == 0) {
 		pp->imr &= ~ALTERA_JTAGUART_CONTROL_WE_MSK;
 		writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 	}
