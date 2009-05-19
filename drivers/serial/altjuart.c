@@ -76,36 +76,27 @@ static void altera_jtaguart_start_tx(struct uart_port *port)
 {
 	struct altera_jtaguart *pp =
 	    container_of(port, struct altera_jtaguart, port);
-	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
 	pp->imr |= ALTERA_JTAGUART_CONTROL_WE_MSK;
 	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
-	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void altera_jtaguart_stop_tx(struct uart_port *port)
 {
 	struct altera_jtaguart *pp =
 	    container_of(port, struct altera_jtaguart, port);
-	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
 	pp->imr &= ~ALTERA_JTAGUART_CONTROL_WE_MSK;
 	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
-	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void altera_jtaguart_stop_rx(struct uart_port *port)
 {
 	struct altera_jtaguart *pp =
 	    container_of(port, struct altera_jtaguart, port);
-	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
 	pp->imr &= ~ALTERA_JTAGUART_CONTROL_RE_MSK;
 	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
-	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void altera_jtaguart_break_ctl(struct uart_port *port, int break_state)
