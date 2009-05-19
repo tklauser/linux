@@ -170,11 +170,14 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 	struct uart_port *port = &pp->port;
 	struct circ_buf *xmit = &port->info->xmit;
 
+	spin_lock(&port->lock);
+
 	if (port->x_char) {
 		/* Send special char - probably flow control */
 		writel(port->x_char, port->membase + ALTERA_JTAGUART_DATA_REG);
 		port->x_char = 0;
 		port->icount.tx++;
+		spin_unlock(&port->lock);
 		return;
 	}
 
@@ -195,6 +198,8 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 		pp->imr &= ~ALTERA_JTAGUART_CONTROL_WE_MSK;
 		writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 	}
+
+	spin_unlock(&port->lock);
 }
 
 static irqreturn_t altera_jtaguart_interrupt(int irq, void *data)
@@ -307,22 +312,37 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 {
 	struct uart_port *port = &(altera_jtaguart_ports + co->index)->port;
 	unsigned long status;
+	unsigned long flags;
 
+	spin_lock_irqsave(&port->lock, flags);
 	while (((status = readl(port->membase + ALTERA_JTAGUART_CONTROL_REG)) &
 		ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) {
-		if ((status & ALTERA_JTAGUART_CONTROL_AC_MSK) == 0)
+		if ((status & ALTERA_JTAGUART_CONTROL_AC_MSK) == 0) {
+			spin_unlock_irqrestore(&port->lock, flags);
 			return;	/* no connection activity */
+		}
+		spin_unlock_irqrestore(&port->lock, flags);
+		cpu_relax();
+		spin_lock_irqsave(&port->lock, flags);
 	}
 	writel(c, port->membase + ALTERA_JTAGUART_DATA_REG);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 #else
 static void altera_jtaguart_console_putc(struct console *co, const char c)
 {
 	struct uart_port *port = &(altera_jtaguart_ports + co->index)->port;
+	unsigned long flags;
 
+	spin_lock_irqsave(&port->lock, flags);
 	while ((readl(port->membase + ALTERA_JTAGUART_CONTROL_REG) &
-		ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) ;
+		ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) {
+		spin_unlock_irqrestore(&port->lock, flags);
+		cpu_relax();
+		spin_lock_irqsave(&port->lock, flags);
+	}
 	writel(c, port->membase + ALTERA_JTAGUART_DATA_REG);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 #endif
 
