@@ -28,8 +28,6 @@
 #include <asm/hardirq.h>
 #include <asm/irq_regs.h>
 
-#include <linux/fmdebug.h>
-
 /* table for system interrupt handlers */
 irq_hand_t irq_list[NR_IRQS];
 
@@ -39,10 +37,12 @@ volatile unsigned int num_spurious;
 #define NUM_IRQ_NODES 16
 static irq_node_t nodes[NUM_IRQ_NODES];
 
+#ifdef CONFIG_PROC_FS
 void __init init_irq_proc(void)
 {
 	/* Insert /proc/irq driver here */
 }
+#endif
 
 static irqreturn_t default_irq_handler(int irq, void *ptr)
 {

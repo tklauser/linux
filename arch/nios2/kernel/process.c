@@ -58,13 +58,15 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/err.h>
-#include <linux/fmdebug.h>
 
 #include <asm/system.h>
 #include <asm/traps.h>
 #include <asm/setup.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
+
+#define print_mark(...)
+#define printd(...)
 
 asmlinkage void ret_from_fork(void);
 

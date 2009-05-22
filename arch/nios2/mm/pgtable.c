@@ -36,7 +36,8 @@
  *  
  */
 
-#define CALLED()  if(DEBUG) do{dprintk("%s called from:\n  echo %#lx | nios2-linux-addr2line -e linux-2.6.21/vmlinux\n", __FUNCTION__, rareg);}while(0)
+#define CALLED()
+
 void pgd_init(unsigned long page)
 {
   unsigned long *p = (unsigned long *) page;

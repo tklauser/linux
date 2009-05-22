@@ -34,6 +34,7 @@ struct tlb_stat statistics;
 
 #define DEBUG 0
 #define dprintk(fmt,args...) if(DEBUG) { printk(__FILE__   fmt, ##args); }
+#define nios_iss_set_trace(d)
 
 /* Used as illegal PHYS_ADDR for TLB mappings
  */

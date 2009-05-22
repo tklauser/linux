@@ -30,7 +30,6 @@
 #include <asm/entry.h>
 #include <asm/nios.h>
 #include <linux/string.h>
-#include <linux/fmdebug.h>
 #include <asm/addrspace.h>
 
 /*
