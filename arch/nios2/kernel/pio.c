@@ -1,5 +1,5 @@
 /*
- *  linux/arch/nios2/kernel/pio.c
+ *  linux/arch/nios2nommu/kernel/pio.c
  *  "Example" drivers(LEDs and 7 seg displays) of the PIO interface
  *  on Nios Development Kit.
  *
@@ -22,21 +22,19 @@
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <asm/io.h>
+#include <asm/pio_struct.h>
 
 MODULE_AUTHOR("Microtronix Datacom Ltd.");
 MODULE_DESCRIPTION("Drivers of PIO devices (LEDs and 7 seg) on Nios kit");
 MODULE_LICENSE("GPL");
 
-#undef CONFIG_PIO_SEG
-#ifdef na_seven_seg_pio
-#define CONFIG_PIO_SEG
-#define PIO_SEG_IO	na_seven_seg_pio
-#endif
+#define PIO_LED_IO  USER_LED_PIO_8OUT_BASE
 
-#undef CONFIG_PIO_LED
-#ifdef na_led_pio
-#define CONFIG_PIO_LED
-#define PIO_LED_IO		na_led_pio
+#ifdef CONFIG_PIO_SEG
+#error "Not supported, please fix implementation"
+/* The 7-seg driver was is not included in the "current" design
+ * should be easy to fix though, just add ioremap as in the led driver
+ */
 #endif
 
 #define PDEBUG printk
@@ -70,20 +68,19 @@ static void __init pio_seg_init(void)
 
 /* routines for LED display */
 #ifdef CONFIG_PIO_LED
+static  np_pio *pio_led;
+
 void pio_led_write(int value)
 {
-	np_pio *pio=(np_pio *)(PIO_LED_IO);
-	
     //outl(-1, &pio->np_piodirection); 
-   	outl(value, &pio->np_piodata);
+   	outl(value, &pio_led->np_piodata);
 }
 
 static void __init pio_led_init(void)
 {
-	np_pio *pio=(np_pio *)(PIO_LED_IO);
-	
-    outl(-1, &pio->np_piodirection); 
-    outl(0x0, &pio->np_piodata);
+  pio_led =(np_pio *)ioremap(PIO_LED_IO, sizeof(np_pio));	
+    outl(-1, &pio_led->np_piodirection); 
+    outl(0x0, &pio_led->np_piodata);
 }
 #endif
 
@@ -99,7 +96,7 @@ static void display_timeout(unsigned long unused)
 #endif	
 
 #ifdef CONFIG_PIO_LED
-	pio_led_write(timer_counter);
+	pio_led_write(++timer_counter);
 #endif
 	if (restart_timer) {
 		display_timer.expires = jiffies + HZ; /* one second */
@@ -110,6 +107,7 @@ static void display_timeout(unsigned long unused)
 
 int __init pio_init(void)
 {
+        printk(KERN_INFO "Altera example PIO driver\n");
 #ifdef CONFIG_PIO_SEG
 	request_mem_region((unsigned long)PIO_SEG_IO, sizeof(np_pio), "pio_7seg");
 	pio_seg_init();
@@ -142,6 +140,7 @@ static void __exit pio_exit(void)
 #ifdef CONFIG_PIO_LED
 	pio_led_write(0);
 	release_mem_region((unsigned long)PIO_LED_IO, sizeof(np_pio));
+	iounmap((void *)pio_led);
 #endif
 
 #if defined(CONFIG_PIO_SEG) || defined(CONFIG_PIO_LED)

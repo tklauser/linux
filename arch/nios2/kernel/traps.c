@@ -30,7 +30,6 @@
 
 #include <linux/sched.h>  /* for jiffies */
 #include <linux/kernel.h>
-#include <linux/mm.h>
 #include <linux/signal.h>
 #include <linux/module.h>
 
@@ -40,37 +39,11 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/unistd.h>
+#include <linux/uaccess.h>
 
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 /* #define TRAP_DEBUG */
-
-#if 0
-void dumpit(unsigned long l1, unsigned long l2)
-{
-	printk("0x%08x l1 0x%08x l2\n");
-	while(1);
-}
-
-struct trap_trace_entry {
-	unsigned long pc;
-	unsigned long type;
-};
-
-int trap_curbuf = 0;
-struct trap_trace_entry trapbuf[1024];
-
-void syscall_trace_entry(struct pt_regs *regs)
-{
-	printk("%s[%d]: ", current->comm, current->pid);
-	printk("scall<%d> (could be %d)\n", (int) regs->r3,
-	       (int) regs->r4);
-}
-
-void syscall_trace_exit(struct pt_regs *regs)
-{
-}
-#endif
 
 /*
  * The architecture-independent backtrace generator
@@ -94,7 +67,7 @@ int kstack_depth_to_print = 48;
 void show_stack(struct task_struct *task, unsigned long *stack)
 {
 	unsigned long *endstack, addr;
-	extern char _stext, _etext;
+	extern char _start, _etext;
 	int i;
 
 	if (!stack) {
@@ -128,7 +101,7 @@ void show_stack(struct task_struct *task, unsigned long *stack)
 		 * down the cause of the crash will be able to figure
 		 * out the call path that was taken.
 		 */
-		if (((addr >= (unsigned long) &_stext) &&
+		if (((addr >= (unsigned long) &_start) &&
 		     (addr <= (unsigned long) &_etext))) {
 			if (i % 4 == 0)
 				printk(KERN_EMERG "\n       ");
@@ -146,7 +119,7 @@ void die_if_kernel(char *str, struct pt_regs *pregs)
 	pc = pregs->ra;
 	printk("0x%08lx\n trapped to die_if_kernel\n",pregs->ra);
 	show_regs(pregs);
-	if(pregs->status_extension & PS_S)
+	if(!user_mode(pregs))
 		do_exit(SIGKILL);
 	do_exit(SIGSEGV);
 }
@@ -158,18 +131,6 @@ void do_hw_interrupt(unsigned long type, unsigned long psr, unsigned long pc)
 		die_if_kernel("Whee... Hello Mr. Penguin", current->thread.kregs);
 	}	
 }
-
-#if 0
-void handle_watchpoint(struct pt_regs *regs, unsigned long pc, unsigned long psr)
-{
-#ifdef TRAP_DEBUG
-	printk("Watchpoint detected at PC %08lx PSR %08lx\n", pc, psr);
-#endif
-	if(psr & PSR_SUPERVISOR)
-		panic("Tell me what a watchpoint trap is, and I'll then deal "
-		      "with such a beast...");
-}
-#endif
 
 void trap_init(void)
 {
@@ -188,12 +149,104 @@ asmlinkage void breakpoint_c(struct pt_regs *fp)
 /* 	because monitor.S of JATG gdbserver does it. */
 	fp->ea -= 4;
 
-/*
-	printk(KERN_DEBUG "Breakpoint detected, instr=0x%08x ea=0x%08x ra=0x%08x sp=0x%08x\n", *(u32*)((fp->ea)-4), *(u32*)(fp->ea), *(u32*)(fp->ra), *(u32*)(fp->sp));
-*/
+	//	printk("Breakpoint detected, instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
 	
 	info.si_code = TRAP_BRKPT;
 	info.si_signo = SIGTRAP;
+	info.si_errno = 0;
+	info.si_addr = (void *) fp->ea;
+
+	force_sig_info(info.si_signo, &info, current);
+}
+
+
+/* Alignment handler 
+ */
+asmlinkage void handle_unaligned_c(struct pt_regs *fp)
+{
+	siginfo_t info;
+   unsigned long addr = RDCTL(CTL_BADADDR);
+   int cause = RDCTL(CTL_EXCEPTION)/4;
+
+	fp->ea -= 4;
+
+	if (fixup_exception(fp, fp->ea)) {
+		return;
+	}
+
+   if(!user_mode(fp)) {
+      printk("Unaligned access from kernel mode, this might be a hardware\n");
+      printk("problem, dump registers and restart the instruction\n");
+      printk("  BADADDR 0x%08lx\n", addr);
+      printk("  cause   %d\n", cause);
+      printk("  op-code 0x%08lx\n", *(unsigned long*)(fp->ea));
+      show_regs(fp);
+      return;
+   }
+
+   //	printk("Unaligned access instr=0x%08lx addr=%#lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
+   //   *(unsigned long*)fp->ea, addr, fp->ea, fp->ra, fp->sp);
+	
+	info.si_code = BUS_ADRALN;
+	info.si_signo = SIGBUS;
+	info.si_errno = 0;
+	info.si_addr = (void *) fp->ea;
+
+	force_sig_info(info.si_signo, &info, current);
+}
+
+/* Illegal instruction handler 
+ */
+asmlinkage void handle_illegal_c(struct pt_regs *fp)
+{
+	siginfo_t info;
+
+	fp->ea -= 4;
+
+	//	printk("Illegal instruction instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
+	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
+	
+	info.si_code = ILL_PRVOPC;
+	info.si_signo = SIGILL;
+	info.si_errno = 0;
+	info.si_addr = (void *) fp->ea;
+
+	force_sig_info(info.si_signo, &info, current);
+}
+
+/* Supervisor instruction handler 
+ */
+asmlinkage void handle_supervisor_instr(struct pt_regs *fp)
+{
+	siginfo_t info;
+
+	fp->ea -= 4;
+
+	//	printk("Supervisor instruction instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
+	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
+
+	info.si_code = ILL_PRVOPC;
+	info.si_signo = SIGILL;
+	info.si_errno = 0;
+	info.si_addr = (void *) fp->ea;
+
+	force_sig_info(info.si_signo, &info, current);
+}
+
+
+/* Illegal division error
+ */
+asmlinkage void handle_diverror_c(struct pt_regs *fp)
+{
+	siginfo_t info;
+
+	fp->ea -= 4;
+
+	//	printk("Division error instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
+	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
+	
+	info.si_code = FPE_INTDIV;
+	info.si_signo = SIGFPE;
 	info.si_errno = 0;
 	info.si_addr = (void *) fp->ea;
 

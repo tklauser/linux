@@ -1,6 +1,13 @@
 /*
  *  linux/arch/nios2/mm/init.c
  *
+ *  Copyright (C) 2009 Wind River Systems Inc trough
+ *  Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
+ *  Based on:
+ * 
+ *  linux/arch/nios2nommu/mm/init.c
+ *
  *  Copyright (C) 1998  D. Jeff Dionne <jeff@lineo.ca>,
  *                      Kenneth Albanowski <kjahds@kjahds.com>,
  *  Copyright (C) 2000  Lineo, Inc.  (www.lineo.com) 
@@ -39,8 +46,14 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
+#include <asm/percpu.h>
+#include <asm/tlb.h>
+#include <asm/mmu_context.h>
 
-#undef DEBUG
+//;dgt2;#include <asm/machdep.h>
+//;dgt2;#include <asm/shglcore.h>
+
+#define DEBUG
 
 extern void die_if_kernel(char *,struct pt_regs *,long);
 extern void free_initmem(void);
@@ -64,7 +77,38 @@ static unsigned long empty_bad_page;
 
 unsigned long empty_zero_page;
 
+unsigned long empty_zero_page, zero_page_mask;
+
 extern unsigned long rom_length;
+
+DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
+
+void show_mem(void)
+{
+    unsigned long i;
+    int free = 0, total = 0, reserved = 0, shared = 0;
+    int cached = 0;
+
+    printk(KERN_INFO "\nMem-info:\n");
+    show_free_areas();
+    i = max_mapnr - ARCH_PFN_OFFSET;
+    while (i-- > 0) {
+       total++;
+       if (PageReserved(mem_map+i ))
+          reserved++;
+       else if (PageSwapCache(mem_map+i))
+          cached++;
+       else if (!page_count(mem_map+i))
+          free++;
+       else
+          shared += page_count(mem_map+i) - 1;
+    }
+    printk(KERN_INFO "%d pages of RAM\n",total);
+    printk(KERN_INFO "%d free pages\n",free);
+    printk(KERN_INFO "%d reserved pages\n",reserved);
+    printk(KERN_INFO "%d pages shared\n",shared);
+    printk(KERN_INFO "%d pages swap cached\n",cached);
+}
 
 extern unsigned long memory_start;
 extern unsigned long memory_end;
@@ -81,15 +125,11 @@ void __init paging_init(void)
 	 * Make sure start_mem is page aligned, otherwise bootmem and
 	 * page_alloc get different views of the world.
 	 */
-#ifdef DEBUG
-	unsigned long start_mem = PAGE_ALIGN(memory_start);
-#endif
-	unsigned long end_mem   = memory_end & PAGE_MASK;
+	unsigned long start_mem = PHYS_OFFSET;
+	unsigned long end_mem   = memory_end;
 
-#ifdef DEBUG
-	printk (KERN_DEBUG "start_mem is %#lx\nvirtual_end is %#lx\n",
-		start_mem, end_mem);
-#endif
+   pagetable_init();
+   pgd_current[0] = (unsigned long)swapper_pg_dir;
 
 	/*
 	 * Initialize the bad page table and bad page to point
@@ -97,25 +137,21 @@ void __init paging_init(void)
 	 */
 	empty_bad_page_table = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 	empty_bad_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
-	empty_zero_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
-	memset((void *)empty_zero_page, 0, PAGE_SIZE);
+	empty_zero_page = (unsigned long)alloc_bootmem_pages(DCACHE_SIZE);
+	memset((void *)empty_zero_page, 0, DCACHE_SIZE);
+   flush_dcache_range(empty_zero_page, empty_zero_page + DCACHE_SIZE);
 
 	/*
 	 * Set up SFC/DFC registers (user data space).
 	 */
+#if 0
 	set_fs (USER_DS);
-
-#ifdef DEBUG
-	printk (KERN_DEBUG "before free_area_init\n");
-
-	printk (KERN_DEBUG "free_area_init -> start_mem is %#lx\nvirtual_end is %#lx\n",
-		start_mem, end_mem);
 #endif
 
 	{
 		unsigned long zones_size[MAX_NR_ZONES] = {0, };
 
-		zones_size[ZONE_DMA] = (end_mem - PAGE_OFFSET) >> PAGE_SHIFT;
+		zones_size[ZONE_DMA] = ((end_mem - start_mem) >> PAGE_SHIFT);
 		zones_size[ZONE_NORMAL] = 0;
 #ifdef CONFIG_HIGHMEM
 		zones_size[ZONE_HIGHMEM] = 0;
@@ -137,10 +173,12 @@ void __init mem_init(void)
 #endif
 
 	end_mem &= PAGE_MASK;
-	high_memory = (void *) end_mem;
+	high_memory = __va(end_mem);
 
 	start_mem = PAGE_ALIGN(start_mem);
-	max_mapnr = num_physpages = MAP_NR(high_memory);
+	max_mapnr = ((unsigned long)end_mem) >> PAGE_SHIFT;
+	num_physpages = max_mapnr;
+	printk("We have %ld pages of RAM\n", num_physpages);
 
 	/* this will put all memory onto the freelists */
 	totalram_pages = free_all_bootmem();
@@ -159,6 +197,7 @@ void __init mem_init(void)
 	       datak
 	       );
 }
+
 
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -200,3 +239,45 @@ void free_initmem(void)
 #endif
 }
 
+void __init fixrange_init(unsigned long start, unsigned long end,
+	pgd_t *pgd_base)
+{
+#if defined(CONFIG_HIGHMEM)
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
+	int i, j, k;
+	unsigned long vaddr;
+
+	vaddr = start;
+	i = __pgd_offset(vaddr);
+	j = __pud_offset(vaddr);
+	k = __pmd_offset(vaddr);
+	pgd = pgd_base + i;
+
+	for ( ; (i < PTRS_PER_PGD) && (vaddr != end); pgd++, i++) {
+		pud = (pud_t *)pgd;
+		for ( ; (j < PTRS_PER_PUD) && (vaddr != end); pud++, j++) {
+			pmd = (pmd_t *)pud;
+			for (; (k < PTRS_PER_PMD) && (vaddr != end); pmd++, k++) {
+				if (pmd_none(*pmd)) {
+					pte = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
+					set_pmd(pmd, __pmd((unsigned long)pte));
+					if (pte != pte_offset_kernel(pmd, 0))
+						BUG();
+				}
+				vaddr += PMD_SIZE;
+			}
+			k = 0;
+		}
+		j = 0;
+	}
+#endif
+}
+
+
+#define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE<<order)))
+unsigned long pgd_current[NR_CPUS];
+pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned(PGD_ORDER);
+pte_t invalid_pte_table[PTRS_PER_PTE] __page_aligned(PTE_ORDER);

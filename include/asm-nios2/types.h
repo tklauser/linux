@@ -1,7 +1,16 @@
-#ifndef __NIOS2_TYPES_H__
-#define __NIOS2_TYPES_H__
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Derived from asm-mips/types.h
+ *
+ * Copyright (C) 1998, Wind River Systems
+ */
 
-#ifndef __ASSEMBLY__
+#ifndef _ASM_NIOS2_TYPES_H
+#define _ASM_NIOS2_TYPES_H
+
 
 /*
  * This file is never included by application software unless
@@ -10,11 +19,31 @@
  * not a major issue.  However, for interoperability, libraries still
  * need to be careful to avoid a name clashes.
  */
-#include <asm-generic/int-ll64.h>
+
+#ifndef __ASSEMBLY__
 
 typedef unsigned short umode_t;
 
-#endif /* !__ASSEMBLY__ */
+/*
+ * __xx is ok: it doesn't pollute the POSIX namespace. Use these in the
+ * header files exported to user space
+ */
+
+typedef __signed__ char __s8;
+typedef unsigned char __u8;
+
+typedef __signed__ short __s16;
+typedef unsigned short __u16;
+
+typedef __signed__ int __s32;
+typedef unsigned int __u32;
+
+#if defined(__GNUC__) && !defined(__STRICT_ANSI__)
+typedef __signed__ long long __s64;
+typedef unsigned long long __u64;
+#endif
+
+#endif /* __ASSEMBLY__ */
 
 /*
  * These aren't exported outside the kernel to avoid name space clashes
@@ -25,12 +54,25 @@ typedef unsigned short umode_t;
 
 #ifndef __ASSEMBLY__
 
-/* Dma addresses are 32-bits wide.  */
+typedef signed char s8;
+typedef unsigned char u8;
+
+typedef signed short s16;
+typedef unsigned short u16;
+
+typedef signed int s32;
+typedef unsigned int u32;
+
+typedef signed long long s64;
+typedef unsigned long long u64;
+
+/* DMA addresses are always 32-bits wide */
 
 typedef u32 dma_addr_t;
+typedef u32 dma64_addr_t;
 
-#endif /* !__ASSEMBLY__ */
+#endif /* __ASSEMBLY__ */
 
 #endif /* __KERNEL__ */
 
-#endif /* __NIOS2_TYPES_H__ */
+#endif /* _ASM_NIOS2_TYPES_H */

@@ -1,5 +1,5 @@
-#ifndef _NIOS_DELAY_H
-#define _NIOS_DELAY_H
+#ifndef _ASM_NIOS2_DELAY_H
+#define _ASM_NIOS2_DELAY_H
 
 /*--------------------------------------------------------------------
  *
@@ -65,18 +65,21 @@ extern unsigned long loops_per_jiffy;
 extern __inline__ void __udelay(unsigned int x)
 {
 	unsigned int loops;
-
-	__asm__("mulxuu %0,%1,%2" : "=r" (loops) :
-		"r" (x), "r" (loops_per_jiffy * 226));
+	/* Note, if this is compiled with -mhw-mulx it will produce a "mulxuu"
+	 * (at least in toolchain 145) so there is no need for inline
+	 * assembly here anymore, which might in turn be emulated if unsupported
+	 * by the design.
+	 */
+	loops = (unsigned int)((((unsigned long long)(x) * (unsigned long long)(loops_per_jiffy * 226))) >> 32);
 	__delay(loops);
 }
 
 extern __inline__ void __ndelay(unsigned int x)
 {
 	unsigned int loops;
-
-	__asm__("mulxuu %0,%1,%2" : "=r" (loops) :
-		"r" (x), "r" (loops_per_jiffy * 5));
+	/* see comment above
+	 */
+	loops = (unsigned int)((((unsigned long long)(x) * (unsigned long long)(loops_per_jiffy * 5))) >> 32);
 	__delay(loops);
 }
 

@@ -1,5 +1,5 @@
-#ifndef _ASM_SOCKET_H
-#define _ASM_SOCKET_H
+#ifndef _ASM_NIOS2_SOCKET_H
+#define _ASM_NIOS2_SOCKET_H
 
 /*--------------------------------------------------------------------
  *
@@ -76,9 +76,4 @@
 #define SO_TIMESTAMPNS		35
 #define SCM_TIMESTAMPNS		SO_TIMESTAMPNS
 
-#define SO_MARK			36
-
-#define SO_TIMESTAMPING		37
-#define SCM_TIMESTAMPING	SO_TIMESTAMPING
-
-#endif /* _ASM_SOCKET_H */
+#endif /* _ASM_NIOS2_SOCKET_H */

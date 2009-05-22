@@ -1,5 +1,5 @@
-#ifndef _NIOSKNOMMU_UCONTEXT_H
-#define _NIOSKNOMMU_UCONTEXT_H
+#ifndef _ASM_NIOS2_UCONTEXT_H
+#define _ASM_NIOS2_UCONTEXT_H
 
 /*--------------------------------------------------------------------
  *
@@ -31,7 +31,6 @@ typedef greg_t gregset_t[NGREG];
 
 struct mcontext {
 	int version;
-	int status_extension;
 	gregset_t gregs;
 };
 

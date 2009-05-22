@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef _NIOS2_SIGINFO_H
-#define _NIOS2_SIGINFO_H
+#ifndef _ASM_NIOS2_SIGINFO_H
+#define _ASM_NIOS2_SIGINFO_H
 
 #include <asm-generic/siginfo.h>
 

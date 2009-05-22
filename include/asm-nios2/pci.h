@@ -1,5 +1,5 @@
-#ifndef __ASM_SH_PCI_H
-#define __ASM_SH_PCI_H
+#ifndef _ASM_NIOS2_PCI_H
+#define _ASM_NIOS2_PCI_H
 
 #ifdef __KERNEL__
 
@@ -87,6 +87,15 @@ static inline void pcibios_penalize_isa_irq(int irq, int active)
  */
 #define pci_dac_dma_supported(pci_dev, mask) (0)
 
+/* These macros should be used after a pci_map_sg call has been done
+ * to get bus addresses of each of the SG entries and their lengths.
+ * You should only work with the number of sg entries pci_map_sg
+ * returns, or alternatively stop on the first sg_dma_len(sg) which
+ * is 0.
+ */
+#define sg_dma_address(sg)	(virt_to_bus((sg)->dma_address))
+#define sg_dma_len(sg)		((sg)->length)
+
 #ifdef CONFIG_PCI
 static inline void pci_dma_burst_advice(struct pci_dev *pdev,
 					enum pci_dma_burst_strategy *strat,
@@ -113,5 +122,5 @@ extern int pciauto_assign_resources(int busno, struct pci_channel *hose);
 /* generic DMA-mapping stuff */
 #include <asm-generic/pci-dma-compat.h>
 
-#endif /* __ASM_SH_PCI_H */
+#endif /* _ASM_NIOS2_PCI_H */
 

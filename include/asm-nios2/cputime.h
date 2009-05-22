@@ -23,9 +23,9 @@
  *
  */
 
-#ifndef __NIOS2_CPUTIME_H
-#define __NIOS2_CPUTIME_H
+#ifndef _ASM_NIOS2_CPUTIME_H
+#define _ASM_NIOS2_CPUTIME_H
 
 #include <asm-generic/cputime.h>
 
-#endif /* __NIOS@NOMMU_CPUTIME_H */
+#endif /* _ASM_NIOS2_CPUTIME_H */

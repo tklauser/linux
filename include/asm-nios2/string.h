@@ -1,5 +1,5 @@
-#ifndef __NIOS_STRING_H__
-#define __NIOS_STRING_H__
+#ifndef _ASM_NIOS2_STRING_H__
+#define _ASM_NIOS2_STRING_H__
 
 /*--------------------------------------------------------------------
  *
@@ -42,4 +42,4 @@ extern void * memset(void * s,int c,size_t count);
 
 #endif /* KERNEL */
 
-#endif /* !(__NIOS_STRING_H__) */
+#endif /* !(_ASM_NIOS2_STRING_H__) */

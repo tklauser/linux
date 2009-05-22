@@ -10,8 +10,8 @@
  * Written by Wentao Xu <wentao@microtronix.com>
  */
 
-#ifndef __NIOS2_FLAT_H__
-#define __NIOS2_FLAT_H__
+#ifndef _ASM_NIOS2_FLAT_H__
+#define _ASM_NIOS2_FLAT_H__
 
 #define	flat_reloc_valid(reloc, size)	((reloc) <= (size + 0x8000))
 
@@ -126,4 +126,4 @@ static inline void flat_put_addr_at_rp (unsigned long *rp, unsigned long addr,
 	}
 }
 
-#endif /* __NIOS2_FLAT_H__ */
+#endif /* _ASM_NIOS2_FLAT_H__ */

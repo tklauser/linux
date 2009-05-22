@@ -1,57 +1,58 @@
 /*
+ * Switch a MMU context.
  *
- * Taken from the m68knommu.
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
  *
- * Copyright (C) 2004, Microtronix Datacom Ltd.
- *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
+ * Copyright (C) 1996, 1997, 1998, 1999 by Ralf Baechle
+ * Copyright (C) 1999 Silicon Graphics, Inc.
  */
+#ifndef _ASM_NIOS2_MMU_CONTEXT_H
+#define _ASM_NIOS2_MMU_CONTEXT_H
 
-#ifndef __NIOS2_MMU_CONTEXT_H
-#define __NIOS2_MMU_CONTEXT_H
+#include <linux/errno.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
 
-#include <asm/setup.h>
-#include <asm/page.h>
-#include <asm/pgalloc.h>
+/* ivho: leaving old MIPS comment
+ * For the fast tlb miss handlers, we keep a per cpu array of pointers
+ * to the current pgd for each processor. Also, the proc. id is stuffed
+ * into the context register.
+ */
+extern unsigned long pgd_current[];
 
-static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
-{
-}
+void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk);
 
-extern inline int
-init_new_context(struct task_struct *tsk, struct mm_struct *mm)
-{
-	// mm->context = virt_to_phys(mm->pgd);
-	return(0);
-}
+/* ivho: leaving old MIPS comment
+ * Initialize the context related info for a new mm_struct
+ * instance.
+ */
+int init_new_context(struct task_struct *tsk, struct mm_struct *mm);
 
-#define destroy_context(mm)		do { } while(0)
+/* Normal, classic MIPS get_new_mmu_context */
+void get_new_mmu_context(struct mm_struct *mm, unsigned long cpu);
 
-static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next, struct task_struct *tsk)
-{
-}
+/* ivho: leaving old MIPS comment
+ * Destroy context related info for an mm_struct that is about
+ * to be put to rest.
+ */
+void destroy_context(struct mm_struct *mm);
 
-#define deactivate_mm(tsk,mm)	do { } while (0)
+void switch_mm(struct mm_struct *prev, struct mm_struct *next,
+	       struct task_struct *tsk);
 
-extern inline void activate_mm(struct mm_struct *prev_mm,
-			       struct mm_struct *next_mm)
-{
-}
 
-#endif
+void deactivate_mm(struct task_struct *tsk, struct mm_struct *mm);
+
+
+/* ivho: leaving old MIPS comment
+ * After we have set current->mm to a new value, this activates
+ * the context for the new mm so we see the new mappings.
+ */
+void activate_mm(struct mm_struct *prev, struct mm_struct *next);
+
+
+#endif /* _ASM_NIOS2_MMU_CONTEXT_H */

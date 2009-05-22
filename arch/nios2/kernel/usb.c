@@ -1,5 +1,5 @@
 /*
- * arch/nios2/kernel/usb.c -- platform level USB initialization
+ * arch/nios2nommu/kernel/usb.c -- platform level USB initialization
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/system.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 #if defined(CONFIG_USB_SL811_HCD) || defined (CONFIG_USB_SL811_HCD_MODULE)
 #if defined(CONFIG_MICROTRONIX_STRATIX) || defined (CONFIG_MICROTRONIX_CYCLONE)
@@ -259,17 +259,12 @@ static int __init usb_udc_init(void)
 subsys_initcall(usb_udc_init);
 #endif
 
-#if defined(na_ISP1362)  // for DE2-70 dev board, FIX ME otherwise
-#define na_usb na_ISP1362
-#define na_usb_irq na_ISP1362_irq
-#endif
-
-#if defined(na_ISP1362_avalonS)  // for DE2 dev board, FIX ME otherwise
+#if defined(na_ISP1362_avalonS)  // for DE2 dev board, FIX ME otehrwise
 #define na_usb na_ISP1362_avalonS
 #define na_usb_irq na_ISP1362_avalonS_irq
 #endif
 
-#if defined(na_ISP1362_avalon_slave_0)  // for DE2 dev board, FIX ME otherwise
+#if defined(na_ISP1362_avalon_slave_0)  // for DE2 dev board, FIX ME otehrwise
 #define na_usb na_ISP1362_avalon_slave_0
 #define na_usb_irq na_ISP1362_avalon_slave_0_irq
 #endif

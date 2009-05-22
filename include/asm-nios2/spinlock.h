@@ -1,5 +1,5 @@
-#ifndef __NIOS_SPINLOCK_H
-#define __NIOS_SPINLOCK_H
+#ifndef _ASM_NIOS2_SPINLOCK_H
+#define _ASM_NIOS2_SPINLOCK_H
 
 /*--------------------------------------------------------------------
  *

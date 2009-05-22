@@ -37,7 +37,7 @@
  * it's best to have buff aligned on a 32-bit boundary
  */
 
-__wsum csum_partial(const void * buff, int len, __wsum sum)
+unsigned int csum_partial(const unsigned char * buff, int len, unsigned int sum)
 {
 #if 0
 	__asm__ __volatile__ ...//;dgt2;tmp;not (yet) available...
@@ -65,7 +65,7 @@ __wsum csum_partial(const void * buff, int len, __wsum sum)
  * better 64-bit) boundary
  */
 
-__wsum csum_partial_copy(const void *src, void *dst, int len, __wsum sum)
+unsigned int csum_partial_copy(const char *src, char *dst, int len, int sum)
 {
 	memcpy(dst, src, len);
 	return csum_partial(dst, len, sum);

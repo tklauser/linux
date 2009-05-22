@@ -1,5 +1,5 @@
-#ifndef _NIOS2_SECTIONS_H
-#define _NIOS2_SECTIONS_H
+#ifndef _ASM_NIOS2_SECTIONS_H
+#define _ASM_NIOS2_SECTIONS_H
 
 /*--------------------------------------------------------------------
  *
@@ -27,4 +27,4 @@
 
 #include <asm-generic/sections.h>
 
-#endif /* _NIOS2_SECTIONS_H */
+#endif /* _ASM_NIOS2_SECTIONS_H */

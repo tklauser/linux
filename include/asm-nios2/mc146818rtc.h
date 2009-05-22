@@ -21,9 +21,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef _NIOS2_MC146818RTC_H
-#define _NIOS2_MC146818RTC_H
+#ifndef _ASM_NIOS2_MC146818RTC_H
+#define _ASM_NIOS2_MC146818RTC_H
 
 /* empty include file to satisfy the include in genrtc.c/ide-geometry.c */
 
-#endif /* _NIOS2_MC146818RTC_H */
+#endif /* _ASM_NIOS2_MC146818RTC_H */

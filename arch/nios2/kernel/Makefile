@@ -9,13 +9,16 @@
 
 extra-y := head.o init_task.o vmlinux.lds
 
-obj-y   := entry.o traps.o irq.o syscalltable.o \
+obj-y   := entry.o traps.o irq.o syscall.o syscalltable.o \
 	    process.o signal.o setup.o sys_nios2.o \
-	    usb.o config.o dma-mapping.o \
-	    time.o ptrace.o nios2_ksyms.o
+	    semaphore.o io.o usb.o\
+	    time.o ptrace.o start.o nios2_ksyms.o insnemu.o config.o
 
 obj-$(CONFIG_MODULES) += module.o
+obj-$(CONFIG_CONSOLE) += console.o
 obj-$(CONFIG_PIO_DEVICES) += pio.o
 obj-$(CONFIG_AVALON_DMA) += dma.o
+obj-$(CONFIG_EARLY_PRINTK) += early_printk.o
+#obj-$(CONFIG_NIOS_DEBUG_DEV) += debugdev.o
 
 

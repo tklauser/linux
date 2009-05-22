@@ -23,9 +23,9 @@
  *
  */
 
-#ifndef _NIOS2_SETUP_H
-#define _NIOS2_SETUP_H
+#ifndef _ASM_NIOS2_SETUP_H
+#define _ASM_NIOS2_SETUP_H
 
 #define COMMAND_LINE_SIZE 512
 
-#endif /* _NIOS2_SETUP_H */
+#endif /* _ASM_NIOS2_SETUP_H */

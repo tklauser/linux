@@ -1,5 +1,5 @@
 /*
- *  linux/arch/nios2/kernel/ptrace.c
+ *  linux/arch/nios2nommu/kernel/ptrace.c
  *
  *  Copyright (C) 1994 by Hamish Macdonald
  *  Taken from linux/kernel/ptrace.c and modified for M680x0.
@@ -49,8 +49,8 @@
 			 - sizeof(struct switch_stack))
 
 /* Mapping from PT_xxx to the stack offset at which the register is
-   saved.  Notice that usp has no stack-slot and needs to be treated
-   specially (see get_reg/put_reg below). */
+ * saved.  
+ */
 static int regoff[] = {
 	         -1, PT_REG( r1), PT_REG( r2), PT_REG( r3),
 	PT_REG( r4), PT_REG( r5), PT_REG( r6), PT_REG( r7),
@@ -166,8 +166,8 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			ret = 0;
 			copied = access_process_vm(child, addr, &data, sizeof(data), 1);
 			if (request == PTRACE_POKETEXT) {
-				flush_dcache_range(addr, addr + sizeof(data));
-				flush_icache_range(addr, addr + sizeof(data));
+				flush_dcache_range(addr, addr+sizeof(data));
+				flush_icache_range(addr, addr+sizeof(data));
 			}
 			PRINTK_DEBUG("%s POKETEXT: copied size = %d\n", __FUNCTION__, copied);
 			if (copied == sizeof(data))
@@ -204,10 +204,12 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 			ret = -EIO;
 			if ((unsigned long) data > _NSIG)
 				break;
-			if (request == PTRACE_SYSCALL)
+			if (request == PTRACE_SYSCALL) {
 				set_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-			else
+         }
+			else {
 				clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
+         }
 			child->exit_code = data;
 			PRINTK_DEBUG("%s CONT: About to run wake_up_process()\n", __FUNCTION__);
 			wake_up_process(child);

@@ -22,9 +22,9 @@
  *
  */
 
-#ifndef __NIOS2_HDREG_H
-#define __NIOS2_HDREG_H
+#ifndef _ASM_NIOS2_HDREG_H
+#define _ASM_NIOS2_HDREG_H
 
 typedef unsigned long ide_ioreg_t;
 
-#endif /* __NIOS2_HDREG_H */
+#endif /* _ASM_NIOS2_HDREG_H */

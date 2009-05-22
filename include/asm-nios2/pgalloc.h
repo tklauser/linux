@@ -1,32 +1,103 @@
-#ifndef _NIOS2_PGALLOC_H
-#define _NIOS2_PGALLOC_H
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 1994 - 2001, 2003 by Ralf Baechle
+ * Copyright (C) 1999, 2000, 2001 Silicon Graphics, Inc.
+ */
+#ifndef _ASM_NIOS2_PGALLOC_H
+#define _ASM_NIOS2_PGALLOC_H
 
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/pgalloc.h
- *
- * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
+#include <linux/highmem.h>
+#include <linux/mm.h>
 
+static inline void pmd_populate_kernel(struct mm_struct *mm, pmd_t *pmd,
+	pte_t *pte)
+{
+	set_pmd(pmd, __pmd((unsigned long)pte));
+}
 
-#include <asm/setup.h>
+static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
+	struct page *pte)
+{
+	set_pmd(pmd, __pmd((unsigned long)page_address(pte)));
+}
+
+/*
+ * Initialize a new pmd table with invalid pointers.
+ */
+extern void pmd_init(unsigned long page, unsigned long pagetable);
+
+/*
+ * Initialize a new pgd / pmd table with invalid pointers.
+ */
+extern void pgd_init(unsigned long page);
+
+pgd_t *pgd_alloc(struct mm_struct *mm); // ivho: moved imple to pgalloc.c
+
+static inline void pgd_free(pgd_t *pgd)
+{
+	free_pages((unsigned long)pgd, PGD_ORDER);
+}
+
+static inline pte_t *pte_alloc_one_kernel(struct mm_struct *mm,
+	unsigned long address)
+{
+	pte_t *pte;
+
+	pte = (pte_t *) __get_free_pages(GFP_KERNEL|__GFP_REPEAT|__GFP_ZERO, PTE_ORDER);
+
+	return pte;
+}
+
+static inline struct page *pte_alloc_one(struct mm_struct *mm,
+	unsigned long address)
+{
+	struct page *pte;
+
+	pte = alloc_pages(GFP_KERNEL | __GFP_REPEAT, PTE_ORDER);
+	if (pte) {
+
+      /* FIXME: This is only here for the iss, to avoid alias at address 0
+       */
+#if 0
+		clear_highpage(pte);
+#else
+      pte_t *p = kmap_atomic(pte, KM_USER0);
+      int i;
+
+      for(i = 0; i < 1024; i++) {
+         pte_val(p[i]) = i & 0xf;
+      }
+      kunmap_atomic(p, KM_USER0);
+#endif
+   }
+
+	return pte;
+}
+
+static inline void pte_free_kernel(pte_t *pte)
+{
+	free_pages((unsigned long)pte, PTE_ORDER);
+}
+
+static inline void pte_free(struct page *pte)
+{
+	__free_pages(pte, PTE_ORDER);
+}
+
+#define __pte_free_tlb(tlb,pte)		tlb_remove_page((tlb),(pte))
+
+/*
+ * allocating and freeing a pmd is trivial: the 1-entry pmd is
+ * inside the pgd, so has no extra memory associated with it.
+ */
+#define pmd_free(x)			do { } while (0)
+#define __pmd_free_tlb(tlb,x)		do { } while (0)
 
 #define check_pgt_cache()	do { } while (0)
 
-#endif /* _NIOS2_PGALLOC_H */
+extern void pagetable_init(void);
+
+#endif /* _ASM_NIOS2_PGALLOC_H */

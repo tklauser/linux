@@ -1,4 +1,4 @@
-/* $Id: ioctl.h,v 1.1 2006-07-05 06:20:25 gerg Exp $
+/* $Id: ioctl.h,v 1.1 2006/07/05 06:20:25 gerg Exp $
  *
  * linux/ioctl.h for Linux by H.H. Bergman.
  *
@@ -23,8 +23,8 @@
  *
  */
 
-#ifndef _NIOS2_IOCTL_H
-#define _NIOS2_IOCTL_H
+#ifndef _ASM_NIOS2_IOCTL_H
+#define _ASM_NIOS2_IOCTL_H
 
 /* ioctl command encoding: 32 bits total, command in lower 16 bits,
  * size of the parameter structure in the lower 14 bits of the
@@ -97,4 +97,4 @@
 #define IOCSIZE_MASK	(_IOC_SIZEMASK << _IOC_SIZESHIFT)
 #define IOCSIZE_SHIFT	(_IOC_SIZESHIFT)
 
-#endif /* _NIOS2_IOCTL_H */
+#endif /* _ASM_NIOS2_IOCTL_H */

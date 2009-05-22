@@ -23,13 +23,9 @@
  *
  */
 
-#ifndef __NIOS2_MMU_H
-#define __NIOS2_MMU_H
+#ifndef _ASM_NIOS2_MMU_H
+#define _ASM_NIOS2_MMU_H
 
-/* Copyright (C) 2002, David McCullough <davidm@snapgear.com> */
+typedef unsigned long mm_context_t[NR_CPUS];
 
-typedef struct {
-	unsigned long		end_brk;
-} mm_context_t;
-
-#endif /* __NIOS2_MMU_H */
+#endif /* _ASM_NIOS2_MMU_H */

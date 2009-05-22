@@ -1,5 +1,5 @@
-#ifndef _NIOS_TERMIOS_H
-#define _NIOS_TERMIOS_H
+#ifndef _ASM_NIOS2_TERMIOS_H
+#define _ASM_NIOS2_TERMIOS_H
 
 /*--------------------------------------------------------------------
  *
@@ -129,4 +129,4 @@ struct termio {
 
 #endif	/* __KERNEL__ */
 
-#endif /* _NIOS_TERMIOS_H */
+#endif /* _ASM_NIOS2_TERMIOS_H */

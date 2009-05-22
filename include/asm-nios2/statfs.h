@@ -1,5 +1,5 @@
-#ifndef _NIOS2_STATFS_H
-#define _NIOS2_STATFS_H
+#ifndef _ASM_NIOS2_STATFS_H
+#define _ASM_NIOS2_STATFS_H
 
 /*--------------------------------------------------------------------
  *
@@ -27,4 +27,4 @@
 
 #include <asm-generic/statfs.h>
 
-#endif /* _NIOS2_STATFS_H */
+#endif /* _ASM_NIOS2_STATFS_H */

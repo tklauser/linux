@@ -1,20 +1,112 @@
-#ifndef __NIOS2_IO_H__
-#define __NIOS2_IO_H__
+/*
+ * Copyright (C) 2004, Microtronix Datacom Ltd.
+ *
+ * All rights reserved.          
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
+ * NON INFRINGEMENT.  See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
+ */
 
-#define readb(addr) \
-    ({ unsigned char __v = (*(volatile unsigned char *) (addr)); __v; })
-#define readw(addr) \
-    ({ unsigned short __v = (*(volatile unsigned short *) (addr)); __v; })
-#define readl(addr) \
-    ({ unsigned int __v = (*(volatile unsigned int *) (addr)); __v; })
+#ifndef _ASM_NIOS2_IO_H
+#define _ASM_NIOS2_IO_H
 
-#define readb_relaxed(addr) readb(addr)
-#define readw_relaxed(addr) readw(addr)
-#define readl_relaxed(addr) readl(addr)
+#ifdef __KERNEL__
 
-#define writeb(b, addr) (void)((*(volatile unsigned char *) (addr)) = (b))
-#define writew(b, addr) (void)((*(volatile unsigned short *) (addr)) = (b))
-#define writel(b, addr) (void)((*(volatile unsigned int *) (addr)) = (b))
+#include <linux/kernel.h>
+
+#include <asm/page.h>      /* IO address mapping routines need this */
+#include <asm/system.h>
+#include <asm/unaligned.h>
+#include <asm/pgtable-bits.h>
+
+extern void insw(unsigned long port, void *dst, unsigned long count);
+extern void outsw(unsigned long port, void *src, unsigned long count);
+extern void insl(unsigned long port, void *dst, unsigned long count);
+extern void outsl(unsigned long port, void *src, unsigned long count);
+
+#define readsb(p,d,l)		insb(p,d,l)
+#define readsw(p,d,l)		insw(p,d,l)
+#define readsl(p,d,l)		insl(p,d,l)
+#define writesb(p,d,l)		outsb(p,d,l)
+#define writesw(p,d,l)		outsw(p,d,l)
+#define writesl(p,d,l)		outsl(p,d,l)
+#ifndef irq_canonicalize
+#define irq_canonicalize(i)	(i)
+#endif
+
+#endif /* __KERNEL__ */
+/* IO macros are needed by userspace programs */
+
+/*
+ * readX/writeX() are used to access memory mapped devices. On some
+ * architectures the memory mapped IO stuff needs to be accessed
+ * differently. On the Nios architecture, we just read/write the
+ * memory location directly.
+ */
+
+#define readb(addr) 	\
+({						\
+	unsigned char __res;\
+	__asm__ __volatile__( \
+		"ldbuio %0, 0(%1)" \
+		: "=r"(__res)	\
+		: "r" (addr));	\
+	__res;				\
+})
+
+#define readw(addr) 	\
+({						\
+	unsigned short __res;\
+	__asm__ __volatile__( \
+		"ldhuio %0, 0(%1)" \
+		: "=r"(__res)	\
+		: "r" (addr));	\
+	__res;				\
+})
+
+#define readl(addr) 	\
+({						\
+	unsigned int __res;\
+	__asm__ __volatile__( \
+		"ldwio %0, 0(%1)" \
+		: "=r"(__res)	\
+		: "r" (addr));	\
+	__res;				\
+})
+
+#define writeb(b,addr)	\
+({						\
+	__asm__ __volatile__( \
+		"stbio %0, 0(%1)" \
+		: : "r"(b), "r" (addr));	\
+})
+
+#define writew(b,addr)	\
+({						\
+	__asm__ __volatile__( \
+		"sthio %0, 0(%1)" \
+		: : "r"(b), "r" (addr));	\
+})
+
+#define writel(b,addr)	\
+({						\
+	__asm__ __volatile__( \
+		"stwio %0, 0(%1)" \
+		: : "r"(b), "r" (addr));	\
+})
 
 #define __raw_readb readb
 #define __raw_readw readw
@@ -23,113 +115,6 @@
 #define __raw_writew writew
 #define __raw_writel writel
 
-#ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
-#define __IO_USE_DUFFS
-#endif
-
-#ifdef __IO_USE_DUFFS
-
-/* Use "Duff's Device" to unroll the loops. */
-#define __IO_OUT_LOOP(a, b, l)				\
-	do {						\
-		if (l > 0) {				\
-			int _n = (l + 7) / 8;		\
-			switch (l % 8) {		\
-			case 0: do {	*a = *b++;	\
-			case 7:		*a = *b++;	\
-			case 6:		*a = *b++;	\
-			case 5:		*a = *b++;	\
-			case 4:		*a = *b++;	\
-			case 3:		*a = *b++;	\
-			case 2:		*a = *b++;	\
-			case 1:		*a = *b++;	\
-				} while (--_n > 0);	\
-			}				\
-		}					\
-	} while (0)
-
-#define __IO_IN_LOOP(a, b, l)				\
-	do {						\
-		if (l > 0) {				\
-			int _n = (l + 7) / 8;		\
-			switch (l % 8) {		\
-			case 0: do {	*b++ = *a;	\
-			case 7:		*b++ = *a;	\
-			case 6:		*b++ = *a;	\
-			case 5:		*b++ = *a;	\
-			case 4:		*b++ = *a;	\
-			case 3:		*b++ = *a;	\
-			case 2:		*b++ = *a;	\
-			case 1:		*b++ = *a;	\
-				} while (--_n > 0);	\
-			}				\
-		}					\
-	} while (0)
-
-#else
-
-/* Use simple loops. */
-#define __IO_OUT_LOOP(a, b, l)				\
-	do {						\
-		while (l--) 				\
-			*a = *b++;			\
-	} while (0)
-
-#define __IO_IN_LOOP(a, b, l)				\
-	do {						\
-		while (l--)				\
-			*b++ = *a;			\
-	} while (0)
-
-#endif
-
-
-static inline void io_outsb(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned char *ap = (volatile unsigned char *)addr;
-	unsigned char *bp = (unsigned char *)buf;
-	__IO_OUT_LOOP(ap, bp, len);
-}
-
-static inline void io_outsw(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned short *ap = (volatile unsigned short *)addr;
-	unsigned short *bp = (unsigned short *)buf;
-	__IO_OUT_LOOP(ap, bp, len);
-}
-
-static inline void io_outsl(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned int *ap = (volatile unsigned int *)addr;
-	unsigned int *bp = (unsigned int *)buf;
-	__IO_OUT_LOOP(ap, bp, len);
-}
-
-static inline void io_insb(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned char *ap = (volatile unsigned char *)addr;
-	unsigned char *bp = (unsigned char *)buf;
-	__IO_IN_LOOP(ap, bp, len);
-}
-
-static inline void io_insw(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned short *ap = (volatile unsigned short *)addr;
-	unsigned short *bp = (unsigned short *)buf;
-	__IO_IN_LOOP(ap, bp, len);
-}
-
-static inline void io_insl(void __iomem *addr, void *buf, int len)
-{
-	volatile unsigned int *ap = (volatile unsigned int *)addr;
-	unsigned int *bp = (unsigned int *)buf;
-	__IO_IN_LOOP(ap, bp, len);
-}
-
-#undef __IO_OUT_LOOP
-#undef __IO_IN_LOOP
-#undef __IO_USE_DUFFS
-
 #define mmiowb()
 
 /*
@@ -137,94 +122,127 @@ static inline void io_insl(void __iomem *addr, void *buf, int len)
  *	can override them as required
  */
 
-#define memset_io(a, b, c)	memset((void *)(a), (b), (c))
-#define memcpy_fromio(a, b, c)	memcpy((a), (void *)(b), (c))
-#define memcpy_toio(a, b, c)	memcpy((void *)(a), (b), (c))
+#define memset_io(addr,c,len)	memset((void *)(((unsigned int)(addr)) | 0x80000000),(c),(len))
+#define memcpy_fromio(to,from,len)	memcpy((to),(void *)(((unsigned int)(from)) | 0x80000000),(len))
+#define memcpy_toio(to,from,len)	memcpy((void *)(((unsigned int)(to)) | 0x80000000),(from),(len))
 
 #define inb(addr)    readb(addr)
 #define inw(addr)    readw(addr)
 #define inl(addr)    readl(addr)
-#define outb(x, addr) ((void) writeb(x, addr))
-#define outw(x, addr) ((void) writew(x, addr))
-#define outl(x, addr) ((void) writel(x, addr))
+
+#define outb(x,addr) ((void) writeb(x,addr))
+#define outw(x,addr) ((void) writew(x,addr))
+#define outl(x,addr) ((void) writel(x,addr))
 
 #define inb_p(addr)    inb(addr)
 #define inw_p(addr)    inw(addr)
 #define inl_p(addr)    inl(addr)
-#define outb_p(x, addr) outb(x, addr)
-#define outw_p(x, addr) outw(x, addr)
-#define outl_p(x, addr) outl(x, addr)
 
-#define outsb(a, b, l) io_outsb(a, b, l)
-#define outsw(a, b, l) io_outsw(a, b, l)
-#define outsl(a, b, l) io_outsl(a, b, l)
+#define outb_p(x,addr) outb(x,addr)
+#define outw_p(x,addr) outw(x,addr)
+#define outl_p(x,addr) outl(x,addr)
 
-#define insb(a, b, l) io_insb(a, b, l)
-#define insw(a, b, l) io_insw(a, b, l)
-#define insl(a, b, l) io_insl(a, b, l)
+/* IO macros are needed by userspace programs */
+#ifdef __KERNEL__
 
-#define ioread8_rep(a,d,c)	insb(a,d,c)
-#define ioread16_rep(a,d,c)	insw(a,d,c)
-#define ioread32_rep(a,d,c)	insl(a,d,c)
-#define iowrite8_rep(a,s,c)	outsb(a,s,c)
-#define iowrite16_rep(a,s,c)	outsw(a,s,c)
-#define iowrite32_rep(a,s,c)	outsl(a,s,c)
+extern inline void insb(unsigned long port, void *dst, unsigned long count)
+{
+	unsigned char *p=(unsigned char*)dst;
+	while (count--)
+		*p++ = inb(port);
+}
 
-#define ioread8(X)			readb(X)
-#define ioread16(X)			readw(X)
-#define ioread32(X)			readl(X)
-#define iowrite8(val,X)			writeb(val,X)
-#define iowrite16(val,X)		writew(val,X)
-#define iowrite32(val,X)		writel(val,X)
+/* See arch/niosnommu/io.c for optimized version */
+extern inline void _insw(unsigned long port, void *dst, unsigned long count)
+{
+	unsigned short *p=(unsigned short*)dst;
+	while (count--)
+		*p++ = inw(port);
+}
+
+/* See arch/niosnommu/kernel/io.c for unaligned destination pointer */
+extern inline void _insl(unsigned long port, void *dst, unsigned long count)
+{
+	unsigned long *p=(unsigned long*)dst;
+	while (count--)
+		*p++ = inl(port);
+}
+
+extern inline void outsb(unsigned long port, void *src, unsigned long count)
+{
+	unsigned char *p=(unsigned char*)src;
+	while (count--) 
+        outb( *p++, port );
+}
+
+/* See arch/niosnommu/io.c for optimized version */
+extern inline void _outsw(unsigned long port, void *src, unsigned long count)
+{
+	unsigned short *p=(unsigned short*)src;
+	while (count--) 
+        outw( *p++, port );
+}
+
+/* See arch/niosnommu/kernel/io.c for unaligned source pointer */
+extern inline void _outsl(unsigned long port, void *src, unsigned long count)
+{
+	unsigned long *p=(unsigned long*)src;
+	while (count--) 
+        outl( *p++, port );
+}
+
+
+
+extern inline void mapioaddr(unsigned long physaddr, unsigned long virt_addr,
+			     int bus, int rdonly)
+{
+	return;
+}
+
+
+extern void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag);
+extern void __iounmap(void *addr);
+
+extern inline void *ioremap(unsigned long physaddr, unsigned long size)
+{
+	return __ioremap(physaddr, size, _PAGE_CACHED);
+}
+extern inline void *ioremap_nocache(unsigned long physaddr, unsigned long size)
+{
+	return __ioremap(physaddr, size, 0);
+}
+extern inline void *ioremap_writethrough(unsigned long physaddr, unsigned long size)
+{
+	return __ioremap(physaddr, size, 0);
+}
+extern inline void *ioremap_fullcache(unsigned long physaddr, unsigned long size)
+{
+	return __ioremap(physaddr, size, _PAGE_CACHED);
+}
+
+extern inline void iounmap(void *addr) {
+   __iounmap(addr);
+}
+
 
 #define IO_SPACE_LIMIT 0xffffffff
 
-/* Values for nocacheflag and cmode */
-#define IOMAP_FULL_CACHING		0
-#define IOMAP_NOCACHE_SER		1
-#define IOMAP_NOCACHE_NONSER		2
-#define IOMAP_WRITETHROUGH		3
-
-extern void *__ioremap(unsigned long physaddr, unsigned long size,
-		       int cacheflag);
-extern void __iounmap(void *addr, unsigned long size);
-
-static inline void *ioremap(unsigned long physaddr, unsigned long size)
-{
-	return __ioremap(physaddr, size, IOMAP_NOCACHE_SER);
-}
-
-static inline void *ioremap_nocache(unsigned long physaddr, unsigned long size)
-{
-	return __ioremap(physaddr, size, IOMAP_NOCACHE_SER);
-}
-
-static inline void *ioremap_writethrough(unsigned long physaddr,
-					 unsigned long size)
-{
-	return __ioremap(physaddr, size, IOMAP_WRITETHROUGH);
-}
-
-static inline void *ioremap_fullcache(unsigned long physaddr,
-				      unsigned long size)
-{
-	return __ioremap(physaddr, size, IOMAP_FULL_CACHING);
-}
-
-extern void iounmap(void *addr);
+#define dma_cache_inv(_start,_size)       flush_dcache_range(_start,_size)
+#define dma_cache_wback(_start,_size)		flush_dcache_range(_start,_size)
+#define dma_cache_wback_inv(_start,_size)	flush_dcache_range(_start,_size)
 
 /* Pages to physical address... */
-#define page_to_phys(page)      ((page - mem_map) << PAGE_SHIFT)
-#define page_to_bus(page)       ((page - mem_map) << PAGE_SHIFT)
+#define page_to_phys(page)      virt_to_phys(page_to_virt(page))
+#define page_to_bus(page)       page_to_virt(page)
 
-/*
- * Macros used for converting between virtual and physical mappings.
- */
-#define phys_to_virt(vaddr)	((void *) (vaddr))
-#define virt_to_phys(vaddr)	((unsigned long) (vaddr))
+#define phys_to_virt(vaddr)	((void *) ((unsigned long)vaddr + PAGE_OFFSET - PHYS_OFFSET))
+#define virt_to_phys(vaddr)	((unsigned long) ((unsigned long)vaddr - PAGE_OFFSET + PHYS_OFFSET))
 
 #define virt_to_bus virt_to_phys
 #define bus_to_virt phys_to_virt
+
+#define ioport_map(port, nr)	ioremap(port, nr)
+#define ioport_unmap(port)	iounmap(port)
 
 /*
  * Convert a physical pointer to a virtual kernel pointer for /dev/mem
@@ -237,12 +255,17 @@ extern void iounmap(void *addr);
  */
 #define xlate_dev_kmem_ptr(p)	p
 
-/* Macros used for smc91x.c driver */
-#define readsb(p, d, l)		insb(p, d, l)
-#define readsw(p, d, l)		insw(p, d, l)
-#define readsl(p, d, l)		insl(p, d, l)
-#define writesb(p, d, l)	outsb(p, d, l)
-#define writesw(p, d, l)	outsw(p, d, l)
-#define writesl(p, d, l)	outsl(p, d, l)
+#define readsb(p,d,l)		insb(p,d,l)
+#define readsw(p,d,l)		insw(p,d,l)
+#define readsl(p,d,l)		insl(p,d,l)
+#define writesb(p,d,l)		outsb(p,d,l)
+#define writesw(p,d,l)		outsw(p,d,l)
+#define writesl(p,d,l)		outsl(p,d,l)
+#ifndef irq_canonicalize
+#define irq_canonicalize(i)	(i)
+#endif
 
-#endif /* __NIOS2_IO_H__ */
+#endif /* __KERNEL__ */
+
+#endif /* !(_ASM_NIOS2_IO_H) */
+

@@ -1,5 +1,5 @@
-#ifndef __ARCH_NIOS_TERMBITS_H__
-#define __ARCH_NIOS_TERMBITS_H__
+#ifndef _ASM_NIOS2_TERMBITS_H__
+#define _ASM_NIOS2_TERMBITS_H__
 
 /*--------------------------------------------------------------------
  *
@@ -207,4 +207,4 @@ struct ktermios {
 #define	TCSADRAIN	1
 #define	TCSAFLUSH	2
 
-#endif /* __ARCH_NIOS_TERMBITS_H__ */
+#endif /* _ASM_NIOS2_TERMBITS_H__ */

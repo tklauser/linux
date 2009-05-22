@@ -1,5 +1,5 @@
-#ifndef _ASM_SPI_H_
-#define _ASM_SPI_H_ 1
+#ifndef _ASM_NIOS2_SPI_H_
+#define _ASM_NIOS2_SPI_H_ 1
 
 /*--------------------------------------------------------------------
  *
@@ -25,7 +25,7 @@
  ---------------------------------------------------------------------*/
 
 
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 int  register_NIOS_SPI( void );
 void unregister_NIOS_SPI( void );
@@ -89,4 +89,4 @@ int  spi_reset  ( void );
 
 #define MAX_TEMP_VAR 10
 
-#endif /*_ASM_SPI_H_*/
+#endif /*_ASM_NIOS2_SPI_H_*/

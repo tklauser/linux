@@ -1,86 +1,40 @@
-#ifndef _NIOS2_TLBFLUSH_H
-#define _NIOS2_TLBFLUSH_H
+#ifndef _ASM_NIOS2_TLBFLUSH_H
+#define _ASM_NIOS2_TLBFLUSH_H
 
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/tlbflush.h
- *
- * Ported from m68knommu.
- *
- * Copyright (C) 2003 Microtronix Datacom Ltd.
- *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
-
-#include <asm/setup.h>
+#include <linux/mm.h>
 
 /*
- * flush all user-space atc entries.
+ * TLB flushing:
+ *
+ *  - flush_tlb_all() flushes all processes TLB entries
+ *  - flush_tlb_mm(mm) flushes the specified mm context TLB entries
+ *  - flush_tlb_page(vma, vmaddr) flushes one page
+ *  - flush_tlb_range(vma, start, end) flushes a range of pages
+ *  - flush_tlb_kernel_range(start, end) flushes a range of kernel pages
+ *  - flush_tlb_pgtables(mm, start, end) flushes a range of page tables
  */
-static inline void __flush_tlb(void)
+extern void local_flush_tlb_all(void);
+extern void local_flush_tlb_mm(struct mm_struct *mm);
+extern void local_flush_tlb_range(struct vm_area_struct *vma,
+	unsigned long start, unsigned long end);
+extern void local_flush_tlb_kernel_range(unsigned long start,
+	unsigned long end);
+extern void local_flush_tlb_page(struct vm_area_struct *vma,
+				 unsigned long address);
+extern void local_flush_tlb_one(unsigned long vaddr);
+
+#define flush_tlb_all()			local_flush_tlb_all()
+#define flush_tlb_mm(mm)		local_flush_tlb_mm(mm)
+#define flush_tlb_range(vma,vmaddr,end)	local_flush_tlb_range(vma, vmaddr, end)
+#define flush_tlb_kernel_range(vmaddr,end) \
+	local_flush_tlb_kernel_range(vmaddr, end)
+#define flush_tlb_page(vma,page)	local_flush_tlb_page(vma, page)
+#define flush_tlb_one(vaddr)		local_flush_tlb_one(vaddr)
+
+static inline void flush_tlb_pgtables(struct mm_struct *mm,
+	unsigned long start, unsigned long end)
 {
-	BUG();
+	/* Nothing to do on NiosII.  */
 }
 
-static inline void __flush_tlb_one(unsigned long addr)
-{
-	BUG();
-}
-
-#define flush_tlb() __flush_tlb()
-
-/*
- * flush all atc entries (both kernel and user-space entries).
- */
-static inline void flush_tlb_all(void)
-{
-	BUG();
-}
-
-static inline void flush_tlb_mm(struct mm_struct *mm)
-{
-	BUG();
-}
-
-static inline void flush_tlb_page(struct vm_area_struct *vma, unsigned long addr)
-{
-	BUG();
-}
-
-static inline void flush_tlb_range(struct mm_struct *mm,
-				   unsigned long start, unsigned long end)
-{
-	BUG();
-}
-
-extern inline void flush_tlb_kernel_page(unsigned long addr)
-{
-	BUG();
-}
-
-extern inline void flush_tlb_pgtables(struct mm_struct *mm,
-				      unsigned long start, unsigned long end)
-{
-	BUG();
-}
-
-#endif /* _NIOS2_TLBFLUSH_H */
+#endif /* _ASM_NIOS2_TLBFLUSH_H */

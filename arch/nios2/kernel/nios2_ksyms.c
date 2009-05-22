@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------
  *
- * arch/nios2/kernel/nios_ksyms.c
+ * arch/nios2nommu/kernel/nios_ksyms.c
  *
  * Derived from Nios1
  *
@@ -39,23 +39,32 @@
 #include <asm/pgalloc.h>
 #include <asm/irq.h>
 #include <asm/io.h>
+#include <asm/semaphore.h>
 #include <asm/checksum.h>
 #include <asm/hardirq.h>
 #include <asm/current.h>
 
+extern void dump_thread(struct pt_regs *, struct user *);
 /* platform dependent support */
 
 EXPORT_SYMBOL(__ioremap);
-EXPORT_SYMBOL(iounmap);
+EXPORT_SYMBOL(__iounmap);
+EXPORT_SYMBOL(dump_thread);
 
 EXPORT_SYMBOL(kernel_thread);
 
 /* Networking helper routines. */
 EXPORT_SYMBOL(csum_partial_copy);
+EXPORT_SYMBOL(csum_partial);
 
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(memmove);
+
+EXPORT_SYMBOL(__down);
+EXPORT_SYMBOL(__down_interruptible);
+EXPORT_SYMBOL(__down_trylock);
+EXPORT_SYMBOL(__up);
 
 EXPORT_SYMBOL(get_wchan);
 

@@ -19,9 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef _NIOS2_TRAPS_H
-#define _NIOS2_TRAPS_H
+#ifndef _ASM_NIOS2_TRAPS_H
+#define _ASM_NIOS2_TRAPS_H
 
 #define TRAP_ID_SYSCALL 0
 #define TRAP_ID_APPDEBUG 1
-#endif /* !(_NIOS2_TRAPS_H) */
+#endif /* !(_ASM_NIOS2_TRAPS_H) */

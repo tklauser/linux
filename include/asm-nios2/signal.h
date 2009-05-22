@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef _NIOS2_SIGNAL_H
-#define _NIOS2_SIGNAL_H
+#ifndef _ASM_NIOS2_SIGNAL_H
+#define _ASM_NIOS2_SIGNAL_H
 
 #include <linux/types.h>
 
@@ -178,4 +178,4 @@ typedef struct sigaltstack {
 
 #endif /* __KERNEL__ */
 
-#endif /* _NIOS2_SIGNAL_H */
+#endif /* _ASM_NIOS2_SIGNAL_H */

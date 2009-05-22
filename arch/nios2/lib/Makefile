@@ -15,3 +15,4 @@
 ####lib-y  =$(patsubst %.c,%.o, $(CSRC))
 ####wapos!
 lib-y  =checksum.o string.o memcpy.o
+lib-y += libgcc.o

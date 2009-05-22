@@ -1,112 +1,220 @@
-#ifndef _NIOS_PGTABLE_H
-#define _NIOS_PGTABLE_H
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * pgd = Page Global Directory
+ * pud = Page Upped Directory
+ * pmd = Page Middle Directory
+ * pte = Page Table Entry
+ *
+ * Copyright (C) 2003 Ralf Baechle
+ */
+#ifndef _ASM_NIOS2_PGTABLE_H
+#define _ASM_NIOS2_PGTABLE_H
 
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/pgtable.h
- *
- * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
-
-#include <asm-generic/4level-fixup.h>
-
-//vic - this bit copied from m68knommu version
-#include <asm/setup.h>
 #include <asm/io.h>
-#include <linux/sched.h>
+#include <asm/page.h>
+#include <asm/addrspace.h>
 
-typedef pte_t *pte_addr_t;
+#include <asm/pgtable-bits.h>
+#include <asm-generic/pgtable-nopmd.h>
 
-#define pgd_present(pgd)     	(1)       /* pages are always present on NO_MM */
-#define pgd_none(pgd)		(0)
-#define pgd_bad(pgd)		(0)
-#define pgd_clear(pgdp)
-#define kern_addr_valid(addr) 	(1)
-#define	pmd_offset(a, b)	((void *)0)
+#define FIRST_USER_ADDRESS	0
+#define VMALLOC_START	KERNEL_MMU_REGION_BASE
+#define VMALLOC_END	   (KERNEL_REGION_BASE-1)
 
-#define PAGE_NONE		__pgprot(0)    /* these mean nothing to NO_MM */
-#define PAGE_SHARED		__pgprot(0)    /* these mean nothing to NO_MM */
-#define PAGE_COPY		__pgprot(0)    /* these mean nothing to NO_MM */
-#define PAGE_READONLY		__pgprot(0)    /* these mean nothing to NO_MM */
-#define PAGE_KERNEL		__pgprot(0)    /* these mean nothing to NO_MM */
-//vic - this bit copied from m68knommu version
+struct mm_struct;
+
+/* Helper macro
+ */ 
+#define MKP(x,w,r) __pgprot(_PAGE_PRESENT|PAGE_CACHABLE_DEFAULT|\
+			    ((x)?_PAGE_EXEC:0)|			 \
+			    ((r)?_PAGE_READ:0)|			 \
+			    ((w)?_PAGE_WRITE:0))
+/*
+ * These are the macros that generic kernel code needs 
+ * (to populate protection_map[])
+ */
+
+/* Remove W bit on private pages for COW support
+ */	    
+#define __P000	MKP(0,0,0)
+#define __P001	MKP(0,0,1)
+#define __P010	MKP(0,0,0) /*COW*/
+#define __P011	MKP(0,0,1) /*COW*/
+#define __P100	MKP(1,0,0) 
+#define __P101	MKP(1,0,1)
+#define __P110	MKP(1,0,0) /*COW*/
+#define __P111	MKP(1,0,1) /*COW*/
+
+/* Shared pages can have exact HW mapping
+ */ 
+#define __S000	MKP(0,0,0)
+#define __S001	MKP(0,0,1)
+#define __S010	MKP(0,1,0) 
+#define __S011	MKP(0,1,1)
+#define __S100	MKP(1,0,0)
+#define __S101	MKP(1,0,1)
+#define __S110	MKP(1,1,0)
+#define __S111	MKP(1,1,1)
+
+/* Used all over the kernel
+ */
+#define PAGE_KERNEL __pgprot(_PAGE_PRESENT|PAGE_CACHABLE_DEFAULT|_PAGE_READ|_PAGE_WRITE|_PAGE_EXEC|_PAGE_GLOBAL)
+
+/* ivho:PAGE_COPY only used by read_zero_pagealigned() in mem.c
+ */
+#define PAGE_COPY MKP(0,0,1)
+
+
+#define PGD_ORDER	0
+#define PUD_ORDER	aieeee_attempt_to_allocate_pud
+#define PMD_ORDER	1
+#define PTE_ORDER	0
+
+#define PTRS_PER_PGD	((PAGE_SIZE << PGD_ORDER) / sizeof(pgd_t))
+#define PTRS_PER_PTE	((PAGE_SIZE << PTE_ORDER) / sizeof(pte_t))
+
+#define USER_PTRS_PER_PGD	(KERNEL_MMU_REGION_BASE/PGDIR_SIZE)
+
+#define PGDIR_SHIFT	22
+#define PGDIR_SIZE	(1UL << PGDIR_SHIFT)
+#define PGDIR_MASK	(~(PGDIR_SIZE-1))
+
+/* ivho: ?
+ */ 
+#define PTE_FILE_MAX_BITS       28
+
+/* ivho: is vaddr always "unsigned long"? 
+ */
+struct page * ZERO_PAGE(unsigned long vaddr);
+
+
+extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
+extern pte_t invalid_pte_table[PAGE_SIZE/sizeof(pte_t)];
+
+/*
+ * (pmds are folded into puds so this doesn't get actually called,
+ * but the define is needed for a generic inline function.)
+ */
+void set_pmd(pmd_t *pmdptr, pmd_t pmdval);
 
 extern void paging_init(void);
-#define swapper_pg_dir ((pgd_t *) 0)
 
-#define __swp_type(x)		(0)
-#define __swp_offset(x)		(0)
-#define __swp_entry(typ,off)	((swp_entry_t) { ((typ) | ((off) << 7)) })
-#define __pte_to_swp_entry(pte)	((swp_entry_t) { pte_val(pte) })
-#define __swp_entry_to_pte(x)	((pte_t) { (x).val })
+/* to find an entry in a pagetable-directory */
+//#define pgd_offset(mm,addr)	((mm)->pgd + pgd_index(addr))
+//ivho: checkme type of addr
+pgd_t *pgd_offset(struct mm_struct *, unsigned long addr);
 
-static inline int pte_file(pte_t pte) { return 0; }
+void pgtable_cache_init(void);
+
+/* ivho: set back to "static inline" when correct in pgtable.c
+ */
+int pte_user(pte_t pte);
+int pte_read(pte_t pte);
+int pte_write(pte_t pte);
+int pte_dirty(pte_t pte);
+int pte_young(pte_t pte);
+int pte_file(pte_t pte);
+
+#include <linux/swap.h>
+swp_entry_t   __pte_to_swp_entry(pte_t pte);
+pte_t         __swp_entry_to_pte(swp_entry_t swp);
+unsigned long __swp_type(swp_entry_t);
+pgoff_t       __swp_offset(swp_entry_t);
+swp_entry_t   __swp_entry(unsigned long, pgoff_t offset);
+
+int pte_none(pte_t pte);
+int pte_present(pte_t pte);
+
 
 /*
- * ZERO_PAGE is a global shared page that is always zero: used
- * for zero-mapped memory areas etc..
+ * The following only work if pte_present() is true.
+ * Undefined behaviour if not..
  */
-#define ZERO_PAGE(vaddr)	(virt_to_page(0))
+pte_t pte_wrprotect(pte_t pte);
+pte_t pte_rdprotect(pte_t pte);
+pte_t pte_mkclean(pte_t pte);
+pte_t pte_mkold(pte_t pte);
+pte_t pte_mkwrite(pte_t pte);
+pte_t pte_mkread(pte_t pte);
+pte_t pte_mkdirty(pte_t pte);
 
-extern unsigned int kobjsize(const void *objp);
-extern int is_in_rom(unsigned long);
+pte_t pte_mkyoung(pte_t pte);
+pte_t pte_modify(pte_t pte, pgprot_t newprot);
+
+int   pmd_present(pmd_t pmd);
+void  pmd_clear(pmd_t *pmdp);
 
 /*
- * No page table caches to initialise
+ * Certain architectures need to do special things when pte's
+ * within a page table are directly modified.  Thus, the following
+ * hook is made available.
  */
-#define pgtable_cache_init()   do { } while (0)
+void set_pte(pte_t *ptep, pte_t pteval);
+void set_pte_at(struct mm_struct *mm, unsigned long addr,pte_t *ptep, pte_t pteval);
 
-#define io_remap_pfn_range(vma, vaddr, pfn, size, prot)		\
-		remap_pfn_range(vma, vaddr, pfn, size, prot)
+//int pmd_none2 (pmd_t *pmd);
+int pmd_none(pmd_t pmd);
+int pmd_bad(pmd_t pmd);
 
-extern inline void flush_cache_mm(struct mm_struct *mm)
-{
-}
 
-extern inline void flush_cache_range(struct mm_struct *mm,
-				     unsigned long start,
-				     unsigned long end)
-{
-}
-
-/* Push the page at kernel virtual address and clear the icache */
-extern inline void flush_page_to_ram (unsigned long address)
-{
-}
-
-/* Push n pages at kernel virtual address and clear the icache */
-extern inline void flush_pages_to_ram (unsigned long address, int n)
-{
-}
+void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
 
 /*
- * All 32bit addresses are effectively valid for vmalloc...
- * Sort of meaningless for non-VM targets.
+ * Conversion functions: convert a page and protection to a page entry,
+ * and a page entry and page directory to the page they refer to.
  */
-#define	VMALLOC_START	0
-#define	VMALLOC_END	0xffffffff
+pte_t mk_pte(struct page *page, pgprot_t pgprot);
 
-#define arch_enter_lazy_mmu_mode()	do {} while (0)
-#define arch_leave_lazy_mmu_mode()	do {} while (0)
-#define arch_flush_lazy_mmu_mode()	do {} while (0)
-#define arch_enter_lazy_cpu_mode()	do {} while (0)
-#define arch_leave_lazy_cpu_mode()	do {} while (0)
-#define arch_flush_lazy_cpu_mode()	do {} while (0)
+void update_mmu_cache(struct vm_area_struct *vma,
+				    unsigned long address, pte_t pte);
 
-#endif /* _NIOS_PGTABLE_H */
+void pte_unmap(pte_t *pte);
+void pte_unmap_nested(pte_t *pte);
+
+pte_t pgoff_to_pte(pgoff_t off);
+
+/*
+ * Conversion functions: convert a page and protection to a page entry,
+ * and a page entry and page directory to the page they refer to.
+ */
+//#define pmd_phys(pmd)		virt_to_phys((void *)pmd_val(pmd))
+struct page * pmd_page(pmd_t pmd);
+//#define pmd_page_vaddr(pmd)	pmd_val(pmd)
+
+//#define pud_none(pud) 0
+//#define pmd_offset(pmd,off) 0
+
+unsigned long pte_pfn(pte_t pte);
+pte_t * pte_offset_map(pmd_t *dir, unsigned long address);
+pte_t * pte_offset_map_nested(pmd_t *dir, unsigned long address);
+
+/* to find an entry in a kernel page-table-directory */
+pgd_t * pgd_offset_k(unsigned long address);
+
+/* Get the address to the PTE for a vaddr in specfic directory 
+ */
+pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address);
+
+void pgd_ERROR(pgd_t e);
+
+
+pte_t pfn_pte(unsigned long  pfn, pgprot_t prot);
+
+pgoff_t pte_to_pgoff(pte_t pte);
+struct page * pte_page(pte_t pte);
+
+int kern_addr_valid(unsigned long addr);
+
+/*
+ * We provide our own get_unmapped area to cope with the virtual aliasing
+ * constraints placed on us by the cache architecture.
+ */
+
+#define HAVE_ARCH_UNMAPPED_AREA
+
+#include <asm-generic/pgtable.h>
+
+#endif /* _ASM_NIOS2_PGTABLE_H */

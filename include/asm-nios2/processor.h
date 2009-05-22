@@ -26,8 +26,8 @@
  *
  ---------------------------------------------------------------------*/
 
-#ifndef __ASM_NIOS_PROCESSOR_H
-#define __ASM_NIOS_PROCESSOR_H
+#ifndef _ASM_NIOS2_PROCESSOR_H
+#define _ASM_NIOS2_PROCESSOR_H
 
 #define NIOS2_FLAG_KTHREAD	0x00000001	/* task is a kernel thread */
 #define NIOS2_FLAG_COPROC	0x00000002	/* Thread used coprocess */
@@ -50,7 +50,6 @@
 #include <asm/ptrace.h>
 #include <asm/signal.h>
 #include <asm/segment.h>
-#include <asm/current.h>
 #include <asm/system.h> /* for get_hi_limit */
 
 /*
@@ -62,52 +61,44 @@
 #define MCA_bus__is_a_macro /* for versions in ksyms.c */
 
 /*
- * The nios2.has no problems with write protection
+ * The nios has no problems with write protection
  */
 #define wp_works_ok 1
 #define wp_works_ok__is_a_macro /* for versions in ksyms.c */
 
 /* Whee, this is STACK_TOP and the lowest kernel address too... */
-#if 0
-#define KERNBASE        0x00000000  /* First address the kernel will eventually be */
-#define TASK_SIZE	(KERNBASE)
-#define MAX_USER_ADDR	TASK_SIZE
-#define MMAP_SEARCH_START (TASK_SIZE/3)
-#endif
-
-#define TASK_SIZE	((unsigned int) nasys_program_mem_end)   //...this is better...
-
-/*
- * This decides where the kernel will search for a free chunk of vm
- * space during mmap's. We won't be using it
- */
-#define TASK_UNMAPPED_BASE	0
+#define KERNBASE        0xc0000000UL /* First address the kernel will 
+                                      * eventually be 
+                                      */
+#define TASK_SIZE	0x7fff0000UL
+#define MAX_USER_ADDR	  0xc0000000UL
+#define MMAP_SEARCH_START 0x40000000UL
+#define TASK_UNMAPPED_BASE (PAGE_ALIGN(TASK_SIZE / 3))
 
 /* The Nios processor specific thread struct. */
 struct thread_struct {
 	struct pt_regs *kregs;
 
-	/* For signal handling */
-	unsigned long sig_address;
-	unsigned long sig_desc;
-
 	/* Context switch saved kernel state. */
 	unsigned long ksp;
 	unsigned long kpsr;
-	unsigned long kesr;
 
-	/* Flags are defined below */
-
+	/* Flags are defined below
+    */
 	unsigned long flags;
-	int current_ds;
-	struct exec core_exec;     /* just what it says. */
 };
 
-#define INIT_MMAP { &init_mm, (0), (0), \
-		    __pgprot(0x0) , VM_READ | VM_WRITE | VM_EXEC }
+#define INIT_MMAP \
+   { &init_mm, (0), (0), __pgprot(0x0) , VM_READ | VM_WRITE | VM_EXEC }
 
-#define INIT_THREAD { sizeof init_stack + (unsigned long)init_stack }
+#define INIT_THREAD {                        \
+      .kregs	= 0,                          \
+      .ksp		= 0,                          \
+      .kpsr		= 0,                          \
+      .flags	= NIOS2_FLAG_KTHREAD,         \
+}
 
+struct task_struct;
 /* Free all resources held by a thread. */
 extern void release_thread(struct task_struct *);
 
@@ -120,19 +111,18 @@ extern void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long 
 
 extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
 
+#define THREAD_START_SP (THREAD_SIZE - sizeof(struct pt_regs))
+#define task_pt_regs(p) \
+	((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
+
 unsigned long get_wchan(struct task_struct *p);
 
+/* Used by procfs
+ */
 #define KSTK_EIP(tsk)  ((tsk)->thread.kregs->ea)
 #define KSTK_ESP(tsk)  ((tsk)->thread.kregs->sp)
 
-#ifdef __KERNEL__
-/* Allocation and freeing of basic task resources. */
-
-//;dgt2;#define alloc_task_struct() ((struct task_struct *) xx..see..linux..fork..xx __get_free_pages(GFP_KERNEL,1))
-//;dgt2;#define get_task_struct(tsk) xx..see..linux..sched.h...atomic_inc(&mem_map[MAP_NR(tsk)].count)
-
-#endif
-
 #define cpu_relax()    do { } while (0)
 #endif /* __ASSEMBLY__ */
-#endif /* __ASM_NIOS_PROCESSOR_H */
+
+#endif /* _ASM_NIOS2_PROCESSOR_H */

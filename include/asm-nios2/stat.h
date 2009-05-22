@@ -1,5 +1,5 @@
-#ifndef _ASMNIOS2_STAT_H
-#define _ASMNIOS2_STAT_H
+#ifndef _ASM_NIOS2_STAT_H
+#define _ASM_NIOS2_STAT_H
 
 /*--------------------------------------------------------------------
  *
@@ -83,9 +83,7 @@ struct stat64 {
 
 	long long	st_size;
 	unsigned long	st_blksize;
-
-	unsigned long	__pad4;		/* future possible st_blocks high bits */
-	unsigned long	st_blocks;	/* Number 512-byte blocks allocated. */
+	unsigned long long st_blocks;	/* Number 512-byte blocks allocated. */
 
 	unsigned long	st_atime;
 	unsigned long	st_atime_nsec;

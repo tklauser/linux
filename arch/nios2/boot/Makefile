@@ -1,40 +1,38 @@
 #
-# arch/nios2/boot/Makefile
+# Note, no support for gzipped uImages
 #
-# This file is subject to the terms and conditions of the GNU General Public
-# License.  See the file "COPYING" in the main directory of this archive
-# for more details.
-#
+# Copied from arm/boot/Makfile
 
-MKIMAGE := $(srctree)/scripts/mkuboot.sh
+MKIMAGE		:= $(srctree)/scripts/mkuboot.sh
 
-targets := vmImage
-extra-y += vmlinux.bin vmlinux.gz
-subdir- := compressed
+extra-y		:= vmlinux.bin
 
-quiet_cmd_uimage = UIMAGE  $@
-      cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A $(ARCH) -O linux -T kernel \
-                   -C gzip -n 'Linux-$(KERNELRELEASE)' \
-                   -a $(shell $(NM) vmlinux | awk '$$NF == "_stext" {print $$1}') \
-                   -e $(shell $(NM) vmlinux | awk '$$NF == "_start" {print $$1}') \
-                   -d $< $@
+.PHONY:  FORCE
 
+OBJCOPYFLAGS_vmlinux.bin := -O binary
 $(obj)/vmlinux.bin: vmlinux FORCE
 	$(call if_changed,objcopy)
 
-$(obj)/vmlinux.gz: $(obj)/vmlinux.bin FORCE
-	$(call if_changed,gzip)
+quiet_cmd_uimage = UIMAGE  $@
+      cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A nios2 -O linux -T kernel \
+               -C none -a 0xd0000000 -e 0xd0000000 -n 'Linux-$(KERNELRELEASE)' \
+               -d $< $@
 
-$(obj)/vmImage: $(obj)/vmlinux.gz
+quiet_cmd_flashimage = FLASHUIMAGE  $@
+      cmd_flashimage = $(OBJCOPY) --change-addr=$(CONFIG_NIOS2_UIMAGE_FLASHADDR) -I binary -O srec $< $@ 
+
+$(obj)/uImage: $(obj)/vmlinux.bin FORCE
+	$(Q)rm -f $@
 	$(call if_changed,uimage)
-	@$(kecho) 'Kernel: $@ is ready'
+	@echo -n '  Image: $@ '
+	@if [ -f $@ ]; then echo 'is ready' ; else echo 'not made'; fi
 
-$(obj)/zImage: $(obj)/compressed/vmlinux FORCE
-	$(call if_changed,objcopy)
-	@$(kecho) 'Kernel: $@ is ready'
+$(obj)/uImage.flash: $(obj)/uImage FORCE
+	$(Q)rm -f $@
+	$(call if_changed,flashimage)
+	@echo -n 'uImage.flash @$(CONFIG_NIOS2_UIMAGE_FLASHADDR) '
+	@if [ -f $@ ]; then echo 'is ready' ; else echo 'not made'; fi
 
-$(obj)/compressed/vmlinux: $(obj)/vmlinux.gz FORCE
-	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
 
-install:
-	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(BOOTIMAGE) System.map "$(INSTALL_PATH)"
+# Files generated that shall be removed upon make clean
+clean-files	:= vmlinux* uImage*

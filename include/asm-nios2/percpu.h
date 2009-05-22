@@ -1,5 +1,5 @@
-#ifndef __ARCH_NIOS2_PERCPU__
-#define __ARCH_NIOS2_PERCPU__
+#ifndef _ASM_NIOS2_PERCPU__
+#define _ASM_NIOS2_PERCPU__
 
 /*--------------------------------------------------------------------
  *
@@ -27,4 +27,4 @@
 
 #include <asm-generic/percpu.h>
 
-#endif /* __ARCH_NIOS2_PERCPU__ */
+#endif /* _ASM_NIOS2_PERCPU__ */

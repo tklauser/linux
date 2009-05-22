@@ -1,5 +1,5 @@
 /*
- * arch/nios2/kernel/dma.c
+ * arch/nios2nommu/kernel/dma.c
  *
  * Copyright (C) 2005 Microtronix Datacom Ltd
  *

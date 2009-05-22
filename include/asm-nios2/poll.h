@@ -1,5 +1,5 @@
-#ifndef __NIOS2_POLL_H
-#define __NIOS2_POLL_H
+#ifndef _ASM_NIOS2_POLL_H
+#define _ASM_NIOS2_POLL_H
 
 /*--------------------------------------------------------------------
  *

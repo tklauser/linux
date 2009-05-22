@@ -1,11 +1,11 @@
-#ifndef __NIOS2_ELF_H
-#define __NIOS2_ELF_H
+#ifndef _ASM_NIOS2_ELF_H
+#define _ASM_NIOS2_ELF_H
 
 /*--------------------------------------------------------------------
  *
  * include/asm-nios2/elf.h
  *
- * Nio2 ELF relocation types
+ * Nios2 ELF relocation types
  *
  * Derived from M68knommu
  *
@@ -74,7 +74,7 @@ typedef unsigned long elf_fpregset_t;
 #define ELF_DATA	ELFDATA2LSB
 #define ELF_ARCH	EM_ALTERA_NIOS2
 
-#define ELF_PLAT_INIT(_r, load_addr)	_r->a1 = 0
+#define ELF_PLAT_INIT(_r, load_addr)
 
 #define USE_ELF_CORE_DUMP
 #define ELF_EXEC_PAGESIZE	4096
@@ -91,35 +91,42 @@ typedef unsigned long elf_fpregset_t;
 
 #define ELF_CORE_COPY_REGS(pr_reg, regs)				\
 	/* Bleech. */							\
-	pr_reg[0] = regs->r1;						\
-	pr_reg[1] = regs->r2;						\
-	pr_reg[2] = regs->r3;						\
-	pr_reg[3] = regs->r4;						\
-	pr_reg[4] = regs->r5;						\
-	pr_reg[5] = regs->r6;						\
-	pr_reg[6] = regs->r7;						\
-	pr_reg[7] = regs->r8;						\
-	pr_reg[8] = regs->r9;						\
-	pr_reg[9] = regs->r10;						\
-	pr_reg[10] = regs->r11;						\
-	pr_reg[11] = regs->r12;						\
-	pr_reg[12] = regs->r13;						\
-	pr_reg[13] = regs->r14;						\
-	pr_reg[14] = regs->r15;						\
-	pr_reg[23] = regs->sp;						\
-	pr_reg[26] = regs->estatus;					\
+	pr_reg[0]  = regs->r8;						\
+	pr_reg[1]  = regs->r9;						\
+	pr_reg[2]  = regs->r10;						\
+	pr_reg[3]  = regs->r11;						\
+	pr_reg[4]  = regs->r12;						\
+	pr_reg[5]  = regs->r13;						\
+	pr_reg[6]  = regs->r14;						\
+	pr_reg[7]  = regs->r15;						\
+	pr_reg[8]  = regs->r1;						\
+	pr_reg[9]  = regs->r2;						\
+	pr_reg[10] = regs->r3;						\
+	pr_reg[11] = regs->r4;						\
+	pr_reg[12] = regs->r5;						\
+	pr_reg[13] = regs->r6;						\
+	pr_reg[14] = regs->r7;						\
+	pr_reg[15] = regs->orig_r2;					\
+	pr_reg[16] = regs->ra;						\
+	pr_reg[17] = regs->fp;						\
+	pr_reg[18] = regs->sp;						\
+	pr_reg[19] = regs->gp;						\
+	pr_reg[20] = regs->estatus;					\
+	pr_reg[21] = regs->ea;						\
+	pr_reg[22] = regs->orig_r7;					\
 	{								\
 	  struct switch_stack *sw = ((struct switch_stack *)regs) - 1;	\
-	  pr_reg[15] = sw->r16;						\
-	  pr_reg[16] = sw->r17;						\
-	  pr_reg[17] = sw->r18;						\
-	  pr_reg[18] = sw->r19;						\
-	  pr_reg[19] = sw->r20;						\
-	  pr_reg[20] = sw->r21;						\
-	  pr_reg[21] = sw->r22;						\
-	  pr_reg[22] = sw->r23;						\
-	  pr_reg[24] = sw->fp;						\
-	  pr_reg[25] = sw->gp;						\
+	  pr_reg[23] = sw->r16;						\
+	  pr_reg[24] = sw->r17;						\
+	  pr_reg[25] = sw->r18;						\
+	  pr_reg[26] = sw->r19;						\
+	  pr_reg[27] = sw->r20;						\
+	  pr_reg[28] = sw->r21;						\
+	  pr_reg[29] = sw->r22;						\
+	  pr_reg[30] = sw->r23;						\
+	  pr_reg[31] = sw->fp;						\
+	  pr_reg[32] = sw->gp;						\
+	  pr_reg[33] = sw->ra;						\
 	}
 
 /* This yields a mask that user programs can use to figure out what
@@ -133,6 +140,8 @@ typedef unsigned long elf_fpregset_t;
 
 #define ELF_PLATFORM  (NULL)
 
-#define SET_PERSONALITY(ex) set_personality(PER_LINUX)
+#ifdef __KERNEL__
+#define SET_PERSONALITY(ex, ibcs2) set_personality((ibcs2)?PER_SVR4:PER_LINUX)
+#endif
 
 #endif

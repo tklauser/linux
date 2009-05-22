@@ -1,5 +1,5 @@
-#ifndef __ASM_SMP_H
-#define __ASM_SMP_H
+#ifndef _ASM_NIOS2_SMP_H
+#define _ASM_NIOS2_SMP_H
 
 /*--------------------------------------------------------------------
  *

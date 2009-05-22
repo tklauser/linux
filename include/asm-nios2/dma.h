@@ -1,4 +1,4 @@
-/* $Id: dma.h,v 1.1 2006-07-05 06:20:25 gerg Exp $
+/* $Id: dma.h,v 1.1 2006/07/05 06:20:25 gerg Exp $
  *
  * Copyright 2004 (C) Microtronix Datacom Ltd.
  *
@@ -27,7 +27,7 @@
 #include <linux/kernel.h>
 #include <asm/asm-offsets.h>
 
-#define MAX_DMA_ADDRESS	(LINUX_SDRAM_END)
+#define MAX_DMA_ADDRESS	__va(LINUX_SDRAM_END)
 
 int request_dma(unsigned int, const char *);
 void free_dma(unsigned int);
@@ -48,16 +48,14 @@ void nios2_set_dma_waddr(unsigned int dmanr, unsigned int a);
 
 static inline unsigned long claim_dma_lock(void)
 {
+   BUG();
 }
 
 static inline void release_dma_lock(unsigned long flags)
 {
+   BUG();
 }
 
-#ifdef CONFIG_PCI
-extern int isa_dma_bridge_buggy;
-#else
 #define isa_dma_bridge_buggy 	(0)
-#endif
 
 #endif /* !(_ASM_NIOS2_DMA_H) */

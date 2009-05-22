@@ -1,6 +1,6 @@
-#ifndef __ASM_SH_RESOURCE_H
-#define __ASM_SH_RESOURCE_H
+#ifndef _ASM_NIOS2_RESOURCE_H
+#define _ASM_NIOS2_RESOURCE_H
 
 #include <asm-generic/resource.h>
 
-#endif /* __ASM_SH_RESOURCE_H */
+#endif /* _ASM_NIOS2_RESOURCE_H */

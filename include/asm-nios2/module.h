@@ -1,5 +1,5 @@
-#ifndef _NIOS2_MODULE_H
-#define _NIOS2_MODULE_H
+#ifndef _ASM_NIOS2_MODULE_H
+#define _ASM_NIOS2_MODULE_H
 
 /*--------------------------------------------------------------------
  *
@@ -33,4 +33,4 @@ struct mod_arch_specific
 #define Elf_Sym Elf32_Sym
 #define Elf_Ehdr Elf32_Ehdr
 
-#endif /* _NIOS_MODULE_H */
+#endif /* _ASM_NIOS_MODULE_H */

@@ -1,5 +1,5 @@
-#ifndef __NIOS2_SHMPARAM_H__
-#define __NIOS2_SHMPARAM_H__
+#ifndef _ASM_NIOS2_SHMPARAM_H__
+#define _ASM_NIOS2_SHMPARAM_H__
 
 /*--------------------------------------------------------------------
  *
@@ -25,6 +25,6 @@
  ---------------------------------------------------------------------*/
 
 
-#define	SHMLBA		PAGE_SIZE	/* attach addr a multiple of this */
+#define	SHMLBA		 DCACHE_SIZE 	/* attach addr a multiple of this */
 
-#endif /* __NIOS2_SHMPARAM_H__ */
+#endif /* _ASM_NIOS2_SHMPARAM_H__ */

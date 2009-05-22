@@ -1,5 +1,5 @@
-#ifndef _ASM_NIOS_SOCKIOS_H
-#define _ASM_NIOS_SOCKIOS_H
+#ifndef _ASM_NIOS2_SOCKIOS_H
+#define _ASM_NIOS2_SOCKIOS_H
 
 /*--------------------------------------------------------------------
  *
@@ -35,5 +35,5 @@
 #define SIOCGSTAMP	0x8906	/* Get stamp */
 #define SIOCGSTAMPNS	0x8907	/* Get stamp (timespec) */
 
-#endif /* !(_ASM_NIOS_SOCKIOS_H) */
+#endif /* !(_ASM_NIOS2_SOCKIOS_H) */
 

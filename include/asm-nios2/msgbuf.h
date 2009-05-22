@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef _NIOS2_MSGBUF_H
-#define _NIOS2_MSGBUF_H
+#ifndef _ASM_NIOS2_MSGBUF_H
+#define _ASM_NIOS2_MSGBUF_H
 
 /* 
  * The msqid64_ds structure for nios2 architecture.
@@ -52,5 +52,5 @@ struct msqid64_ds {
 	unsigned long  __unused5;
 };
 
-#endif /* _NIOS2_MSGBUF_H */
+#endif /* _ASM_NIOS2_MSGBUF_H */
 

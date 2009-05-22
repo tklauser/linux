@@ -1,5 +1,5 @@
-#ifndef __NDMA_H__
-  #define __NDMA_H__
+#ifndef _ASM_NIOS2_NDMA_H__
+#define _ASM_NIOS2_NDMA_H__
 
     #ifndef __ASSEMBLY__
 

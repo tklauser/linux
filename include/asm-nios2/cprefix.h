@@ -25,8 +25,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef __NIOS2_CPREFIX_H
-#define __NIOS2_CPREFIX_H
+#ifndef _ASM_NIOS2_CPREFIX_H
+#define _ASM_NIOS2_CPREFIX_H
 
 #define C_LABEL_PREFIX
 
@@ -35,4 +35,4 @@
 
 #define C_LABEL(name) CONCAT(C_LABEL_PREFIX, name)
 
-#endif /* !(__NIOS2_CPREFIX_H) */
+#endif /* !(_ASM_NIOS2_CPREFIX_H) */

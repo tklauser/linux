@@ -1,11 +1,37 @@
-#ifndef _NIOS2_SYSTEM_H
-#define _NIOS2_SYSTEM_H
+/*
+ * Taken from the m68k.
+ *
+ * Copyright (C) 2004, Microtronix Datacom Ltd.
+ *
+ * All rights reserved.          
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
+ * NON INFRINGEMENT.  See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
+ */
+#ifndef _ASM_NIOS2_SYSTQEM_H
+#define _ASM_NIOS2_SYSTQEM_H
 
 #include <linux/linkage.h>
 #include <linux/compiler.h>
 #include <asm/segment.h>
 #include <asm/entry.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
+#include <linux/string.h>
+#include <linux/fmdebug.h>
+#include <asm/addrspace.h>
 
 /*
  * switch_to(n) should switch tasks to task ptr, first checking that
@@ -73,7 +99,7 @@ asmlinkage void resume(void);
 #define mb()   asm volatile (""   : : :"memory")
 #define rmb()  asm volatile (""   : : :"memory")
 #define wmb()  asm volatile (""   : : :"memory")
-#define set_rmb(var, value)    do { xchg(&var, value); } while (0)
+#define set_rmb(var, value)    do { (void)xchg(&var, value); } while (0)
 #define set_mb(var, value)     set_rmb(var, value)
 #define set_wmb(var, value)    do { var = value; wmb(); } while (0)
 
@@ -125,19 +151,47 @@ static inline unsigned long __xchg(unsigned long x, volatile void * ptr, int siz
   return tmp;
 }
 
-#include <asm-generic/cmpxchg-local.h>
-
 /*
- * cmpxchg_local and cmpxchg64_local are atomic wrt current CPU. Always make
- * them available.
+ * Atomic compare and exchange.  Compare OLD with MEM, if identical,
+ * store NEW in MEM.  Return the initial value in MEM.  Success is
+ * indicated by comparing RETURN with OLD.
  */
-#define cmpxchg_local(ptr, o, n)				  	       \
-	((__typeof__(*(ptr)))__cmpxchg_local_generic((ptr), (unsigned long)(o),\
-			(unsigned long)(n), sizeof(*(ptr))))
-#define cmpxchg64_local(ptr, o, n) __cmpxchg64_local_generic((ptr), (o), (n))
+#define __HAVE_ARCH_CMPXCHG	1
 
-#ifndef CONFIG_SMP
-#include <asm-generic/cmpxchg.h>
-#endif
+/* This function doesn't exist, so you'll get a linker error
+   if something tries to do an invalid cmpxchg().  */
+extern void __cmpxchg_called_with_bad_pointer(void);
 
-#endif /* _NIOS2_SYSTEM_H */
+static __inline__ unsigned long
+__cmpxchg_u32(volatile unsigned long *p, unsigned long old, unsigned long new)
+{
+	unsigned long flags;
+	unsigned long prev;
+
+	local_irq_save(flags);
+	if ((prev = *p) == old)
+		*p = new;
+	local_irq_restore(flags);
+	return(prev);
+}
+
+static inline unsigned long
+__cmpxchg(volatile void *ptr, unsigned long old, unsigned long new, int size)
+{
+	if (size == 4)
+		return __cmpxchg_u32(ptr, old, new);
+
+	__cmpxchg_called_with_bad_pointer();
+	return old;
+}
+
+#define cmpxchg(ptr,o,n)						 \
+  ({									 \
+     __typeof__(*(ptr)) _o_ = (o);					 \
+     __typeof__(*(ptr)) _n_ = (n);					 \
+     (__typeof__(*(ptr))) __cmpxchg((ptr), (unsigned long)_o_,		 \
+				    (unsigned long)_n_, sizeof(*(ptr))); \
+  })
+
+#define arch_align_stack(x) (x)
+#endif /* _ASM_NIOS2_SYSTEM_H */

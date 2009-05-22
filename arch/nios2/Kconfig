@@ -1,38 +1,99 @@
 #
-# For a description of the syntax of this configuration file,
-# see the Configure script.
+# Nios2 port by Wind River Systems Inc trough:
+#   fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
 #
-mainmenu "Linux/Nios2 Kernel Configuration"
 
-config FPU
-	bool
-	default n
+menu "NiosII Configuration"
 
-config ZONE_DMA
+choice
+	prompt "NiosII FPGA configuration"
+
+config NIOS2_DEFAULT_MMU
+	bool "MMU_DEFAULT"
+	help
+	  The default mmu config for the v17 release
+
+config NIOS2_MAXIMUM_MMU
+	bool "MAXIMUM_MMU"
+	help
+	  The maximum mmu config for the v17 release
+
+config NIOS2_CUSTOM_FPGA
+	bool "CUSTOM_FPGA"
+	help
+	  Adapat the kernel to custom FPGA configuration. You will 
+          need to generate a header file for your desgin using the
+	  "sopc-create-header-files" scripts provided by Altera.
+	  The file "include/asm-nios2/custom_fpga.h" will be used.
+
+endchoice
+
+config NIOS2_HW_MUL_SUPPORT
+       bool "HW mul support"
+       default y
+       help
+	Enables the -mno-hw-mul compiler flag. 
+
+config NIOS2_HW_MULX_SUPPORT
+       bool "HW mulx support"
+       default n
+       help
+	Enables the -mno-hw-mulx compiler flag
+
+config NIOS2_HW_DIV_SUPPORT
+       bool "HW div support"
+       default n
+       help
+	Enables/disables the -mno-hw-div compiler flag
+
+config NIOS2_UIMAGE_FLASHADDR
+       hex "Offset address for uImage.flash"
+       default 0x1C80000
+       help
+       	  uImage.flash is simply an srec of the uImage with an
+          offset. Suitable for use with the nios2-flash-programmer
+          tool.
+
+config PIO_DEVICES
+       tristate "Enable NiosII PIO driver"
+       default y
+       help
+
+config PIO_LED
+       bool "Enable NiosII PIO led driver"
+       depends on PIO_DEVICES
+       default y
+       help
+         Enable the example PIO led driver (which just
+	 displays a timer value on the 8 leds) 
+          
+endmenu
+     
+config NIOS2
 	bool
 	default y
+	# Horrible source of confusion.  Die, die, die ...
+	select EMBEDDED
 
-config GENERIC_HARDIRQS
-	def_bool y
+config MMU
+       bool
+       default y
 
-config GENERIC_IRQ_PROBE
-	def_bool y
-
-#config NO_DMA
-#	bool
-#	default y
-
-config UID16
-	bool
-	default y
 
 config RWSEM_GENERIC_SPINLOCK
 	bool
 	default y
 
-config RWSEM_XCHGADD_ALGORITHM
-	bool
-	default n
+config PASS_CMDLINE
+       bool
+       default y
+
+#
+# FIXME: Should UID16 really be set ? 
+#
+config UID16
+       bool	
+       default y
 
 config GENERIC_FIND_NEXT_BIT
 	bool
@@ -46,325 +107,40 @@ config GENERIC_CALIBRATE_DELAY
 	bool
 	default y
 
-config GENERIC_TIME
-	bool
-	default y
+#config GENERIC_TIME
+#	bool
+#	default y
 
-config NO_IOPORT
-	def_bool y
+config ZONE_DMA
+       bool
+       default y
 
-config HOTPLUG_CPU
-	bool
-	default n
+config EARLY_PRINTK
+       bool
+       default y
 
-source "init/Kconfig"
+config BINFMT_ELF
+       bool
+       default y
 
-source "kernel/Kconfig.freezer"
+# FIXME: really !
+config NOT_COHERENT_CACHE
+       bool
+       default n
 
-menu "Processor type and features"
+config HZ 
+       int
+       default 100
 
-comment 'Platform dependant setup'
-
-source "kernel/time/Kconfig"
-
-choice
-	prompt "CPU"
-	default NIOS2
-
-config NIOS2
-	bool "NIOS2"
-	help
-	  Altera Nios2 softcore processor.
-
-endchoice
-
-config MMU
-	bool "MMU support"
-	default n
-	help
-	  This option switches on and off support for the Nios2 MMU
-	  (effectively switching between vmlinux and uClinux).	  
-	  Only Nios2/f core with MMU enabled can set this option on.
-	  For other Nios2 cores without MMU, this option must be 
-	  turned off.
-
-choice
-	prompt "Platform"
-	default ALTERA_STRATIX
-
-config MICROTRONIX_UKIT
-	bool "Microtronix uKit board support"
-	depends on NIOS2
-	help
-	  Support for the Microtronix uKit development board. Includes support 
-	  for Sodimm SDRAM/FLASH, soft ethernet MAC & PHY.
-
-config MICROTRONIX_STRATIX
-	bool "Microtronix Stratix board support"
-	depends on NIOS2
-	help
-	  Support for the Microtronix Stratix board. Includes support 
-	  for Sodimm SDRAM/FLASH, soft ethernet MAC & PHY, USB, LVDS
-	  & analog/digital converters.
-
-config MICROTRONIX_CYCLONE
-	bool "Microtronix Cyclone board support"
-	depends on NIOS2
-	help
-	  Support for the Microtronix Cyclone board. Includes support 
-	  for SDRAM, FLASH, soft ethernet MAC & PHY, USB,
-	  & analog/digital converters.
-
-config MICROTRONIX_PSK
-	bool "Microtronix PSK (Product Starter Kit) support"
-	depends on NIOS2
-	help
-	  Support for the Microtronix PSK (Product Starter Kit), which
-	  features firefly module (EP1C4 or EP1C12). Includes support 
-	  for SDRAM, FLASH, and a variety of product expansion kits such
-	  as USB, Ethernet etc.
-
-config ALTERA_STRATIX
-	bool "Altera Stratix Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Stratix Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
-
-config ALTERA_STRATIX_PRO
-	bool "Altera Stratix Pro Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Stratix 1s40 Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
-
-config ALTERA_STRATIX_II
-	bool "Altera Stratix II Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Stratix II Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
-
-config ALTERA_CYCLONE
-	bool "Altera Cyclone Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Cyclone Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
-
-config ALTERA_CYCLONE_II
-	bool "Altera CYCLONE II Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera CYCLONE II Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, compact flash.
-
-config ALTERA_CYCLONE_1C12_EVAL
-	bool "Altera Cyclone 1C12 Evaluation board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Cyclone 1C12 Evaluation board (with the
-	  embedded processor module).
-
-config ALTERA_DE2
-	bool "Altera DE2 Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera Cyclone Development board. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, VGA, I2C.
-
-config ALTERA_NEEK_C3
-	bool "Altera Nios II Embedded Evaluation Kit support"
-	depends on NIOS2
-	help
-	  Support for the Altera Nios II Embedded Evaluation Kit. Includes
-	  support for 10/100 ethernet, FLASH, SDRAM, LCD, VGA, I2C.
-
-config ALTERA_CYCLONE_III
-	bool "Altera CYCLONE III 3C120 Development board support"
-	depends on NIOS2
-	help
-	  Support for the Altera CYCLONE III 3C120 Development board. Includes
-	  support for 10/100/1000 ethernet, FLASH, DDR2 SDRAM.
-
-endchoice
-
-choice
-	prompt "Nios II Hardware Multiply Support"
-	default NIOS2_HW_MULX
-	help
-	  This option enables various assembler instructions based on your
-	  selection.  The choice depends on what target hardware you'll be
-	  running your applications on.  The default is 
-	  "Enable mulx instruction".
-	  
-	  Here is an explanation of each option:
-	  None = -mno-hw-mul -mno-hw-mulx
-	   (no mul or mulx instructions used)
-	  Enable mul instruction = -mhw-mul -mno-hw-mulx 
-	   (use mul instructions)
-	  Enable mul and mulx instructions = -mhw-mul -mhw-mulx
-	   (use mul and mulx instructions)
-	  
-	  If you don't know what to choose, select "Enable mulx instruction".
-	
-config NIOS2_HW_MUL_OFF
-	bool "None"
-
-config NIOS2_HW_MUL
-	bool "Enable mul instruction"
-
-config NIOS2_HW_MULX
-	bool "Enable mul and mulx instructions"
-	
-endchoice
-
-comment 'Platform drivers Options'
-
-config GENERIC_GPIO
-	bool "GPIO interface"
-	default n
-	help
-	  This enables support of Altera's PIO controller with Avalon
-	  interface, v9.0 or later with set/clear regs.
-
-config AVALON_DMA
-	bool "Support of DMA controller with Avalon interface"
-	default y
-	help
-	  This enables support of Altera's DMA controller with Avalon
-	  interface, so that drivers of DMA-able device can use this 
-	  interface.
-	
-config PIO_DEVICES
-	bool "Enable leds, seven segment display"
-	default y
-	depends on (ALTERA_STRATIX || ALTERA_STRATIX_PRO || ALTERA_CYCLONE)
-	help
-	  This enables example code to support leds, and seven segment
-	  display as PIO devices. Once enabled, the kernel will show a
-	  counter (increas once a second) on these devices.
-
-source "arch/nios2/drivers/Kconfig"
-
-comment 'Miscellaneous Options'
-
-config EXCALIBUR
-	bool
-	default y
-	depends on (NIOS2)
-
-config BREAK_ON_START
-	bool "Include breakpoint trap on kernel startup"
-	help
-	  Configures the kernel to trap to the GDB client on startup
-	  before the kernel starts initialization. This allows you to
-	  debug the kernel startup.
-
-config FORCE_MAX_ZONEORDER
-	int
-	default "14" 
-
-choice
-	prompt "Kernel executes from"
-	---help---
-	  Choose the memory type that the kernel will be running in.
-
-config RAMKERNEL
-	bool "RAM"
-	help
-	  The kernel will be resident in RAM when running.
-
-#config ROMKERNEL
-#	bool "ROM"
-#	help
-#	  The kernel will be resident in FLASH/ROM when running.
-
-#config HIMEMKERNEL
-#	bool "HIMEM"
-#	help
-#	  The kernel will be resident in high memory when running.
-
-endchoice
-
-source "kernel/Kconfig.preempt"
-
-source kernel/Kconfig.hz
-
-config CMDLINE
-	string "Default kernel command string"
-	default "CONSOLE=/dev/ttyS0 root=/dev/rom0 ro"
-	help
-	  On some architectures, there is currently no way
-	  for the boot loader to pass arguments to the kernel. For these
-	  architectures, you should supply some command-line options at build
-	  time by entering them here. As a minimum, you should specify the
-	  memory size and the root device (e.g., mem=64M root=/dev/nfs).
-
-config PASS_CMDLINE
-	bool "Passed kernel command line from u-boot"
-	default n
-	help
-	  Use bootargs env variable from u-boot for kernel command line.
-	  will override "Default kernel command string".
-          Say N if you are unsure.
+config TRACE_IRQFLAGS_SUPPORT
+       bool
+       default n
 
 source "mm/Kconfig"
 
-config BOOT_LINK_OFFSET
-	hex "Link address offset for booting"
-	default "0x00500000"
-	help
-	  This option allows you to set the link address offset of the zImage.
-	  This can be useful if you are on a board which has a small amount of
-	  memory.
+source "kernel/Kconfig.preempt"
 
-endmenu
-
-menu "Bus options (PCI, PCMCIA, EISA, MCA, ISA)"
-
-config PCI
-	bool "PCI support"
-	help
-	  Support for PCI bus.
-
-source "drivers/pci/Kconfig"
-
-config HOTPLUG
-	bool "Support for hot-pluggable device"
-	  help
-	  Say Y here if you want to plug devices into your computer while
-	  the system is running, and be able to use them quickly.  In many
-	  cases, the devices can likewise be unplugged at any time too.
-
-	  One well known example of this is PCMCIA- or PC-cards, credit-card
-	  size devices such as network cards, modems or hard drives which are
-	  plugged into slots found on all modern laptop computers.  Another
-	  example, used on modern desktops as well as laptops, is USB.
-
-	  Enable HOTPLUG and KMOD, and build a modular kernel.  Get agent
-	  software (at <http://linux-hotplug.sourceforge.net/>) and install it.
-	  Then your kernel will automatically call out to a user mode "policy
-	  agent" (/sbin/hotplug) to load modules and set up software needed
-	  to use devices as you hotplug them.
-
-source "drivers/pcmcia/Kconfig"
-
-source "drivers/pci/hotplug/Kconfig"
-
-endmenu
-
-menu "Executable file formats"
-
-source "fs/Kconfig.binfmt"
-
-endmenu
-
-menu "Power management options"
-
-source "kernel/power/Kconfig"
-
-endmenu
+source "init/Kconfig"
 
 source "net/Kconfig"
 

@@ -24,6 +24,7 @@
 #include <linux/fs.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
+#include <asm/pgtable.h>
 
 #if 0
 #define DEBUGP printk
@@ -31,6 +32,15 @@
 #define DEBUGP(fmt , ...)
 #endif
 
+/* FIXME:  modules should NOT be allocated with kmalloc
+ * for (obvious) reasons. But we do it for now to avoid
+ * relocation issues. CALL26/PCREL26 cannot reach 
+ * from 0x80000000 (vmalloc area) to 0xc00000000 (kernel)
+ * (kmalloc returns addresses in 0xc0000000)
+ *
+ * We should really have some trampolines for this instead.
+ */
+#if 0
 void *module_alloc(unsigned long size)
 {
 	if (size == 0)
@@ -38,14 +48,31 @@ void *module_alloc(unsigned long size)
 	return vmalloc(size);
 }
 
+/* Free memory returned from module_alloc */
+void module_free(struct module *mod, void *module_region)
+{
+ 	vfree(module_region);
+	/* FIXME: If module_region == mod->init_region, trim exception
+           table entries. */
+}
+
+#else
+void *module_alloc(unsigned long size)
+{
+	if (size == 0)
+		return NULL;
+	return kmalloc(size, GFP_KERNEL);
+}
 
 /* Free memory returned from module_alloc */
 void module_free(struct module *mod, void *module_region)
 {
-	vfree(module_region);
+         kfree(module_region);
 	/* FIXME: If module_region == mod->init_region, trim exception
            table entries. */
 }
+
+#endif
 
 /* We don't need anything special. */
 int module_frob_arch_sections(Elf_Ehdr *hdr,
@@ -90,6 +117,9 @@ int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
 			= ((Elf32_Sym *)sechdrs[symindex].sh_addr
 			   + ELF32_R_SYM (rela[i].r_info));
 		uint32_t v = sym->st_value + rela[i].r_addend;
+		DEBUGP("reltype %d 0x%x name:<%s>\n", ELF32_R_TYPE (rela[i].r_info),
+		       rela[i].r_offset,
+		       strtab+sym->st_name);
 
 		switch (ELF32_R_TYPE (rela[i].r_info)) {
 		case R_NIOS2_NONE:

@@ -1,5 +1,12 @@
 /*
- *  linux/arch/nios2/kernel/entry.S
+ * linux/arch/nios2/kernel/entry.S
+ *
+ * Copyright (C) 2009, Wind River Systems Inc
+ * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
+ * Based on:
+ *
+ * linux/arch/nios2/kernel/entry.S	
  *
  *  Copyright (C) 1999-2002, Greg Ungerer (gerg@snapgear.com)
  *  Copyright (C) 1998  D. Jeff Dionne <jeff@lineo.ca>,
@@ -38,56 +45,198 @@
 #include <asm/traps.h>
 #include <asm/processor.h>
 
+
+/* FIXME: Lots of these exceptions needs to be handled
+ */ 
+.data
+exception_table:
+        .word   unhandled_exception	// 0 - Reset
+        .word   unhandled_exception	// 1 - Processor only reset
+        .word   external_interrupt	// 2 - Interrupt
+        .word   handle_trap		// 3 - trap instruction
+
+        .word   instruction_trap	// 4 - Unimplemented instruction
+        .word   handle_illegal		// 5 - Illegal instruction
+        .word   handle_unaligned	// 6 - Misaligned data access
+        .word   handle_unaligned	// 7 - Misaligned destination address
+
+        .word   handle_diverror		// 8 - Division error
+        .word   protection_exception_ba	// 9 - Supervisor only instr. access
+        .word   protection_exception_instr // 10 - Supervisor only instr.
+        .word   protection_exception_ba	// 11 - Supervisor only data address
+
+        .word   unhandled_exception	// 12 - tlb double fault.
+        .word   protection_exception_pte// 13 - tlb permission violation (x)
+        .word   protection_exception_pte// 14 - tlb permission violation (r)
+        .word   protection_exception_pte// 15 - tlb permission violation (w)
+	
+        .word   unhandled_exception	// 16 - MPU region violation
+
+	
+trap_table:
+	.word	handle_system_call	// 0 
+	.word	instruction_trap	// 1
+	.word	instruction_trap	// 2
+	.word	instruction_trap	// 3
+	.word	instruction_trap	// 4
+	.word	instruction_trap	// 5
+	.word	instruction_trap	// 6
+	.word	instruction_trap	// 7
+	.word	instruction_trap	// 8
+	.word	instruction_trap	// 9
+	.word	instruction_trap	// 10
+	.word	instruction_trap	// 11
+	.word	instruction_trap	// 12
+	.word	instruction_trap	// 13
+	.word	instruction_trap	// 14
+	.word	instruction_trap	// 15
+	.word	instruction_trap	// 16
+	.word	instruction_trap	// 17
+	.word	instruction_trap	// 18
+	.word	instruction_trap	// 19
+	.word	instruction_trap	// 20
+	.word	instruction_trap	// 21
+	.word	instruction_trap	// 22
+	.word	instruction_trap	// 23
+	.word	instruction_trap	// 24
+	.word	instruction_trap	// 25
+	.word	instruction_trap	// 26
+	.word	instruction_trap	// 27
+	.word	instruction_trap	// 28
+	.word	instruction_trap	// 29
+	.word	instruction_trap	// 30
+	.word	handle_breakpoint	// 31
+	
 .text
 .set noat
 .set nobreak
 
-ENTRY(system_call)
-/*	SAVE_ALL */
-	rdctl	r10,status		/* enable intrs again */
+
+ENTRY(inthandler)
+	SAVE_ALL
+	/* Clear EH bit before we get a new excpetion in the kernel
+	 * and after we have saved it to the exception frame. This is done
+	 * wheter it's trap, tlb-miss or interrupt. If we don't do this
+	 * estatus is not updated the next exception.
+	 */	
+	rdctl	r24,status
+	movi	r9,-5
+	and	r24,r24,r9
+	wrctl	status,r24
+
+	/* Read cause and vector and branch to the associated handler (
+         */
+	mov	r4,sp
+        rdctl   r5,ctl7
+        movia   r9,exception_table
+        add     r24,r9,r5
+        ldw     r24,0(r24)
+        jmp     r24
+
+
+/***********************************************************************
+ * Handle traps
+ ***********************************************************************
+ */
+ENTRY(handle_trap)
+	ldw	r24,-4(ea)	// instruction that caused the exception
+	srli	r24,r24,4
+	andi	r24,r24,0x7c
+	movia	r9,trap_table
+	add	r24,r24,r9
+	ldw	r24,0(r24)
+	jmp	r24
+
+	
+/***********************************************************************
+ * Handle system calls
+ ***********************************************************************
+ */
+ENTRY(handle_system_call)
+	/* Enable interrupts
+	 */
+	rdctl	r10,status		
 	ori	r10,r10,0x0001
 	wrctl	status,r10
-
-	movi	r2,-LENOSYS
-	stw	r2,PT_R2(sp)		/* default return value in r2 */
-					/* original r2 is in orig_r2 */
-
+	
+	/* Reload registers destroyed by common code.
+	 */
+	ldw	r4,PT_R4(sp)
+	ldw	r5,PT_R5(sp)
+	
+	/* Check that the requested system call is within limits
+	 */
 	movui	r1,NR_syscalls
-	bgtu	r3,r1,ret_from_exception
-	slli	r1,r3,2
+	bgtu	r2,r1,ret_invsyscall
+	slli	r1,r2,2
 	movhi	r11,%hiadj(sys_call_table)
 	add	r1,r1,r11
 	ldw	r1,%lo(sys_call_table)(r1)
-	beq	r1,r0,ret_from_exception
+	beq	r1,r0,ret_invsyscall
 
-	movi	r11,%lo(0xffffe000)	/* Get thread info pointer */
+	/* Get thread info pointer
+	 */
+	movi	r11,%lo(0xfffff000)	
 	and	r11,sp,r11
 	ldw	r11,TI_FLAGS(r11)
-	BTBNZ	r11,r11,TIF_SYSCALL_TRACE_ASM,1f
 
-	callr	r1
-	stw	r2,PT_R2(sp)		/* save the return value */
-	br	ret_from_exception
-1:
+	/* If someone is ptrace:ing us, take the long way.
+	 */
+	BTBNZ	r11,r11,TIF_SYSCALL_TRACE_ASM,traced_system_call
+#if 0
 	SAVE_SWITCH_STACK
-	call	syscall_trace
+	mov	r9,r8
+	mov	r8,r7
+	mov	r6,r5
+	mov	r5,r4
+	mov	r4,r2
+	call	print_syscall
 	RESTORE_SWITCH_STACK
-	/* wentao: restore r4-9, since they are trashed by syscall_trace */
+	ldw	r2,PT_R2(sp)
 	ldw	r4,PT_R4(sp)
 	ldw	r5,PT_R5(sp)
 	ldw	r6,PT_R6(sp)
 	ldw	r7,PT_R7(sp)
 	ldw	r8,PT_R8(sp)
 	ldw	r9,PT_R9(sp)
-	callr	r1
-	stw	r2,PT_R2(sp)		/* save the return value */
-	SAVE_SWITCH_STACK
-	call	syscall_trace
-	RESTORE_SWITCH_STACK
+#endif
 
+	
+	/* Execute the system call
+	 */
+	callr	r1
+	
+	/* If the syscall returns a negative result:
+	 *   Set r7 to 1 to indicate error,
+	 *   Negate r2 to get a positive error code
+	 * If the syscall returns zero or a positive value:
+	 *   Set r7 to 0.
+	 * The sigreturn system calls will skip the code below by
+	 * adding to register ra. To avoid destroying registers
+	 * 
+ 	 * FIXME: We probably need an orig_r7
+	 */
+translate_rc_and_ret:
+	movi	r1,0
+	bge	r2,zero,3f
+	sub	r2,zero,r2
+	movi	r1,1
+3:	
+	stw	r2,PT_R2(sp)
+	stw	r1,PT_R7(sp)
+end_translate_rc_and_ret:
+
+#if 0
+	SAVE_SWITCH_STACK
+	mov	r4,r2
+	mov	r5,r1
+	call	print_syscall_ret
+	RESTORE_SWITCH_STACK
+#endif
+	
 ret_from_exception:
-	ldw	r1,PT_STATUS_EXTENSION(sp)	/* check if returning to kernel */
-	TSTBZ	r1,r1,PS_S_ASM,Luser_return	/* if so, skip resched, signals */
+	ldw	r1,PT_ESTATUS(sp)
+	TSTBNZ	r1,r1,ESTATUS_EU_ASM,Luser_return	/* if so, skip resched, signals */
 
 restore_all:
 	rdctl	r10,status			/* disable intrs */
@@ -96,9 +245,70 @@ restore_all:
 	RESTORE_ALL
 	eret
 
+	/* If the syscall number was invalid return ENOSYS
+	*/
+ret_invsyscall:
+	movi	r2,-LENOSYS
+	br translate_rc_and_ret
+
+
+	/* This implements the same as above, except it calls
+	 * syscall_trace before and after the syscall in order
+	 * for utilities like strace and gdb to work.
+	 */
+traced_system_call:
+	SAVE_SWITCH_STACK
+	call	syscall_trace
+	RESTORE_SWITCH_STACK
+	
+	/* r2 and r7-r9 might be destroyed  by syscall_trace and we need to restore
+	 * them before calling our syscall.
+	 */
+	ldw	r2,PT_R2(sp)
+	ldw	r4,PT_R4(sp)
+	ldw	r5,PT_R5(sp)
+	ldw	r6,PT_R6(sp)
+	ldw	r7,PT_R7(sp)
+	ldw	r8,PT_R8(sp)
+	ldw	r9,PT_R9(sp)
+
+	/* Fetch the syscall function, we don't need to check the boundaries
+	 * since this is already done.
+	 */
+	slli	r1,r2,2
+	movhi	r11,%hiadj(sys_call_table)
+	add	r1,r1,r11
+	ldw	r1,%lo(sys_call_table)(r1)
+
+	callr	r1
+	
+	/* If the syscall returns a negative result:
+	 *   Set r7 to 1 to indicate error,
+	 *   Negate r2 to get a positive error code
+	 * If the syscall returns zero or a positive value:
+	 *   Set r7 to 0.
+	 * The sigreturn system calls will skip the code below by
+	 * adding to register ra. To avoid destroying registers
+	 * 
+ 	 * FIXME: We probably need an orig_r7
+	 */
+translate_rc_and_ret2:
+	movi	r1,0
+	bge	r2,zero,4f
+	sub	r2,zero,r2
+	movi	r1,1
+4:	
+	stw	r2,PT_R2(sp)
+	stw	r1,PT_R7(sp)
+end_translate_rc_and_ret2:
+	SAVE_SWITCH_STACK
+	call	syscall_trace
+	RESTORE_SWITCH_STACK
+	br ret_from_exception
+
 Luser_return:
-	GET_THREAD_INFO	r24			/* get thread_info pointer */
-	ldw	r10,TI_FLAGS(r24)		/* get thread_info->flags */
+	GET_THREAD_INFO	r11			/* get thread_info pointer */
+	ldw	r10,TI_FLAGS(r11)		/* get thread_info->flags */
 	ANDI32	r11,r10,_TIF_WORK_MASK_ASM
 	beq	r11,r0,restore_all		/* Nothing to do */
 	BTBZ	r1,r10,TIF_NEED_RESCHED_ASM,Lsignal_return
@@ -112,62 +322,26 @@ Lsignal_return:
 	mov	r5,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
 	CLR	r4			/* oldset = 0 */
+	movi	r6,1			/* syscall */
 	call	do_signal
 	RESTORE_SWITCH_STACK
 	br	restore_all
 
-/*
- * Handle software exceptions. Put here so external interrupts
- * can fall throught to ret_from_interrupt.
+
+
+/***********************************************************************
+ * Handle external interrupts.
+ ***********************************************************************
  */
-
-software_exception:
-	ldw	r24,-4(ea)		// instruction that caused the exception
-	xorhi	r24,r24,0x003b		// upper half of trap opcode
-	xori	r24,r24,0x683a		// lower half of trap opcode
-	cmpeqi	r11,r24,0x40		/* Check for imm=0x01 => breakpoint */
-	bne	r11,r0,breakpoint
-	bne	r24,r0,instruction_trap	/* N - check for instruction trap */
-	cmpeqi	r11,r2,TRAP_ID_SYSCALL	/* ? Is this a syscall */
-	bne	r11,r0,system_call	/* Y - handle syscall */
-	cmpeqi	r11,r2,TRAP_ID_APPDEBUG	/* ? Is this an application debug */
-	bne	r11,r0,app_debug	/* Y - handle app_debug */
-	cmpeqi	r11,r2,63		/* ? Is this the old syscall number */
-	bne	r11,r0,system_call	/* Y - handle syscall to catch older apps*/
-	br	restore_all		/* N - everything else is ignored for now */
-
-app_debug:
-	GET_THREAD_INFO	r24			/* get thread_info */
-	ldw	r1,TI_TASK(r24)		/* get thread_info->task */
-	ldw r24,(TASK_THREAD + THREAD_FLAGS)(r1)	/* get thread_info->task->thread.flags */
-	ORI32 r24, r24, NIOS2_FLAG_DEBUG  /* set the debug flag */
-	stw	r24,(TASK_THREAD + THREAD_FLAGS)(r1)	/* save thread_info->task->thread.flags */
-	br	restore_all
-
-breakpoint:
-	mov  r4,sp
-	call breakpoint_c
-	br restore_all
-
 /*
  * This is the generic interrupt handler (for all hardware interrupt
  * sources). It figures out the vector number and calls the appropriate
  * interrupt service routine directly.
  */
-ENTRY(inthandler)
-	SAVE_ALL
-	/*
-	 * Test to see if the exception was a software exception or caused by an
-	 * external interrupt, and vector accordingly.
-	 */
-
-	rdctl	r24,estatus
-	andi	r24,r24,1
-	beq	r24,r0,software_exception
+external_interrupt:	
 	rdctl	r12,ipending
 	rdctl	r9,ienable
 	and	r12,r12,r9
-	beq	r12,r0,software_exception
 
 	movi	r24,-1
 	stw	r24,PT_ORIG_R2(sp)
@@ -185,7 +359,7 @@ ENTRY(inthandler)
 	addi	r4,r4,1
 	beq	r10,r0,1b
 	mov	r5,sp			/* Setup pt_regs pointer for handler call */
-	call	do_IRQ
+	call	process_int
 	rdctl	r12,ipending		/* check again if irq still pending */
 	rdctl	r9,ienable		/* Isolate possible interrupts */
 	and	r12,r12,r9
@@ -193,8 +367,8 @@ ENTRY(inthandler)
 	/* br	ret_from_interrupt */	/* fall throught to ret_from_interrupt */
 
 ENTRY(ret_from_interrupt)
-	ldw	r4,PT_STATUS_EXTENSION(sp)
-	TSTBZ	r4,r4,PS_S_ASM,Luser_return	// Returning to user
+	ldw	r1,PT_ESTATUS(sp)	/* check if returning to kernel */
+	TSTBNZ	r1,r1,ESTATUS_EU_ASM,Luser_return
 
 #ifdef CONFIG_PREEMPT
 	GET_THREAD_INFO	r1
@@ -224,47 +398,66 @@ need_resched:
 	br	restore_all
 #endif
 
-
-/*
- * Beware - when entering resume, prev (the current task) is
- * in r4, next (the new task) is in r5, don't change these
- * registers.
+/***********************************************************************
+ * Syscalls implemented in assembly
+ ***********************************************************************
  */
-ENTRY(resume)
 
-	rdctl	r7,status			/* save thread status reg */
-	stw	r7,TASK_THREAD+THREAD_KPSR(r4)	
-
-	andi	r7,r7,0x0fffe			/* disable interrupts */
-	wrctl	status,r7
-
-	movia	r8,status_extension		/* save status extension */
-	ldw	r7,0(r8)
-	stw	r7,TASK_THREAD+THREAD_KESR(r4)
-
-	SAVE_SWITCH_STACK
-	stw	sp,TASK_THREAD+THREAD_KSP(r4)	/* save kernel stack pointer */
-	ldw	sp,TASK_THREAD+THREAD_KSP(r5)	/* restore new thread stack */
-	movia	r24,_current_thread		/* save thread */
-	GET_THREAD_INFO r1
-	stw	r1,0(r24)
-	RESTORE_SWITCH_STACK
+ENTRY(sys_nios2cmpxchg)
 	
-	ldw	r7,TASK_THREAD+THREAD_KESR(r5)	/* restore extended status reg */
-	stw	r7,0(r8)
+	// r4 pointer to exchange variable
+	// r5 old value
+	// r6 new value
+	// r8 - old interrupt status (assert this to enabled?)
+	// r9 - temp
+	// Disable interrupts (keep old status in r8)
+        rdctl   r8,status
+        andi    r9,r8,0xfffe
+        wrctl   status,r9
 
-	ldw	r7,TASK_THREAD+THREAD_KPSR(r5)	/* restore thread status reg */
-	wrctl	status,r7
-	ret
+	// Make sure we skip the r2/r7 translation code when we return.
+        addi    ra,ra,(end_translate_rc_and_ret-translate_rc_and_ret)
 
-ENTRY(ret_from_fork)
-	call	schedule_tail
-	br	ret_from_exception
+ldw1:	ldw     r2, 0(r4)
+        bne     r2, r5, .L6
+
+	// We had a match, store the new value
+stw1:	stw     r6, 0(r4)
+.L6:
+	// Reenable interrupts
+        wrctl   status,r8
+	
+	// Store return value
+	stw	r2,PT_R2(sp)
+	// Indicate everything is ok
+	movi	r2,0
+	stw	r2,PT_R7(sp)
+        ret
+fault:
+        movi    r2,EFAULT
+	stw	r2,PT_R2(sp)
+	movi    r2,1
+	stw	r2,PT_R7(sp)
+        wrctl   status,r8
+        ret
+
+	// setup the exception table
+	.section __ex_table,"a"
+        .word ldw1, fault
+	.word stw1, fault
+        .previous
+
+
+	
+/***********************************************************************
+ * A few syscall wrappers
+ ***********************************************************************
+ */
 
 ENTRY(sys_fork)
 	mov	r4,sp
 	SAVE_SWITCH_STACK
-	call	nios2_vfork
+	call	nios2_fork
 	RESTORE_SWITCH_STACK
 	ret
 
@@ -308,6 +501,7 @@ ENTRY(sys_sigreturn)
 	SAVE_SWITCH_STACK
 	call	do_sigreturn
 	RESTORE_SWITCH_STACK
+	addi	ra,ra,(end_translate_rc_and_ret-translate_rc_and_ret)
 	ret
 
 ENTRY(sys_sigaltstack)
@@ -321,582 +515,74 @@ ENTRY(sys_sigaltstack)
 
 ENTRY(sys_rt_sigreturn)
 	SAVE_SWITCH_STACK
+	mov	r4,sp
 	call	do_rt_sigreturn
 	RESTORE_SWITCH_STACK
+	addi	ra,ra,(end_translate_rc_and_ret-translate_rc_and_ret)
 	ret
 
-/******************************************************************************
-*                                                                             *
-* License Agreement                                                           *
-*                                                                             *
-* Copyright (c) 2003 Altera Corporation, San Jose, California, USA.           *
-* All rights reserved.                                                        *
-*                                                                             *
-* Permission is hereby granted, free of charge, to any person obtaining a     *
-* copy of this software and associated documentation files (the "Software"),  *
-* to deal in the Software without restriction, including without limitation   *
-* the rights to use, copy, modify, merge, publish, distribute, sublicense,    *
-* and/or sell copies of the Software, and to permit persons to whom the       *
-* Software is furnished to do so, subject to the following conditions:        *
-*                                                                             *
-* The above copyright notice and this permission notice shall be included in  *
-* all copies or substantial portions of the Software.                         *
-*                                                                             *
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR  *
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,    *
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE *
-* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER      *
-* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING     *
-* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER         *
-* DEALINGS IN THE SOFTWARE.                                                   *
-*                                                                             *
-* This agreement shall be governed in all respects by the laws of the State   *
-* of California and by the laws of the United States of America.              *
-*                                                                             *
-******************************************************************************/
-
-    /*
-     * This is the software exception handler for Nios2.
-     */	
-
-     /*
-      * Explicitly allow the use of r1 (the assembler temporary register)
-      * within this code. This register is normally reserved for the use of
-      * the compiler.
-      */
-
-ENTRY(instruction_trap)
-	RESTORE_ALL	// Clean off our save & setup for emulation
+/***********************************************************************
+ * A few other wrappers and stubs
+ ***********************************************************************
+ */
+protection_exception_pte:
+	rdctl r6,pteaddr
+	slli r6,r6,10
+	call protection_exception_c
+	br ret_from_exception
 	
-    /* INSTRUCTION EMULATION
-    *  ---------------------
-    *
-    * Nios II processors generate exceptions for unimplemented instructions.
-    * The routines below emulate these instructions.  Depending on the
-    * processor core, the only instructions that might need to be emulated
-    * are div, divu, mul, muli, mulxss, mulxsu, and mulxuu.
-    *
-    * The emulations match the instructions, except for the following
-    * limitations:
-    *
-    * 1) The emulation routines do not emulate the use of the exception
-    *    temporary register (et) as a source operand because the exception
-    *    handler already has modified it.
-    *
-    * 2) The routines do not emulate the use of the stack pointer (sp) or the
-    *    exception return address register (ea) as a destination because
-    *    modifying these registers crashes the exception handler or the
-    *    interrupted routine.
-    *
-    * Detailed Design
-    * ---------------
-    *
-    * The emulation routines expect the contents of integer registers r0-r31
-    * to be on the stack at addresses sp, 4(sp), 8(sp), ... 124(sp).  The
-    * routines retrieve source operands from the stack and modify the
-    * destination register's value on the stack prior to the end of the
-    * exception handler.  Then all registers except the destination register
-    * are restored to their previous values.
-    *
-    * The instruction that causes the exception is found at address -4(ea).
-    * The instruction's OP and OPX fields identify the operation to be
-    * performed.
-    *
-    * One instruction, muli, is an I-type instruction that is identified by
-    * an OP field of 0x24.
-    *
-    * muli   AAAAA,BBBBB,IIIIIIIIIIIIIIII,-0x24-
-    *           27    22                6      0    <-- LSB of field
-    *
-    * The remaining emulated instructions are R-type and have an OP field
-    * of 0x3a.  Their OPX fields identify them.
-    *
-    * R-type AAAAA,BBBBB,CCCCC,XXXXXX,NNNNN,-0x3a-
-    *           27    22    17     11     6      0  <-- LSB of field
-    * 
-    * 
-    * Opcode Encoding.  muli is identified by its OP value.  Then OPX & 0x02
-    * is used to differentiate between the division opcodes and the remaining
-    * multiplication opcodes.
-    *
-    * Instruction   OP      OPX    OPX & 0x02
-    * -----------   ----    ----   ----------
-    * muli          0x24
-    * divu          0x3a    0x24         0
-    * div           0x3a    0x25         0
-    * mul           0x3a    0x27      != 0
-    * mulxuu        0x3a    0x07      != 0
-    * mulxsu        0x3a    0x17      != 0
-    * mulxss        0x3a    0x1f      != 0
-    */
+protection_exception_ba:
+	rdctl r6,badaddr
+	call protection_exception_c
+	br ret_from_exception
+
+protection_exception_instr:
+	call handle_supervisor_instr
+	br ret_from_exception
+	
+handle_breakpoint:
+	call breakpoint_c
+	br ret_from_exception
+
+handle_unaligned:
+	call handle_unaligned_c
+	br ret_from_exception
+	
+handle_illegal:
+	call handle_illegal_c
+	br ret_from_exception
+
+handle_diverror:
+	call handle_illegal_c
+	br ret_from_exception
+
+/*
+ * Beware - when entering resume, prev (the current task) is
+ * in r4, next (the new task) is in r5, don't change these
+ * registers.
+ */
+ENTRY(resume)
+
+	rdctl	r7,status			/* save thread status reg */
+	stw	r7,TASK_THREAD+THREAD_KPSR(r4)	
+
+	andi	r7,r7,0x0fffe			/* disable interrupts */
+	wrctl	status,r7
+
+	SAVE_SWITCH_STACK
+	stw	sp,TASK_THREAD+THREAD_KSP(r4)	/* save kernel stack pointer */
+	ldw	sp,TASK_THREAD+THREAD_KSP(r5)	/* restore new thread stack */
+	movia	r24,_current_thread		/* save thread */
+	GET_THREAD_INFO r1
+	stw	r1,0(r24)
+	RESTORE_SWITCH_STACK
+	
+	ldw	r7,TASK_THREAD+THREAD_KPSR(r5)	/* restore thread status reg */
+	wrctl	status,r7
+	ret
+
+ENTRY(ret_from_fork)
+	call	schedule_tail
+	br	ret_from_exception
 
-
-    /*
-    * Save everything on the stack to make it easy for the emulation routines
-    * to retrieve the source register operands.
-    */
-
-    addi sp, sp, -128
-    stw zero,  0(sp)    // Save zero on stack to avoid special case for r0.
-    stw r1,    4(sp)
-    stw r2,    8(sp)
-    stw r3,   12(sp)
-    stw r4,   16(sp)
-    stw r5,   20(sp)
-    stw r6,   24(sp)
-    stw r7,   28(sp)
-    stw r8,   32(sp)
-    stw r9,   36(sp)
-    stw r10,  40(sp)
-    stw r11,  44(sp)
-    stw r12,  48(sp)
-    stw r13,  52(sp)
-    stw r14,  56(sp)
-    stw r15,  60(sp)
-    stw r16,  64(sp)
-    stw r17,  68(sp)
-    stw r18,  72(sp)
-    stw r19,  76(sp)
-    stw r20,  80(sp)
-    stw r21,  84(sp)
-    stw r22,  88(sp)
-    stw r23,  92(sp)
-                        // Don't bother to save et.  It's already been changed.
-    stw bt,  100(sp)
-    stw gp,  104(sp)
-    stw sp,  108(sp)
-    stw fp,  112(sp)
-                        // Don't bother to save ea.  It's already been changed.
-    stw ba,  120(sp)
-    stw ra,  124(sp)
-
-
-    /*
-    * Split the instruction into its fields.  We need 4*A, 4*B, and 4*C as
-    * offsets to the stack pointer for access to the stored register values.
-    */
-    ldw r2,-4(ea)       // r2 = AAAAA,BBBBB,IIIIIIIIIIIIIIII,PPPPPP
-    roli r3,r2,7        // r3 = BBB,IIIIIIIIIIIIIIII,PPPPPP,AAAAA,BB
-    roli r4,r3,3        // r4 = IIIIIIIIIIIIIIII,PPPPPP,AAAAA,BBBBB
-    roli r5,r4,2        // r5 = IIIIIIIIIIIIII,PPPPPP,AAAAA,BBBBB,II
-    srai r4,r4,16       // r4 = (sign-extended) IMM16
-    roli r6,r5,5        // r6 = XXXX,NNNNN,PPPPPP,AAAAA,BBBBB,CCCCC,XX
-    andi r2,r2,0x3f     // r2 = 00000000000000000000000000,PPPPPP
-    andi r3,r3,0x7c     // r3 = 0000000000000000000000000,AAAAA,00
-    andi r5,r5,0x7c     // r5 = 0000000000000000000000000,BBBBB,00
-    andi r6,r6,0x7c     // r6 = 0000000000000000000000000,CCCCC,00
-
-    /* Now
-    * r2 = OP
-    * r3 = 4*A
-    * r4 = IMM16 (sign extended)
-    * r5 = 4*B
-    * r6 = 4*C
-    */
-
-
-    /*
-    * Get the operands.
-    *
-    * It is necessary to check for muli because it uses an I-type instruction
-    * format, while the other instructions are have an R-type format.
-    *
-    *  Prepare for either multiplication or division loop.
-    *  They both loop 32 times.
-    */
-    movi r14,32
-
-    add  r3,r3,sp       // r3 = address of A-operand.
-    ldw  r3,0(r3)       // r3 = A-operand.
-    movi r7,0x24        // muli opcode (I-type instruction format)
-    beq r2,r7,mul_immed // muli doesn't use the B register as a source
-
-    add  r5,r5,sp       // r5 = address of B-operand.
-    ldw  r5,0(r5)       // r5 = B-operand.
-                        // r4 = SSSSSSSSSSSSSSSS,-----IMM16------
-                        // IMM16 not needed, align OPX portion
-                        // r4 = SSSSSSSSSSSSSSSS,CCCCC,-OPX--,00000
-    srli r4,r4,5        // r4 = 00000,SSSSSSSSSSSSSSSS,CCCCC,-OPX--
-    andi r4,r4,0x3f     // r4 = 00000000000000000000000000,-OPX--
-
-    /* Now
-    * r2 = OP
-    * r3 = src1
-    * r5 = src2
-    * r4 = OPX (no longer can be muli)
-    * r6 = 4*C
-    */
-
-
-
-    /*
-    *  Multiply or Divide?
-    */
-    andi r7,r4,0x02    // For R-type multiply instructions, OPX & 0x02 != 0
-    bne r7,zero,multiply
-
-
-    /* DIVISION
-    *
-    * Divide an unsigned dividend by an unsigned divisor using
-    * a shift-and-subtract algorithm.  The example below shows
-    * 43 div 7 = 6 for 8-bit integers.  This classic algorithm uses a
-    * single register to store both the dividend and the quotient,
-    * allowing both values to be shifted with a single instruction.
-    *
-    *                               remainder dividend:quotient
-    *                               --------- -----------------
-    *   initialize                   00000000     00101011:
-    *   shift                        00000000     0101011:_
-    *   remainder >= divisor? no     00000000     0101011:0
-    *   shift                        00000000     101011:0_
-    *   remainder >= divisor? no     00000000     101011:00
-    *   shift                        00000001     01011:00_
-    *   remainder >= divisor? no     00000001     01011:000
-    *   shift                        00000010     1011:000_
-    *   remainder >= divisor? no     00000010     1011:0000
-    *   shift                        00000101     011:0000_
-    *   remainder >= divisor? no     00000101     011:00000
-    *   shift                        00001010     11:00000_
-    *   remainder >= divisor? yes    00001010     11:000001
-    *       remainder -= divisor   - 00000111
-    *                              ----------
-    *                                00000011     11:000001
-    *   shift                        00000111     1:000001_
-    *   remainder >= divisor? yes    00000111     1:0000011
-    *       remainder -= divisor   - 00000111
-    *                              ----------
-    *                                00000000     1:0000011
-    *   shift                        00000001     :0000011_
-    *   remainder >= divisor? no     00000001     :00000110
-    *
-    * The quotient is 00000110.
-    */
-
-divide:
-    /*
-    *  Prepare for division by assuming the result
-    *  is unsigned, and storing its "sign" as 0.
-    */
-    movi r17,0
-
-
-    // Which division opcode?
-    xori r7,r4,0x25         // OPX of div
-    bne r7,zero,unsigned_division
-
-
-    /*
-    *  OPX is div.  Determine and store the sign of the quotient.
-    *  Then take the absolute value of both operands.
-    */
-    xor r17,r3,r5       // MSB contains sign of quotient
-    bge r3,zero,dividend_is_nonnegative
-    sub r3,zero,r3      // -r3
-dividend_is_nonnegative:
-    bge r5,zero,divisor_is_nonnegative
-    sub r5,zero,r5      // -r5
-divisor_is_nonnegative:
-
-
-unsigned_division:
-    // Initialize the unsigned-division loop.
-    movi r13,0          // remainder = 0
-
-    /* Now
-    * r3 = dividend : quotient
-    * r4 = 0x25 for div, 0x24 for divu
-    * r5 = divisor
-    * r13 = remainder
-    * r14 = loop counter (already initialized to 32)
-    * r17 = MSB contains sign of quotient
-    */
-
-
-    /*
-    *   for (count = 32; count > 0; --count)
-    *   {
-    */
-divide_loop:
-
-    /*
-    *       Division:
-    *
-    *       (remainder:dividend:quotient) <<= 1;
-    */
-    slli r13,r13,1
-    cmplt r7,r3,zero        // r7 = MSB of r3
-    or r13,r13,r7
-    slli r3,r3,1
-
-
-    /*
-    *       if (remainder >= divisor)
-    *       {
-    *           set LSB of quotient
-    *           remainder -= divisor;
-    *       }
-    */
-    bltu r13,r5,div_skip
-    ori r3,r3,1
-    sub r13,r13,r5
-div_skip:
-
-    /*
-    *   }
-    */
-    subi r14,r14,1
-    bne r14,zero,divide_loop
-
-
-    /* Now
-    * r3 = quotient
-    * r4 = 0x25 for div, 0x24 for divu
-    * r6 = 4*C
-    * r17 = MSB contains sign of quotient
-    */
-
-    
-    /*
-    *  Conditionally negate signed quotient.  If quotient is unsigned,
-    *  the sign already is initialized to 0.
-    */
-    bge r17,zero,quotient_is_nonnegative
-    sub r3,zero,r3      // -r3
-quotient_is_nonnegative:
-
-
-    /*
-    *  Final quotient is in r3.
-    */
-    add r6,r6,sp
-    stw r3,0(r6)           // write quotient to stack
-    br restore_registers
-
-
-
-
-    /* MULTIPLICATION
-    *
-    * A "product" is the number that one gets by summing a "multiplicand"
-    * several times.  The "multiplier" specifies the number of copies of the
-    * multiplicand that are summed.
-    *
-    * Actual multiplication algorithms don't use repeated addition, however.
-    * Shift-and-add algorithms get the same answer as repeated addition, and
-    * they are faster.  To compute the lower half of a product (pppp below)
-    * one shifts the product left before adding in each of the partial products
-    * (a * mmmm) through (d * mmmm).
-    *
-    * To compute the upper half of a product (PPPP below), one adds in the
-    * partial products (d * mmmm) through (a * mmmm), each time following the
-    * add by a right shift of the product.
-    *
-    *     mmmm
-    *   * abcd
-    *   ------
-    *     ####  = d * mmmm
-    *    ####   = c * mmmm
-    *   ####    = b * mmmm
-    *  ####     = a * mmmm
-    * --------
-    * PPPPpppp
-    *
-    * The example above shows 4 partial products.  Computing actual Nios II
-    * products requires 32 partials.
-    *
-    * It is possible to compute the result of mulxsu from the result of mulxuu
-    * because the only difference between the results of these two opcodes is
-    * the value of the partial product associated with the sign bit of rA.
-    *
-    *   mulxsu = mulxuu - (rA < 0) ? rB : 0;
-    *
-    * It is possible to compute the result of mulxss from the result of mulxsu
-    * because the only difference between the results of these two opcodes is
-    * the value of the partial product associated with the sign bit of rB.
-    *
-    *   mulxss = mulxsu - (rB < 0) ? rA : 0;
-    *
-    */
-
-mul_immed:
-    // Opcode is muli.  Change it into mul for remainder of algorithm.
-    mov r6,r5              // Field B is dest register, not field C.
-    mov r5,r4              // Field IMM16 is src2, not field B.
-    movi r4,0x27           // OPX of mul is 0x27
-
-multiply:
-    // Initialize the multiplication loop.
-    movi r9,0           // mul_product    = 0
-    movi r10,0          // mulxuu_product = 0
-    mov r11,r5          // save original multiplier for mulxsu and mulxss
-    mov r12,r5          // mulxuu_multiplier (will be shifted)
-    movi r16,1          // used to create "rori B,A,1" from "ror B,A,r16"
-
-    /* Now
-    * r3 = multiplicand
-    * r5 = mul_multiplier
-    * r6 = 4 * dest_register (used later as offset to sp)
-    * r7 = temp
-    * r9 = mul_product
-    * r10 = mulxuu_product
-    * r11 = original multiplier
-    * r12 = mulxuu_multiplier
-    * r14 = loop counter (already initialized)
-    * r16 = 1
-    */
-
-
-    /*
-    *   for (count = 32; count > 0; --count)
-    *   {
-    */
-multiply_loop:
-
-    /*
-    *       mul_product <<= 1;
-    *       lsb = multiplier & 1;
-    */
-    slli r9,r9,1
-    andi r7,r12,1
-
-    /*
-    *       if (lsb == 1)
-    *       {
-    *           mulxuu_product += multiplicand;
-    *       }
-    */
-    beq r7,zero,mulx_skip
-    add r10,r10,r3
-    cmpltu r7,r10,r3    // Save the carry from the MSB of mulxuu_product.
-    ror r7,r7,r16       // r7 = 0x80000000 on carry, or else 0x00000000
-mulx_skip:
-
-    /*
-    *       if (MSB of mul_multiplier == 1)
-    *       {
-    *           mul_product += multiplicand;
-    *       }
-    */
-    bge r5,zero,mul_skip
-    add r9,r9,r3
-mul_skip:
-
-    /*
-    *       mulxuu_product >>= 1;           logical shift
-    *       mul_multiplier <<= 1;           done with MSB
-    *       mulx_multiplier >>= 1;          done with LSB
-    */
-    srli r10,r10,1
-    or r10,r10,r7           // OR in the saved carry bit.
-    slli r5,r5,1
-    srli r12,r12,1
-
-
-    /*
-    *   }
-    */
-    subi r14,r14,1
-    bne r14,zero,multiply_loop
-
-
-    /*
-    *  Multiply emulation loop done.
-    */
-
-    /* Now
-    * r3 = multiplicand
-    * r4 = OPX
-    * r6 = 4 * dest_register (used later as offset to sp)
-    * r7 = temp
-    * r9 = mul_product
-    * r10 = mulxuu_product
-    * r11 = original multiplier
-    */
-
-
-    // Calculate address for result from 4 * dest_register
-    add r6,r6,sp
-
-
-    /*
-    *  Select/compute the result based on OPX.
-    */
-
-
-    // OPX == mul?  Then store.
-    xori r7,r4,0x27
-    beq r7,zero,store_product
-
-    // It's one of the mulx.. opcodes.  Move over the result.
-    mov r9,r10
-
-    // OPX == mulxuu?  Then store.
-    xori r7,r4,0x07
-    beq r7,zero,store_product
-
-    // Compute mulxsu
-    //
-    // mulxsu = mulxuu - (rA < 0) ? rB : 0;
-    //
-    bge r3,zero,mulxsu_skip
-    sub r9,r9,r11
-mulxsu_skip:
-
-    // OPX == mulxsu?  Then store.
-    xori r7,r4,0x17
-    beq r7,zero,store_product
-
-    // Compute mulxss
-    //
-    // mulxss = mulxsu - (rB < 0) ? rA : 0;
-    //
-    bge r11,zero,mulxss_skip
-    sub r9,r9,r3
-mulxss_skip:
-    // At this point, assume that OPX is mulxss, so store
-
-
-store_product:
-    stw  r9,0(r6)
-
-
-restore_registers:
-                        // No need to restore r0.
-    ldw r1,    4(sp)
-    ldw r2,    8(sp)
-    ldw r3,   12(sp)
-    ldw r4,   16(sp)
-    ldw r5,   20(sp)
-    ldw r6,   24(sp)
-    ldw r7,   28(sp)
-    ldw r8,   32(sp)
-    ldw r9,   36(sp)
-    ldw r10,  40(sp)
-    ldw r11,  44(sp)
-    ldw r12,  48(sp)
-    ldw r13,  52(sp)
-    ldw r14,  56(sp)
-    ldw r15,  60(sp)
-    ldw r16,  64(sp)
-    ldw r17,  68(sp)
-    ldw r18,  72(sp)
-    ldw r19,  76(sp)
-    ldw r20,  80(sp)
-    ldw r21,  84(sp)
-    ldw r22,  88(sp)
-    ldw r23,  92(sp)
-    ldw et,   96(sp)
-    ldw bt,  100(sp)
-    ldw gp,  104(sp)
-                        // Don't corrupt sp.
-    ldw fp,  112(sp)
-                        // Don't corrupt ea.
-    ldw ba,  120(sp)
-    ldw ra,  124(sp)
-    addi sp, sp, 128
-    eret
-
-.set at
-.set break
 

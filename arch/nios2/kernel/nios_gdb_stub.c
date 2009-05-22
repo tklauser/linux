@@ -6,11 +6,11 @@
 // Author dvb \ Altera Santa Cruz
 
 #ifndef __KERNEL__
-#include "nios2.h"
+#include "nios.h"
 #else
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
 #endif
 
 #include "nios_gdb_stub.h"

@@ -1,5 +1,5 @@
-#ifndef __ASMNIOS_DIV64_H
-#define __ASMNIOS_DIV64_H
+#ifndef _ASM_NIOS2_DIV64_H
+#define _ASM_NIOS2_DIV64_H
 
 /*--------------------------------------------------------------------
  *

@@ -1,5 +1,29 @@
-#ifndef _NIOS2_USER_H
-#define _NIOS2_USER_H
+#ifndef _ASM_NIOS2_USER_H
+#define _ASM_NIOS2_USER_H
+
+/*--------------------------------------------------------------------
+ *
+ * include/asm-nios2/user.h
+ *
+ * Derived from M68knommu
+ *
+ * Copyright (C) 2004   Microtronix Datacom Ltd
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ *
+ * Jan/20/2004		dgt	    NiosII
+ *
+ ---------------------------------------------------------------------*/
+
 
 #include <asm/page.h>
 
@@ -30,27 +54,51 @@
    The minimum core file size is 3 pages, or 12288 bytes.
 */
 
-struct user_nios2fp_struct {
+struct user_m68kfp_struct {
+	unsigned long  fpregs[8*3];	/* fp0-fp7 registers */
+	unsigned long  fpcntl[3];	/* fp control regs */
 };
 
-/* This is the old layout of "struct pt_regs" as of Linux 1.x, and
-   is still the layout used by user (the new pt_regs doesn't have
-   all registers). */
+/* This is needs more work, probably should look like gdb useage */
 struct user_regs_struct {
-	long r1,r2,r3,r4,r5,r6,r7,r8;
-	long r9,r10,r11,r12,r13,r14,r15;
-	long r16,r17,r18,r19,r20,r21,r22,r23;
-	long gp;
-	long sp;
-	long ra;
-	long fp;
-	long orig_r2;
-	long estatus;
-	long status_extension;
-	long ea;
+	unsigned long  r8;		/* r8-r15 Caller-saved GP registers */
+	unsigned long  r9;
+	unsigned long  r10;
+	unsigned long  r11;
+	unsigned long  r12;
+	unsigned long  r13;
+	unsigned long  r14;
+	unsigned long  r15;
+	unsigned long  r1;		/* Assembler temporary */
+	unsigned long  r2;		/* Retval LS 32bits */
+	unsigned long  r3;		/* Retval MS 32bits */
+	unsigned long  r4;		/* r4-r7 Register arguments */
+	unsigned long  r5;
+	unsigned long  r6;
+	unsigned long  r7;
+	unsigned long  orig_r2;		/* Copy of r2 ?? */
+	unsigned long  ra;		/* Return address */
+	unsigned long  fp;		/* Frame pointer */
+	unsigned long  sp;		/* Stack pointer */
+	unsigned long  gp;		/* Global pointer */
+	unsigned long  estatus;
+	unsigned long  ea;		/* Exception return address (pc) */
+	unsigned long  orig_r7;
+
+	unsigned long  r16;		/* r16-r23 Callee-saved GP registers */
+	unsigned long  r17;
+	unsigned long  r18;
+	unsigned long  r19;
+	unsigned long  r20;
+	unsigned long  r21;
+	unsigned long  r22;
+	unsigned long  r23;
+	unsigned long  sw_fp;
+	unsigned long  sw_gp;
+	unsigned long  sw_ra;
 };
 
-
+	
 /* When the kernel dumps core, it starts by dumping the user struct -
    this will be used by gdb to figure out where the data and stack segments
    are within the file, and what virtual addresses to use. */
@@ -58,7 +106,10 @@ struct user{
 /* We start with the registers, to mimic the way that "memory" is returned
    from the ptrace(3,...) function.  */
   struct user_regs_struct regs;	/* Where the registers are actually stored */
-
+/* ptrace does not yet supply these.  Someday.... */
+  int u_fpvalid;		/* True if math co-processor being used. */
+                                /* for this mess. Not yet used. */
+  struct user_m68kfp_struct m68kfp; /* Math Co-processor registers. */
 /* The rest of this junk is to help gdb figure out what goes where */
   unsigned long int u_tsize;	/* Text segment size (pages). */
   unsigned long int u_dsize;	/* Data segment size (pages). */
@@ -68,10 +119,12 @@ struct user{
 				   This is actually the bottom of the stack,
 				   the top of the stack is always found in the
 				   esp register.  */
-  long int signal;		/* Signal that caused the core dump. */
+  long int signal;     		/* Signal that caused the core dump. */
   int reserved;			/* No longer used */
-  unsigned long u_ar0;		/* Used by gdb to help find the values for */
+  struct user_regs_struct *u_ar0;
+				/* Used by gdb to help find the values for */
 				/* the registers. */
+  struct user_m68kfp_struct* u_fpstate;	/* Math Co-processor pointer. */
   unsigned long magic;		/* To uniquely identify a core file */
   char u_comm[32];		/* User command that was responsible */
 };
@@ -80,4 +133,4 @@ struct user{
 #define HOST_TEXT_START_ADDR (u.start_code)
 #define HOST_STACK_END_ADDR (u.start_stack + u.u_ssize * NBPG)
 
-#endif
+#endif  /* _ASM_NIOS2_USER_H */

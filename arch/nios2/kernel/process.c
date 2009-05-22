@@ -2,6 +2,11 @@
  *
  * arch/nios2/kernel/process.c
  *
+ * Copyright (C) 2009, Wind River Systems Inc
+ * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
+ * Derived from arch/nios2nommu/kernel/process.c
+ *
  * Derived from M68knommu
  *
  *  Copyright (C) 1995  Hamish Macdonald
@@ -23,7 +28,7 @@
  * Jan/20/2004		dgt	    NiosII
  *                            rdusp() === (pt_regs *) regs->sp
  *                            Monday:
- *                             asm-nios2\processor.h now bears
+ *                             asm-nios2nommu\processor.h now bears
  *                              inline thread_saved_pc
  *                                      (struct thread_struct *t)
  *                             Friday: it's back here now
@@ -51,9 +56,9 @@
 #include <linux/interrupt.h>
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
-#include <linux/tick.h>
 #include <linux/fs.h>
 #include <linux/err.h>
+#include <linux/fmdebug.h>
 
 #include <asm/system.h>
 #include <asm/traps.h>
@@ -93,10 +98,8 @@ void (*idle)(void) = default_idle;
 void cpu_idle(void)
 {
 	while (1) {
-		tick_nohz_stop_sched_tick(1);
 		while (!need_resched())
 			idle();
-		tick_nohz_restart_sched_tick();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
@@ -106,16 +109,20 @@ void cpu_idle(void)
 /*
  * The development boards have no way to pull a board
  * reset. Just jump to the cpu reset address and let
- * the code in head.S take care of disabling peripherals.
+ * the boot loader take care of resetting periperals
  */
-
 void machine_restart(char * __unused)
 {
 	local_irq_disable();
+	if (__builtin_ldwio((void *)RESET_ADDR) == 0xffffffffUL){
+	  printk("boot loader not installed, refusing to jump to "
+            "jump to reset addr 0x%lx\n", (unsigned long)RESET_ADDR);		 
+	  for (;;);
+	}
 	__asm__ __volatile__ (
 	"jmp	%0\n\t"
 	: 
-	: "r" (CPU_RESET_ADDRESS)
+	: "r" (RESET_ADDR)
 	: "r4");
 }
 
@@ -172,71 +179,35 @@ void show_regs(struct pt_regs * regs)
 	printk(KERN_NOTICE "ra:  %08lx fp:  %08lx sp:  %08lx gp:  %08lx\n",
 	       regs->ra,  regs->fp,  regs->sp,  regs->gp);
 
-	printk(KERN_NOTICE "ea:  %08lx estatus:  %08lx statusx:  %08lx\n",
-	       regs->ea,  regs->estatus,  regs->status_extension);
+	printk(KERN_NOTICE "ea:  %08lx estatus:  %08lx\n",
+	       regs->ea,  regs->estatus);
 }
+
+
+
 
 /*
  * Create a kernel thread
  */
+static ATTRIB_NORET void kernel_thread_helper(void *arg, int (*fn)(void *))
+{
+  int i;
+  print_mark(__FILE__, __LINE__);
+  printd("################ KTH arg=%p fn=%p sp=%p\n", arg, fn, &i);
+  do_exit(fn(arg));
+}
+
 int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 {
-	long retval;
-	long clone_arg = flags | CLONE_VM;
-	mm_segment_t fs;
+	struct pt_regs regs;
+        print_mark(__FILE__, __LINE__);
 
-	fs = get_fs();
-	set_fs(KERNEL_DS);
-
-    __asm__ __volatile(
-
-        "    movi    r2,    %6\n\t"     /* TRAP_ID_SYSCALL          */
-        "    movi    r3,    %1\n\t"     /* __NR_clone               */
-        "    mov     r4,    %5\n\t"     /* (clone_arg               */
-                                        /*   (flags | CLONE_VM))    */
-        "    movia   r5,    -1\n\t"     /* usp: -1                  */
-        "    trap\n\t"                  /* sys_clone                */
-        "\n\t"
-        "    cmpeq   r4,    r3, zero\n\t"/*2nd return valu in r3    */
-        "    bne     r4,    zero, 1f\n\t"/* 0: parent, just return.  */
-                                         /* See copy_thread, called */
-                                         /*  by do_fork, called by  */
-                                         /*  nios2_clone, called by */
-                                         /*  sys_clone, called by   */
-                                         /*  syscall trap handler.  */
-
-        "    mov     r4,    %4\n\t"     /* fn's parameter (arg)     */
-        "\n\t"
-        "\n\t"
-        "    callr   %3\n\t"            /* Call function (fn)       */
-        "\n\t"
-        "    mov     r4,    r2\n\t"     /* fn's rtn code//;dgt2;tmp;*/
-        "    movi    r2,    %6\n\t"     /* TRAP_ID_SYSCALL          */
-        "    movi    r3,    %2\n\t"     /* __NR_exit                */
-        "    trap\n\t"                  /* sys_exit()               */
-
-           /* Not reached by child.                                 */
-        "1:\n\t"
-        "    mov     %0,    r2\n\t"     /* error rtn code (retval)  */
-
-        :   "=r" (retval)               /* %0                       */
-
-        :   "i" (__NR_clone)            /* %1                       */
-          , "i" (__NR_exit)             /* %2                       */
-          , "r" (fn)                    /* %3                       */
-          , "r" (arg)                   /* %4                       */
-          , "r" (clone_arg)             /* %5  (flags | CLONE_VM)   */
-          , "i" (TRAP_ID_SYSCALL)       /* %6                       */
-
-        :   "r2"                        /* Clobbered                */
-          , "r3"                        /* Clobbered                */
-          , "r4"                        /* Clobbered                */
-          , "r5"                        /* Clobbered                */
-          , "ra"                        /* Clobbered        //;mex1 */
-        );
-
-	set_fs(fs);
-	return retval;
+	memset(&regs, 0, sizeof(regs));
+	regs.r4 = (unsigned long)arg;
+	regs.r5 = (unsigned long)fn;
+	regs.ea = (unsigned long)kernel_thread_helper;
+	regs.estatus =  NIOS2_STATUS_PIE_MSK;
+	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
 }
 
 void flush_thread(void)
@@ -256,8 +227,7 @@ void flush_thread(void)
 
 asmlinkage int nios2_fork(struct pt_regs *regs)
 {
-	/* fork almost works, enough to trick you into looking elsewhere :-( */
-	return(-EINVAL);
+   return do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
 }
 
 /*
@@ -288,58 +258,127 @@ asmlinkage int nios2_vfork(struct pt_regs *regs)
 	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, 0, NULL, NULL);
 }
 
-asmlinkage int nios2_clone(struct pt_regs *regs)
-{
-    /* r4: clone_flags, r5: child_stack (usp)               */
 
+asmlinkage int nios2_clone(struct pt_regs* regs)
+{
 	unsigned long clone_flags;
 	unsigned long newsp;
+	int __user *parent_tidptr, *child_tidptr;
 
 	clone_flags = regs->r4;
 	newsp = regs->r5;
-	if (!newsp)
-		newsp = regs->sp;
-        return do_fork(clone_flags, newsp, regs, 0, NULL, NULL);
+	parent_tidptr = (int __user *) regs->r6;
+   child_tidptr = (int __user *) regs->r8;
+
+   if(newsp == 0) {
+      newsp = regs->sp;
+   }
+   
+	return do_fork(clone_flags, newsp, regs, 0, 
+	               parent_tidptr, child_tidptr);
 }
 
-int copy_thread(unsigned long clone_flags,
+int copy_thread(int nr, unsigned long clone_flags,
 		unsigned long usp, unsigned long topstk,
 		struct task_struct * p, struct pt_regs * regs)
 {
 	struct pt_regs * childregs;
 	struct switch_stack * childstack, *stack;
-	unsigned long stack_offset, *retp;
 
-	stack_offset = THREAD_SIZE - sizeof(struct pt_regs);
-	childregs = (struct pt_regs *) ((unsigned long) p->stack + stack_offset);
+   childregs = task_pt_regs(p);
+
+   /* Save pointer to registers in thread_struct */
 	p->thread.kregs = childregs;
 
+   /* Copy registers */
 	*childregs = *regs;
-	childregs->r2 = 0;      //;dgt2;...redundant?...see "rtnvals" below
 
-	retp = ((unsigned long *) regs);
-	stack = ((struct switch_stack *) retp) - 1;
-
+   /* Copy stacktop and copy the top entrys from parent to child
+    */
+	stack = ((struct switch_stack *) regs) - 1;
 	childstack = ((struct switch_stack *) childregs) - 1;
 	*childstack = *stack;
+
 	childstack->ra = (unsigned long)ret_from_fork;
 
-	if (usp == -1)
-		p->thread.kregs->sp = (unsigned long) childstack;
-	else
-		p->thread.kregs->sp = usp;
-
+	if(childregs->estatus & NIOS2_STATUS_U_MSK) {
+	  childregs->sp = usp;
+	}
+	else {
+     childregs->sp = (unsigned long)childstack;
+	}
+   /* Store the kernel stack in thread_struct */
 	p->thread.ksp = (unsigned long)childstack;
 
+   /* Initialize tls register.
+    */
+   if(clone_flags & CLONE_SETTLS) {
+      childstack->r23 = regs->r7;
+   }
+
 	/* Set the return value for the child. */
-	childregs->r2 = 0;  //;dgt2;...redundant?...see childregs->r2 above
-	childregs->r3 = 1;  //;dgt2;...eg: kernel_thread parent test
+	childregs->r2 = 0;
+   childregs->r7 = 0;
 
 	/* Set the return value for the parent. */
-	regs->r2 = p->pid;  // Return child pid to parent
-	regs->r3 = 0;       //;dgt2;...eg: kernel_thread parent test
+	regs->r2 = p->pid;
+   regs->r7 = 0;  /* No error */
 
 	return 0;
+}
+
+/*
+ * fill in the user structure for a core dump..
+ */
+void dump_thread(struct pt_regs * regs, struct user * dump)
+{
+	struct switch_stack *sw;
+
+	/* changed the size calculations - should hopefully work better. lbt */
+	dump->magic = CMAGIC;
+	dump->start_code = 0;
+	dump->start_stack = regs->sp & ~(PAGE_SIZE - 1);
+	dump->u_tsize = ((unsigned long) current->mm->end_code) >> PAGE_SHIFT;
+	dump->u_dsize = ((unsigned long) (current->mm->brk +
+					  (PAGE_SIZE-1))) >> PAGE_SHIFT;
+	dump->u_dsize -= dump->u_tsize;
+	dump->u_ssize = 0;
+
+	if (dump->start_stack < TASK_SIZE)
+		dump->u_ssize = ((unsigned long) (TASK_SIZE - dump->start_stack)) >> PAGE_SHIFT;
+
+	dump->u_ar0 = (struct user_regs_struct *)((int)&dump->regs - (int)dump);
+	sw = ((struct switch_stack *)regs) - 1;
+	dump->regs.r1 = regs->r1;
+	dump->regs.r2 = regs->r2;
+	dump->regs.r3 = regs->r3;
+	dump->regs.r4 = regs->r4;
+	dump->regs.r5 = regs->r5;
+	dump->regs.r6 = regs->r6;
+	dump->regs.r7 = regs->r7;
+	dump->regs.r8 = regs->r8;
+	dump->regs.r9 = regs->r9;
+	dump->regs.r10 = regs->r10;
+	dump->regs.r11 = regs->r11;
+	dump->regs.r12 = regs->r12;
+	dump->regs.r13 = regs->r13;
+	dump->regs.r14 = regs->r14;
+	dump->regs.r15 = regs->r15;
+	dump->regs.r16 = sw->r16;
+	dump->regs.r17 = sw->r17;
+	dump->regs.r18 = sw->r18;
+	dump->regs.r19 = sw->r19;
+	dump->regs.r20 = sw->r20;
+	dump->regs.r21 = sw->r21;
+	dump->regs.r22 = sw->r22;
+	dump->regs.r23 = sw->r23;
+	dump->regs.ra = sw->ra;
+	dump->regs.fp = sw->fp;
+	dump->regs.gp = sw->gp;
+	dump->regs.sp = regs->sp;
+	dump->regs.orig_r2 = regs->orig_r2;
+	dump->regs.estatus = regs->estatus;
+	dump->regs.ea = regs->ea;
 }
 
 /*
@@ -369,10 +408,18 @@ void dump(struct pt_regs *fp)
 
 	printk(KERN_EMERG "PC: %08lx\n", fp->ea);
 	printk(KERN_EMERG "SR: %08lx    SP: %08lx\n", (long) fp->estatus, (long) fp);
+
+	printk(KERN_EMERG "r1: %08lx    r2: %08lx    r3: %08lx\n",
+		fp->r1, fp->r2, fp->r3);
+
 	printk(KERN_EMERG "r4: %08lx    r5: %08lx    r6: %08lx    r7: %08lx\n",
 		fp->r4, fp->r5, fp->r6, fp->r7);
 	printk(KERN_EMERG "r8: %08lx    r9: %08lx    r10: %08lx    r11: %08lx\n",
 		fp->r8, fp->r9, fp->r10, fp->r11);
+	printk(KERN_EMERG "r12: %08lx  r13: %08lx    r14: %08lx    r15: %08lx\n",
+		fp->r12, fp->r13, fp->r14, fp->r15);
+	printk(KERN_EMERG "or2: %08lx   ra: %08lx     fp: %08lx    sp: %08lx\n",
+		fp->orig_r2, fp->ra, fp->fp, fp->sp);
 	printk(KERN_EMERG "\nUSP: %08x   TRAPFRAME: %08x\n", (unsigned int) fp->sp,
 		(unsigned int) fp);
 
@@ -448,7 +495,7 @@ unsigned long thread_saved_pc(struct task_struct *t)
 void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 {
 	memset((void *) regs, 0, sizeof(struct pt_regs));
-	regs->estatus = NIOS2_STATUS_PIE_MSK;   // No user mode setting, at least not for now
+	regs->estatus = NIOS2_STATUS_PIE_MSK|NIOS2_STATUS_U_MSK;
 	regs->ea = pc;
 	regs->sp = sp;
 
@@ -456,7 +503,15 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	if (current->thread.flags & NIOS2_FLAG_DEBUG ) {
 		if ( *(u32*)pc == NIOS2_OP_NOP ) {
 			*(u32*)pc = NIOS2_OP_BREAK;
+			flush_dcache_range(pc, pc+4);
 			flush_icache_range(pc, pc+4);
 		}
 	}
 }
+
+/* Fill in the fpu structure for a core dump.. */
+int dump_fpu(struct pt_regs *regs, elf_fpregset_t *r)
+{
+  return 0;
+}
+

@@ -1,3 +1,34 @@
+/*--------------------------------------------------------------------
+ *
+ * arch/nios2nommu/kernel/time.c
+ *
+ * Architecture specific time handling details.
+ *
+ * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
+ *
+ * Most of the stuff is located in the machine specific files.
+ *
+ * Copyright (C) 2004   Microtronix Datacom Ltd
+ *  Copyright (C) 1998-2000  D. Jeff Dionne <jeff@lineo.ca>,
+ *                           Kenneth Albanowski <kjahds@kjahds.com>,
+ *  Copyright (C) 1991, 1992, 1995  Linus Torvalds
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ *
+ * Jan/20/2004		dgt	    NiosII
+ *
+ ---------------------------------------------------------------------*/
+
+
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
@@ -10,51 +41,69 @@
 #include <linux/profile.h>
 #include <linux/module.h>
 #include <linux/irq.h>
-#include <linux/clocksource.h>
+#include <linux/times.h>
 
 #include <asm/segment.h>
+#include <asm/uaccess.h>
 #include <asm/io.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
+#include <asm/timer_struct.h>
+
+#define nasys_clock_freq TIMER_1MS_FREQ
+#define nasys_clock_freq_1000 (TIMER_1MS_FREQ/1000)
+#define na_timer0_irq TIMER_1MS_IRQ
 
 #define	TICK_SIZE (tick_nsec / 1000)
-#define NIOS2_TIMER_PERIOD (nasys_clock_freq/HZ)
 
-#define ALTERA_TIMER_STATUS_REG              0
-#define ALTERA_TIMER_CONTROL_REG             4
-#define ALTERA_TIMER_PERIODL_REG             8
-#define ALTERA_TIMER_PERIODH_REG             12
-#define ALTERA_TIMER_SNAPL_REG               16
-#define ALTERA_TIMER_SNAPH_REG               20
+static np_timer * na_timer0v = NULL;
 
-#define ALTERA_TIMER_CONTROL_ITO_MSK         (0x1)
-#define ALTERA_TIMER_CONTROL_CONT_MSK        (0x2)
-#define ALTERA_TIMER_CONTROL_START_MSK       (0x4)
-#define ALTERA_TIMER_CONTROL_STOP_MSK        (0x8)
-
-static unsigned long nios2_timer_count;
-static unsigned long timer_membase;
-
+unsigned long cpu_khz;
 static inline int set_rtc_mmss(unsigned long nowtime)
 {
-	return 0;
+  return 0;
 }
 
-static inline unsigned long read_timersnapshot(void)
+/* Timer timeout status */
+#define nios2_timer_TO	(na_timer0v->np_timerstatus & np_timerstatus_to_mask)
+
+/* Timer snapshot */
+static inline unsigned long nios2_read_timercount(void)
 {
+#ifdef COMPILE_FOR_ISS
+   static int firstTime = 1;
+#endif
 	unsigned long count;
-
-	outw(0, timer_membase + ALTERA_TIMER_SNAPL_REG);
-	count =
-	    inw(timer_membase + ALTERA_TIMER_SNAPH_REG) << 16 |
-	    inw(timer_membase + ALTERA_TIMER_SNAPL_REG);
-
+/* FIXME: reading these registers does not work for iss.
+ */
+#ifndef COMPILE_FOR_ISS
+	outw(0, &na_timer0v->np_timersnapl);
+	count = na_timer0v->np_timersnaph << 16 | na_timer0v->np_timersnapl;
+#else
+   if(firstTime) {
+      printk(KERN_WARNING "WARNING: nios2_read_timercount disabled since reading this register is not supported by the iss\n");
+      firstTime = 0;
+   }
+ 	count = 0;
+#endif
 	return count;
 }
 
-static inline void write_timerperiod(unsigned long period)
+/*
+ * Should return useconds since last timer tick
+ */
+static unsigned long gettimeoffset(void)
 {
-	outw(period, timer_membase + ALTERA_TIMER_PERIODL_REG);
-	outw(period >> 16, timer_membase + ALTERA_TIMER_PERIODH_REG);
+	unsigned long offset;
+	unsigned long count;
+	count = nios2_read_timercount();
+	offset = ((nasys_clock_freq/HZ)-1 - nios2_read_timercount()) \
+		 / (nasys_clock_freq / USEC_PER_SEC);
+
+	/* Check if we just wrapped the counters and maybe missed a tick */
+	if (nios2_timer_TO  && (offset < (100000 / HZ / 2)))
+		offset += (USEC_PER_SEC / HZ);
+
+	return offset;
 }
 
 /*
@@ -64,15 +113,14 @@ static inline void write_timerperiod(unsigned long period)
 irqreturn_t timer_interrupt(int irq, void *dummy)
 {
 	/* last time the cmos clock got updated */
-	static long last_rtc_update = 0;
-
-	/* Clear the interrupt condition */
-	outw(0, timer_membase + ALTERA_TIMER_STATUS_REG);
-	nios2_timer_count += NIOS2_TIMER_PERIOD;
-
+	static long last_rtc_update=0;
+	
 	write_seqlock(&xtime_lock);
+	na_timer0v->np_timerstatus = 0; /* Clear the interrupt condition */
 
 	do_timer(1);
+	update_process_times(user_mode(get_irq_regs()));
+
 	profile_tick(CPU_PROFILING);
 	/*
 	 * If we have an externally synchronized Linux clock, then update
@@ -81,59 +129,31 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	 */
 	if (ntp_synced() &&
 	    xtime.tv_sec > last_rtc_update + 660 &&
-	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned)TICK_SIZE) / 2 &&
-	    (xtime.tv_nsec / 1000) <= 500000 + ((unsigned)TICK_SIZE) / 2) {
-		if (set_rtc_mmss(xtime.tv_sec) == 0)
-			last_rtc_update = xtime.tv_sec;
-		else
-			last_rtc_update = xtime.tv_sec - 600;	/* do it again in 60 s */
+	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned) TICK_SIZE) / 2 &&
+	    (xtime.tv_nsec  / 1000) <= 500000 + ((unsigned) TICK_SIZE) / 2) {
+	  if (set_rtc_mmss(xtime.tv_sec) == 0)
+	    last_rtc_update = xtime.tv_sec;
+	  else
+	    last_rtc_update = xtime.tv_sec - 600; /* do it again in 60 s */
 	}
 
 	write_sequnlock(&xtime_lock);
-
-#ifndef CONFIG_SMP
-	update_process_times(user_mode(get_irq_regs()));
-#endif
-
-	return (IRQ_HANDLED);
+	return(IRQ_HANDLED);
 }
 
-static cycle_t nios2_timer_read(struct clocksource *cs)
-{
-	unsigned long flags;
-	u32 cycles;
-	u32 tcn;
-
-	local_irq_save(flags);
-	tcn = NIOS2_TIMER_PERIOD - 1 - read_timersnapshot();
-	cycles = nios2_timer_count;
-	local_irq_restore(flags);
-
-	return cycles + tcn;
-}
-
-static struct clocksource nios2_timer = {
-	.name = "timer",
-	.rating = 250,
-	.read = nios2_timer_read,
-	.shift = 20,
-	.mask = CLOCKSOURCE_MASK(32),
-	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
-};
-
-static struct irqaction nios2_timer_irq = {
-	.name = "timer",
-	.flags = IRQF_DISABLED | IRQF_TIMER,
-	.handler = timer_interrupt,
-};
-
-void __init time_init(void)
+void __init nios2_late_time_init(void)
 {
 	unsigned int year, mon, day, hour, min, sec;
+	int err;
+
 	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
 				int *min, int *sec);
-	unsigned ctrl;
+	na_timer0v =  ioremap_nocache(TIMER_1MS_BASE, TIMER_1MS_SPAN);
+	if (na_timer0v == NULL) {
+	  panic("Failed to map system timer @%#x\n", TIMER_1MS_BASE);
+	}
 
+	cpu_khz=nasys_clock_freq_1000;
 	arch_gettod(&year, &mon, &day, &hour, &min, &sec);
 
 	if ((year += 1900) < 1970)
@@ -142,18 +162,100 @@ void __init time_init(void)
 	xtime.tv_nsec = 0;
 	wall_to_monotonic.tv_sec = -xtime.tv_sec;
 
-	timer_membase = (unsigned long)ioremap((unsigned long)na_timer0, 32);
-	setup_irq(na_timer0_irq, &nios2_timer_irq);
-	write_timerperiod(NIOS2_TIMER_PERIOD - 1);
-
-	/* clocksource initialize */
-	nios2_timer.mult =
-	    clocksource_hz2mult(nasys_clock_freq, nios2_timer.shift);
-	clocksource_register(&nios2_timer);
+	err = request_irq(na_timer0_irq, timer_interrupt, IRQ_FLG_LOCK, "timer", NULL);
+	if(err)
+		printk(KERN_ERR "%s() failed - errno = %d\n", __FUNCTION__, -err);
+	na_timer0v->np_timerperiodl = (nasys_clock_freq/HZ)-1;
+	na_timer0v->np_timerperiodh = ((nasys_clock_freq/HZ)-1) >> 16;
 
 	/* interrupt enable + continuous + start */
-	ctrl =
-	    ALTERA_TIMER_CONTROL_ITO_MSK | ALTERA_TIMER_CONTROL_CONT_MSK |
-	    ALTERA_TIMER_CONTROL_START_MSK;
-	outw(ctrl, timer_membase + ALTERA_TIMER_CONTROL_REG);
+	na_timer0v->np_timercontrol = np_timercontrol_start_mask
+				   + np_timercontrol_cont_mask
+				   + np_timercontrol_ito_mask;
+}
+
+extern void (*late_time_init)(void);
+void __init time_init(void)
+{
+  late_time_init = nios2_late_time_init;
+}
+
+/*
+ * This version of gettimeofday has near microsecond resolution.
+ */
+void do_gettimeofday(struct timeval *tv)
+{
+	unsigned long flags;
+	unsigned long seq;
+	unsigned long usec, sec;
+
+	do {
+		seq = read_seqbegin_irqsave(&xtime_lock, flags);
+		usec = gettimeoffset();
+		sec = xtime.tv_sec;
+		usec += (xtime.tv_nsec / 1000);
+	} while (read_seqretry_irqrestore(&xtime_lock, seq, flags));
+
+	while (usec >= 1000000) {
+		usec -= 1000000;
+		sec++;
+	}
+
+	tv->tv_sec = sec;
+	tv->tv_usec = usec;
+}
+EXPORT_SYMBOL(do_gettimeofday);
+
+int do_settimeofday(struct timespec *tv)
+{
+	time_t wtm_sec, sec = tv->tv_sec;
+	long wtm_nsec, nsec = tv->tv_nsec;
+
+	if ((unsigned long)tv->tv_nsec >= NSEC_PER_SEC)
+		return -EINVAL;
+
+	write_seqlock_irq(&xtime_lock);
+	/*
+	 * This is revolting. We need to set "xtime" correctly. However, the
+	 * value in this location is the value at the last tick.
+	 * Discover what correction gettimeofday() would have
+	 * made, and then undo it!
+	 */
+	nsec -= gettimeoffset() * NSEC_PER_USEC;
+
+	wtm_sec  = wall_to_monotonic.tv_sec + (xtime.tv_sec - sec);
+	wtm_nsec = wall_to_monotonic.tv_nsec + (xtime.tv_nsec - nsec);
+
+	set_normalized_timespec(&xtime, sec, nsec);
+	set_normalized_timespec(&wall_to_monotonic, wtm_sec, wtm_nsec);
+
+	ntp_clear();
+
+	write_sequnlock_irq(&xtime_lock);
+	clock_was_set();
+
+	return 0;
+}
+EXPORT_SYMBOL(do_settimeofday);
+
+/*
+ * Scheduler clock - returns current time in nanosec units.
+ */
+unsigned long long sched_clock(void)
+{
+	return (unsigned long long)jiffies * (1000000000 / HZ);
+}
+
+/* sys_times is broken it returns negative vaules AND
+ * -EFAULT.
+ */
+asmlinkage long nios2_times(struct tms __user * tbuf) {
+   long rv;
+   struct tms tmp;
+
+   if (copy_to_user(tbuf, &tmp, sizeof(struct tms))) {
+      return -EFAULT;
+   }
+   rv = sys_times(tbuf);         
+   return rv & 0x7fffffffUL;
 }

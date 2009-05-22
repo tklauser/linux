@@ -19,18 +19,21 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef __ARCH_NIOS2_CACHE_H
-#define __ARCH_NIOS2_CACHE_H
+#ifndef _ASM_NIOS2_CACHE_H
+#define _ASM_NIOS2_CACHE_H
 
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 /* bytes per L1 cache line */
-#define        L1_CACHE_BYTES	nasys_icache_line_size 	/* 32, this need to be at least 1 */
+#define        L1_CACHE_BYTES	ICACHE_LINE_SIZE 	/* 32, this need to be at least 1 */
 #define L1_CACHE_ALIGN(x)	(((x)+(L1_CACHE_BYTES-1))&~(L1_CACHE_BYTES-1))
-#define L1_CACHE_SHIFT	5
+#define L1_CACHE_SHIFT	ICACHE_LINE_SIZE_LOG2
 
 
 #define __cacheline_aligned
 #define ____cacheline_aligned
+
+#define SMP_CACHE_SHIFT		L1_CACHE_SHIFT
+#define SMP_CACHE_BYTES		L1_CACHE_BYTES
 
 #endif

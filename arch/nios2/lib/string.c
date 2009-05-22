@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------
  *
- * arch/nios2/lib/string.c
+ * arch/nios2nommu/lib/string.c
  *
  * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
  *
@@ -24,7 +24,7 @@
 
 #include <linux/types.h>
 #include <linux/autoconf.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
 #include <asm/string.h>
 
 #ifdef __HAVE_ARCH_MEMSET

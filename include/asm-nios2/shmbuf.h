@@ -1,5 +1,5 @@
-#ifndef _NIOS_SHMBUF_H
-#define _NIOS_SHMBUF_H
+#ifndef _ASM_NIOS2_SHMBUF_H
+#define _ASM_NIOS2_SHMBUF_H
 
 /*--------------------------------------------------------------------
  *
@@ -61,4 +61,4 @@ struct shminfo64 {
 	unsigned long	__unused4;
 };
 
-#endif /* _NIOS_SHMBUF_H */
+#endif /* _ASM_NIOS2_SHMBUF_H */

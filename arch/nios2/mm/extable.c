@@ -1,29 +1,25 @@
 /*
- * linux/arch/niosnommu/mm/extable.c
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 2009, Wind River Systems Inc
+ * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
-
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <asm/uaccess.h>
 
-/* Simple binary search */
-const struct exception_table_entry *
-search_extable(const struct exception_table_entry *first,
-	       const struct exception_table_entry *last,
-	       unsigned long value)
+int fixup_exception(struct pt_regs *regs, unsigned long address)
 {
-        while (first <= last) {
-		const struct exception_table_entry *mid;
-		long diff;
+	const struct exception_table_entry *fixup;
 
-		mid = (last - first) / 2 + first;
-		diff = mid->insn - value;
-                if (diff == 0)
-                        return mid;
-                else if (diff < 0)
-                        first = mid+1;
-                else
-                        last = mid-1;
-        }
-        return NULL;
+	fixup = search_exception_tables(regs->ea);
+	if (fixup) {
+		regs->ea = fixup->nextinsn;
+
+		return 1;
+	}
+
+	return 0;
 }

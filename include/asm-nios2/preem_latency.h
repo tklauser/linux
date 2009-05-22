@@ -1,5 +1,5 @@
-#ifndef _ASM_PREEM_LATENCY_H
-#define _ASM_PREEM_LATENCY_H
+#ifndef _ASM_NIOS2_PREEM_LATENCY_H
+#define _ASM_NIOS2_PREEM_LATENCY_H
 
 /*--------------------------------------------------------------------
  *
@@ -27,7 +27,7 @@
  ---------------------------------------------------------------------*/
 
 
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 #define readclock(low) \
 do {\
@@ -36,4 +36,4 @@ do {\
 } while (0)
 #define readclock_init()
 
-#endif /* _ASM_PREEM_LATENCY_H */
+#endif /* _ASM_NIOS2_PREEM_LATENCY_H */

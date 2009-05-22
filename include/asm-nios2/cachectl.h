@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef _NIOS2_CACHECTL_H
-#define _NIOS2_CACHECTL_H
+#ifndef _ASM_NIOS2_CACHECTL_H
+#define _ASM_NIOS2_CACHECTL_H
 
 /* Definitions for the cacheflush system call.  */
 
@@ -33,4 +33,4 @@
 #define FLUSH_CACHE_INSN    2	/* Flush instruction cache */
 #define FLUSH_CACHE_BOTH    3	/* Flush both caches */
 
-#endif /* _NIOS2_CACHECTL_H */
+#endif /* _ASM_NIOS2_CACHECTL_H */

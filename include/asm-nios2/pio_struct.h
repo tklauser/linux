@@ -1,3 +1,5 @@
+#ifndef _PIO_STRUCT_H_
+#define _PIO_STRUCT_H_
 // PIO Peripheral
 
 // PIO Registers
@@ -11,4 +13,4 @@ typedef volatile struct
 
 // PIO Routines
 void nr_pio_showhex(int value); // shows low byte on pio named na_seven_seg_pio
-
+#endif

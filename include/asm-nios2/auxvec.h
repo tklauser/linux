@@ -1,4 +1,4 @@
-#ifndef __ASM_SH_AUXVEC_H
-#define __ASM_SH_AUXVEC_H
+#ifndef _ASM_NIOS2_AUXVEC_H
+#define _ASM_NIOS2_AUXVEC_H
 
-#endif /* __ASM_SH_AUXVEC_H */
+#endif /* _ASM_NIOS2_AUXVEC_H */

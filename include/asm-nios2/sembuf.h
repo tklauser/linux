@@ -1,5 +1,5 @@
-#ifndef _NIOS_SEMBUF_H
-#define _NIOS_SEMBUF_H
+#ifndef _ASM_NIOS2_SEMBUF_H
+#define _ASM_NIOS2_SEMBUF_H
 
 /*--------------------------------------------------------------------
  *
@@ -45,4 +45,4 @@ struct semid64_ds {
 	unsigned long	__unused4;
 };
 
-#endif /* _NIOS_SEMBUF_H */
+#endif /* _ASM_NIOS2_SEMBUF_H */

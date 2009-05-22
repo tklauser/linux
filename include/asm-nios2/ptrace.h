@@ -21,8 +21,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef _NIOS2_PTRACE_H
-#define _NIOS2_PTRACE_H
+#ifndef _ASM_NIOS2_PTRACE_H
+#define _ASM_NIOS2_PTRACE_H
 
 #ifndef __ASSEMBLY__
 
@@ -109,10 +109,9 @@ struct pt_regs {
 	unsigned long  sp;		/* Stack pointer */
 	unsigned long  gp;		/* Global pointer */
 	unsigned long  estatus;
-	unsigned long  status_extension; /* Status extension. Used to fake user mode */
 	unsigned long  ea;		/* Exception return address (pc) */
+   unsigned long  orig_r7;
 };
-
 
 /*
  * This is the extended stack used by signal handlers and the context
@@ -137,18 +136,17 @@ struct switch_stack {
 #define PTRACE_GETREGS            12
 #define PTRACE_SETREGS            13
 
-#ifndef PS_S
-#define PS_S  (0x00000001)
-#endif
-#ifndef PS_T
-#define PS_T  (0x00000002)
-#endif
+/* 
+ */
+/* Supervisor mode  
+ */
+#define ESTATUS_EU  (0x00000002)
 
-#define user_mode(regs) (!((regs)->status_extension & PS_S))
+#define user_mode(regs) (((regs)->estatus & ESTATUS_EU))
 #define instruction_pointer(regs) ((regs)->ra)
 #define profile_pc(regs) instruction_pointer(regs)
 extern void show_regs(struct pt_regs *);
 
 #endif /* __KERNEL__ */
 #endif /* __ASSEMBLY__ */
-#endif /* _NIOS2_PTRACE_H */
+#endif /* _ASM_NIOS2_PTRACE_H */

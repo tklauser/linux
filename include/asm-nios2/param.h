@@ -1,5 +1,5 @@
-#ifndef _ASM_PARAM_H
-#define _ASM_PARAM_H
+#ifndef _ASM_NIOS2_PARAM_H
+#define _ASM_NIOS2_PARAM_H
 
 #ifdef __KERNEL__
 # define HZ		CONFIG_HZ	/* Internal kernel timer frequency */

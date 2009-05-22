@@ -1,4 +1,11 @@
 /*
+ * linux/arch/nios2/kernel/head.S
+ *
+ * Copyright (C) 2009, Wind River Systems Inc
+ * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
+ * Based on:
+
  * head.S for Altera's Excalibur development board with nios processor
  *
  * (c) Vic Phillips, Microtronix Datacom Ltd., 2001
@@ -23,8 +30,6 @@
  *
  */
 
-#include <linux/linkage.h>
-#include <linux/init.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
@@ -47,9 +52,6 @@
 	.data
 	.align	2
 	.set noat
-	.global	status_extension
-status_extension:
-	.long	0
 
 	.global _current_thread
 _current_thread:
@@ -73,10 +75,31 @@ _current_thread:
 	.text
 	.global _start
 _start:
+	/* Disable intruction trace
+	 */
+#ifdef COMPILE_FOR_ISS
+	rdctl	r2,ctl6
+	movi	r1,-9
+	and	r2,r2,r1
+	movi	r1,-17
+	and	r2,r2,r1
+	wrctl	ctl6,r2
+
+	/* Initialize all memory
+	 */
+	movi	r1,(KERNEL_REGION_BASE_ASM|LINUX_SDRAM_END)
+	movia	r2,_end
+	sub	r1,r1,r2
+1:	stw	r0,0(r2)
+	addi	r2,r2,4
+	subi	r1,r1,4
+	bne	r1,r0,1b
+#endif
+
 	wrctl	status,r0		/* Disable interrupts */
 	
-	/* Flush all cache lines within the instruction cache */
-
+	/* Flush all cache lines within the instruction cache
+ 	 */
 	movia	r1,NIOS2_ICACHE_SIZE
 	movui	r2,NIOS2_ICACHE_LINE_SIZE
 
@@ -89,11 +112,47 @@ text_flush:
 	/* This is the default location for the exception 
 	 * handler. Code in jump to our handler
 	 */
-exc_hook:	
+exc_hook:
 	movia	r24,inthandler
 	jmp	r24
-1:		
+	
+fast_handler_start:
+	nextpc et
+helper:	
+	stw     r3,r3save-helper(et)
 
+#if 1
+	/* Fast handler statistics
+ 	 */
+	movia	et, statistics
+	ldw	r3,STAT_TLB_FAST_HANDLER(et)
+	addi	r3,r3,1
+	stw	r3,STAT_TLB_FAST_HANDLER(et)
+#endif	
+	rdctl   r3,pteaddr
+	srli    r3,r3,12
+	slli	r3,r3,2
+	movia	et,pgd_current
+	
+	ldw	et,0(et)	
+	add	r3,et,r3	
+	ldw	et,0(r3)
+
+	rdctl	r3,pteaddr
+	andi	r3,r3,0xfff
+	add	et,r3,et
+	ldw	et,0(et)
+	wrctl	tlbacc,et
+	nextpc	et
+helper2:	
+	ldw	r3,r3save-helper2(et)
+	subi	ea,ea,4	
+	eret		
+r3save:	
+	.word 0x0
+fast_handler_end:
+
+1:		
 	/*
 	 * After flushing the instruction cache, we must flush the data
 	 * cache.
@@ -107,14 +166,31 @@ data_flush:
 	sub	r1,r1,r2
 	bgt	r1,r0,data_flush
 
-#ifdef CONFIG_BREAK_ON_START
-	break
-#endif //CONFIG_BREAK_ON_START
+	nextpc	r1			/* Find out where we are */
+chkadr:	
+	movia	r2,chkadr
+	beq	r1,r2,finish_move	/* We are running in RAM done */
+	addi	r1,r1,(_start - chkadr)	/* Source */
+	movia	r2,_start		/* Destination */
+	movia	r3,__bss_start		/* End of copy */
+	
+loop_move:				// r1: src, r2: dest, r3: last dest
+	ldw	r8,0(r1)		// load a word from [r1]
+	stw	r8,0(r2)		// stort a word to dest [r2]
+	flushd	0(r2)			// Flush cache for safty
+	addi 	r1,r1,4			// inc the src addr
+	addi	r2,r2,4			// inc the dest addr
+	blt	r2,r3,loop_move
+		
+	movia	r1,finish_move		// VMA(_start)->l1
+	jmp	r1			// jmp to _start	
 
-#if defined(CPU_EXCEPT_ADDRESS_ASM) && (CPU_EXCEPT_ADDRESS_ASM != (LINUX_SDRAM_START + 0x20))
-/*	Copy an instruction sequence to put at the exception address */	
+finish_move:
+	/* FIXME: What about overlap of src and dst address ??
+	 */
+	/*	Copy an instruction sequence to put at the exception address */
         movia	r2,exc_hook
-        movia	r3,CPU_EXCEPT_ADDRESS_ASM
+        movia	r3,CPU_EXCEPT_VIRT_ADDRESS_ASM
         ldw     r1,0(r2)
         stw     r1,0(r3)
         ldw     r1,4(r2)
@@ -129,30 +205,39 @@ data_flush:
         flushi  r3
         addi    r3,r3,4
         flushi  r3
-#endif
 
-	//------------------------------------
-	// Disable interrupts
-	//
-	wrctl	ienable,r0		// Mask off all possible interrupts
+	/* FIXME: What about overlap of src and dst address ??
+	 */
+	
+	/* Copy the fast tlb-handler
+	 * FIXME: What if it's already on the right address ?
+	 */
+	movia   r2,fast_handler_start
+	movia   r8,fast_handler_end
+	movia	r3,CPU_FAST_TLB_MISS_EXCEPTION_VIRT_ADDR_ASM
+1:	
+	ldw	r1,0(r2)
+	stw	r1,0(r3)
+	flushd  0(r3)
+	flushi  r3
+	addi	r2,r2,4
+	addi	r3,r3,4
+	bne	r2,r8,1b
 
-	//------------------------------------------------------
-	// Zero out the .bss segment (uninitialized common data)
-	//
-	movia	r2,__bss_start		// zero out bss
-	movia	r1,__bss_stop
+	// Mask off all possible interrupts
+	wrctl	ienable,r0		
+
+	/* Clear .bss
+	 */
+	movia	r2,__bss_start		// presume nothing is between
+	movia	r1,_end			// the .bss and _end.
 1:
 	stb	r0,0(r2)
 	addi	r2,r2,1
 	bne	r1,r2,1b
 
-	//------------------------------------------------------
-	// Call main() with interrupts disabled
-	//
-	movia	r1,status_extension	// get the STATUS extension address
-	movi	r2,PS_S_ASM		// set initial mode = supervisor
-	stw	r2,0(r1)
-	
+	/* Call main() with interrupts disabled
+	 */
 	movia	r1,init_thread_union	// set stack at top of the task union
 	addi	sp,r1,THREAD_SIZE_ASM
 	movia	r2,_current_thread	// Remember current thread
@@ -161,7 +246,7 @@ data_flush:
 	movia	r1,nios2_boot_init	// save args r4-r7 passed from u-boot
 	callr	r1
 	
-	movia	r1,start_kernel		// call main as a subroutine
+	movia	r1,main			// call main as a subroutine
 	callr	r1
 
 	//------------------------------------------------------------------
@@ -171,4 +256,5 @@ data_flush:
 
 	/* End of startup code */
 .set at
+
 

@@ -1,9 +1,9 @@
-#ifndef __ASM_NIOS_BUGS_H
-#define __ASM_NIOS_BUGS_H
+#ifndef _ASM_NIOS2_BUGS_H
+#define _ASM_NIOS2_BUGS_H
 
 /*--------------------------------------------------------------------
  *
- * include/asm-nios2/bugs.h
+ * Include/asm-nios2/bugs.h
  *
  * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
  *

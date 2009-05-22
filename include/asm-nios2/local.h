@@ -20,9 +20,9 @@
  *
  */
 
-#ifndef __NIOS2_LOCAL_H
-#define __NIOS2_LOCAL_H
+#ifndef _ASM_NIOS2_LOCAL_H
+#define _ASM_NIOS2_LOCAL_H
 
 #include <asm-generic/local.h>
 
-#endif /* __NIOS2_LOCAL_H */
+#endif /* _ASM_NIOS2_LOCAL_H */

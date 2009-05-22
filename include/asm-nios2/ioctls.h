@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef __ARCH_NIOS2_IOCTLS_H__
-#define __ARCH_NIOS2_IOCTLS_H__
+#ifndef _ASM_NIOS2_IOCTLS_H__
+#define _ASM_NIOS2_IOCTLS_H__
 
 #include <asm/ioctl.h>
 
@@ -100,4 +100,4 @@
 
 #define TIOCSER_TEMT    0x01	/* Transmitter physically empty */
 
-#endif /* __ARCH_NIOS2_IOCTLS_H__ */
+#endif /* _ASM_NIOS2_IOCTLS_H__ */

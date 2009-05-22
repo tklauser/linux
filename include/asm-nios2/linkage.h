@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef __ASM_LINKAGE_H
-#define __ASM_LINKAGE_H
+#ifndef _ASM_NIOS2_LINKAGE_H
+#define _ASM_NIOS2_LINKAGE_H
 
 #define __ALIGN .align 3
 #define __ALIGN_STR ".align 3"

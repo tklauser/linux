@@ -2,7 +2,7 @@
  *
  * Assembly language portions of Nios GDB Stub
  *
- * arch\nios2\kernel\switch.S
+ * arch\nios2nommu\kernel\switch.S
  *
  * Derived from Nios1
  *

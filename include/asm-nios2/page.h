@@ -1,112 +1,134 @@
 /*
- * Copyright (C) 2004, Microtronix Datacom Ltd.
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
  *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
+ * Copyright (C) 1994 - 1999, 2000, 03 Ralf Baechle
+ * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
  */
+#ifndef _ASM_NIOS2_PAGE_H
+#define _ASM_NIOS2_PAGE_H
 
-#ifndef _NIOS2_PAGE_H
-#define _NIOS2_PAGE_H
 
-/* copied from m68knommu arch */
+#ifdef __KERNEL__
 
-/* PAGE_SHIFT determines the page size */
+#include <asm/spaces.h>
 
-#define PAGE_SHIFT	(12)
-#define PAGE_SIZE	(4096)
-#define PAGE_MASK	(~(PAGE_SIZE-1))
-
-#include <asm/setup.h>
+/*
+ * PAGE_SHIFT determines the page size
+ */
+#define PAGE_SHIFT	12
+#define PAGE_SIZE	(1UL << PAGE_SHIFT)
+#define PAGE_MASK       (~((1 << PAGE_SHIFT) - 1))
 
 #ifndef __ASSEMBLY__
- 
-#define get_user_page(vaddr)		__get_free_page(GFP_KERNEL)
-#define free_user_page(page, addr)	free_page(addr)
 
-#define clear_page(page)	memset((page), 0, PAGE_SIZE)
-#define copy_page(to,from)	memcpy((to), (from), PAGE_SIZE)
+/*
+ * This gives the physical RAM offset.
+ */
+#define PHYS_OFFSET		DDR2_TOP_BASE
 
-#define clear_user_page(page, vaddr, pg)	clear_page(page)
-#define copy_user_page(to, from, vaddr, pg)	copy_page(to, from)
+/*
+ * It's normally defined only for FLATMEM config but it's
+ * used in our early mem init code for all memory models.
+ * So always define it.
+ */
+#define ARCH_PFN_OFFSET		PFN_UP(PHYS_OFFSET)
+
+#include <linux/pfn.h>
+#include <asm/io.h>
+
+static inline void clear_page(void * page) {
+  memset(page, 0, PAGE_SIZE);
+}
+extern void copy_page(void * to, void * from);
+
+extern unsigned long shm_align_mask;
+
+static inline unsigned long pages_do_alias(unsigned long addr1,
+	unsigned long addr2)
+{
+	return (addr1 ^ addr2) & shm_align_mask;
+}
+
+struct page;
+
+extern void clear_user_page(void *addr, unsigned long vaddr, struct page *page);
+
+extern void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
+			   struct page *to);
+struct vm_area_struct;
 
 /*
  * These are used to make use of C type-checking..
  */
 typedef struct { unsigned long pte; } pte_t;
-typedef struct { unsigned long pmd[16]; } pmd_t;
-typedef struct { unsigned long pgd; } pgd_t;
-typedef struct { unsigned long pgprot; } pgprot_t;
-typedef struct page *pgtable_t;
-
 #define pte_val(x)	((x).pte)
-#define pmd_val(x)	((&x)->pmd[0])
-#define pgd_val(x)	((x).pgd)
-#define pgprot_val(x)	((x).pgprot)
-
 #define __pte(x)	((pte_t) { (x) } )
-#define __pmd(x)	((pmd_t) { (x) } )
+
+
+/*
+ * Finall the top of the hierarchy, the pgd
+ */
+typedef struct { unsigned long pgd; } pgd_t;
+#define pgd_val(x)	((x).pgd)
 #define __pgd(x)	((pgd_t) { (x) } )
+
+/*
+ * Manipulate page protection bits
+ */
+typedef struct { unsigned long pgprot; } pgprot_t;
+#define pgprot_val(x)	((x).pgprot)
 #define __pgprot(x)	((pgprot_t) { (x) } )
 
-extern unsigned long memory_start;
-extern unsigned long memory_end;
+
+/*
+ * On R4000-style MMUs where a TLB entry is mapping a adjacent even / odd
+ * pair of pages we only have a single global bit per pair of pages.  When
+ * writing to the TLB make sure we always have the bit set for both pages
+ * or none.  This macro is used to access the `buddy' of the pte we're just
+ * working on.
+ */
+#define ptep_buddy(x)	((pte_t *)((unsigned long)(x) ^ sizeof(pte_t)))
 
 #endif /* !__ASSEMBLY__ */
-#include <asm/nios2.h>
-#define PAGE_OFFSET		((int)(nasys_program_mem))
 
-#ifndef __ASSEMBLY__
+/* to align the pointer to the (next) page boundary */
+#define PAGE_ALIGN(addr)	(((addr) + PAGE_SIZE - 1) & PAGE_MASK)
 
-#define __pa(vaddr)		virt_to_phys((void *)(vaddr))
-#define __va(paddr)		phys_to_virt((unsigned long)(paddr))
+/*
+ * __pa()/__va() should be used only during mem init.
+ */
+#define __pa_page_offset(x)	PAGE_OFFSET
+#define __pa_symbol(x)	__pa(RELOC_HIDE((unsigned long)(x),0))
+#define __pa(x)		((unsigned long)(x) - PAGE_OFFSET + PHYS_OFFSET)
+#define __va(x)		((void *)((unsigned long)(x) + PAGE_OFFSET - PHYS_OFFSET))
 
-#define MAP_NR(addr)		(((unsigned long)(addr)-PAGE_OFFSET) >> PAGE_SHIFT)
+#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
 
-#define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
-#define pfn_to_virt(pfn)	__va((pfn) << PAGE_SHIFT)
+#define pfn_valid(pfn)		((pfn) >= ARCH_PFN_OFFSET && (pfn) < (max_mapnr + ARCH_PFN_OFFSET))
 
-#define virt_to_page(addr)	((void*) addr < (void*) memory_end ? mem_map + \
-				(((unsigned long)(addr)-PAGE_OFFSET) >> PAGE_SHIFT) : 0UL)
+#define virt_to_page(kaddr)	pfn_to_page(PFN_DOWN(virt_to_phys(kaddr)))
+#define virt_addr_valid(kaddr)	pfn_valid(PFN_DOWN(virt_to_phys(kaddr)))
+
+#define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
+				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
+
+#define UNCAC_ADDR(addr)	((addr) - PAGE_OFFSET + UNCAC_BASE)
+#define CAC_ADDR(addr)		((addr) - UNCAC_BASE + PAGE_OFFSET)
+
 #define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
-#define VALID_PAGE(page)	(((page) - mem_map) < max_mapnr)
 
-#define pfn_to_page(pfn)	virt_to_page(pfn_to_virt(pfn))
-#define page_to_pfn(page)	virt_to_pfn(page_to_virt(page))
-#define pfn_valid(pfn)	        ((pfn) < max_mapnr)
-
-#define	virt_addr_valid(kaddr)	(((void *)(kaddr) >= (void *)PAGE_OFFSET) && \
-				((void *)(kaddr) < (void *)memory_end))
-
-#ifdef CONFIG_NO_KERNEL_MSG
-#define	BUG_PRINT()
-#else
-#define	BUG_PRINT() printk("kernel BUG at %s:%d!\n", __FILE__, __LINE__)
+#if 0
+#ifdef CONFIG_LIMITED_DMA
+#define WANT_PAGE_VIRTUAL
+#endif
+#define WANT_PAGE_VIRTUAL
 #endif
 
-#ifdef na_cpu_oci_core
-#define BUG_PANIC()	asm volatile ("break") /* drop to debugger */
-#else
-// #define BUG_PANIC()	while(1)
-#define BUG_PANIC()	panic("BUG!")
-#endif
-
-#endif /* __ASSEMBLY__ */
-
+#include <asm-generic/memory_model.h>
 #include <asm-generic/page.h>
 
-#endif /* _NIOS2_PAGE_H */
+#endif /* defined (__KERNEL__) */
+
+#endif /* _ASM_NIOS2_PAGE_H */

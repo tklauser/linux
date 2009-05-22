@@ -1,5 +1,5 @@
-#ifndef _NIOS2_CURRENT_H
-#define _NIOS2_CURRENT_H
+#ifndef _ASM_NIOS2_CURRENT_H
+#define _ASM_NIOS2_CURRENT_H
 /*
  *	current.h
  *	(C) Copyright 2000, Lineo, David McCullough <davidm@uclinux.org>
@@ -31,7 +31,7 @@ struct task_struct;
 
 static inline struct task_struct *get_current(void)
 {
-	return(current_thread_info()->task);
+    return current_thread_info()->task;
 }
 
 #define	current	get_current()
