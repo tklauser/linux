@@ -25,7 +25,6 @@
 #include <linux/mman.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/vt_kern.h>		/* For unblank_screen() */
 #include <linux/module.h>
 
