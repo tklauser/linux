@@ -180,9 +180,9 @@ pte_t pgoff_to_pte(pgoff_t off);
  * Conversion functions: convert a page and protection to a page entry,
  * and a page entry and page directory to the page they refer to.
  */
-//#define pmd_phys(pmd)		virt_to_phys((void *)pmd_val(pmd))
-struct page * pmd_page(pmd_t pmd);
-//#define pmd_page_vaddr(pmd)	pmd_val(pmd)
+#define pmd_phys(pmd)		virt_to_phys((void *)pmd_val(pmd))
+#define pmd_page(pmd)		(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
+#define pmd_page_vaddr(pmd)	pmd_val(pmd)
 
 //#define pud_none(pud) 0
 //#define pmd_offset(pmd,off) 0

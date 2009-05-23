@@ -299,15 +299,6 @@ pte_t pgoff_to_pte(pgoff_t off){BUG();}
  * Conversion functions: convert a page and protection to a page entry,
  * and a page entry and page directory to the page they refer to.
  */
-#define pmd_phys(pmd)	virt_to_phys((void *)pmd_val(pmd))
-struct page * pmd_page(pmd_t pmd){
-  return pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT);
-}
-
-int pmd_page_vaddr(pmd_t pmd) {
-  return pmd_val(pmd);
-}
-
 unsigned long pte_pfn(pte_t pte){
   return pte_val(pte) & 0xfffff;
 }
