@@ -111,8 +111,6 @@ void pgtable_cache_init(void);
 
 /* ivho: set back to "static inline" when correct in pgtable.c
  */
-int pte_user(pte_t pte);
-int pte_read(pte_t pte);
 int pte_write(pte_t pte);
 int pte_dirty(pte_t pte);
 int pte_young(pte_t pte);
@@ -134,11 +132,9 @@ int pte_present(pte_t pte);
  * Undefined behaviour if not..
  */
 pte_t pte_wrprotect(pte_t pte);
-pte_t pte_rdprotect(pte_t pte);
 pte_t pte_mkclean(pte_t pte);
 pte_t pte_mkold(pte_t pte);
 pte_t pte_mkwrite(pte_t pte);
-pte_t pte_mkread(pte_t pte);
 pte_t pte_mkdirty(pte_t pte);
 
 pte_t pte_mkyoung(pte_t pte);

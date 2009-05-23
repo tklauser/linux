@@ -131,8 +131,6 @@ void pgtable_cache_init(void)
 
 /* ivho: set back to "static inline" when correct in pgtable.c
  */
-int pte_user(pte_t pte){BUG();}
-int pte_read(pte_t pte){BUG();}
 int pte_write(pte_t pte){
   return (pte_val(pte) & (_PAGE_WRITE << 20)) != 0;
 }
@@ -179,7 +177,6 @@ pte_t pte_wrprotect(pte_t pte)
   pte_val(p) = pte_val(pte) & ~(_PAGE_WRITE<<20);
   return p;
 }
-pte_t pte_rdprotect(pte_t pte){BUG();}
 pte_t pte_mkclean(pte_t pte){
    return pte;
 }
@@ -192,11 +189,6 @@ pte_t pte_mkold(pte_t pte)
 
 pte_t pte_mkwrite(pte_t pte){ 
   pte_val(pte) |= (_PAGE_WRITE << 20);
-  return pte;
-}
-
-pte_t pte_mkread(pte_t pte){
-  pte_val(pte) |= (_PAGE_READ << 20);
   return pte;
 }
 
