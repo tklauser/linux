@@ -8,6 +8,7 @@
  */
 
 #include <linux/mm.h>
+#include <linux/fs.h>
 #include <asm/cacheflush.h>
 
 
