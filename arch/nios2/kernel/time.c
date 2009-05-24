@@ -245,17 +245,3 @@ unsigned long long sched_clock(void)
 {
 	return (unsigned long long)jiffies * (1000000000 / HZ);
 }
-
-/* sys_times is broken it returns negative vaules AND
- * -EFAULT.
- */
-asmlinkage long nios2_times(struct tms __user * tbuf) {
-   long rv;
-   struct tms tmp;
-
-   if (copy_to_user(tbuf, &tmp, sizeof(struct tms))) {
-      return -EFAULT;
-   }
-   rv = sys_times(tbuf);         
-   return rv & 0x7fffffffUL;
-}
