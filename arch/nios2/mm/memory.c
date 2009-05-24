@@ -56,11 +56,3 @@ unsigned long kernel_map(unsigned long paddr, unsigned long size,
 {
 	return paddr;
 }
-
-
-int is_in_rom(unsigned long addr)
-{
-	/* Default case, not in ROM */
-	return(0);
-}
-
