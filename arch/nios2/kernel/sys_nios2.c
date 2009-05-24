@@ -46,7 +46,6 @@
 #include <asm/setup.h>
 #include <asm/cachectl.h>
 #include <asm/traps.h>
-#include <asm/ipc.h>
 #include <asm/cacheflush.h>
 
 /*
