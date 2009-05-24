@@ -15,6 +15,7 @@
  */
 #include <linux/console.h>
 #include <linux/init.h>
+#include <asm/io.h>
 
 #if JTAG_UART_BASE > 0x20000000
 #error Cannot map JTAG uart directly to IO_REGION
