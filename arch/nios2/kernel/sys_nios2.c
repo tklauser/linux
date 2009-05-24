@@ -42,6 +42,7 @@
 #include <linux/uaccess.h>
 #include <linux/ipc.h>
 #include <linux/unistd.h>
+#include <linux/fs.h>
 
 #include <asm/setup.h>
 #include <asm/cachectl.h>
