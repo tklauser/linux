@@ -22,6 +22,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/string.h>
+#include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 
 #include <asm/cache.h>
@@ -136,14 +137,13 @@ int dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 
 	BUG_ON(direction == DMA_NONE);
 
-	for (i = 0; i < nents; i++, sg++) {
+	for_each_sg (sg, sg, nents, i) {
 		unsigned long addr;
 
-		addr = (unsigned long) page_address(sg->page);
+		addr = (unsigned long) sg_virt(sg);
 		if (addr) {
-			__dma_sync(addr + sg->offset, sg->length, direction);
-			sg->dma_address = (dma_addr_t)page_to_phys(sg->page)
-					  + sg->offset;
+			__dma_sync(addr, sg->length, direction);
+			sg->dma_address = sg_phys(sg);
 		}
 	}
 
@@ -193,10 +193,10 @@ void dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nhwentries,
 	if (direction == DMA_TO_DEVICE)
 		return;
 
-	for (i = 0; i < nhwentries; i++, sg++) {
-		addr = (unsigned long) page_address(sg->page);
+	for_each_sg (sg, sg, nhwentries, i) {
+		addr = (unsigned long) sg_virt(sg);
 		if (addr)
-			__dma_sync(addr + sg->offset, sg->length, direction);
+			__dma_sync(addr, sg->length, direction);
 	}
 }
 
@@ -262,9 +262,10 @@ void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg, int nelems,
 	BUG_ON(direction == DMA_NONE);
 
 	/* Make sure that gcc doesn't leave the empty loop body.  */
-	for (i = 0; i < nelems; i++, sg++)
-		__dma_sync((unsigned long)page_address(sg->page),
+	for_each_sg (sg, sg, nelems, i) {
+		__dma_sync((unsigned long)sg_virt(sg),
 		           sg->length, direction);
+	}
 }
 
 EXPORT_SYMBOL(dma_sync_sg_for_cpu);
@@ -277,9 +278,10 @@ void dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg, int nele
 	BUG_ON(direction == DMA_NONE);
 
 	/* Make sure that gcc doesn't leave the empty loop body.  */
-	for (i = 0; i < nelems; i++, sg++)
-		__dma_sync((unsigned long)page_address(sg->page),
+	for_each_sg (sg, sg, nelems, i) {
+		__dma_sync((unsigned long)sg_virt(sg),
 		           sg->length, direction);
+	}
 }
 
 EXPORT_SYMBOL(dma_sync_sg_for_device);
