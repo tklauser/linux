@@ -172,8 +172,6 @@ typedef struct irq_hand {
 /* count of spurious interrupts */
 extern volatile unsigned int num_spurious;
 
-#define disable_irq_nosync(i) disable_irq(i)
-
 #ifndef irq_canonicalize
 #define irq_canonicalize(i)	(i)
 #endif

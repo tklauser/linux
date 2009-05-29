@@ -25,7 +25,6 @@
 #ifndef _ASM_NIOS2_HARDIRQ_H
 #define _ASM_NIOS2_HARDIRQ_H
 
-#include <linux/cache.h>
 #include <linux/threads.h>
 
 typedef struct {
@@ -39,5 +38,7 @@ typedef struct {
 #ifdef CONFIG_SMP
 # error nios2 SMP is not available
 #endif /* CONFIG_SMP */
+
+void ack_bad_irq(unsigned int irq);
 
 #endif /* _ASM_NIOS2_HARDIRQ_H */

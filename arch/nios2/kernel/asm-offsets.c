@@ -42,12 +42,6 @@ int main(void)
 	/* offsets into the irq_cpustat_t struct */
 	DEFINE(CPUSTAT_SOFTIRQ_PENDING, offsetof(irq_cpustat_t, __softirq_pending));
 
-	/* offsets into the irq_node struct */
-	DEFINE(IRQ_HANDLER, offsetof(struct irq_hand, handler));
-	DEFINE(IRQ_FLAGS, offsetof(struct irq_hand, flags));
-	DEFINE(IRQ_DEV_ID, offsetof(struct irq_hand, dev_id));
-	DEFINE(IRQ_DEVNAME, offsetof(struct irq_hand, devname));
-
 	/* offsets into the thread struct */
 	DEFINE(THREAD_KSP, offsetof(struct thread_struct, ksp));
 	DEFINE(THREAD_KPSR, offsetof(struct thread_struct, kpsr));
