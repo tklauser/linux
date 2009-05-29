@@ -45,6 +45,7 @@
 #include <linux/fs.h>
 #include <linux/fb.h>
 #include <linux/module.h>
+#include <linux/mm.h>
 #include <linux/console.h>
 #include <linux/genhd.h>
 #include <linux/errno.h>
