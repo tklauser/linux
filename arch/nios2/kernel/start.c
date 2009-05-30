@@ -33,7 +33,7 @@
 #include <linux/time.h>
 #include <linux/start_kernel.h>
 
-int main(void) {
+int __init main(void) {
 	start_kernel();
 	return 0;
 }
