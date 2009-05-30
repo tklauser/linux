@@ -356,15 +356,25 @@ ENTRY(sys_call_table)
 	.long sys_kexec_load
 	.long sys_getcpu
 	.long sys_epoll_pwait		/* 315 */
-	.long sys_ni_syscall
-	.long sys_ni_syscall
-	.long sys_ni_syscall
-	.long sys_ni_syscall
-	.long sys_pread64
-	.long sys_pwrite64		/* 321 */
-	.long sys_ni_syscall
+	.long sys_utimensat
+	.long sys_signalfd
+	.long sys_timerfd_create
+	.long sys_eventfd
+	.long sys_pread64		/* 320 */
+	.long sys_pwrite64
+	.long sys_fallocate
+	.long sys_timerfd_settime
+	.long sys_timerfd_gettime
+	.long sys_signalfd4		/* 325 */
+	.long sys_eventfd2
+	.long sys_epoll_create1
+	.long sys_dup3
+	.long sys_pipe2
+	.long sys_inotify_init1		/* 330 */
+	.long sys_preadv
+	.long sys_pwritev
 
-	.rept NR_syscalls - 323
+	.rept NR_syscalls - 333
 		.long sys_ni_syscall
 	.endr
 
