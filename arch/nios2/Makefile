@@ -28,7 +28,7 @@ KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_DIV_SUPPORT),-mhw-div,-mno-hw-div)
 KBUILD_CFLAGS += -fno-optimize-sibling-calls
 KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
 KBUILD_CFLAGS += -fno-builtin
-KBUILD_CFLAGS += -O2 -g -G 0
+KBUILD_CFLAGS += -G 0
 
 LDFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
 LDFLAGS += -mnios2elf
