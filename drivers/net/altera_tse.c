@@ -1747,7 +1747,7 @@ static int alt_tse_probe(struct platform_device *pdev)
 //	tse_priv->tse_tx_depth = 0xffff & res_alt_tse->start;
 //	tse_priv->tse_tx_depth = 0xffff & res_alt_tse->start;
 	tse_priv->tse_rx_depth = tse_config->rx_fifo_depth;
-	tse_priv->tse_rx_depth = tse_config->tx_fifo_depth;
+	tse_priv->tse_tx_depth = tse_config->tx_fifo_depth;
 
 	/* 7. Get sgdma descriptor mem resource */
 	res_alt_tse =
