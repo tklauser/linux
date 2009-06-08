@@ -1,38 +1,32 @@
 #
-# Note, no support for gzipped uImages
+# arch/nios2/boot/Makefile
 #
-# Copied from arm/boot/Makfile
+# This file is subject to the terms and conditions of the GNU General Public
+# License.  See the file "COPYING" in the main directory of this archive
+# for more details.
+#
 
-MKIMAGE		:= $(srctree)/scripts/mkuboot.sh
+MKIMAGE := $(srctree)/scripts/mkuboot.sh
 
-extra-y		:= vmlinux.bin
+targets := vmImage
+extra-y += vmlinux.bin vmlinux.gz
 
-.PHONY:  FORCE
+quiet_cmd_uimage = UIMAGE  $@
+      cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A $(ARCH) -O linux -T kernel \
+                   -C gzip -n 'Linux-$(KERNELRELEASE)' \
+                   -a $(shell $(NM) vmlinux | awk '$$NF == "_stext" {print $$1}') \
+                   -e $(shell $(NM) vmlinux | awk '$$NF == "_start" {print $$1}') \
+                   -d $< $@
 
-OBJCOPYFLAGS_vmlinux.bin := -O binary
 $(obj)/vmlinux.bin: vmlinux FORCE
 	$(call if_changed,objcopy)
 
-quiet_cmd_uimage = UIMAGE  $@
-      cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A nios2 -O linux -T kernel \
-               -C none -a 0xd0000000 -e 0xd0000000 -n 'Linux-$(KERNELRELEASE)' \
-               -d $< $@
+$(obj)/vmlinux.gz: $(obj)/vmlinux.bin FORCE
+	$(call if_changed,gzip)
 
-quiet_cmd_flashimage = FLASHUIMAGE  $@
-      cmd_flashimage = $(OBJCOPY) --change-addr=$(CONFIG_NIOS2_UIMAGE_FLASHADDR) -I binary -O srec $< $@ 
-
-$(obj)/uImage: $(obj)/vmlinux.bin FORCE
-	$(Q)rm -f $@
+$(obj)/vmImage: $(obj)/vmlinux.gz
 	$(call if_changed,uimage)
-	@echo -n '  Image: $@ '
-	@if [ -f $@ ]; then echo 'is ready' ; else echo 'not made'; fi
+	@$(kecho) 'Kernel: $@ is ready'
 
-$(obj)/uImage.flash: $(obj)/uImage FORCE
-	$(Q)rm -f $@
-	$(call if_changed,flashimage)
-	@echo -n 'uImage.flash @$(CONFIG_NIOS2_UIMAGE_FLASHADDR) '
-	@if [ -f $@ ]; then echo 'is ready' ; else echo 'not made'; fi
-
-
-# Files generated that shall be removed upon make clean
-clean-files	:= vmlinux* uImage*
+install:
+	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(BOOTIMAGE) System.map "$(INSTALL_PATH)"

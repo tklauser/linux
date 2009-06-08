@@ -37,13 +37,27 @@ head-y		:= arch/nios2/kernel/head.o arch/nios2/kernel/init_task.o
 libs-y		+= arch/nios2/lib/
 core-y		+= arch/nios2/kernel/ arch/nios2/mm/
 
-all:	vmlinux uImage uImage.flash
+archclean:
+	$(Q)$(MAKE) $(clean)=$(boot)
 
+INSTALL_PATH ?= /tftpboot
 boot := arch/$(ARCH)/boot
+BOOT_TARGETS = vmImage
+PHONY += $(BOOT_TARGETS) install
+KBUILD_IMAGE := $(boot)/vmImage
 
-uImage: vmlinux
+all: vmImage
+
+$(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-uImage.flash: uImage
-	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+install:
+	$(Q)$(MAKE) $(build)=$(boot) BOOTIMAGE=$(KBUILD_IMAGE) install
 
+define archhelp
+  echo  '* vmImage         - Kernel-only image for U-Boot (arch/$(ARCH)/boot/vmImage)'
+  echo  '  install         - Install kernel using'
+  echo  '                     (your) ~/bin/$(CROSS_COMPILE)installkernel or'
+  echo  '                     (distribution) PATH: $(CROSS_COMPILE)installkernel or'
+  echo  '                     install to $$(INSTALL_PATH)'
+endef
