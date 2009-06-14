@@ -518,7 +518,7 @@ static struct platform_device touch_panel_spi_device = {
 #endif /* spi master and devices */
 
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
-	defined(na_touch_panel_pen_irq_n)
+	defined(TOUCH_PANEL_PEN_IRQ_N_BASE)
 
 #define ALTERA_PIO_IO_EXTENT      16
 #define ALTERA_PIO_DATA           0
@@ -530,7 +530,7 @@ static unsigned long ads7843_pendown_base;
 static void ads7843_pendown_init(void)
 {
 	ads7843_pendown_base =
-	    ioremap(na_touch_panel_pen_irq_n, ALTERA_PIO_IO_EXTENT);
+	    ioremap(TOUCH_PANEL_PEN_IRQ_N_BASE, ALTERA_PIO_IO_EXTENT);
 	writel(0, ads7843_pendown_base + ALTERA_PIO_EDGE_CAP);	/* clear edge */
 	writel(1, ads7843_pendown_base + ALTERA_PIO_IRQ_MASK);	/* enable irq */
 }
@@ -616,14 +616,14 @@ static struct spi_board_info nios2_spi_devices[] = {
 #endif
 
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
-	defined(na_touch_panel_pen_irq_n)
+	defined(TOUCH_PANEL_PEN_IRQ_N_BASE)
 	{
 	 .modalias = "ads7846",
 	 .chip_select = 0,
 	 .max_speed_hz = 125000 * 26,	/* (max sample rate @ 3V) * (cmd + data + overhead) */
 	 .bus_num = 1,		/* must match spi host bus number of touch panel spi  */
 	 .platform_data = &ads_info,
-	 .irq = na_touch_panel_pen_irq_n_irq,
+	 .irq = TOUCH_PANEL_PEN_IRQ_N_IRQ
 	 },
 #endif
 
@@ -653,32 +653,32 @@ static struct spi_board_info nios2_spi_devices[] = {
  *	PFS Tech SD/SDIO/MMC Host
  */
 
-/* Map na_sdio_host to na_sdio if it exists */
-#if defined(na_sdio_host)
-#define na_sdio na_sdio_host
-#define na_sdio_irq na_sdio_host_irq
-#define na_sdio_clock_freq na_sdio_host_clock_freq
+/* Map sdio_host to sdio if it exists */
+#if defined(SDIO_HOST_BASE)
+#define SDIO_BASE SDIO_HOST_BASE
+#define SDIO_IRQ SDIO_HOST_IRQ
+#define SDIO_FREQ SDIO_HOST_FREQ
 #endif
 
-#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
+#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(SDIO_BASE)
 
 static struct nios_mmc_platform_mmc nios2_mmc_platform[] = {
 	{
-	 .mapbase = (unsigned long)na_sdio,
-	 .irq = na_sdio_irq,
-	 .clk_src = na_sdio_clock_freq,
+	 .mapbase = SDIO_BASE,
+	 .irq = SDIO_IRQ,
+	 .clk_src = SDIO_FREQ,
 	 },
 };
 
 static struct resource nios_mmc_resources[] = {
 	[0] = {
-		.start = na_sdio,
-		.end = na_sdio + (16*4-1),
+		.start = SDIO_BASE,
+		.end = SDIO_BASE + (16*4-1),
 		.flags = IORESOURCE_MEM,
 	},
 	[1] = {
-		.start = na_sdio_irq,
-		.end = na_sdio_irq,
+		.start = SDIO_IRQ,
+		.end = SDIO_IRQ,
 		.flags = IORESOURCE_IRQ,
 	},
 };
@@ -696,7 +696,7 @@ static struct platform_device nios_mmc_device = {
  *	Altera CF IDE
  */
 
-#if defined(na_cf_ide)
+#if defined(CF_IDE_BASE)
 /* Use PATA_ALTERA_CF in preference to PATA_PLATFORM */
 #if defined(CONFIG_PATA_ALTERA_CF) || defined(CONFIG_PATA_ALTERA_CF_MODULE)
 #define USE_PATA_ALTERA_CF
@@ -706,25 +706,25 @@ static struct platform_device nios_mmc_device = {
 #endif
 
 #ifdef USE_PATA_ALTERA_CF
-static struct resource na_cf_resources[] = {
+static struct resource cf_resources[] = {
 	{
-	 .start = na_cf_ide,
-	 .end = na_cf_ide + 63,
+	 .start = CF_IDE_BASE,
+	 .end = CF_IDE_BASE + 63,
 	 .flags = IORESOURCE_MEM,
 	 },
 	{
-	 .start = na_cf_ide_irq,
-	 .end = na_cf_ide_irq,
+	 .start = CF_IDE_IRQ,
+	 .end = CF_IDE_IRQ,
 	 .flags = IORESOURCE_IRQ,
 	 },
 	{
-	 .start = na_cf_ctl,
-	 .end = na_cf_ctl + 15,
+	 .start = CF_CTL_BASE,
+	 .end = CF_CTL_BASE + 15,
 	 .flags = IORESOURCE_MEM,
 	 },
 	{
-	 .start = na_cf_ctl_irq,
-	 .end = na_cf_ctl_irq,
+	 .start = CF_CTL_IRQ,
+	 .end = CF_CTL_IRQ,
 	 .flags = IORESOURCE_IRQ,
 	 },
 };
@@ -732,30 +732,30 @@ static struct resource na_cf_resources[] = {
 static struct platform_device cf_device = {
 	.name = "pata_altera_cf",
 	.id = -1,
-	.num_resources = ARRAY_SIZE(na_cf_resources),
-	.resource = na_cf_resources,
+	.num_resources = ARRAY_SIZE(cf_resources),
+	.resource = cf_resources,
 };
 #endif
 
 #ifdef USE_PATA_PLATFORM
-static struct pata_platform_info na_cf_platform_data = {
+static struct pata_platform_info cf_platform_data = {
 	.ioport_shift = 2,
 };
 
-static struct resource na_cf_resources[] = {
+static struct resource cf_resources[] = {
 	{
-	 .start = na_cf_ide,
-	 .end = na_cf_ide + 31,
+	 .start = CF_IDE_BASE,
+	 .end = CF_IDE_BASE + 31,
 	 .flags = IORESOURCE_MEM,
 	 },
 	{
-	 .start = na_cf_ide + 56,
-	 .end = na_cf_ide + 56 + 3,
+	 .start = CF_IDE_BASE + 56,
+	 .end = CF_IDE_BASE + 56 + 3,
 	 .flags = IORESOURCE_MEM,
 	 },
 	{
-	 .start = na_cf_ide_irq,
-	 .end = na_cf_ide_irq,
+	 .start = CF_IDE_IRQ,
+	 .end = CF_IDE_IRQ,
 	 .flags = IORESOURCE_IRQ,
 	 },
 };
@@ -763,10 +763,10 @@ static struct resource na_cf_resources[] = {
 static struct platform_device cf_device = {
 	.name = "pata_platform",
 	.id = -1,
-	.num_resources = ARRAY_SIZE(na_cf_resources),
-	.resource = na_cf_resources,
+	.num_resources = ARRAY_SIZE(cf_resources),
+	.resource = cf_resources,
 	.dev = {
-		.platform_data = &na_cf_platform_data,
+		.platform_data = &cf_platform_data,
 		}
 };
 
@@ -1383,7 +1383,7 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&nios2_spi_gpio_3_device,
 #endif
 
-#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(na_sdio)
+#if (defined(CONFIG_MMC_NIOS) || defined(CONFIG_MMC_NIOS_MODULE)) && defined(SDIO_BASE)
 	&nios_mmc_device,
 #endif
 
@@ -1442,7 +1442,7 @@ static int __init init_BSP(void)
 	printk(KERN_INFO "%s(): registering device resources\n", __func__);
 	nios2_gpio_init();
 #ifdef USE_PATA_PLATFORM
-	cf_init(na_cf_ctl);
+	cf_init(CF_CTL_BASE);
 #endif
 	nios2_plat_nand_init();
 	atse_device_init();
@@ -1456,7 +1456,7 @@ static int __init init_BSP(void)
 #if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
 
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
-	defined(na_touch_panel_pen_irq_n)
+	defined(TOUCH_PANEL_PEN_IRQ_N_BASE)
 	ads7843_pendown_init();
 #endif
 
