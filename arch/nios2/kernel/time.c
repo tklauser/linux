@@ -98,7 +98,7 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	return (IRQ_HANDLED);
 }
 
-static cycle_t nios2_timer_read(void)
+static cycle_t nios2_timer_read(struct clocksource *cs)
 {
 	unsigned long flags;
 	u32 cycles;
