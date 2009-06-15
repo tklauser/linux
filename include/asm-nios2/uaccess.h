@@ -45,11 +45,6 @@ static inline int _access_ok(unsigned long addr, unsigned long size)
 		((addr >= (unsigned long)nasys_program_mem)));
 }
 
-extern inline int verify_area(int type, const void * addr, unsigned long size)
-{
-	return access_ok(type,addr,size)?0:-EFAULT;
-}
-
 /*
  * The exception table consists of pairs of addresses: the first is the
  * address of an instruction that is allowed to fault, and the second is
