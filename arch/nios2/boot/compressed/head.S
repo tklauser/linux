@@ -80,7 +80,7 @@ text_flush:
 	ldw	r5,4(sp)
 	ldw	r6,8(sp)
 	ldw	r7,12(sp)
-	movia r1,LINUX_SDRAM_START	
+	movia r1,LINUX_SDRAM_START | KERNEL_REGION_BASE 		
 	jmp	r1
 
 	.balign 512

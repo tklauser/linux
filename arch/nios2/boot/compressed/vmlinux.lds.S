@@ -1,5 +1,5 @@
 #include <asm-generic/vmlinux.lds.h>
-#include <asm/nios2.h>
+#include <asm/nios.h>
 
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
 
@@ -8,7 +8,7 @@ ENTRY(_start)	/* Defined in head.S */
 
 SECTIONS
 {
-  . =nasys_program_mem + CONFIG_BOOT_LINK_OFFSET;
+  . = (DDR2_TOP_BASE + CONFIG_BOOT_LINK_OFFSET) | KERNEL_REGION_BASE;
 
   _text = .;
   .text : { *(.text) } = 0

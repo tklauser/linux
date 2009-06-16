@@ -54,6 +54,22 @@ config NIOS2_UIMAGE_FLASHADDR
           offset. Suitable for use with the nios2-flash-programmer
           tool.
 
+config PASS_CMDLINE
+	bool "Passed kernel command line from u-boot"
+	default n
+	help
+	  Use bootargs env variable from u-boot for kernel command line.
+	  will override "Default kernel command string".
+          Say N if you are unsure.
+
+config BOOT_LINK_OFFSET
+	hex "Link address offset for booting"
+	default "0x00500000"
+	help
+	  This option allows you to set the link address offset of the zImage.
+	  This can be useful if you are on a board which has a small amount of
+	  memory.
+
 config PIO_DEVICES
        tristate "Enable NiosII PIO driver"
        default y
@@ -83,10 +99,6 @@ config MMU
 config RWSEM_GENERIC_SPINLOCK
 	bool
 	default y
-
-config PASS_CMDLINE
-       bool
-       default y
 
 #
 # FIXME: Should UID16 really be set ? 

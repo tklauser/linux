@@ -158,7 +158,7 @@ static void error(char *x)
 
 void decompress_kernel(void)
 {
-  output_data = (void *)nasys_program_mem;
+  output_data = (void *)(DDR2_TOP_BASE | KERNEL_REGION_BASE);
   output_ptr = 0;
   free_mem_ptr = (unsigned long)&_end;
   free_mem_end_ptr = free_mem_ptr + HEAP_SIZE;
@@ -168,4 +168,7 @@ void decompress_kernel(void)
   puts("Uncompressing Linux... ");
   gunzip();
   puts("Ok, booting the kernel.\n");
+  dump(DDR2_TOP_BASE | KERNEL_REGION_BASE, 16);
+  putchar('\n');
+
 }

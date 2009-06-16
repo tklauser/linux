@@ -10,6 +10,7 @@ MKIMAGE := $(srctree)/scripts/mkuboot.sh
 
 targets := vmImage
 extra-y += vmlinux.bin vmlinux.gz
+subdir- := compressed
 
 quiet_cmd_uimage = UIMAGE  $@
       cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A $(ARCH) -O linux -T kernel \
@@ -27,6 +28,13 @@ $(obj)/vmlinux.gz: $(obj)/vmlinux.bin FORCE
 $(obj)/vmImage: $(obj)/vmlinux.gz
 	$(call if_changed,uimage)
 	@$(kecho) 'Kernel: $@ is ready'
+
+$(obj)/zImage: $(obj)/compressed/vmlinux FORCE
+	$(call if_changed,objcopy)
+	@$(kecho) 'Kernel: $@ is ready'
+
+$(obj)/compressed/vmlinux: $(obj)/vmlinux.gz FORCE
+	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
 
 install:
 	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(BOOTIMAGE) System.map "$(INSTALL_PATH)"
