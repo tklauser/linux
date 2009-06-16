@@ -170,12 +170,20 @@ arch/$(ARCH)/kernel/vmlinux.lds.S: FORCE
 linuxsrec: linux
 	$(OBJCOPY) -O srec $(LINUX) linux.srec
 
-boot := arch/nios2/boot
+INSTALL_PATH ?= /tftpboot
+boot := arch/$(ARCH)/boot
+BOOT_TARGETS = vmImage zImage
+PHONY += $(BOOT_TARGETS) install
+KBUILD_IMAGE := $(boot)/vmImage
 
-zImage: vmlinux
+all: vmImage
+
+$(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-compressed: zImage
+install:
+	$(Q)$(MAKE) $(build)=$(boot) BOOTIMAGE=$(KBUILD_IMAGE) install
+
 
 CLEAN_FILES += include/asm-nios2/nios2.h
 
