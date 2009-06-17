@@ -206,6 +206,10 @@ struct page * pte_page(pte_t pte);
 
 int kern_addr_valid(unsigned long addr);
 
+
+#define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
+	remap_pfn_range(vma, vaddr, pfn, size, prot)
+
 /*
  * We provide our own get_unmapped area to cope with the virtual aliasing
  * constraints placed on us by the cache architecture.
