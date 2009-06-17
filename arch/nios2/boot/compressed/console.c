@@ -3,7 +3,7 @@
 
 static void *my_ioremap(unsigned long physaddr)
 {
-	return (void *)(physaddr | 0xe0000000);
+	return (void *)(physaddr | IO_REGION_BASE);
 }
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)

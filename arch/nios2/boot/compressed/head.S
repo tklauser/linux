@@ -18,22 +18,6 @@
 _start:
 	// disable interrupt
 	wrctl   status, r0
-	// flush the instruction cache	
-	movia r1,NIOS2_ICACHE_SIZE
-	movi r2,NIOS2_ICACHE_LINE_SIZE
-text_init:
-	initi r1
-	sub r1, r1, r2
-	bgt r1, zero, text_init
-	// then flush the pipeline
-	flushp
-	// flush the data cache	
-	movia r1,NIOS2_DCACHE_SIZE
-	movi r2,NIOS2_DCACHE_LINE_SIZE
-data_init:
-	initd (r1)
-	sub r1, r1, r2
-	bgt r1, zero, data_init
 	//------------------------------------------------------
 	// Zero out the .bss segment (uninitialized common data)
 	//
@@ -58,23 +42,6 @@ data_init:
 	call	decompress_kernel
 	
 flush_cache:
-	// flush all cache after loading
-	// flush the data cache	
-	movia r1,NIOS2_DCACHE_SIZE
-	movi r2,NIOS2_DCACHE_LINE_SIZE
-data_flush:
-	flushd (r1)
-	sub r1, r1, r2
-	bgt r1, zero, data_flush
-	// flush the instruction cache
-	movia r1,NIOS2_ICACHE_SIZE
-	movi r2,NIOS2_ICACHE_LINE_SIZE
-text_flush:
-	flushi r1
-	sub r1, r1, r2
-	bgt r1, zero, text_flush
-	// then flush the pipeline
-	flushp
 	// pass saved args to kernel
 	ldw	r4,0(sp)
 	ldw	r5,4(sp)
