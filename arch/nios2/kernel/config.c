@@ -504,7 +504,7 @@ static struct resource touch_panel_spi_resource[] = {
 	       },
 	[1] = {
 	       .start = TOUCH_PANEL_SPI_IRQ,
-	       .end = TOUCH_PANEL_SPI_BASE_IRQ,
+	       .end = TOUCH_PANEL_SPI_IRQ,
 	       .flags = IORESOURCE_IRQ,
 	       },
 };
@@ -811,63 +811,63 @@ static struct i2c_board_info __initdata nios2_i2c_1_board_info[] = {
 #endif
 };
 
-#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
-static struct resource na_i2c_0_resources[] = {
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(I2C_0_BASE)
+static struct resource i2c_oc_0_resources[] = {
 	[0] = {
-	       .start = na_i2c_0,
-	       .end = na_i2c_0 + 31,
+	       .start = I2C_0_BASE,
+	       .end = I2C_0_BASE + 31,
 	       .flags = IORESOURCE_MEM,
 	       },
 	[1] = {
-	       .start = na_i2c_0_irq,
-	       .end = na_i2c_0_irq,
+	       .start = I2C_0_IRQ,
+	       .end = I2C_0_IRQ,
 	       .flags = IORESOURCE_IRQ,
 	       },
 };
 
-static struct ocores_i2c_platform_data na_i2c_0_platform_data = {
+static struct ocores_i2c_platform_data i2c_oc_0_platform_data = {
 	.regstep = 4,		/* four bytes between registers */
-	.clock_khz = na_i2c_0_clock_freq / 1000,	/* input clock */
+	.clock_khz = I2C_0_FREQ / 1000,	/* input clock */
 };
 
-static struct platform_device na_i2c_0_device = {
+static struct platform_device i2c_oc_0_device = {
 	.name = "ocores-i2c",
 	.id = 0,
 	.dev = {
-		.platform_data = &na_i2c_0_platform_data,
+		.platform_data = &i2c_oc_0_platform_data,
 		},
-	.num_resources = ARRAY_SIZE(na_i2c_0_resources),
-	.resource = na_i2c_0_resources,
+	.num_resources = ARRAY_SIZE(i2c_oc_0_resources),
+	.resource = i2c_oc_0_resources,
 };
 #endif
 
-#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_1)
-static struct resource na_i2c_1_resources[] = {
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(I2C_1_BASE)
+static struct resource i2c_oc_1_resources[] = {
 	[0] = {
-	       .start = na_i2c_1,
-	       .end = na_i2c_1 + 31,
+	       .start = I2C_1_BASE,
+	       .end = I2C_1_BASE + 31,
 	       .flags = IORESOURCE_MEM,
 	       },
 	[1] = {
-	       .start = na_i2c_1_irq,
-	       .end = na_i2c_1_irq,
+	       .start = I2C_1_IRQ,
+	       .end = I2C_1_IRQ,
 	       .flags = IORESOURCE_IRQ,
 	       },
 };
 
-static struct ocores_i2c_platform_data na_i2c_1_platform_data = {
+static struct ocores_i2c_platform_data i2c_oc_1_platform_data = {
 	.regstep = 4,		/* four bytes between registers */
-	.clock_khz = na_i2c_1_clock_freq / 1000,	/* input clock */
+	.clock_khz = I2C_1_FREQ / 1000,	/* input clock */
 };
 
-static struct platform_device na_i2c_1_device = {
+static struct platform_device i2c_oc_1_device = {
 	.name = "ocores-i2c",
 	.id = 1,
 	.dev = {
-		.platform_data = &na_i2c_1_platform_data,
+		.platform_data = &i2c_oc_1_platform_data,
 		},
-	.num_resources = ARRAY_SIZE(na_i2c_1_resources),
-	.resource = na_i2c_1_resources,
+	.num_resources = ARRAY_SIZE(i2c_oc_1_resources),
+	.resource = i2c_oc_1_resources,
 };
 #endif
 
@@ -949,16 +949,16 @@ static struct platform_device nios2_w1_gpio_0_device = {
  *	Altera PS2
  */
 
-#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
+#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_0_BASE)
 static struct resource altps2_0_resources[] = {
 	[0] = {
-		.start		= na_ps2_0,
-		.end		= na_ps2_0 + 0x8 - 1,
+		.start		= PS2_0_BASE,
+		.end		= PS2_0_BASE + 0x8 - 1,
 		.flags		= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start		= na_ps2_0_irq,
-		.end		= na_ps2_0_irq,
+		.start		= PS2_0_IRQ,
+		.end		= PS2_0_IRQ,
 		.flags		= IORESOURCE_IRQ,
 	},
 };
@@ -969,16 +969,16 @@ static struct platform_device altps2_0_device = {
 	.resource	= altps2_0_resources,
 };
 
-#if defined(na_ps2_1)
+#if defined(PS2_1_BASE)
 static struct resource altps2_1_resources[] = {
 	[0] = {
-		.start		= na_ps2_1,
-		.end		= na_ps2_1 + 0x8 - 1,
+		.start		= PS2_1_BASE,
+		.end		= PS2_1_BASE + 0x8 - 1,
 		.flags		= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start		= na_ps2_1_irq,
-		.end		= na_ps2_1_irq,
+		.start		= PS2_1_IRQ,
+		.end		= PS2_1_IRQ,
 		.flags		= IORESOURCE_IRQ,
 	},
 };
@@ -995,11 +995,11 @@ static struct platform_device altps2_1_device = {
  *	Altera Remote update
  */
 
-#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(na_altremote)
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(ALTREMOTE_BASE)
 static struct resource altremote_resources[] = {
   [0] = {
-    .start    = na_altremote,
-    .end    = na_altremote + 0x200 - 1,
+    .start    = ALTREMOTE_BASE,
+    .end    = ALTREMOTE_BASE + 0x200 - 1,
     .flags    = IORESOURCE_MEM,
   },
 };
@@ -1015,20 +1015,20 @@ static struct platform_device altremote_device = {
  *	Ethernet, Altera TSE
  */
 
-#if defined(CONFIG_SMC91X) && defined(na_enet)
+#if defined(CONFIG_SMC91X) && defined(ENET_BASE)
 #ifndef LAN91C111_REGISTERS_OFFSET
 #define LAN91C111_REGISTERS_OFFSET 0x300
 #endif
 
 static struct resource smc91x_resources[] = {
 	[0] = {
-		.start		= na_enet + LAN91C111_REGISTERS_OFFSET,
-		.end		= na_enet + LAN91C111_REGISTERS_OFFSET + 0x100 - 1,
+		.start		= ENET_BASE + LAN91C111_REGISTERS_OFFSET,
+		.end		= ENET_BASE + LAN91C111_REGISTERS_OFFSET + 0x100 - 1,
 		.flags		= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start		= na_enet_irq,
-		.end		= na_enet_irq,
+		.start		= ENET_IRQ,
+		.end		= ENET_IRQ,
 		.flags		= IORESOURCE_IRQ,
 	},
 };
@@ -1157,6 +1157,15 @@ static void atse_device_init(void) {}
 #if defined (CONFIG_ALT_TSE)
 
 #include         "../drivers/net/altera_tse.h"
+
+#define na_tse_mac_control_port TSE_MAC_BASE
+
+#define na_sgdma_rx_csr         SGDMA_RX_BASE
+#define na_sgdma_tx             SGDMA_TX_BASE
+
+
+#define na_sgdma_rx_csr_irq SGDMA_RX_IRQ
+#define na_sgdma_tx_irq SGDMA_TX_IRQ
 
 static struct resource alt_tse_resource[] = {
 
@@ -1391,11 +1400,11 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&cf_device,
 #endif
 
-#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_0)
-	&na_i2c_0_device,
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(I2C_0_BASE)
+	&i2c_oc_0_device,
 #endif
-#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(na_i2c_1)
-	&na_i2c_1_device,
+#if (defined(CONFIG_I2C_OCORES) || defined(CONFIG_I2C_OCORES_MODULE)) && defined(I2C_1_BASE)
+	&i2c_oc_1_device,
 #endif
 
 #if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
@@ -1408,18 +1417,18 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&nios2_w1_gpio_0_device,
 #endif
 
-#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_0)
+#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_0_BASE)
 	&altps2_0_device,
 #endif
-#if defined(CONFIG_SERIO_ALTPS2) && defined(na_ps2_1)
+#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_1_BASE)
 	&altps2_1_device,
 #endif
 
-#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(na_altremote)
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE) && defined(ALTREMOTE_BASE)
 	&altremote_device,
 #endif
 
-#if defined(CONFIG_SMC91X) && defined(na_enet)
+#if defined(CONFIG_SMC91X) && defined(ENET_BASE)
 	&smc91x_device,
 #endif
 
