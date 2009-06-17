@@ -70,6 +70,13 @@ config BOOT_LINK_OFFSET
 	  This can be useful if you are on a board which has a small amount of
 	  memory.
 
+config GENERIC_GPIO
+	bool "GPIO interface"
+	default n
+	help
+    	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
+    	  than the Altera PIO. The spinlock is no longer needed.
+
 config PIO_DEVICES
        tristate "Enable NiosII PIO driver"
        default y
