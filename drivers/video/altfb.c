@@ -30,12 +30,12 @@
 #include <linux/init.h>
 
 #if defined(CONFIG_ALTERA_NEEK_C3)
-#define SGDMABASE na_lcd_sgdma	/* Altera Video Sync Generator */
+#define SGDMABASE LCD_SGDMA_BASE	/* Altera Video Sync Generator */
 #define XRES 800
 #define YRES 480
 #define BPX  32
 #else
-#define VGABASE na_vga_controller_0	/* Altera VGA controller */
+#define VGABASE VGA_CONTROLLER_0_BASE	/* Altera VGA controller */
 #define XRES 640
 #define YRES 480
 #define BPX  16
