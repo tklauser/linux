@@ -1163,6 +1163,10 @@ static void atse_device_init(void) {}
 #define na_sgdma_rx_csr         SGDMA_RX_BASE
 #define na_sgdma_tx             SGDMA_TX_BASE
 
+#ifdef DESCRIPTOR_MEMORY_BASE
+#define na_descriptor_memory DESCRIPTOR_MEMORY_BASE
+#define na_descriptor_memory_size DESCRIPTOR_MEMORY_SPAN
+#endif
 
 #define na_sgdma_rx_csr_irq SGDMA_RX_IRQ
 #define na_sgdma_tx_irq SGDMA_TX_IRQ
