@@ -582,4 +582,6 @@ struct alt_tse_mdio_private {
 	int irq[32];
 };
 
+extern void tse_set_ethtool_ops(struct net_device *netdev);
+
 #endif /* _ALTERA_TSE_H_ */

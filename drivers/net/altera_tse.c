@@ -104,8 +104,7 @@ static const char version[] =
 #else
 #define my_flush_dcache_range(x,y) flush_cache_all()
 #endif
-extern const struct ethtool_ops tse_ethtool_ops;
-                                                       
+
 static void sgdma_config(struct alt_tse_private *tse_priv);
 
 static void alt_sgdma_construct_descriptor_burst(volatile struct
@@ -396,7 +395,7 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	alt_sgdma_construct_descriptor_burst(
 		(volatile struct alt_sgdma_descriptor *)&tse_priv->sgdma_rx_desc[tse_priv->rx_sgdma_descriptor_head],
 		(volatile struct alt_sgdma_descriptor *)&tse_priv->sgdma_rx_desc[next_head],
-		(unsigned int)0x0, //read addr
+		NULL, //read addr
 		(unsigned int *)tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_head]->data,
 		0x0, //length or EOP
 		0x0, //gen eop
@@ -1598,8 +1597,7 @@ static int tse_dev_probe(struct net_device *dev)
 	dev->get_stats = tse_get_statistics;
 	dev->set_multicast_list = tse_set_multicast_list;
 	dev->change_mtu = tse_change_mtu;
-//no ethtool for now
-	dev->ethtool_ops = &tse_ethtool_ops;
+	tse_set_ethtool_ops(dev);
 //	dev->features = NETIF_F_HIGHDMA;
 
 	/* add napi interface */

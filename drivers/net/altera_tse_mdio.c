@@ -198,19 +198,17 @@ out:
 
 static int tse_mdio_remove(struct platform_device *pdev)
 {
-	
 	struct mii_bus *bus = platform_get_drvdata(pdev);
 
 	mdiobus_unregister(bus);
 
 	platform_set_drvdata(pdev, NULL);
 
-	iounmap((void __iomem *)bus->priv);
+	iounmap(bus->priv);
 	bus->priv = NULL;
 	kfree(bus);
 
 	return 0;
-
 }
 
 

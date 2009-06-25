@@ -202,8 +202,7 @@ static int tse_reglen(struct net_device *dev)
 	return sizeof (struct alt_tse_private);
 }
 
-
-void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbuf)
+static void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbuf)
 {
 	int i;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
@@ -213,8 +212,6 @@ void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbu
 	for (i = 0; i < sizeof (struct alt_tse_private) / sizeof (u32); i++)
 		buf[i] = tse_mac_regs[i];
 }
-
-
 
 static int tse_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
@@ -238,8 +235,7 @@ static int tse_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	return phy_ethtool_sset(phydev, cmd);
 }
 
-
-const struct ethtool_ops tse_ethtool_ops = {
+static const struct ethtool_ops tse_ethtool_ops = {
 	.get_drvinfo = tse_get_drvinfo,
 	.get_regs_len = tse_reglen,
 	.get_regs = tse_get_regs,
@@ -253,5 +249,7 @@ const struct ethtool_ops tse_ethtool_ops = {
 	.set_msglevel = tse_set_msglevel,
 };
 
-
-
+void tse_set_ethtool_ops(struct net_device *netdev)
+{
+	SET_ETHTOOL_OPS(netdev, &tse_ethtool_ops);
+}
