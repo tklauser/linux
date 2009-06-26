@@ -98,7 +98,7 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	return (IRQ_HANDLED);
 }
 
-static cycle_t nios2_timer_read(void)
+static cycle_t nios2_timer_read(struct clocksource *cs)
 {
 	unsigned long flags;
 	u32 cycles;
@@ -127,7 +127,7 @@ static struct irqaction nios2_timer_irq = {
 	.handler = timer_interrupt,
 };
 
-void __init time_init(void)
+void __init nios2_late_time_init(void)
 {
 	unsigned int year, mon, day, hour, min, sec;
 	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
@@ -156,4 +156,10 @@ void __init time_init(void)
 	    ALTERA_TIMER_CONTROL_ITO_MSK | ALTERA_TIMER_CONTROL_CONT_MSK |
 	    ALTERA_TIMER_CONTROL_START_MSK;
 	outw(ctrl, timer_membase + ALTERA_TIMER_CONTROL_REG);
+}
+
+extern void (*late_time_init)(void);
+void __init time_init(void)
+{
+	late_time_init = nios2_late_time_init;
 }
