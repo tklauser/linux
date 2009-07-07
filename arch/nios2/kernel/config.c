@@ -1,6 +1,8 @@
 
 #include <linux/types.h>
 #include <linux/init.h>
+#include <linux/ctype.h>
+#include <linux/string.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/device.h>
@@ -1203,22 +1205,16 @@ static struct resource alt_tse_resource[] = {
     .name  = TSE_RESOURCE_SGDMA_TX_IRQ,
     .flags = IORESOURCE_IRQ,
   },
-  [5] = {
-    .start = ALT_TSE_TX_RX_FIFO_DEPTH,            /* code from sopc file */
-    .end   = ALT_TSE_TX_RX_FIFO_DEPTH,            /* This macro is defined altera_tse.h file */
-    .name  = TSE_RESOURCE_FIFO_DEV,
-    .flags = IORESOURCE_MEM,
-  },
 
 #ifdef na_descriptor_memory
-  [6] = {
+  [5] = {
       .start = na_descriptor_memory,
       .end   = na_descriptor_memory + na_descriptor_memory_size - 1,      /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
 #else
-  [6] = {
+  [5] = {
       .start = 0,
       .end   = 0,                                 /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
@@ -1227,13 +1223,13 @@ static struct resource alt_tse_resource[] = {
 #endif
 
 #ifdef CONFIG_PHY_IRQ_PRESENCE
-  [7] = {
+  [6] = {
       .start = 0,
       .end   = 0,                                 /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_DEV,
       .flags = IORESOURCE_MEM,
   },
-  [8] = {
+  [7] = {
       .start = 0,
       .end   = 0,                                 /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
@@ -1293,7 +1289,7 @@ static struct platform_device alt_tse_mdio_device = {
 };
 
 /* all of this, except mii_id can be changed with ethtool */
-static struct alt_tse_config tse_config = {
+static struct alt_tse_config tsemac0_config = {
 	.mii_id = 0, /* should match alt_tse_mdio_device->id from above */
 	.phy_addr = 18,
 	.tse_supported_modes =  PHY_GBIT_FEATURES,
@@ -1309,7 +1305,7 @@ static struct alt_tse_config tse_config = {
 		SUPPORTED_1000baseT_Half
 		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
 */
-	.interface = PHY_INTERFACE_MODE_RGMII,
+	.interface = PHY_INTERFACE_MODE_RGMII_ID,
 /*	Interfaces can be
 		PHY_INTERFACE_MODE_MII
 		PHY_INTERFACE_MODE_GMII
@@ -1328,6 +1324,10 @@ static struct alt_tse_config tse_config = {
 	/* speed and duplex only valid if autoneg is AUTONED_DISABLE */
 	.speed = SPEED_100, /* SPEED_10, SPEED_100, SPEED_1000 */
 	.duplex = DUPLEX_HALF, /* DUPLEX_HALF, DUPLEX_FULL */
+
+	.rx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+        .tx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+        .ethaddr = {0x00 , 0x70 , 0xed , 0x11 , 0x12 , 0x12},
 };
 
 static struct platform_device alt_tse_device = {
@@ -1337,18 +1337,57 @@ static struct platform_device alt_tse_device = {
   .num_resources  = ARRAY_SIZE(alt_tse_resource),
   .resource = alt_tse_resource,
   .dev    = {
-    .platform_data = &tse_config,
+    .platform_data = &tsemac0_config,
   }
 };   
+
+static void __init parse_mac_addr(struct alt_tse_config *tse_config, char *macstr)
+{
+        int i, j;
+        unsigned char result, value;
+
+        for (i = 0; i < 6; i++) {
+                result = 0;
+
+                if (i != 5 && *(macstr + 2) != ':')
+                        return;
+
+                for (j = 0; j < 2; j++) {
+                        if (isxdigit(*macstr)
+                            && (value =
+                                isdigit(*macstr) ? *macstr -
+                                '0' : toupper(*macstr) - 'A' + 10) < 16) {
+                                result = result * 16 + value;
+                                macstr++;
+                        } else
+                                return;
+                }
+
+                macstr++;
+//                tse_config->ethaddr[i] = result;
+                tse_config->ethaddr[i] = result;
+       }
+
+}
+
+
+static int __init setup_tsemac0(char *s)
+{
+        printk(KERN_INFO "Altera TSE MAC 0 ethaddr = %s\n", s);
+        parse_mac_addr((struct alt_tse_config*) &tsemac0_config, s);
+        return 0;
+}
+
+__setup("tsemac0=", setup_tsemac0);
 
 
 static void tse_device_init(void)
 {
 #ifndef na_descriptor_memory
-	alt_tse_resource[6].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
-	if (!alt_tse_resource[6].start)
+	alt_tse_resource[5].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
+	if (!alt_tse_resource[5].start)
 		return -ENOMEM;
-	alt_tse_resource[6].end   = alt_tse_resource[6].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
+	alt_tse_resource[5].end   = alt_tse_resource[5].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
 #endif
 }
 #else

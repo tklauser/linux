@@ -719,6 +719,8 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	aligned_tx_buffer = (unsigned int)skb->data;
 	len = skb->len;
+	saved_len = skb->len;
+	offset = aligned_tx_buffer & 0x3;
 	if ((unsigned int)skb->data & 0x2) {
 		req_tx_shift_16 = 0x1;
 		aligned_tx_buffer -= ALIGNED_BYTES;
@@ -726,6 +728,15 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	} else {
 		req_tx_shift_16 = 0x0;
 	}
+
+	 /* Align len on 4, otherwise it seems we get truncated frames */
+
+//       if (len & 3) {
+//	 printk(KERN_WARNING "TSE align to word, skb->data = 0x%x, start address = 0x%x, len=%d, saved_len=%d, offset = %d\n", (unsigned int) skb->data, aligned_tx_buffer, len, saved_len, offset); 
+         len += 3;
+         len &= ~3UL;
+//	 printk(KERN_WARNING "TSE new length = %d\n", len);
+//       }
 
 //	tse_priv->mac_dev->tx_cmd_stat.bits.tx_shift16 = 1;
 //	aligned_tx_buffer = (unsigned int)skb->data;
@@ -1035,6 +1046,7 @@ static int init_mac(struct net_device *dev)
 
 	/*Enable TX shift 16 for alignment of all transmitting frames on 16-bit start address */
 	tse_priv->mac_dev->tx_cmd_stat.bits.tx_shift16 = 1;
+	tse_priv->mac_dev->tx_cmd_stat.bits.omit_crc = 0;
         tse_priv->last_tx_shift_16 = 1;
 	/*
 	* check if the MAC supports the 16-bit shift option allowing us
