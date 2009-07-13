@@ -781,9 +781,7 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 				dev->name, tse_priv->tx_sgdma_descriptor_tail, tse_priv->tx_sgdma_descriptor_head);
 		if (!netif_queue_stopped(dev))
 			netif_stop_queue(dev);
-		if (napi_schedule_prep(&tse_priv->napi)) {
-			__napi_schedule(&tse_priv->napi);
-		}
+		napi_schedule(&tse_priv->napi);
 	}
 
 	tse_priv->tx_skb[head] = skb;
