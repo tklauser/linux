@@ -1669,14 +1669,11 @@ static int alt_tse_probe(struct platform_device *pdev)
 		ret = -ENODEV;
 		goto out;
 	}
-	if (!request_mem_region
-	    (res_alt_tse->start, res_alt_tse->end - res_alt_tse->start + 1,
-	     "altera_tse")) {
+	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
 		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
 		       __LINE__);
 		ret = -EBUSY;
 		goto out;
-		
 	}
 	tse_priv->mac_dev = (alt_tse_mac *) ioremap_nocache((unsigned long)res_alt_tse->start, sizeof(alt_tse_mac));	//TSE_MAC_BASE;
 
@@ -1691,9 +1688,7 @@ static int alt_tse_probe(struct platform_device *pdev)
 		ret = -ENODEV;
 		goto out;
 	}
-	if (!request_mem_region
-	    (res_alt_tse->start, res_alt_tse->end - res_alt_tse->start + 1,
-	     "altera_tse")) {
+	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
 		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
 		       __LINE__);
 		ret = -EBUSY;
@@ -1714,9 +1709,7 @@ static int alt_tse_probe(struct platform_device *pdev)
 		ret = -ENODEV;
 		goto out;
 	}
-	if (!request_mem_region
-	    (res_alt_tse->start, res_alt_tse->end - res_alt_tse->start + 1,
-	     "altera_tse")) {
+	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
 		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
 		       __LINE__);
 		ret = -EBUSY;
