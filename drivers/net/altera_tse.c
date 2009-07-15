@@ -719,8 +719,8 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	aligned_tx_buffer = (unsigned int)skb->data;
 	len = skb->len;
-	saved_len = skb->len;
-	offset = aligned_tx_buffer & 0x3;
+//	saved_len = skb->len;
+//	offset = aligned_tx_buffer & 0x3;
 	if ((unsigned int)skb->data & 0x2) {
 		req_tx_shift_16 = 0x1;
 		aligned_tx_buffer -= ALIGNED_BYTES;
