@@ -266,8 +266,7 @@ static int altremote_remove(struct platform_device* pdev)
   }
   if(altremote.initsteps>=2)
   {
-    release_mem_region(altremote.res->start, altremote.res->end -
-        altremote.res->start + 1);
+    release_mem_region(altremote.res->start, resource_size(altremote.res));
   }
   altremote.initsteps = 0;
   return 0;
@@ -286,13 +285,13 @@ static int __devinit altremote_probe(struct platform_device *pdev)
     return -ENODEV;
 
   altremote.initsteps++;
-  if (!request_mem_region(altremote.res->start, altremote.res->end - altremote.res->start + 1, pdev->name)) {
+  if (!request_mem_region(altremote.res->start, resource_size(altremote.res), pdev->name)) {
     dev_err(&pdev->dev, "Memory region busy\n");
     altremote_remove(pdev);
     return -EBUSY;
   }
   altremote.initsteps++;
-  altremote.base = ioremap(altremote.res->start, altremote.res->end - altremote.res->start + 1);
+  altremote.base = ioremap(altremote.res->start, resource_size(altremote.res));
   if (!altremote.base) {
     dev_err(&pdev->dev, "Unable to map registers\n");
     altremote_remove(pdev);
