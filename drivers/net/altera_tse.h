@@ -439,7 +439,6 @@ struct alt_tse_private {
 	
 /* Tasklets for handling hardware IRQ related operations outside hw IRQ handler */
 //	struct tasklet_struct tse_rx_tasklet;
-//	int sem;
 	spinlock_t rx_lock;
 	spinlock_t tx_lock;
 

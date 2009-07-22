@@ -150,10 +150,9 @@ static void tse_set_multicast_list(struct net_device *dev);
 int tse_set_hw_address(struct net_device *dev, void *port);
 static int tse_open(struct net_device *dev);
 static int tse_shutdown(struct net_device *dev);
-static int tse_dev_probe(struct net_device *dev);
-static int alt_tse_remove(struct platform_device *pdev);
+static void tse_dev_probe(struct net_device *dev);
 static int alt_tse_probe(struct platform_device *pdev);
-
+static int alt_tse_remove(struct platform_device *pdev);
 
 /*******************************************************************************
 *	SGDMA Control Stuff
@@ -1366,9 +1365,7 @@ static int tse_open(struct net_device *dev)
 	/* start NAPI */
 	napi_enable(&tse_priv->napi);
 
-	
-	
-	/* Reset and configure TSE MAC and probe associated PHY */ 
+	/* Reset and configure TSE MAC and probe associated PHY */
 	if(init_phy(dev)) {
 		napi_disable(&tse_priv->napi);
 		return -EAGAIN;
@@ -1378,8 +1375,6 @@ static int tse_open(struct net_device *dev)
 		napi_disable(&tse_priv->napi);
 		return -EAGAIN;  	
 	}
-
-	
 
 	/* Initialize SGDMA */
 	tse_priv->rx_sgdma_descriptor_tail = 0;
@@ -1538,13 +1533,11 @@ static int tse_shutdown(struct net_device *dev)
 * Initialize 'net_device' structure, resets and re-configures MAC and PHY
 * arg1   : 'net_device' structure pointer allocated for TSE interface
 * arg2   : Interface number
-* return : 0 on success,
-*          less than 0 on errors
 */
-static int tse_dev_probe(struct net_device *dev)
+static void __devinit tse_dev_probe(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	struct alt_tse_config * tse_config = tse_priv->tse_config;
+	struct alt_tse_config *tse_config = tse_priv->tse_config;
 
 	tse_priv->dev = dev;
 
@@ -1553,18 +1546,14 @@ static int tse_dev_probe(struct net_device *dev)
 	/* Set initial SGDMA descriptor address */
 	tse_priv->desc =
 	    (volatile struct alt_sgdma_descriptor *)tse_priv->desc_mem_base;
-
-	tse_priv->desc =
-	    (volatile struct alt_sgdma_descriptor *)tse_priv->desc_mem_base;
 	tse_priv->sgdma_tx_desc =
 	    (volatile struct alt_sgdma_descriptor *)tse_priv->desc;
 	tse_priv->sgdma_rx_desc =
 	    (volatile struct alt_sgdma_descriptor *)&tse_priv->
 	    desc[ALT_TSE_TX_SGDMA_DESC_COUNT];
 
-	//tse_priv->sem = 0;
 //	tse_priv->antoneg_enable = AUTONEG_ENABLE;
-	
+
 	tse_priv->rx_sgdma_imask =  ( ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK \
                                     | ALT_SGDMA_STATUS_DESC_COMPLETED_MSK      \
                                     | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK );
@@ -1579,12 +1568,7 @@ static int tse_dev_probe(struct net_device *dev)
 	tse_priv->current_mtu = ALT_TSE_MAX_FRAME_LENGTH;
 
 	/* Set default MAC address */
-	dev->dev_addr[0] = tse_config->ethaddr[0];
-	dev->dev_addr[1] = tse_config->ethaddr[1];
-	dev->dev_addr[2] = tse_config->ethaddr[2];
-	dev->dev_addr[3] = tse_config->ethaddr[3];
-	dev->dev_addr[4] = tse_config->ethaddr[4];
-	dev->dev_addr[5] = tse_config->ethaddr[5];
+	memcpy(dev->dev_addr, tse_config->ethaddr, ETH_ALEN);
 
 	/* Fill in the fields of the device structure with Ethernet values */
 	ether_setup(dev);
@@ -1602,7 +1586,7 @@ static int tse_dev_probe(struct net_device *dev)
 
 	/* add napi interface */
 	netif_napi_add(dev, &tse_priv->napi, tse_poll, ALT_TSE_RX_SGDMA_DESC_COUNT);
-	
+
 #ifdef CONFIG_NET_POLL_CONTROLLER
 
 	dev->poll_controller = tse_net_poll_controller;
@@ -1611,19 +1595,6 @@ static int tse_dev_probe(struct net_device *dev)
 	/* Spin lock variable initialize */
 	spin_lock_init(&tse_priv->rx_lock);
 	spin_lock_init(&tse_priv->tx_lock);
-
-	return SUCCESS;
-}
-
-static int alt_tse_remove(struct platform_device *pdev)
-{
-	struct net_device *ndev = platform_get_drvdata(pdev);
-
-	platform_set_drvdata(pdev, NULL);
-	unregister_netdev(ndev);
-	free_netdev(ndev);
-
-	return 0;
 }
 
 /*
@@ -1631,18 +1602,19 @@ static int alt_tse_remove(struct platform_device *pdev)
 * arg    : platform_device object
 * return : 'net_device' structure pointer on success else 0
 */
-static int alt_tse_probe(struct platform_device *pdev)
+static int __devinit alt_tse_probe(struct platform_device *pdev)
 {
-	struct net_device *dev; 
+	struct net_device *dev;
 	int ret = -ENODEV;
 	struct resource *res_alt_tse;
-	struct alt_tse_private *tse_priv; 
+	struct alt_tse_private *tse_priv;
 	struct alt_tse_config *tse_config = (struct alt_tse_config *) pdev->dev.platform_data;
-	
+	resource_size_t mac_dev_base, sgdma_rx_base, sgdma_tx_base, desc_mem_base;
+	resource_size_t mac_dev_size, sgdma_rx_size, sgdma_tx_size, desc_mem_size;
 
 	dev = alloc_etherdev(sizeof(struct alt_tse_private));
 	if (!dev) {
-		printk(KERN_ERR "eth0: Etherdev alloc failed, aborting.\n");
+		printk(KERN_ERR "%s: Etherdev alloc failed, aborting.\n", dev->name);
 		return -ENODEV;
 	}
 	//printk("\n\nTSE DEV NAME : %s", dev->name);
@@ -1652,153 +1624,149 @@ static int alt_tse_probe(struct platform_device *pdev)
 	//				    sizeof(struct alt_tse_private));
 	tse_priv = netdev_priv(dev);
 
-	/* clears TSE private structure */
-	memset(tse_priv, 0, sizeof(struct alt_tse_private));
-
 	/* Get TSE MAC base address */
 	/* ioremap() requires buffer_size as the 2nd argument, but it is not being used inside anyway, so put 0xFFFF */
 	/* 1. Get tse MAC resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					 TSE_RESOURCE_MAC_DEV);
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			TSE_RESOURCE_MAC_DEV);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_mac_dev;
 	}
-	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
-		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
-		       __LINE__);
+
+	mac_dev_base = res_alt_tse->start;
+	mac_dev_size = resource_size(res_alt_tse);
+	if (!request_mem_region(mac_dev_base, mac_dev_size, "altera_tse")) {
+		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
 		ret = -EBUSY;
-		goto out;
+		goto out_mac_dev;
 	}
-	tse_priv->mac_dev = (alt_tse_mac *) ioremap_nocache((unsigned long)res_alt_tse->start, sizeof(alt_tse_mac));	//TSE_MAC_BASE;
+
+	tse_priv->mac_dev = ioremap_nocache(mac_dev_base, sizeof(alt_tse_mac));
+	if (!tse_priv->mac_dev) {
+		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
+		ret = -ENOMEM;
+		goto out_mac_dev_ioremap;
+	}
 
 	/* Get RX and TX SGDMA addresses */
 	/* 2. Get sgdma_rx mem resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					 TSE_RESOURCE_SGDMA_RX_DEV);
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			TSE_RESOURCE_SGDMA_RX_DEV);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_sgdma_rx;
 	}
-	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
-		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
-		       __LINE__);
+
+	sgdma_rx_base = res_alt_tse->start;
+	sgdma_rx_size = resource_size(res_alt_tse);
+	if (!request_mem_region(sgdma_rx_base, sgdma_rx_size, "altera_tse")) {
+		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
 		ret = -EBUSY;
-		goto out;
+		goto out_sgdma_rx;
 	}
-	tse_priv->rx_sgdma_dev =
-	    (volatile struct alt_sgdma_registers *)
-	    ioremap_nocache((unsigned long)
-			    res_alt_tse->start, sizeof(volatile struct alt_sgdma_registers));	//RX_SGDMA_BASE;//
+
+	tse_priv->rx_sgdma_dev = ioremap_nocache(sgdma_rx_base, sizeof(struct alt_sgdma_registers));
+	if (!tse_priv->rx_sgdma_dev) {
+		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
+		ret = -ENOMEM;
+		goto out_sgdma_rx_ioremap;
+	}
 
 	/* 3. Get sgdma_tx mem resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					 TSE_RESOURCE_SGDMA_TX_DEV);
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			TSE_RESOURCE_SGDMA_TX_DEV);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_sgdma_tx;
 	}
-	if (!request_mem_region(res_alt_tse->start, resource_size(res_alt_tse), "altera_tse")) {
-		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
-		       __LINE__);
+
+	sgdma_tx_base = res_alt_tse->start;
+	sgdma_tx_size = resource_size(res_alt_tse);
+	if (!request_mem_region(sgdma_tx_base, sgdma_tx_size, "altera_tse")) {
+		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
 		ret = -EBUSY;
-		goto out;
+		goto out_sgdma_tx;
 	}
-	tse_priv->tx_sgdma_dev =
-	    (volatile struct alt_sgdma_registers *)
-	    ioremap_nocache((unsigned long)
-			    res_alt_tse->start, sizeof(volatile struct alt_sgdma_registers));	//TX_SGDMA_BASE;//
+
+	tse_priv->tx_sgdma_dev = ioremap_nocache(sgdma_tx_base, sizeof(struct alt_sgdma_registers));
+	if (!tse_priv->tx_sgdma_dev) {
+		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
+		ret = -ENOMEM;
+		goto out_sgdma_tx_ioremap;
+	}
 
 	/* 4. Get sgdma_rx irq resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-					 TSE_RESOURCE_SGDMA_RX_IRQ);
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
+			TSE_RESOURCE_SGDMA_RX_IRQ);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_sgdma_irq;
 	}
 	tse_priv->rx_fifo_interrupt = res_alt_tse->start;;
 
-	/* 5. Get sgdma_rx irq resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-					 TSE_RESOURCE_SGDMA_TX_IRQ);
+	/* 5. Get sgdma_tx irq resource */
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
+			TSE_RESOURCE_SGDMA_TX_IRQ);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_sgdma_irq;
 	}
 	tse_priv->tx_fifo_interrupt = res_alt_tse->start;
 
 	/* 6. Get sgdma_tx/rx fifo mem resource */
 
 	/* Set TSE MAC RX and TX fifo depth */
-//	tse_priv->tse_tx_depth = 0xffff & res_alt_tse->start;
-//	tse_priv->tse_tx_depth = 0xffff & res_alt_tse->start;
 	tse_priv->tse_rx_depth = tse_config->rx_fifo_depth;
 	tse_priv->tse_tx_depth = tse_config->tx_fifo_depth;
 
 	/* 7. Get sgdma descriptor mem resource */
-	res_alt_tse =
-	    platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					 TSE_RESOURCE_SGDMA_DES_DEV);
+	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			TSE_RESOURCE_SGDMA_DES_DEV);
 	if (!res_alt_tse) {
-		printk("ERROR :%s:%d:platform_get_resource_byname() failed\n",
-		       __FILE__, __LINE__);
+		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
 		ret = -ENODEV;
-		goto out;
+		goto out_sgdma_irq;
 	}
+
+	desc_mem_base = res_alt_tse->start;
+	desc_mem_size = resource_size(res_alt_tse);
 #if 0
 	/* FIXME: this fails and I don't know why...
 	 * we don't need it since we'll just ioremap later...
 	 */
-	if (!request_mem_region
-	    (res_alt_tse->start, res_alt_tse->end - res_alt_tse->start + 1,
-	     "altera_tse")) {
-		printk("ERROR :%s:%d:request_mem_region() failed\n", __FILE__,
-		       __LINE__);
+	if (!request_mem_region (desc_mem_base, desc_mem_size, "altera_tse")) {
+		printk("ERROR: %s:%d: request_mem_region() failed\n", __FILE__,
+				__LINE__);
 		ret = -EBUSY;
-		goto out;
+		goto out_sgdma_irq;
 	}
 #endif
-	/*Get descriptor memory pointer address*/
-	tse_priv->desc_mem_base =
-      (unsigned int)ioremap_nocache(res_alt_tse->start ,
-					  ALT_TSE_TOTAL_SGDMA_DESC_SIZE);
-
-        
-	//Copy tse_config data                              
-	tse_priv->tse_config	= tse_config;		        				
-	
-	/* Probe ethernet device */
-	if (tse_dev_probe(dev) < 0) {
-		printk("%s:Failed to initialize ethernet device\n", dev->name);
-		ret = -ENODEV;
-		goto out;
+	tse_priv->desc_mem_base = (unsigned int) ioremap_nocache(desc_mem_base,
+			ALT_TSE_TOTAL_SGDMA_DESC_SIZE);
+	if (!tse_priv->desc_mem_base) {
+		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
+		ret = -ENOMEM;
+		goto out_desc_mem;
 	}
+
+	tse_priv->tse_config = tse_config;
+
+	/* Probe ethernet device */
+	tse_dev_probe(dev);
+
 	/* Register ethernet device driver */
 	ret = register_netdev(dev);
-	if (!ret)
-		printk("%s:Successed to register TSE net device\n", dev->name);
-	else {
-		printk(KERN_ERR "%s:Failed to register TSE net device\n",
-		       dev->name);
-		goto out;                                                                  
-	}                           
-	
-	
+	if (ret) {
+		printk(KERN_ERR "%s: Failed to register TSE net device\n",
+				dev->name);
+		goto out;
+	}
 
 	SET_NETDEV_DEV(dev, &pdev->dev);
 	platform_set_drvdata(pdev, dev);
@@ -1808,15 +1776,40 @@ static int alt_tse_probe(struct platform_device *pdev)
 	return 0;
 
 out:
+	iounmap((void *) tse_priv->desc_mem_base);
+out_desc_mem:
+#if 0
+	release_mem_region(desc_mem_base, desc_mem_size);
+#endif
+out_sgdma_irq:
+	iounmap((void *) tse_priv->tx_sgdma_dev);
+out_sgdma_tx_ioremap:
+	release_mem_region(sgdma_tx_base, sgdma_tx_size);
+out_sgdma_tx:
+	iounmap((void *) tse_priv->rx_sgdma_dev);
+out_sgdma_rx_ioremap:
+	release_mem_region(sgdma_rx_base, sgdma_rx_size);
+out_sgdma_rx:
+	iounmap((void *) tse_priv->mac_dev);
+out_mac_dev_ioremap:
+	release_mem_region(mac_dev_base, mac_dev_size);
+out_mac_dev:
 	free_netdev(dev);
-
 	return ret;
 }
-            
 
+static int __devexit alt_tse_remove(struct platform_device *pdev)
+{
+	struct net_device *ndev = platform_get_drvdata(pdev);
 
+	/* TODO: Release all mem regions and do iounmap, see error paths of
+	 * alt_tse_probe above */
+	platform_set_drvdata(pdev, NULL);
+	unregister_netdev(ndev);
+	free_netdev(ndev);
 
-
+	return 0;
+}
 
 /*******************************************************************************
 * Driver init, platform driver register
@@ -1848,6 +1841,6 @@ static void __exit atse_exit(void)
 module_init(atse_init);
 module_exit(atse_exit);
 
-MODULE_AUTHOR("Altera");                                               
+MODULE_AUTHOR("Altera");
 MODULE_DESCRIPTION("Altera Triple Speed MAC IP");
 MODULE_LICENSE("GPL");
