@@ -1526,8 +1526,16 @@ static int tse_shutdown(struct net_device *dev)
 	return SUCCESS;
 }
 
-
-
+static const struct net_device_ops tse_netdev_ops = {
+	.ndo_open		= tse_open,
+	.ndo_stop		= tse_shutdown,
+	.ndo_start_xmit		= tse_hardware_send_pkt,
+	.ndo_get_stats		= tse_get_statistics,
+	.ndo_set_mac_address	= tse_set_hw_address,
+	.ndo_set_multicast_list	= tse_set_multicast_list,
+	.ndo_change_mtu		= tse_change_mtu,
+	.ndo_validate_addr	= eth_validate_addr,
+};
 
 /*
 * Initialize 'net_device' structure, resets and re-configures MAC and PHY
@@ -1573,14 +1581,7 @@ static void __devinit tse_dev_probe(struct net_device *dev)
 	/* Fill in the fields of the device structure with Ethernet values */
 	ether_setup(dev);
 
-	/* The Open Ethernet specific entries in the device structure */
-	dev->open = tse_open;
-	dev->hard_start_xmit = tse_hardware_send_pkt;
-	dev->stop = tse_shutdown;
-	dev->set_mac_address = tse_set_hw_address;
-	dev->get_stats = tse_get_statistics;
-	dev->set_multicast_list = tse_set_multicast_list;
-	dev->change_mtu = tse_change_mtu;
+	dev->netdev_ops = &tse_netdev_ops;
 	tse_set_ethtool_ops(dev);
 //	dev->features = NETIF_F_HIGHDMA;
 
