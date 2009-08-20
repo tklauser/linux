@@ -5,8 +5,8 @@
 
 	.text
 	.set noat
-#include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
+#include <asm/nios.h>
 
 	/*
 	 * This code can be loaded anywhere, as long as output will not
@@ -47,7 +47,7 @@ flush_cache:
 	ldw	r5,4(sp)
 	ldw	r6,8(sp)
 	ldw	r7,12(sp)
-	movia r1,LINUX_SDRAM_START | KERNEL_REGION_BASE 		
+	movia r1, (DDR2_TOP_BASE | KERNEL_REGION_BASE)
 	jmp	r1
 
 	.balign 512
