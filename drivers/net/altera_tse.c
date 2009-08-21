@@ -150,9 +150,6 @@ static void tse_set_multicast_list(struct net_device *dev);
 int tse_set_hw_address(struct net_device *dev, void *port);
 static int tse_open(struct net_device *dev);
 static int tse_shutdown(struct net_device *dev);
-static void tse_dev_probe(struct net_device *dev);
-static int alt_tse_probe(struct platform_device *pdev);
-static int alt_tse_remove(struct platform_device *pdev);
 
 /*******************************************************************************
 *	SGDMA Control Stuff
@@ -1822,7 +1819,7 @@ static struct platform_driver alt_tse_driver = {
 		   .owner = THIS_MODULE,
 		   },
 	.probe = alt_tse_probe,
-	.remove = alt_tse_remove,
+	.remove = __devexit_p(alt_tse_remove),
 	.suspend = NULL,
 	.resume = NULL,
 };
