@@ -5,8 +5,8 @@
  *  as long as output does not overlap it.
  */
 
+#include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
-#include <asm/nios.h>
 
 	.text
 	.set noat
@@ -14,14 +14,14 @@
 _start:
 	wrctl	status, r0		/* disable interrupt */
 	/* invalidate all instruction cache */
-	movia	r1, ICACHE_SIZE
-	movui	r2, ICACHE_LINE_SIZE
+	movia	r1, NIOS2_ICACHE_SIZE
+	movui	r2, NIOS2_ICACHE_LINE_SIZE
 1:	initi	r1
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
 	/* invalidate all data cache */
-	movia	r1, DCACHE_SIZE
-	movui	r2, DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE
+	movui	r2, NIOS2_DCACHE_LINE_SIZE
 1:	initd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
@@ -40,8 +40,8 @@ chkadr:
 	addi	r2, r2, 4		/* inc the dest addr */
 	blt	r2, r3, 1b
 	/* flush the data cache after moving */
-	movia	r1, DCACHE_SIZE
-	movui	r2, DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE
+	movui	r2, NIOS2_DCACHE_LINE_SIZE
 1:	flushd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
@@ -76,20 +76,20 @@ finish_move:
 	ldw	r7, 12(sp)
 
 	/* flush all data cache after decompressing */
-	movia	r1, DCACHE_SIZE
-	movui	r2, DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE
+	movui	r2, NIOS2_DCACHE_LINE_SIZE
 1:	flushd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
 	/* flush all instruction cache */
-	movia	r1, ICACHE_SIZE
-	movui	r2, ICACHE_LINE_SIZE
+	movia	r1, NIOS2_ICACHE_SIZE
+	movui	r2, NIOS2_ICACHE_LINE_SIZE
 1:	flushi	r1
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
 	flushp
 	/* jump to start real kernel */
-	movia	r1, (DDR2_TOP_BASE | KERNEL_REGION_BASE)
+	movia	r1, (LINUX_SDRAM_START | KERNEL_REGION_BASE_ASM)
 	jmp	r1
 
 	.balign 512
