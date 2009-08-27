@@ -156,7 +156,7 @@ extern int unresolved_symbol;
 #define __NR_iopl		/* 110 */ not supported
 #define __NR_vhangup		111
 #define __NR_idle		/* 112 */ Obsolete
-#define __NR_vm86		/* 113 */ not supported
+#define __NR_nios2cmpxchg	113
 #define __NR_wait4		114
 #define __NR_swapoff		115
 #define __NR_sysinfo		116
