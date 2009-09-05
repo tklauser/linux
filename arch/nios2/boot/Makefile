@@ -19,6 +19,7 @@ quiet_cmd_uimage = UIMAGE  $@
                    -e $(shell $(NM) vmlinux | awk '$$NF == "_start" {print $$1}') \
                    -d $< $@
 
+OBJCOPYFLAGS_vmlinux.bin := -O binary
 $(obj)/vmlinux.bin: vmlinux FORCE
 	$(call if_changed,objcopy)
 

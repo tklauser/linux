@@ -8,7 +8,7 @@ ENTRY(_start)	/* Defined in head.S */
 
 SECTIONS
 {
-  . = (DDR2_TOP_BASE + CONFIG_BOOT_LINK_OFFSET) | IO_REGION_BASE;
+  . = (DDR2_TOP_BASE + CONFIG_BOOT_LINK_OFFSET) | KERNEL_REGION_BASE;
 
   _text = .;
   .text : { *(.text) } = 0

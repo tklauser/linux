@@ -170,7 +170,6 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	printk("\r\n\nLinux/Nios II-MMU\n");
-	printk("Altera Nios II-MMU support (C) 2004 Wind River Systems.\n");
 
 
 	init_mm.start_code = (unsigned long) &_stext;
