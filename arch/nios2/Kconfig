@@ -21,7 +21,7 @@ config NIOS2_MAXIMUM_MMU
 config NIOS2_CUSTOM_FPGA
 	bool "CUSTOM_FPGA"
 	help
-	  Adapat the kernel to custom FPGA configuration. You will 
+	  Adapt the kernel to custom FPGA configuration. You will
           need to generate a header file for your desgin using the
 	  "sopc-create-header-files" scripts provided by Altera.
 	  The file "include/asm-nios2/custom_fpga.h" will be used.
@@ -32,7 +32,7 @@ config NIOS2_HW_MUL_SUPPORT
        bool "HW mul support"
        default y
        help
-	Enables the -mno-hw-mul compiler flag. 
+	Enables the -mno-hw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
        bool "HW mulx support"
@@ -88,10 +88,12 @@ config PIO_LED
        default y
        help
          Enable the example PIO led driver (which just
-	 displays a timer value on the 8 leds) 
-          
+         displays a timer value on the 8 leds)
+
+source "arch/nios2/drivers/Kconfig"
+
 endmenu
-     
+
 config NIOS2
 	bool
 	default y
@@ -108,10 +110,10 @@ config RWSEM_GENERIC_SPINLOCK
 	default y
 
 #
-# FIXME: Should UID16 really be set ? 
+# FIXME: Should UID16 really be set ?
 #
 config UID16
-       bool	
+       bool
        default y
 
 config GENERIC_FIND_NEXT_BIT
@@ -156,7 +158,7 @@ config NOT_COHERENT_CACHE
        bool
        default n
 
-config HZ 
+config HZ
        int
        default 100
 

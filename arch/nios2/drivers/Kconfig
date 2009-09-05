@@ -1,5 +1,7 @@
 # Platfrom drivers configuration
 
+menu "Additional NiosII Device Drivers"
+
 source "arch/nios2/drivers/pci/Kconfig"
 
 config ALTERA_REMOTE_UPDATE
@@ -10,3 +12,4 @@ config ALTERA_REMOTE_UPDATE
 	  This driver provides support for automatic reconfiguration of a 
 	  CycloneIII FPGA (Possibly others too).
 
+endmenu
