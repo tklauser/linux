@@ -275,6 +275,8 @@ static int altremote_remove(struct platform_device* pdev)
 static int __devinit altremote_probe(struct platform_device *pdev)
 {
   u32 status;
+  int ret;
+
   if(altremote.initsteps != 0)
   {
     //We only allow ONE instance!!
@@ -294,39 +296,64 @@ static int __devinit altremote_probe(struct platform_device *pdev)
   altremote.base = ioremap(altremote.res->start, resource_size(altremote.res));
   if (!altremote.base) {
     dev_err(&pdev->dev, "Unable to map registers\n");
-    altremote_remove(pdev);
-    return -EIO;
+    ret = -EIO;
+    goto err_out;
   }
   altremote.initsteps++;
-  device_create_file(&pdev->dev, &dev_attr_status);
-  device_create_file(&pdev->dev, &dev_attr_reconfig);
+
+  ret = device_create_file(&pdev->dev, &dev_attr_status);
+  if (ret)
+    goto err_out_sysfs;
+
+  ret = device_create_file(&pdev->dev, &dev_attr_reconfig);
+  if (ret)
+    goto err_out_sysfs;
+
   status = ioread32(altremote.base + REG_MSM_STATE);
   switch(status)
   {
     case 0: {
-      dev_printk(KERN_INFO, &pdev->dev, "Found altremote block in Factory Mode\n");
-      device_create_file(&pdev->dev, &dev_attr_config_addr);
-      device_create_file(&pdev->dev, &dev_attr_watchdog);
+      dev_info(&pdev->dev, "Found altremote block in Factory Mode\n");
+      ret = device_create_file(&pdev->dev, &dev_attr_config_addr);
+      if (ret)
+        goto err_out_sysfs;
+
+      ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
+      if (ret)
+        goto err_out_sysfs;
     } break;
     case 1: {
       dev_printk(KERN_INFO, &pdev->dev, "Found altremote block in Application Mode\n");
     } break;
     case 3: {
-      int ret;
       dev_printk(KERN_INFO, &pdev->dev, "Found altremote block in Application Mode with Watchdog enabled\n");
       ret = misc_register(&altremote_wdt_miscdev);
       if (ret) {
         printk(KERN_ERR "altremote_wdt: cannot register miscdev on minor=%d (err=%d)\n", WATCHDOG_MINOR, ret);
-        return ret;
+        goto err_out;
       }
-      device_create_file(&pdev->dev, &dev_attr_watchdog);
+      ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
+      if (ret)
+        goto err_out_wdt;
       altremote.initsteps++;
     } break;
     default: {
-      dev_printk(KERN_INFO, &pdev->dev, "Found altremote block unknwon state 0x%X\n",status);
+      dev_info(&pdev->dev, "Found altremote block unknwon state 0x%X\n", status);
     }
   }
   return 0;
+
+err_out_wdt:
+  misc_deregister(&altremote_wdt_miscdev);
+err_out_sysfs:
+  device_remove_file(&pdev->dev, &dev_attr_config_addr);
+  device_remove_file(&pdev->dev, &dev_attr_reconfig);
+  device_remove_file(&pdev->dev, &dev_attr_status);
+  iounmap(altremote.base);
+err_out:
+  release_mem_region(altremote.res->start, resource_size(altremote.res));
+  altremote_remove(pdev);
+  return ret;
 }
 
 static struct platform_driver altremote_driver = {
