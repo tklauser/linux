@@ -1,5 +1,5 @@
 /*
- *  linux/arch/nios2nommu/kernel/ptrace.c
+ *  linux/arch/nios2/kernel/ptrace.c
  *
  *  Copyright (C) 1994 by Hamish Macdonald
  *  Taken from linux/kernel/ptrace.c and modified for M680x0.
@@ -71,12 +71,10 @@ static inline long get_reg(struct task_struct *task, int regno)
 {
 	unsigned long *addr;
 
-	if (regoff[regno] == -1)
+	if (regno >= ARRAY_SIZE(regoff) || regoff[regno] == -1)
 		return 0;
-	else if (regno < ARRAY_SIZE(regoff))
-		addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
-	else
-		return 0;
+
+	addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
 	return *addr;
 }
 
@@ -88,12 +86,10 @@ static inline int put_reg(struct task_struct *task, int regno,
 {
 	unsigned long *addr;
 
-	if (regoff[regno] == -1)
+	if (regno >= ARRAY_SIZE(regoff) || regoff[regno] == -1)
 		return -1;
-	else if (regno < ARRAY_SIZE(regoff))
-		addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
-	else
-		return -1;
+
+	addr = (unsigned long *)((char *)task->thread.kregs + regoff[regno]);
 	*addr = data;
 	return 0;
 }
