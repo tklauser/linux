@@ -56,7 +56,7 @@ static struct altremote_data altremote = {
   .initsteps = 0,
 };
 
-static struct file_operations altremote_wdt_fops = {
+static const struct file_operations altremote_wdt_fops = {
   .owner    = THIS_MODULE,
   .llseek   = no_llseek,
   .write    = altremote_wdt_write,
