@@ -61,7 +61,7 @@ struct dma_channel {
 	char id[16];
 	char dev_id[16];
 };
-static struct dma_channel	dma_channels[]={
+static struct dma_channel dma_channels[]={
 #ifdef na_dma_0
 	{
 		.addr	= na_dma_0,
@@ -77,7 +77,8 @@ static struct dma_channel	dma_channels[]={
 	},
 #endif
 };
-#define MAX_DMA_CHANNELS	sizeof(dma_channels)/sizeof(struct dma_channel)
+
+#define MAX_DMA_CHANNELS	ARRAY_SIZE(dma_channels)
 
 void enable_dma(unsigned int dmanr)
 {
