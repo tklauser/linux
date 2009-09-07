@@ -70,6 +70,13 @@ config BOOT_LINK_OFFSET
 	  This can be useful if you are on a board which has a small amount of
 	  memory.
 
+config AVALON_DMA
+	bool "Support for DMA controller with Avalon interface"
+	default y
+	help
+	  Support the Altera DMA controller with Avalon interface, so drivers
+	  for DMA-able devices can use this interface.
+
 config GENERIC_GPIO
 	bool "GPIO interface"
 	default n
