@@ -9,39 +9,38 @@
  * Portions:
  * Copyright (C) 2004 Psion Teklogix (for NetBook PRO)
  * Copyright (C) 2004 David Brownell
- *
  */
 
 /*
-  The ISP1362 chip requires a large delay (300ns and 462ns) between
-  accesses to the address and data register.
-  The following timing options exist:
+ * The ISP1362 chip requires a large delay (300ns and 462ns) between
+ * accesses to the address and data register.
+ * The following timing options exist:
+ *
+ * 1. Configure your memory controller to add such delays if it can (the best)
+ * 2. Implement platform-specific delay function possibly
+ *    combined with configuring the memory controller; see
+ *    include/linux/usb_isp1362.h for more info.
+ * 3. Use ndelay (easiest, poorest).
+ *
+ * Use the corresponding macros USE_PLATFORM_DELAY and USE_NDELAY in the
+ * platform specific section of isp1362.h to select the appropriate variant.
+ *
+ * Also note that according to the Philips "ISP1362 Errata" document
+ * Rev 1.00 from 27 May data corruption may occur when the #WR signal
+ * is reasserted (even with #CS deasserted) within 132ns after a
+ * write cycle to any controller register. If the hardware doesn't
+ * implement the recommended fix (gating the #WR with #CS) software
+ * must ensure that no further write cycle (not necessarily to the chip!)
+ * is issued by the CPU within this interval.
 
-  1. Configure your memory controller if it can accomodate such delays (the best)
-  2. Implement platform-specific delay function possibly
-     combined with configuring the memory controller; see
-     include/linux/usb/isp1362.h for more info.
-  3. Use ndelay (easiest, poorest).
-
-  Use the corresponding macros USE_PLATFORM_DELAY and USE_NDELAY in the
-  platform specific section of isp1362.h to select the appropriate variant.
-
-  Also note that according to the Philips "ISP1362 Errata" document
-  Rev 1.00 from 27 May data corruption may occur when the #WR signal
-  is reasserted (even with #CS deasserted) within 132ns after a
-  write cycle to any controller register. If the hardware doesn't
-  implement the recommended fix (gating the #WR with #CS) software
-  must ensure that no further write cycle (not necessarily to the chip!)
-  is issued by the CPU within this interval.
-
-  For PXA25x this can be ensured by using VLIO with the maximum
-  recovery time (MSCx = 0x7f8c) with a memory clock of 99.53 MHz.
-*/
+ * For PXA25x this can be ensured by using VLIO with the maximum
+ * recovery time (MSCx = 0x7f8c) with a memory clock of 99.53 MHz.
+ */
 
 #ifdef CONFIG_USB_DEBUG
- #define ISP1362_DEBUG
+# define ISP1362_DEBUG
 #else
- #undef ISP1362_DEBUG
+# undef ISP1362_DEBUG
 #endif
 
 /*
@@ -49,19 +48,20 @@
  * GET_INTERFACE requests correctly when the SETUP and DATA stages of the
  * requests are carried out in separate frames. This will delay any SETUP
  * packets until the start of the next frame so that this situation is
- * unlikely to occur (and makes usbtest happy running with a PXA255 target device).
+ * unlikely to occur (and makes usbtest happy running with a PXA255 target
+ * device).
  */
-//#define BUGGY_PXA2XX_UDC_USBTEST
+#undef BUGGY_PXA2XX_UDC_USBTEST
 
-//#define PTD_TRACE
-//#define URB_TRACE
-//#define VERBOSE
-//#define REGISTERS
+#undef PTD_TRACE
+#undef URB_TRACE
+#undef VERBOSE
+#undef REGISTERS
 
 /* This enables a memory test on the ISP1362 chip memory to make sure the
  * chip access timing is correct.
  */
-//#define CHIP_BUFFER_TEST
+#undef CHIP_BUFFER_TEST
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -79,15 +79,15 @@
 #include <linux/usb/isp1362.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
+#include <linux/io.h>
+#include <linux/bitops.h>
 
-#include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/system.h>
 #include <asm/byteorder.h>
-#include <asm/bitops.h>
 #include <asm/unaligned.h>
 
-static int dbg_level = 0;
+static int dbg_level;
 #ifdef ISP1362_DEBUG
 module_param(dbg_level, int, 0644);
 #else
@@ -122,41 +122,37 @@ static int isp1362_hc_start(struct usb_hcd *hcd);
  */
 static inline void isp1362_enable_int(struct isp1362_hcd *isp1362_hcd, u16 mask)
 {
-	if ((isp1362_hcd->irqenb | mask) == isp1362_hcd->irqenb) {
+	if ((isp1362_hcd->irqenb | mask) == isp1362_hcd->irqenb)
 		return;
-	}
-	if (mask & ~isp1362_hcd->irqenb) {
+	if (mask & ~isp1362_hcd->irqenb)
 		isp1362_write_reg16(isp1362_hcd, HCuPINT, mask & ~isp1362_hcd->irqenb);
-	}
 	isp1362_hcd->irqenb |= mask;
-	if (isp1362_hcd->irq_active) {
+	if (isp1362_hcd->irq_active)
 		return;
-	}
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, isp1362_hcd->irqenb);
 }
 
 /*-------------------------------------------------------------------------*/
 
 static inline struct isp1362_ep_queue *get_ptd_queue(struct isp1362_hcd *isp1362_hcd,
-							     u16 offset)
+						     u16 offset)
 {
-	struct isp1362_ep_queue * epq = NULL;
+	struct isp1362_ep_queue *epq = NULL;
 
-	if (offset < isp1362_hcd->istl_queue[1].buf_start) {
+	if (offset < isp1362_hcd->istl_queue[1].buf_start)
 		epq = &isp1362_hcd->istl_queue[0];
-	} else if (offset < isp1362_hcd->intl_queue.buf_start) {
+	else if (offset < isp1362_hcd->intl_queue.buf_start)
 		epq = &isp1362_hcd->istl_queue[1];
-	} else if (offset < isp1362_hcd->atl_queue.buf_start) {
+	else if (offset < isp1362_hcd->atl_queue.buf_start)
 		epq = &isp1362_hcd->intl_queue;
-	} else if (offset < isp1362_hcd->atl_queue.buf_start +
-		   isp1362_hcd->atl_queue.buf_size) {
+	else if (offset < isp1362_hcd->atl_queue.buf_start +
+		   isp1362_hcd->atl_queue.buf_size)
 		epq = &isp1362_hcd->atl_queue;
-	}
-	if (epq) {
-		DBG(1, "%s: PTD $%04x is on %s queue\n", __FUNCTION__, offset, epq->name);
-	} else {
-		WARN("%s: invalid PTD $%04x\n", __FUNCTION__, offset);
-	}
+
+	if (epq)
+		DBG(1, "%s: PTD $%04x is on %s queue\n", __func__, offset, epq->name);
+	else
+		pr_warning("%s: invalid PTD $%04x\n", __func__, offset);
 
 	return epq;
 }
@@ -166,31 +162,32 @@ static inline int get_ptd_offset(struct isp1362_ep_queue *epq, u8 index)
 	int offset;
 
 	if (index * epq->blk_size > epq->buf_size) {
-		WARN("%s: Bad %s index %d(%d)\n", __FUNCTION__, epq->name, index,
+		pr_warning("%s: Bad %s index %d(%d)\n", __func__, epq->name, index,
 		     epq->buf_size / epq->blk_size);
 		return -EINVAL;
 	}
 	offset = epq->buf_start + index * epq->blk_size;
-	DBG(3, "%s: %s PTD[%02x] # %04x\n", __FUNCTION__, epq->name, index, offset);
+	DBG(3, "%s: %s PTD[%02x] # %04x\n", __func__, epq->name, index, offset);
 
 	return offset;
 }
 
 /*-------------------------------------------------------------------------*/
 
-static inline u16 max_transfer_size(struct isp1362_ep_queue *epq, size_t size, int mps)
+static inline u16 max_transfer_size(struct isp1362_ep_queue *epq, size_t size,
+				    int mps)
 {
 	u16 xfer_size = min_t(size_t, MAX_XFER_SIZE, size);
 
 	xfer_size = min_t(size_t, xfer_size, epq->buf_avail * epq->blk_size - PTD_HEADER_SIZE);
-	if (xfer_size < size && xfer_size % mps) {
+	if (xfer_size < size && xfer_size % mps)
 		xfer_size -= xfer_size % mps;
-	}
 
 	return xfer_size;
 }
 
-static int claim_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1362_ep *ep, u16 len)
+static int claim_ptd_buffers(struct isp1362_ep_queue *epq,
+			     struct isp1362_ep *ep, u16 len)
 {
 	int ptd_offset = -EINVAL;
 	int index;
@@ -200,36 +197,31 @@ static int claim_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1362_ep *ep
 
 	BUG_ON(len > epq->buf_size);
 
-	if (!epq->buf_avail) {
+	if (!epq->buf_avail)
 		return -ENOMEM;
-	}
 
-	if (ep->num_ptds) {
-		ERR("%s: %s len %d/%d num_ptds %d buf_map %08lx skip_map %08lx\n", __FUNCTION__,
+	if (ep->num_ptds)
+		pr_err("%s: %s len %d/%d num_ptds %d buf_map %08lx skip_map %08lx\n", __func__,
 		    epq->name, len, epq->blk_size, num_ptds, epq->buf_map, epq->skip_map);
-	}
 	BUG_ON(ep->num_ptds != 0);
 
 	for (index = 0; index <= epq->buf_count - num_ptds; index++) {
-		if (__test_bit(index, &epq->buf_map)) {
+		if (test_bit(index, &epq->buf_map))
 			continue;
-		}
 		found = index;
 		for (last = index + 1; last < index + num_ptds; last++) {
-			if (__test_bit(last, &epq->buf_map)) {
+			if (test_bit(last, &epq->buf_map)) {
 				found = -1;
 				break;
 			}
 		}
-		if (found >= 0) {
+		if (found >= 0)
 			break;
-		}
 	}
-	if (found < 0) {
+	if (found < 0)
 		return -EOVERFLOW;
-	}
 
-	DBG(1, "%s: Found %d PTDs[%d] for %d/%d byte\n", __FUNCTION__,
+	DBG(1, "%s: Found %d PTDs[%d] for %d/%d byte\n", __func__,
 	    num_ptds, found, len, (int)(epq->blk_size - PTD_HEADER_SIZE));
 	ptd_offset = get_ptd_offset(epq, found);
 	WARN_ON(ptd_offset < 0);
@@ -238,11 +230,10 @@ static int claim_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1362_ep *ep
 	epq->buf_avail -= num_ptds;
 	BUG_ON(epq->buf_avail > epq->buf_count);
 	ep->ptd_index = found;
-	for (index = found; index < last; index++) {
+	for (index = found; index < last; index++)
 		__set_bit(index, &epq->buf_map);
-	}
 	DBG(1, "%s: Done %s PTD[%d] $%04x, avail %d count %d claimed %d %08lx:%08lx\n",
-	    __FUNCTION__, epq->name, ep->ptd_index, ep->ptd_offset,
+	    __func__, epq->name, ep->ptd_index, ep->ptd_offset,
 	    epq->buf_avail, epq->buf_count, num_ptds, epq->buf_map, epq->skip_map);
 
 	return found;
@@ -253,12 +244,11 @@ static inline void release_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1
 	int index = ep->ptd_index;
 	int last = ep->ptd_index + ep->num_ptds;
 
-	if (last > epq->buf_count) {
-		ERR("%s: ep %p req %d len %d %s PTD[%d] $%04x num_ptds %d buf_count %d buf_avail %d buf_map %08lx skip_map %08lx\n",
-		    __FUNCTION__, ep, ep->num_req, ep->length, epq->name, ep->ptd_index,
+	if (last > epq->buf_count)
+		pr_err("%s: ep %p req %d len %d %s PTD[%d] $%04x num_ptds %d buf_count %d buf_avail %d buf_map %08lx skip_map %08lx\n",
+		    __func__, ep, ep->num_req, ep->length, epq->name, ep->ptd_index,
 		    ep->ptd_offset, ep->num_ptds, epq->buf_count, epq->buf_avail,
 		    epq->buf_map, epq->skip_map);
-	}
 	BUG_ON(last > epq->buf_count);
 
 	for (; index < last; index++) {
@@ -272,9 +262,9 @@ static inline void release_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1
 	BUG_ON(epq->ptd_count > epq->buf_count);
 
 	DBG(1, "%s: Done %s PTDs $%04x released %d avail %d count %d\n",
-	    __FUNCTION__, epq->name,
+	    __func__, epq->name,
 	    ep->ptd_offset, ep->num_ptds, epq->buf_avail, epq->buf_count);
-	DBG(1, "%s: buf_map %08lx skip_map %08lx\n", __FUNCTION__,
+	DBG(1, "%s: buf_map %08lx skip_map %08lx\n", __func__,
 	    epq->buf_map, epq->skip_map);
 
 	ep->num_ptds = 0;
@@ -287,8 +277,9 @@ static inline void release_ptd_buffers(struct isp1362_ep_queue *epq, struct isp1
 /*
   Set up PTD's.
 */
-static void prepare_ptd(struct isp1362_hcd *isp1362_hcd, struct urb *urb, struct isp1362_ep *ep,
-			struct isp1362_ep_queue *epq, u16 fno)
+static void prepare_ptd(struct isp1362_hcd *isp1362_hcd, struct urb *urb,
+			struct isp1362_ep *ep, struct isp1362_ep_queue *epq,
+			u16 fno)
 {
 	struct ptd *ptd;
 	int toggle;
@@ -311,34 +302,31 @@ static void prepare_ptd(struct isp1362_hcd *isp1362_hcd, struct urb *urb, struct
 		} else if (usb_pipeisoc(urb->pipe)) {
 			len = min_t(size_t, urb->iso_frame_desc[fno].length, MAX_XFER_SIZE);
 			ep->data = urb->transfer_buffer + urb->iso_frame_desc[fno].offset;
-		} else {
+		} else
 			len = max_transfer_size(epq, buf_len, ep->maxpacket);
-		}
-		DBG(1, "%s: IN    len %d/%d/%d from URB\n", __FUNCTION__, len, ep->maxpacket,
+		DBG(1, "%s: IN    len %d/%d/%d from URB\n", __func__, len, ep->maxpacket,
 		    (int)buf_len);
 		break;
 	case USB_PID_OUT:
 		toggle = usb_gettoggle(urb->dev, ep->epnum, 1);
 		dir = PTD_DIR_OUT;
-		if (usb_pipecontrol(urb->pipe)) {
+		if (usb_pipecontrol(urb->pipe))
 			len = min_t(size_t, ep->maxpacket, buf_len);
-		} else if (usb_pipeisoc(urb->pipe)) {
+		else if (usb_pipeisoc(urb->pipe))
 			len = min_t(size_t, urb->iso_frame_desc[0].length, MAX_XFER_SIZE);
-		} else {
+		else
 			len = max_transfer_size(epq, buf_len, ep->maxpacket);
-		}
-		if (len == 0) {
-			INFO("%s: Sending ZERO packet: %d\n", __FUNCTION__,
+		if (len == 0)
+			pr_info("%s: Sending ZERO packet: %d\n", __func__,
 			     urb->transfer_flags & URB_ZERO_PACKET);
-		}
-		DBG(1, "%s: OUT   len %d/%d/%d from URB\n", __FUNCTION__, len, ep->maxpacket,
+		DBG(1, "%s: OUT   len %d/%d/%d from URB\n", __func__, len, ep->maxpacket,
 		    (int)buf_len);
 		break;
 	case USB_PID_SETUP:
 		toggle = 0;
 		dir = PTD_DIR_SETUP;
 		len = sizeof(struct usb_ctrlrequest);
-		DBG(1, "%s: SETUP len %d\n", __FUNCTION__, len);
+		DBG(1, "%s: SETUP len %d\n", __func__, len);
 		ep->data = urb->setup_packet;
 		break;
 	case USB_PID_ACK:
@@ -346,19 +334,17 @@ static void prepare_ptd(struct isp1362_hcd *isp1362_hcd, struct urb *urb, struct
 		len = 0;
 		dir = (urb->transfer_buffer_length && usb_pipein(urb->pipe)) ?
 			PTD_DIR_OUT : PTD_DIR_IN;
-		DBG(1, "%s: ACK   len %d\n", __FUNCTION__, len);
+		DBG(1, "%s: ACK   len %d\n", __func__, len);
 		break;
 	default:
-		// To please gcc
 		toggle = dir = len = 0;
-		ERR("%s@%d: ep->nextpid %02x\n", __func__, __LINE__, ep->nextpid);
+		pr_err("%s@%d: ep->nextpid %02x\n", __func__, __LINE__, ep->nextpid);
 		BUG_ON(1);
 	}
 
 	ep->length = len;
-	if (!len) {
+	if (!len)
 		ep->data = NULL;
-	}
 
 	ptd->count = PTD_CC_MSK | PTD_ACTIVE_MSK | PTD_TOGGLE(toggle);
 	ptd->mps = PTD_MPS(ep->maxpacket) | PTD_SPD(urb->dev->speed == USB_SPEED_LOW) |
@@ -370,11 +356,10 @@ static void prepare_ptd(struct isp1362_hcd *isp1362_hcd, struct urb *urb, struct
 		ptd->faddr |= PTD_SF_INT(ep->branch);
 		ptd->faddr |= PTD_PR(ep->interval ? __ffs(ep->interval) : 0);
 	}
-	if (usb_pipeisoc(urb->pipe)) {
+	if (usb_pipeisoc(urb->pipe))
 		ptd->faddr |= PTD_SF_ISO(fno);
-	}
 
-	DBG(1, "%s: Finished\n", __FUNCTION__);
+	DBG(1, "%s: Finished\n", __func__);
 }
 
 static void isp1362_write_ptd(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep,
@@ -387,10 +372,9 @@ static void isp1362_write_ptd(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep
 
 	prefetch(ptd);
 	isp1362_write_buffer(isp1362_hcd, ptd, ep->ptd_offset, PTD_HEADER_SIZE);
-	if (len) {
+	if (len)
 		isp1362_write_buffer(isp1362_hcd, ep->data,
 				     ep->ptd_offset + PTD_HEADER_SIZE, len);
-	}
 
 	dump_ptd(ptd);
 	dump_ptd_out_data(ptd, ep->data);
@@ -406,19 +390,17 @@ static void isp1362_read_ptd(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep 
 	BUG_ON(ep->ptd_offset < 0);
 
 	list_del_init(&ep->active);
-	DBG(1, "%s: ep %p removed from active list %p\n", __FUNCTION__, ep, &epq->active);
+	DBG(1, "%s: ep %p removed from active list %p\n", __func__, ep, &epq->active);
 
 	prefetchw(ptd);
 	isp1362_read_buffer(isp1362_hcd, ptd, ep->ptd_offset, PTD_HEADER_SIZE);
 	dump_ptd(ptd);
 	act_len = PTD_GET_COUNT(ptd);
-	if (PTD_GET_DIR(ptd) != PTD_DIR_IN || act_len == 0) {
+	if (PTD_GET_DIR(ptd) != PTD_DIR_IN || act_len == 0)
 		return;
-	}
-	if (act_len > ep->length) {
-		ERR("%s: ep %p PTD $%04x act_len %d ep->length %d\n", __FUNCTION__, ep,
+	if (act_len > ep->length)
+		pr_err("%s: ep %p PTD $%04x act_len %d ep->length %d\n", __func__, ep,
 			 ep->ptd_offset, act_len, ep->length);
-	}
 	BUG_ON(act_len > ep->length);
 	/* Only transfer the amount of data that has actually been overwritten
 	 * in the chip buffer. We don't want any data that doesn't belong to the
@@ -441,43 +423,40 @@ static void remove_ptd(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 	int index;
 	struct isp1362_ep_queue *epq;
 
-	DBG(1, "%s: ep %p PTD[%d] $%04x\n", __FUNCTION__, ep, ep->ptd_index, ep->ptd_offset);
+	DBG(1, "%s: ep %p PTD[%d] $%04x\n", __func__, ep, ep->ptd_index, ep->ptd_offset);
 	BUG_ON(ep->ptd_offset < 0);
 
 	epq = get_ptd_queue(isp1362_hcd, ep->ptd_offset);
 	BUG_ON(!epq);
 
-	// put ep in remove_list for cleanup
+	/* put ep in remove_list for cleanup */
 	WARN_ON(!list_empty(&ep->remove_list));
 	list_add_tail(&ep->remove_list, &isp1362_hcd->remove_list);
-	// let SOF interrupt handle the cleanup
+	/* let SOF interrupt handle the cleanup */
 	isp1362_enable_int(isp1362_hcd, HCuPINT_SOF);
 
 	index = ep->ptd_index;
-	if (index < 0) {
-		// ISO queues don't have SKIP registers
+	if (index < 0)
+		/* ISO queues don't have SKIP registers */
 		return;
-	}
 
-	DBG(1, "%s: Disabling PTD[%02x] $%04x %08lx|%08x\n", __FUNCTION__,
+	DBG(1, "%s: Disabling PTD[%02x] $%04x %08lx|%08x\n", __func__,
 	    index, ep->ptd_offset, epq->skip_map, 1 << index);
 
-	// prevent further processing of PTD (will be effective after next SOF)
+	/* prevent further processing of PTD (will be effective after next SOF) */
 	epq->skip_map |= 1 << index;
 	if (epq == &isp1362_hcd->atl_queue) {
-		DBG(2, "%s: ATLSKIP = %08x -> %08lx\n", __FUNCTION__,
+		DBG(2, "%s: ATLSKIP = %08x -> %08lx\n", __func__,
 		    isp1362_read_reg32(isp1362_hcd, HCATLSKIP), epq->skip_map);
 		isp1362_write_reg32(isp1362_hcd, HCATLSKIP, epq->skip_map);
-		if (~epq->skip_map == 0) {
+		if (~epq->skip_map == 0)
 			isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ATL_ACTIVE);
-		}
 	} else if (epq == &isp1362_hcd->intl_queue) {
-		DBG(2, "%s: INTLSKIP = %08x -> %08lx\n", __FUNCTION__,
+		DBG(2, "%s: INTLSKIP = %08x -> %08lx\n", __func__,
 		    isp1362_read_reg32(isp1362_hcd, HCINTLSKIP), epq->skip_map);
 		isp1362_write_reg32(isp1362_hcd, HCINTLSKIP, epq->skip_map);
-		if (~epq->skip_map == 0) {
+		if (~epq->skip_map == 0)
 			isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_INTL_ACTIVE);
-		}
 	}
 }
 
@@ -493,26 +472,17 @@ static void finish_request(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *e
 	urb->hcpriv = NULL;
 	ep->error_count = 0;
 
-	if (usb_pipecontrol(urb->pipe)) {
+	if (usb_pipecontrol(urb->pipe))
 		ep->nextpid = USB_PID_SETUP;
-	}
 
 	URB_DBG("%s: req %d FA %d ep%d%s %s: len %d/%d %s stat %d\n", __func__,
 		ep->num_req, usb_pipedevice(urb->pipe),
 		usb_pipeendpoint(urb->pipe),
 		!usb_pipein(urb->pipe) ? "out" : "in",
-		({
-			char *s;
-			if (usb_pipecontrol(urb->pipe)) {
-				s = "ctrl";
-			} else if(usb_pipeint(urb->pipe)) {
-				s = "int";
-			} else if(usb_pipebulk(urb->pipe)) {
-				s = "bulk";
-			} else {
-				s = "iso";
-			}
-			s;}),
+		usb_pipecontrol(urb->pipe) ? "ctrl" :
+			usb_pipeint(urb->pipe) ? "int" :
+			usb_pipebulk(urb->pipe) ? "bulk" :
+			"iso",
 		urb->actual_length, urb->transfer_buffer_length,
 		!(urb->transfer_flags & URB_SHORT_NOT_OK) ?
 		"short_ok" : "", urb->status);
@@ -523,10 +493,9 @@ static void finish_request(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *e
 	usb_hcd_giveback_urb(isp1362_hcd_to_hcd(isp1362_hcd), urb, status);
 	spin_lock(&isp1362_hcd->lock);
 
-	// take idle endpoints out of the schedule right away
-	if (!list_empty(&ep->hep->urb_list)) {
+	/* take idle endpoints out of the schedule right away */
+	if (!list_empty(&ep->hep->urb_list))
 		return;
-	}
 
 	/* async deschedule */
 	if (!list_empty(&ep->schedule)) {
@@ -536,7 +505,7 @@ static void finish_request(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *e
 
 
 	if (ep->interval) {
-		// periodic deschedule
+		/* periodic deschedule */
 		DBG(1, "deschedule qh%d/%p branch %d load %d bandwidth %d -> %d\n", ep->interval,
 		    ep, ep->branch, ep->load,
 		    isp1362_hcd->load[ep->branch],
@@ -559,13 +528,13 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 	int urbstat = -EINPROGRESS;
 	u8 cc;
 
-	DBG(2, "%s: ep %p req %d\n", __FUNCTION__, ep, ep->num_req);
+	DBG(2, "%s: ep %p req %d\n", __func__, ep, ep->num_req);
 
 	udev = urb->dev;
 	ptd = &ep->ptd;
 	cc = PTD_GET_CC(ptd);
 	if (cc == PTD_NOTACCESSED) {
-		ERR("%s: req %d PTD %p Untouched by ISP1362\n", __FUNCTION__,
+		pr_err("%s: req %d PTD %p Untouched by ISP1362\n", __func__,
 		    ep->num_req, ptd);
 		cc = PTD_DEVNOTRESP;
 	}
@@ -588,20 +557,20 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 			urbstat = 0;
 		} else {
 			DBG(1, "%s: req %d Data Underrun %s nextpid %02x short_%sok %d/%d/%d byte\n",
-			    __FUNCTION__, ep->num_req,
+			    __func__, ep->num_req,
 			    usb_pipein(urb->pipe) ? "IN" : "OUT", ep->nextpid,
 			    short_ok ? "" : "not_",
 			    PTD_GET_COUNT(ptd), ep->maxpacket, len);
 			if (usb_pipecontrol(urb->pipe)) {
 				ep->nextpid = USB_PID_ACK;
-				// save the data underrun error code for later and
-				// procede with the status stage
+				/* save the data underrun error code for later and
+				 * procede with the status stage
+				 */
 				urb->actual_length += PTD_GET_COUNT(ptd);
 				BUG_ON(urb->actual_length > urb->transfer_buffer_length);
 
-				if (urb->status == -EINPROGRESS) {
+				if (urb->status == -EINPROGRESS)
 					urb->status = cc_to_error[PTD_DATAUNDERRUN];
-				}
 			} else {
 				usb_settoggle(udev, ep->epnum, ep->nextpid == USB_PID_OUT,
 					      PTD_GET_TOGGLE(ptd));
@@ -623,10 +592,9 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 
 	switch (ep->nextpid) {
 	case USB_PID_OUT:
-		if (PTD_GET_COUNT(ptd) != ep->length) {
-		       ERR("%s: count=%d len=%d\n", __FUNCTION__,
+		if (PTD_GET_COUNT(ptd) != ep->length)
+			pr_err("%s: count=%d len=%d\n", __func__,
 			   PTD_GET_COUNT(ptd), ep->length);
-		}
 		BUG_ON(PTD_GET_COUNT(ptd) != ep->length);
 		urb->actual_length += ep->length;
 		BUG_ON(urb->actual_length > urb->transfer_buffer_length);
@@ -635,7 +603,7 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 			DBG(3, "%s: req %d xfer complete %d/%d status %d -> 0\n", __func__,
 			    ep->num_req, len, ep->maxpacket, urbstat);
 			if (usb_pipecontrol(urb->pipe)) {
-				DBG(3, "%s: req %d %s Wait for ACK\n", __FUNCTION__,
+				DBG(3, "%s: req %d %s Wait for ACK\n", __func__,
 				    ep->num_req,
 				    usb_pipein(urb->pipe) ? "IN" : "OUT");
 				ep->nextpid = USB_PID_ACK;
@@ -656,13 +624,13 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 		urb->actual_length += len;
 		BUG_ON(urb->actual_length > urb->transfer_buffer_length);
 		usb_settoggle(udev, ep->epnum, 0, PTD_GET_TOGGLE(ptd));
-		// if transfer completed or (allowed) data underrun
+		/* if transfer completed or (allowed) data underrun */
 		if ((urb->transfer_buffer_length == urb->actual_length) ||
 		    len % ep->maxpacket) {
 			DBG(3, "%s: req %d xfer complete %d/%d status %d -> 0\n", __func__,
 			    ep->num_req, len, ep->maxpacket, urbstat);
 			if (usb_pipecontrol(urb->pipe)) {
-				DBG(3, "%s: req %d %s Wait for ACK\n", __FUNCTION__,
+				DBG(3, "%s: req %d %s Wait for ACK\n", __func__,
 				    ep->num_req,
 				    usb_pipein(urb->pipe) ? "IN" : "OUT");
 				ep->nextpid = USB_PID_ACK;
@@ -686,7 +654,7 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 		}
 		break;
 	case USB_PID_ACK:
-		DBG(3, "%s: req %d got ACK %d -> 0\n", __FUNCTION__, ep->num_req,
+		DBG(3, "%s: req %d got ACK %d -> 0\n", __func__, ep->num_req,
 		    urbstat);
 		WARN_ON(urbstat != -EINPROGRESS);
 		urbstat = 0;
@@ -698,7 +666,7 @@ static void postproc_ep(struct isp1362_hcd *isp1362_hcd, struct isp1362_ep *ep)
 
  out:
 	if (urbstat != -EINPROGRESS) {
-		DBG(2, "%s: Finishing ep %p req %d urb %p status %d\n", __FUNCTION__,
+		DBG(2, "%s: Finishing ep %p req %d urb %p status %d\n", __func__,
 		    ep, ep->num_req, urb, urbstat);
 		finish_request(isp1362_hcd, ep, urb, urbstat);
 	}
@@ -716,40 +684,38 @@ static void finish_unlinks(struct isp1362_hcd *isp1362_hcd)
 
 		BUG_ON(epq == NULL);
 		if (index >= 0) {
-			DBG(1, "%s: remove PTD[%d] $%04x\n", __FUNCTION__, index, ep->ptd_offset);
+			DBG(1, "%s: remove PTD[%d] $%04x\n", __func__, index, ep->ptd_offset);
 			BUG_ON(ep->num_ptds == 0);
 			release_ptd_buffers(epq, ep);
 		}
 		if (!list_empty(&ep->hep->urb_list)) {
 			struct urb *urb = get_urb(ep);
 
-			DBG(1, "%s: Finishing req %d ep %p from remove_list\n", __FUNCTION__,
+			DBG(1, "%s: Finishing req %d ep %p from remove_list\n", __func__,
 			    ep->num_req, ep);
 			finish_request(isp1362_hcd, ep, urb, -ESHUTDOWN);
 		}
 		WARN_ON(list_empty(&ep->active));
 		if (!list_empty(&ep->active)) {
 			list_del_init(&ep->active);
-			DBG(1, "%s: ep %p removed from active list\n", __FUNCTION__, ep);
+			DBG(1, "%s: ep %p removed from active list\n", __func__, ep);
 		}
 		list_del_init(&ep->remove_list);
-		DBG(1, "%s: ep %p removed from remove_list\n", __FUNCTION__, ep);
+		DBG(1, "%s: ep %p removed from remove_list\n", __func__, ep);
 	}
-	DBG(1, "%s: Done\n", __FUNCTION__);
+	DBG(1, "%s: Done\n", __func__);
 }
 
 static inline void enable_atl_transfers(struct isp1362_hcd *isp1362_hcd, int count)
 {
 	if (count > 0) {
-		if (count < isp1362_hcd->atl_queue.ptd_count) {
+		if (count < isp1362_hcd->atl_queue.ptd_count)
 			isp1362_write_reg16(isp1362_hcd, HCATLDTC, count);
-		}
 		isp1362_enable_int(isp1362_hcd, HCuPINT_ATL);
 		isp1362_write_reg32(isp1362_hcd, HCATLSKIP, isp1362_hcd->atl_queue.skip_map);
 		isp1362_set_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ATL_ACTIVE);
-	} else {
+	} else
 		isp1362_enable_int(isp1362_hcd, HCuPINT_SOF);
-	}
 }
 
 static inline void enable_intl_transfers(struct isp1362_hcd *isp1362_hcd)
@@ -774,21 +740,20 @@ static int submit_req(struct isp1362_hcd *isp1362_hcd, struct urb *urb,
 	prepare_ptd(isp1362_hcd, urb, ep, epq, 0);
 	index = claim_ptd_buffers(epq, ep, ep->length);
 	if (index == -ENOMEM) {
-		DBG(1, "%s: req %d No free %s PTD available: %d, %08lx:%08lx\n", __FUNCTION__,
+		DBG(1, "%s: req %d No free %s PTD available: %d, %08lx:%08lx\n", __func__,
 		    ep->num_req, epq->name, ep->num_ptds, epq->buf_map, epq->skip_map);
 		return index;
 	} else if (index == -EOVERFLOW) {
 		DBG(1, "%s: req %d Not enough space for %d byte %s PTD %d %08lx:%08lx\n",
-		    __FUNCTION__, ep->num_req, ep->length, epq->name, ep->num_ptds,
+		    __func__, ep->num_req, ep->length, epq->name, ep->num_ptds,
 		    epq->buf_map, epq->skip_map);
 		return index;
-	} else {
+	} else
 		BUG_ON(index < 0);
-	}
 	list_add_tail(&ep->active, &epq->active);
-	DBG(1, "%s: ep %p req %d len %d added to active list %p\n", __FUNCTION__,
+	DBG(1, "%s: ep %p req %d len %d added to active list %p\n", __func__,
 	    ep, ep->num_req, ep->length, &epq->active);
-	DBG(1, "%s: Submitting %s PTD $%04x for ep %p req %d\n", __FUNCTION__, epq->name,
+	DBG(1, "%s: Submitting %s PTD $%04x for ep %p req %d\n", __func__, epq->name,
 	    ep->ptd_offset, ep, ep->num_req);
 	isp1362_write_ptd(isp1362_hcd, ep, epq);
 	__clear_bit(ep->ptd_index, &epq->skip_map);
@@ -804,7 +769,7 @@ static void start_atl_transfers(struct isp1362_hcd *isp1362_hcd)
 	int defer = 0;
 
 	if (atomic_read(&epq->finishing)) {
-		DBG(1, "%s: finish_transfers is active for %s\n", __FUNCTION__, epq->name);
+		DBG(1, "%s: finish_transfers is active for %s\n", __func__, epq->name);
 		return;
 	}
 
@@ -813,11 +778,11 @@ static void start_atl_transfers(struct isp1362_hcd *isp1362_hcd)
 		int ret;
 
 		if (!list_empty(&ep->active)) {
-			DBG(2, "%s: Skipping active %s ep %p\n", __FUNCTION__, epq->name, ep);
+			DBG(2, "%s: Skipping active %s ep %p\n", __func__, epq->name, ep);
 			continue;
 		}
 
-		DBG(1, "%s: Processing %s ep %p req %d\n", __FUNCTION__, epq->name,
+		DBG(1, "%s: Processing %s ep %p req %d\n", __func__, epq->name,
 		    ep, ep->num_req);
 
 		ret = submit_req(isp1362_hcd, urb, ep, epq);
@@ -836,17 +801,16 @@ static void start_atl_transfers(struct isp1362_hcd *isp1362_hcd)
 
 	/* Avoid starving of endpoints */
 	if (isp1362_hcd->async.next != isp1362_hcd->async.prev) {
-		DBG(2, "%s: Cycling ASYNC schedule %d\n", __FUNCTION__, ptd_count);
+		DBG(2, "%s: Cycling ASYNC schedule %d\n", __func__, ptd_count);
 		list_move(&isp1362_hcd->async, isp1362_hcd->async.next);
 	}
-	if (ptd_count || defer) {
+	if (ptd_count || defer)
 		enable_atl_transfers(isp1362_hcd, defer ? 0 : ptd_count);
-	}
 
 	epq->ptd_count += ptd_count;
 	if (epq->ptd_count > epq->stat_maxptds) {
 		epq->stat_maxptds = epq->ptd_count;
-		DBG(0, "%s: max_ptds: %d\n", __FUNCTION__, epq->stat_maxptds);
+		DBG(0, "%s: max_ptds: %d\n", __func__, epq->stat_maxptds);
 	}
 }
 
@@ -857,7 +821,7 @@ static void start_intl_transfers(struct isp1362_hcd *isp1362_hcd)
 	struct isp1362_ep *ep;
 
 	if (atomic_read(&epq->finishing)) {
-		DBG(1, "%s: finish_transfers is active for %s\n", __FUNCTION__, epq->name);
+		DBG(1, "%s: finish_transfers is active for %s\n", __func__, epq->name);
 		return;
 	}
 
@@ -866,36 +830,34 @@ static void start_intl_transfers(struct isp1362_hcd *isp1362_hcd)
 		int ret;
 
 		if (!list_empty(&ep->active)) {
-			DBG(1, "%s: Skipping active %s ep %p\n", __FUNCTION__,
+			DBG(1, "%s: Skipping active %s ep %p\n", __func__,
 			    epq->name, ep);
 			continue;
 		}
 
-		DBG(1, "%s: Processing %s ep %p req %d\n", __FUNCTION__,
+		DBG(1, "%s: Processing %s ep %p req %d\n", __func__,
 		    epq->name, ep, ep->num_req);
 		ret = submit_req(isp1362_hcd, urb, ep, epq);
-		if (ret == -ENOMEM) {
+		if (ret == -ENOMEM)
 			break;
-		} else if (ret == -EOVERFLOW) {
+		else if (ret == -EOVERFLOW)
 			continue;
-		}
 		ptd_count++;
 	}
 
 	if (ptd_count) {
-		static int last_count = 0;
+		static int last_count;
 
 		if (ptd_count != last_count) {
-			DBG(0, "%s: ptd_count: %d\n", __FUNCTION__, ptd_count);
+			DBG(0, "%s: ptd_count: %d\n", __func__, ptd_count);
 			last_count = ptd_count;
 		}
 		enable_intl_transfers(isp1362_hcd);
 	}
 
 	epq->ptd_count += ptd_count;
-	if (epq->ptd_count > epq->stat_maxptds) {
+	if (epq->ptd_count > epq->stat_maxptds)
 		epq->stat_maxptds = epq->ptd_count;
-	}
 }
 
 static inline int next_ptd(struct isp1362_ep_queue *epq, struct isp1362_ep *ep)
@@ -903,15 +865,14 @@ static inline int next_ptd(struct isp1362_ep_queue *epq, struct isp1362_ep *ep)
 	u16 ptd_offset = ep->ptd_offset;
 	int num_ptds = (ep->length + PTD_HEADER_SIZE + (epq->blk_size - 1)) / epq->blk_size;
 
-	DBG(2, "%s: PTD offset $%04x + %04x => %d * %04x -> $%04x\n", __FUNCTION__, ptd_offset,
+	DBG(2, "%s: PTD offset $%04x + %04x => %d * %04x -> $%04x\n", __func__, ptd_offset,
 	    ep->length, num_ptds, epq->blk_size, ptd_offset + num_ptds * epq->blk_size);
 
 	ptd_offset += num_ptds * epq->blk_size;
-	if (ptd_offset < epq->buf_start + epq->buf_size) {
+	if (ptd_offset < epq->buf_start + epq->buf_size)
 		return ptd_offset;
-	} else {
+	else
 		return -ENOMEM;
-	}
 }
 
 static void start_iso_transfers(struct isp1362_hcd *isp1362_hcd)
@@ -927,36 +888,36 @@ static void start_iso_transfers(struct isp1362_hcd *isp1362_hcd)
  fill2:
 	epq = &isp1362_hcd->istl_queue[flip];
 	if (atomic_read(&epq->finishing)) {
-		DBG(1, "%s: finish_transfers is active for %s\n", __FUNCTION__, epq->name);
+		DBG(1, "%s: finish_transfers is active for %s\n", __func__, epq->name);
 		return;
 	}
 
-	if (!list_empty(&epq->active)) {
+	if (!list_empty(&epq->active))
 		return;
-	}
 
 	ptd_offset = epq->buf_start;
 	list_for_each_entry_safe(ep, tmp, &isp1362_hcd->isoc, schedule) {
 		struct urb *urb = get_urb(ep);
 		s16 diff = fno - (u16)urb->start_frame;
 
-		DBG(1, "%s: Processing %s ep %p\n", __FUNCTION__, epq->name, ep);
+		DBG(1, "%s: Processing %s ep %p\n", __func__, epq->name, ep);
 
 		if (diff > urb->number_of_packets) {
-			// time frame for this URB has elapsed
+			/* time frame for this URB has elapsed */
 			finish_request(isp1362_hcd, ep, urb, -EOVERFLOW);
 			continue;
 		} else if (diff < -1) {
-			// URB is not due in this frame or the next one.
-			// Comparing with '-1' instead of '0' accounts for double
-			// buffering in the ISP1362 which enables us to queue the PTD
-			// one frame ahead of time
+			/* URB is not due in this frame or the next one.
+			 * Comparing with '-1' instead of '0' accounts for double
+			 * buffering in the ISP1362 which enables us to queue the PTD
+			 * one frame ahead of time
+			 */
 		} else if (diff == -1) {
-			// submit PTD's that are due in the next frame
+			/* submit PTD's that are due in the next frame */
 			prepare_ptd(isp1362_hcd, urb, ep, epq, fno);
 			if (ptd_offset + PTD_HEADER_SIZE + ep->length >
 			    epq->buf_start + epq->buf_size) {
-				ERR("%s: Not enough ISO buffer space for %d byte PTD\n",
+				pr_err("%s: Not enough ISO buffer space for %d byte PTD\n",
 				    __func__, ep->length);
 				continue;
 			}
@@ -965,30 +926,27 @@ static void start_iso_transfers(struct isp1362_hcd *isp1362_hcd)
 
 			ptd_offset = next_ptd(epq, ep);
 			if (ptd_offset < 0) {
-				WARN("%s: req %d No more %s PTD buffers available\n", __func__,
+				pr_warning("%s: req %d No more %s PTD buffers available\n", __func__,
 				     ep->num_req, epq->name);
 				break;
 			}
 		}
 	}
 	list_for_each_entry(ep, &epq->active, active) {
-		if (epq->active.next == &ep->active) {
+		if (epq->active.next == &ep->active)
 			ep->ptd.mps |= PTD_LAST_MSK;
-		}
 		isp1362_write_ptd(isp1362_hcd, ep, epq);
 		ptd_count++;
 	}
 
-	if (ptd_count) {
+	if (ptd_count)
 		enable_istl_transfers(isp1362_hcd, flip);
-	}
 
 	epq->ptd_count += ptd_count;
-	if (epq->ptd_count > epq->stat_maxptds) {
+	if (epq->ptd_count > epq->stat_maxptds)
 		epq->stat_maxptds = epq->ptd_count;
-	}
 
-	// check, whether the second ISTL buffer may also be filled
+	/* check, whether the second ISTL buffer may also be filled */
 	if (!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) &
 	      (flip ? HCBUFSTAT_ISTL0_FULL : HCBUFSTAT_ISTL1_FULL))) {
 		fno++;
@@ -1005,17 +963,17 @@ static void finish_transfers(struct isp1362_hcd *isp1362_hcd, unsigned long done
 	struct isp1362_ep *tmp;
 
 	if (list_empty(&epq->active)) {
-		DBG(1, "%s: Nothing to do for %s queue\n", __FUNCTION__, epq->name);
+		DBG(1, "%s: Nothing to do for %s queue\n", __func__, epq->name);
 		return;
 	}
 
-	DBG(1, "%s: Finishing %s transfers %08lx\n", __FUNCTION__, epq->name, done_map);
+	DBG(1, "%s: Finishing %s transfers %08lx\n", __func__, epq->name, done_map);
 
 	atomic_inc(&epq->finishing);
 	list_for_each_entry_safe(ep, tmp, &epq->active, active) {
 		int index = ep->ptd_index;
 
-		DBG(1, "%s: Checking %s PTD[%02x] $%04x\n", __FUNCTION__, epq->name,
+		DBG(1, "%s: Checking %s PTD[%02x] $%04x\n", __func__, epq->name,
 		    index, ep->ptd_offset);
 
 		BUG_ON(index < 0);
@@ -1025,24 +983,22 @@ static void finish_transfers(struct isp1362_hcd *isp1362_hcd, unsigned long done
 			BUG_ON(ep->num_ptds == 0);
 			release_ptd_buffers(epq, ep);
 
-			DBG(1, "%s: ep %p req %d removed from active list\n", __FUNCTION__,
+			DBG(1, "%s: ep %p req %d removed from active list\n", __func__,
 			    ep, ep->num_req);
 			if (!list_empty(&ep->remove_list)) {
 				list_del_init(&ep->remove_list);
-				DBG(1, "%s: ep %p removed from remove list\n", __FUNCTION__, ep);
+				DBG(1, "%s: ep %p removed from remove list\n", __func__, ep);
 			}
-			DBG(1, "%s: Postprocessing %s ep %p req %d\n", __FUNCTION__, epq->name,
+			DBG(1, "%s: Postprocessing %s ep %p req %d\n", __func__, epq->name,
 			    ep, ep->num_req);
 			postproc_ep(isp1362_hcd, ep);
 		}
-		if (!done_map) {
+		if (!done_map)
 			break;
-		}
 	}
-	if (done_map) {
-		WARN("%s: done_map not clear: %08lx:%08lx\n", __FUNCTION__, done_map,
+	if (done_map)
+		pr_warning("%s: done_map not clear: %08lx:%08lx\n", __func__, done_map,
 		     epq->skip_map);
-	}
 	atomic_dec(&epq->finishing);
 }
 
@@ -1052,18 +1008,18 @@ static void finish_iso_transfers(struct isp1362_hcd *isp1362_hcd, struct isp1362
 	struct isp1362_ep *tmp;
 
 	if (list_empty(&epq->active)) {
-		DBG(1, "%s: Nothing to do for %s queue\n", __FUNCTION__, epq->name);
+		DBG(1, "%s: Nothing to do for %s queue\n", __func__, epq->name);
 		return;
 	}
 
-	DBG(1, "%s: Finishing %s transfers\n", __FUNCTION__, epq->name);
+	DBG(1, "%s: Finishing %s transfers\n", __func__, epq->name);
 
 	atomic_inc(&epq->finishing);
 	list_for_each_entry_safe(ep, tmp, &epq->active, active) {
-		DBG(1, "%s: Checking PTD $%04x\n", __FUNCTION__, ep->ptd_offset);
+		DBG(1, "%s: Checking PTD $%04x\n", __func__, ep->ptd_offset);
 
 		isp1362_read_ptd(isp1362_hcd, ep, epq);
-		DBG(1, "%s: Postprocessing %s ep %p\n", __FUNCTION__, epq->name, ep);
+		DBG(1, "%s: Postprocessing %s ep %p\n", __func__, epq->name, ep);
 		postproc_ep(isp1362_hcd, ep);
 	}
 	WARN_ON(epq->blk_size != 0);
@@ -1084,9 +1040,9 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, 0);
 
 	irqstat = isp1362_read_reg16(isp1362_hcd, HCuPINT);
-	DBG(3, "%s: got IRQ %04x:%04x\n", __FUNCTION__, irqstat, isp1362_hcd->irqenb);
+	DBG(3, "%s: got IRQ %04x:%04x\n", __func__, irqstat, isp1362_hcd->irqenb);
 
-	// only handle interrupts that are currently enabled
+	/* only handle interrupts that are currently enabled */
 	irqstat &= isp1362_hcd->irqenb;
 	isp1362_write_reg16(isp1362_hcd, HCuPINT, irqstat);
 	svc_mask = irqstat;
@@ -1096,11 +1052,10 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		isp1362_hcd->irq_stat[ISP1362_INT_SOF]++;
 		handled = 1;
 		svc_mask &= ~HCuPINT_SOF;
-		DBG(3, "%s: SOF\n", __FUNCTION__);
+		DBG(3, "%s: SOF\n", __func__);
 		isp1362_hcd->fmindex = isp1362_read_reg32(isp1362_hcd, HCFMNUM);
-		if (!list_empty(&isp1362_hcd->remove_list)) {
+		if (!list_empty(&isp1362_hcd->remove_list))
 			finish_unlinks(isp1362_hcd);
-		}
 		if (!list_empty(&isp1362_hcd->async) && !(irqstat & HCuPINT_ATL)) {
 			if (list_empty(&isp1362_hcd->atl_queue.active)) {
 				start_atl_transfers(isp1362_hcd);
@@ -1118,10 +1073,10 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		handled = 1;
 		svc_mask &= ~HCuPINT_ISTL0;
 		isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ISTL0_FULL);
-		DBG(1, "%s: ISTL0\n", __FUNCTION__);
+		DBG(1, "%s: ISTL0\n", __func__);
 		WARN_ON((int)!!isp1362_hcd->istl_flip);
 		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL0_ACTIVE);
-		WARN_ON(!isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL0_DONE);
+		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL0_DONE));
 		isp1362_hcd->irqenb &= ~HCuPINT_ISTL0;
 	}
 
@@ -1130,10 +1085,10 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		handled = 1;
 		svc_mask &= ~HCuPINT_ISTL1;
 		isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ISTL1_FULL);
-		DBG(1, "%s: ISTL1\n", __FUNCTION__);
+		DBG(1, "%s: ISTL1\n", __func__);
 		WARN_ON(!(int)isp1362_hcd->istl_flip);
 		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL1_ACTIVE);
-		WARN_ON(!isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL1_DONE);
+		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL1_DONE));
 		isp1362_hcd->irqenb &= ~HCuPINT_ISTL1;
 	}
 
@@ -1151,15 +1106,14 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		u32 skip_map = isp1362_read_reg32(isp1362_hcd, HCINTLSKIP);
 		isp1362_hcd->irq_stat[ISP1362_INT_INTL]++;
 
-		DBG(2, "%s: INTL\n", __FUNCTION__);
+		DBG(2, "%s: INTL\n", __func__);
 
 		svc_mask &= ~HCuPINT_INTL;
 
 		isp1362_write_reg32(isp1362_hcd, HCINTLSKIP, skip_map | done_map);
-		if (~(done_map | skip_map) == 0) {
-			// All PTDs are finished, disable INTL processing entirely
+		if (~(done_map | skip_map) == 0)
+			/* All PTDs are finished, disable INTL processing entirely */
 			isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_INTL_ACTIVE);
-		}
 
 		handled = 1;
 		WARN_ON(!done_map);
@@ -1175,14 +1129,13 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		u32 skip_map = isp1362_read_reg32(isp1362_hcd, HCATLSKIP);
 		isp1362_hcd->irq_stat[ISP1362_INT_ATL]++;
 
-		DBG(2, "%s: ATL\n", __FUNCTION__);
+		DBG(2, "%s: ATL\n", __func__);
 
 		svc_mask &= ~HCuPINT_ATL;
 
 		isp1362_write_reg32(isp1362_hcd, HCATLSKIP, skip_map | done_map);
-		if (~(done_map | skip_map) == 0) {
+		if (~(done_map | skip_map) == 0)
 			isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ATL_ACTIVE);
-		}
 		if (done_map) {
 			DBG(3, "%s: ATL done_map %08x\n", __func__, done_map);
 			finish_transfers(isp1362_hcd, done_map, &isp1362_hcd->atl_queue);
@@ -1196,11 +1149,11 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		isp1362_hcd->irq_stat[ISP1362_INT_OPR]++;
 
 		svc_mask &= ~HCuPINT_OPR;
-		DBG(2, "%s: OPR %08x:%08x\n", __FUNCTION__, intstat, isp1362_hcd->intenb);
+		DBG(2, "%s: OPR %08x:%08x\n", __func__, intstat, isp1362_hcd->intenb);
 		intstat &= isp1362_hcd->intenb;
 		if (intstat & OHCI_INTR_UE) {
-			ERR("Unrecoverable error\n");
-			// FIXME: do here reset or cleanup or whatever
+			pr_err("Unrecoverable error\n");
+			/* FIXME: do here reset or cleanup or whatever */
 		}
 		if (intstat & OHCI_INTR_RHSC) {
 			isp1362_hcd->rhstatus = isp1362_read_reg32(isp1362_hcd, HCRHSTATUS);
@@ -1208,7 +1161,7 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 			isp1362_hcd->rhport[1] = isp1362_read_reg32(isp1362_hcd, HCRHPORT2);
 		}
 		if (intstat & OHCI_INTR_RD) {
-			INFO("%s: RESUME DETECTED\n", __FUNCTION__);
+			pr_info("%s: RESUME DETECTED\n", __func__);
 			isp1362_show_reg(isp1362_hcd, HCCONTROL);
 			usb_hcd_resume_root_hub(hcd);
 		}
@@ -1222,7 +1175,7 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		handled = 1;
 		svc_mask &= ~HCuPINT_SUSP;
 
-		INFO("%s: SUSPEND IRQ\n", __FUNCTION__);
+		pr_info("%s: SUSPEND IRQ\n", __func__);
 	}
 
 	if (irqstat & HCuPINT_CLKRDY) {
@@ -1230,12 +1183,12 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		handled = 1;
 		isp1362_hcd->irqenb &= ~HCuPINT_CLKRDY;
 		svc_mask &= ~HCuPINT_CLKRDY;
-		INFO("%s: CLKRDY IRQ\n", __FUNCTION__);
+		pr_info("%s: CLKRDY IRQ\n", __func__);
 	}
 
-	if (svc_mask) {
-		ERR("%s: Unserviced interrupt(s) %04x\n", __func__, svc_mask);
-	}
+	if (svc_mask)
+		pr_err("%s: Unserviced interrupt(s) %04x\n", __func__, svc_mask);
+
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, isp1362_hcd->irqenb);
 	isp1362_hcd->irq_active--;
 	spin_unlock(&isp1362_hcd->lock);
@@ -1245,27 +1198,27 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 
 /*-------------------------------------------------------------------------*/
 
-#define	MAX_PERIODIC_LOAD	900	// out of 1000 usec
+#define	MAX_PERIODIC_LOAD	900	/* out of 1000 usec */
 static int balance(struct isp1362_hcd *isp1362_hcd, u16 interval, u16 load)
 {
 	int i, branch = -ENOSPC;
 
-	// search for the least loaded schedule branch of that interval
-	// which has enough bandwidth left unreserved.
+	/* search for the least loaded schedule branch of that interval
+	 * which has enough bandwidth left unreserved.
+	 */
 	for (i = 0; i < interval; i++) {
 		if (branch < 0 || isp1362_hcd->load[branch] > isp1362_hcd->load[i]) {
 			int j;
 
 			for (j = i; j < PERIODIC_SIZE; j += interval) {
 				if ((isp1362_hcd->load[j] + load) > MAX_PERIODIC_LOAD) {
-					ERR("%s: new load %d load[%02x] %d max %d\n", __FUNCTION__,
+					pr_err("%s: new load %d load[%02x] %d max %d\n", __func__,
 					    load, j, isp1362_hcd->load[j], MAX_PERIODIC_LOAD);
 					break;
 				}
 			}
-			if (j < PERIODIC_SIZE) {
+			if (j < PERIODIC_SIZE)
 				continue;
-			}
 			branch = i;
 		}
 	}
@@ -1296,31 +1249,23 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 	DBG(3, "%s: urb %p\n", __func__, urb);
 
 	if (type == PIPE_ISOCHRONOUS) {
-		ERR("Isochronous transfers not supported\n");
+		pr_err("Isochronous transfers not supported\n");
 		return -ENOSPC;
 	}
 
 	URB_DBG("%s: FA %d ep%d%s %s: len %d %s%s\n", __func__,
 		usb_pipedevice(pipe), epnum,
 		is_out ? "out" : "in",
-		({
-			char *s;
-			if (usb_pipecontrol(pipe)) {
-				s = "ctrl";
-			} else if(usb_pipeint(pipe)) {
-				s = "int";
-			} else if(usb_pipebulk(pipe)) {
-				s = "bulk";
-			} else {
-				s = "iso";
-			}
-			s;}),
+		usb_pipecontrol(pipe) ? "ctrl" :
+			usb_pipeint(pipe) ? "int" :
+			usb_pipebulk(pipe) ? "bulk" :
+			"iso",
 		urb->transfer_buffer_length,
 		(urb->transfer_flags & URB_ZERO_PACKET) ? "ZERO_PACKET " : "",
 		!(urb->transfer_flags & URB_SHORT_NOT_OK) ?
 		"short_ok" : "");
 
-	// avoid all allocations within spinlocks: request or endpoint
+	/* avoid all allocations within spinlocks: request or endpoint */
 	if (!hep->hcpriv) {
 		ep = kcalloc(1, sizeof *ep, mem_flags);
 		if (!ep)
@@ -1357,20 +1302,18 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 		ep->ptd_index = -EINVAL;
 		usb_settoggle(udev, epnum, is_out, 0);
 
-		if (type == PIPE_CONTROL) {
+		if (type == PIPE_CONTROL)
 			ep->nextpid = USB_PID_SETUP;
-		} else if (is_out) {
+		else if (is_out)
 			ep->nextpid = USB_PID_OUT;
-		} else {
+		else
 			ep->nextpid = USB_PID_IN;
-		}
 
 		switch (type) {
 		case PIPE_ISOCHRONOUS:
 		case PIPE_INTERRUPT:
-			if (urb->interval > PERIODIC_SIZE) {
+			if (urb->interval > PERIODIC_SIZE)
 				urb->interval = PERIODIC_SIZE;
-			}
 			ep->interval = urb->interval;
 			ep->branch = PERIODIC_SIZE;
 			ep->load = usb_calc_bus_time(udev->speed, !is_out,
@@ -1388,7 +1331,7 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 	case PIPE_BULK:
 		if (list_empty(&ep->schedule)) {
 			DBG(1, "%s: Adding ep %p req %d to async schedule\n",
-				__FUNCTION__, ep, ep->num_req);
+				__func__, ep, ep->num_req);
 			list_add_tail(&ep->schedule, &isp1362_hcd->async);
 		}
 		break;
@@ -1396,21 +1339,20 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 	case PIPE_INTERRUPT:
 		urb->interval = ep->interval;
 
-		// urb submitted for already existing EP
-		if (ep->branch < PERIODIC_SIZE) {
+		/* urb submitted for already existing EP */
+		if (ep->branch < PERIODIC_SIZE)
 			break;
-		}
 
 		retval = balance(isp1362_hcd, ep->interval, ep->load);
 		if (retval < 0) {
-			ERR("%s: balance returned %d\n", __FUNCTION__, retval);
+			pr_err("%s: balance returned %d\n", __func__, retval);
 			goto fail;
 		}
 		ep->branch = retval;
 		retval = 0;
 		isp1362_hcd->fmindex = isp1362_read_reg32(isp1362_hcd, HCFMNUM);
 		DBG(1, "%s: Current frame %04x branch %02x start_frame %04x(%04x)\n",
-		    __FUNCTION__, isp1362_hcd->fmindex, ep->branch,
+		    __func__, isp1362_hcd->fmindex, ep->branch,
 		    ((isp1362_hcd->fmindex + PERIODIC_SIZE - 1) &
 		     ~(PERIODIC_SIZE - 1)) + ep->branch,
 		    (isp1362_hcd->fmindex & (PERIODIC_SIZE - 1)) + ep->branch);
@@ -1422,9 +1364,8 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 				frame += max_t(u16, 8, ep->interval);
 				frame &= ~(ep->interval - 1);
 				frame |= ep->branch;
-				if (frame_before(frame, isp1362_hcd->fmindex)) {
+				if (frame_before(frame, isp1362_hcd->fmindex))
 					frame += ep->interval;
-				}
 				urb->start_frame = frame;
 
 				DBG(1, "%s: Adding ep %p to isoc schedule\n", __func__, ep);
@@ -1433,10 +1374,10 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 				DBG(1, "%s: Adding ep %p to periodic schedule\n", __func__, ep);
 				list_add_tail(&ep->schedule, &isp1362_hcd->periodic);
 			}
-		} else {
+		} else
 			DBG(1, "%s: ep %p already scheduled\n", __func__, ep);
-		}
-		DBG(2, "%s: load %d bandwidth %d -> %d\n", __FUNCTION__,
+
+		DBG(2, "%s: load %d bandwidth %d -> %d\n", __func__,
 		    ep->load / ep->interval, isp1362_hcd->load[ep->branch],
 		    isp1362_hcd->load[ep->branch] + ep->load);
 		isp1362_hcd->load[ep->branch] += ep->load;
@@ -1466,9 +1407,8 @@ static int isp1362_urb_enqueue(struct usb_hcd *hcd,
 
  fail_not_linked:
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
-	if (retval) {
-		DBG(0, "%s: urb %p failed with %d\n", __FUNCTION__, urb, retval);
-	}
+	if (retval)
+		DBG(0, "%s: urb %p failed with %d\n", __func__, urb, retval);
 	return retval;
 }
 
@@ -1485,7 +1425,7 @@ static int isp1362_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	retval = usb_hcd_check_unlink_urb(hcd, urb, status);
 	if (retval)
-	    goto done;
+		goto done;
 
 	hep = urb->hcpriv;
 
@@ -1496,12 +1436,12 @@ static int isp1362_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 
 	ep = hep->hcpriv;
 	if (ep) {
-		// In front of queue?
+		/* In front of queue? */
 		if (ep->hep->urb_list.next == &urb->urb_list) {
 			if (!list_empty(&ep->active)) {
 				DBG(1, "%s: urb %p ep %p req %d active PTD[%d] $%04x\n", __func__,
 				    urb, ep, ep->num_req, ep->ptd_index, ep->ptd_offset);
-				// disable processing and queue PTD for removal
+				/* disable processing and queue PTD for removal */
 				remove_ptd(isp1362_hcd, ep);
 				urb = NULL;
 			}
@@ -1510,17 +1450,16 @@ static int isp1362_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			DBG(1, "%s: Finishing ep %p req %d\n", __func__, ep,
 			    ep->num_req);
 			finish_request(isp1362_hcd, ep, urb, status);
-		} else {
+		} else
 			DBG(1, "%s: urb %p active; wait4irq\n", __func__, urb);
-		}
 	} else {
-		WARN("%s: No EP in URB %p\n", __FUNCTION__, urb);
+		pr_warning("%s: No EP in URB %p\n", __func__, urb);
 		retval = -EINVAL;
 	}
 done:
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 
-	DBG(3, "%s: exit\n",__func__);
+	DBG(3, "%s: exit\n", __func__);
 
 	return retval;
 }
@@ -1532,25 +1471,23 @@ static void isp1362_endpoint_disable(struct usb_hcd *hcd, struct usb_host_endpoi
 	unsigned long flags;
 
 	DBG(1, "%s: ep %p\n", __func__, ep);
-	if (!ep) {
+	if (!ep)
 		return;
-	}
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	if (!list_empty(&hep->urb_list)) {
 		if (!list_empty(&ep->active) && list_empty(&ep->remove_list)) {
-			DBG(1, "%s: Removing ep %p req %d PTD[%d] $%04x\n", __FUNCTION__,
+			DBG(1, "%s: Removing ep %p req %d PTD[%d] $%04x\n", __func__,
 			    ep, ep->num_req, ep->ptd_index, ep->ptd_offset);
 			remove_ptd(isp1362_hcd, ep);
-			INFO("%s: Waiting for Interrupt to clean up\n", __FUNCTION__);
+			pr_info("%s: Waiting for Interrupt to clean up\n", __func__);
 		}
 	}
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
-	// Wait for interrupt to clear out active list
-	while (!list_empty(&ep->active)) {
+	/* Wait for interrupt to clear out active list */
+	while (!list_empty(&ep->active))
 		msleep(1);
-	}
 
-	DBG(1, "%s: Freeing EP %p\n", __FUNCTION__, ep);
+	DBG(1, "%s: Freeing EP %p\n", __func__, ep);
 
 	usb_put_dev(ep->udev);
 	kfree(ep);
@@ -1572,17 +1509,15 @@ static int isp1362_get_frame(struct usb_hcd *hcd)
 
 /*-------------------------------------------------------------------------*/
 
-static int isp1362_bus_suspend(struct usb_hcd *hcd);
-// Adapted from ohci-hub.c
+/* Adapted from ohci-hub.c */
 static int isp1362_hub_status_data(struct usb_hcd *hcd, char *buf)
 {
 	struct isp1362_hcd *isp1362_hcd = hcd_to_isp1362_hcd(hcd);
 	int ports, i, changed = 0;
 	unsigned long flags;
 
-	if (!HC_IS_RUNNING(hcd->state)) {
+	if (!HC_IS_RUNNING(hcd->state))
 		return -ESHUTDOWN;
-	}
 
 	/* Report no status change now, if we are scheduled to be
 	   called later */
@@ -1594,11 +1529,10 @@ static int isp1362_hub_status_data(struct usb_hcd *hcd, char *buf)
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	/* init status */
-	if (isp1362_hcd->rhstatus & (RH_HS_LPSC | RH_HS_OCIC)) {
+	if (isp1362_hcd->rhstatus & (RH_HS_LPSC | RH_HS_OCIC))
 		buf[0] = changed = 1;
-	} else {
+	else
 		buf[0] = 0;
-	}
 
 	for (i = 0; i < ports; i++) {
 		u32 status = isp1362_hcd->rhport[i];
@@ -1610,9 +1544,8 @@ static int isp1362_hub_status_data(struct usb_hcd *hcd, char *buf)
 			continue;
 		}
 
-		if (!(status & RH_PS_CCS)) {
+		if (!(status & RH_PS_CCS))
 			continue;
-		}
 	}
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 	return changed;
@@ -1629,18 +1562,18 @@ static void isp1362_hub_descriptor(struct isp1362_hcd *isp1362_hcd,
 	desc->bDescLength = 9;
 	desc->bHubContrCurrent = 0;
 	desc->bNbrPorts = reg & 0x3;
-	// Power switching, device type, overcurrent.
+	/* Power switching, device type, overcurrent. */
 	desc->wHubCharacteristics = cpu_to_le16((reg >> 8) & 0x1f);
-	DBG(0, "%s: hubcharacteristics = %02x\n", __FUNCTION__, cpu_to_le16((reg >> 8) & 0x1f));
+	DBG(0, "%s: hubcharacteristics = %02x\n", __func__, cpu_to_le16((reg >> 8) & 0x1f));
 	desc->bPwrOn2PwrGood = (reg >> 24) & 0xff;
-	// two bitmaps:  ports removable, and legacy PortPwrCtrlMask
+	/* two bitmaps:  ports removable, and legacy PortPwrCtrlMask */
 	desc->bitmap[0] = desc->bNbrPorts == 1 ? 1 << 1 : 3 << 1;
 	desc->bitmap[1] = ~0;
 
 	DBG(3, "%s: exit\n", __func__);
 }
 
-// Adapted from ohci-hub.c
+/* Adapted from ohci-hub.c */
 static int isp1362_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			       u16 wIndex, char *buf, u16 wLength)
 {
@@ -1684,23 +1617,21 @@ static int isp1362_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		break;
 	case GetHubStatus:
 		DBG(0, "GetHubStatus\n");
-		put_unaligned (cpu_to_le32(0), (__le32 *) buf);
+		put_unaligned(cpu_to_le32(0), (__le32 *) buf);
 		break;
 	case GetPortStatus:
 #ifndef VERBOSE
 		DBG(0, "GetPortStatus\n");
 #endif
-		if (!wIndex || wIndex > ports) {
+		if (!wIndex || wIndex > ports)
 			goto error;
-		}
 		tmp = isp1362_hcd->rhport[--wIndex];
-		put_unaligned (cpu_to_le32(tmp), (__le32 *) buf);
+		put_unaligned(cpu_to_le32(tmp), (__le32 *) buf);
 		break;
 	case ClearPortFeature:
 		DBG(0, "ClearPortFeature: ");
-		if (!wIndex || wIndex > ports) {
+		if (!wIndex || wIndex > ports)
 			goto error;
-		}
 		wIndex--;
 
 		switch (wValue) {
@@ -1749,9 +1680,8 @@ static int isp1362_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		break;
 	case SetPortFeature:
 		DBG(0, "SetPortFeature: ");
-		if (!wIndex || wIndex > ports) {
+		if (!wIndex || wIndex > ports)
 			goto error;
-		}
 		wIndex--;
 		switch (wValue) {
 		case USB_PORT_FEAT_SUSPEND:
@@ -1783,18 +1713,16 @@ static int isp1362_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 
 			t1 = jiffies + msecs_to_jiffies(USB_RESET_WIDTH);
 			while (time_before(jiffies, t1)) {
-				// spin until any current reset finishes
+				/* spin until any current reset finishes */
 				for (;;) {
 					tmp = isp1362_read_reg32(isp1362_hcd, HCRHPORT1 + wIndex);
-					if (!(tmp & RH_PS_PRS)) {
+					if (!(tmp & RH_PS_PRS))
 						break;
-					}
 					udelay(500);
 				}
-				if (!(tmp & RH_PS_CCS)) {
+				if (!(tmp & RH_PS_CCS))
 					break;
-				}
-				// Reset lasts 10ms (claims datasheet)
+				/* Reset lasts 10ms (claims datasheet) */
 				isp1362_write_reg32(isp1362_hcd, HCRHPORT1 + wIndex, (RH_PS_PRS));
 
 				spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
@@ -1812,7 +1740,7 @@ static int isp1362_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		break;
 
 	default:
-	error:
+ error:
 		/* "protocol stall" on error */
 		_DBG(0, "PROTOCOL STALL\n");
 		retval = -EPIPE;
@@ -1828,29 +1756,28 @@ static int isp1362_bus_suspend(struct usb_hcd *hcd)
 	struct isp1362_hcd *isp1362_hcd = hcd_to_isp1362_hcd(hcd);
 	unsigned long flags;
 
-	if (time_before(jiffies, isp1362_hcd->next_statechange)) {
+	if (time_before(jiffies, isp1362_hcd->next_statechange))
 		msleep(5);
-	}
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 
 	isp1362_hcd->hc_control = isp1362_read_reg32(isp1362_hcd, HCCONTROL);
 	switch (isp1362_hcd->hc_control & OHCI_CTRL_HCFS) {
 	case OHCI_USB_RESUME:
-		DBG(0, "%s: resume/suspend?\n", __FUNCTION__);
+		DBG(0, "%s: resume/suspend?\n", __func__);
 		isp1362_hcd->hc_control &= ~OHCI_CTRL_HCFS;
 		isp1362_hcd->hc_control |= OHCI_USB_RESET;
 		isp1362_write_reg32(isp1362_hcd, HCCONTROL, isp1362_hcd->hc_control);
 		/* FALL THROUGH */
 	case OHCI_USB_RESET:
 		status = -EBUSY;
-		WARN("%s: needs reinit!\n", __FUNCTION__);
+		pr_warning("%s: needs reinit!\n", __func__);
 		goto done;
 	case OHCI_USB_SUSPEND:
-		WARN("%s: already suspended?\n", __FUNCTION__);
+		pr_warning("%s: already suspended?\n", __func__);
 		goto done;
 	}
-	DBG(0, "%s: suspend root hub\n", __FUNCTION__);
+	DBG(0, "%s: suspend root hub\n", __func__);
 
 	/* First stop any processing */
 	hcd->state = HC_STATE_QUIESCING;
@@ -1866,14 +1793,13 @@ static int isp1362_bus_suspend(struct usb_hcd *hcd)
 		isp1362_write_reg16(isp1362_hcd, HCuPINTENB, 0);
 		isp1362_write_reg32(isp1362_hcd, HCINTSTAT, OHCI_INTR_SF);
 
-		DBG(0, "%s: stopping schedules ...\n", __FUNCTION__);
+		DBG(0, "%s: stopping schedules ...\n", __func__);
 		limit = 2000;
 		while (limit > 0) {
 			udelay(250);
-			limit =- 250;
-			if (isp1362_read_reg32(isp1362_hcd, HCINTSTAT) & OHCI_INTR_SF) {
+			limit -= 250;
+			if (isp1362_read_reg32(isp1362_hcd, HCINTSTAT) & OHCI_INTR_SF)
 				break;
-			}
 		}
 		mdelay(7);
 		if (isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_ATL) {
@@ -1884,14 +1810,12 @@ static int isp1362_bus_suspend(struct usb_hcd *hcd)
 			u32 done_map = isp1362_read_reg32(isp1362_hcd, HCINTLDONE);
 			finish_transfers(isp1362_hcd, done_map, &isp1362_hcd->intl_queue);
 		}
-		if (isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_ISTL0) {
+		if (isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_ISTL0)
 			finish_iso_transfers(isp1362_hcd, &isp1362_hcd->istl_queue[0]);
-		}
-		if (isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_ISTL1) {
+		if (isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_ISTL1)
 			finish_iso_transfers(isp1362_hcd, &isp1362_hcd->istl_queue[1]);
-		}
 	}
-	DBG(0, "%s: HCINTSTAT: %08x\n", __FUNCTION__,
+	DBG(0, "%s: HCINTSTAT: %08x\n", __func__,
 		    isp1362_read_reg32(isp1362_hcd, HCINTSTAT));
 	isp1362_write_reg32(isp1362_hcd, HCINTSTAT,
 			    isp1362_read_reg32(isp1362_hcd, HCINTSTAT));
@@ -1905,20 +1829,19 @@ static int isp1362_bus_suspend(struct usb_hcd *hcd)
 #if 1
 	isp1362_hcd->hc_control = isp1362_read_reg32(isp1362_hcd, HCCONTROL);
 	if ((isp1362_hcd->hc_control & OHCI_CTRL_HCFS) != OHCI_USB_SUSPEND) {
-		ERR("%s: controller won't suspend %08x\n", __FUNCTION__,
+		pr_err("%s: controller won't suspend %08x\n", __func__,
 		    isp1362_hcd->hc_control);
 		status = -EBUSY;
-	} else {
-#else
-	if (1) {
+	} else
 #endif
+	{
 		/* no resumes until devices finish suspending */
 		isp1362_hcd->next_statechange = jiffies + msecs_to_jiffies(5);
 	}
 done:
 	if (status == 0) {
 		hcd->state = HC_STATE_SUSPENDED;
-		DBG(0, "%s: HCD suspended: %08x\n", __FUNCTION__,
+		DBG(0, "%s: HCD suspended: %08x\n", __func__,
 		    isp1362_read_reg32(isp1362_hcd, HCCONTROL));
 	}
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
@@ -1932,45 +1855,44 @@ static int isp1362_bus_resume(struct usb_hcd *hcd)
 	unsigned long flags;
 	int status = -EINPROGRESS;
 
-	if (time_before(jiffies, isp1362_hcd->next_statechange)) {
+	if (time_before(jiffies, isp1362_hcd->next_statechange))
 		msleep(5);
-	}
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	isp1362_hcd->hc_control = isp1362_read_reg32(isp1362_hcd, HCCONTROL);
-	INFO("%s: HCCONTROL: %08x\n", __FUNCTION__, isp1362_hcd->hc_control);
+	pr_info("%s: HCCONTROL: %08x\n", __func__, isp1362_hcd->hc_control);
 	if (hcd->state == HC_STATE_RESUMING) {
-		WARN("%s: duplicate resume\n", __FUNCTION__);
+		pr_warning("%s: duplicate resume\n", __func__);
 		status = 0;
-	} else switch (isp1362_hcd->hc_control & OHCI_CTRL_HCFS) {
-	case OHCI_USB_SUSPEND:
-		DBG(0, "%s: resume root hub\n", __FUNCTION__);
-		isp1362_hcd->hc_control &= ~OHCI_CTRL_HCFS;
-		isp1362_hcd->hc_control |= OHCI_USB_RESUME;
-		isp1362_write_reg32(isp1362_hcd, HCCONTROL, isp1362_hcd->hc_control);
-		break;
-	case OHCI_USB_RESUME:
-		/* HCFS changes sometime after INTR_RD */
-		DBG(0, "%s: remote wakeup\n", __FUNCTION__);
-		break;
-	case OHCI_USB_OPER:
-		DBG(0, "%s: odd resume\n", __FUNCTION__);
-		status = 0;
-		hcd->self.root_hub->dev.power.power_state = PMSG_ON;
-		break;
-	default:		/* RESET, we lost power */
-		DBG(0, "%s: root hub hardware reset\n", __FUNCTION__);
-		status = -EBUSY;
-	}
+	} else
+		switch (isp1362_hcd->hc_control & OHCI_CTRL_HCFS) {
+		case OHCI_USB_SUSPEND:
+			DBG(0, "%s: resume root hub\n", __func__);
+			isp1362_hcd->hc_control &= ~OHCI_CTRL_HCFS;
+			isp1362_hcd->hc_control |= OHCI_USB_RESUME;
+			isp1362_write_reg32(isp1362_hcd, HCCONTROL, isp1362_hcd->hc_control);
+			break;
+		case OHCI_USB_RESUME:
+			/* HCFS changes sometime after INTR_RD */
+			DBG(0, "%s: remote wakeup\n", __func__);
+			break;
+		case OHCI_USB_OPER:
+			DBG(0, "%s: odd resume\n", __func__);
+			status = 0;
+			hcd->self.root_hub->dev.power.power_state = PMSG_ON;
+			break;
+		default:		/* RESET, we lost power */
+			DBG(0, "%s: root hub hardware reset\n", __func__);
+			status = -EBUSY;
+		}
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 	if (status == -EBUSY) {
-		DBG(0, "%s: Restarting HC\n", __FUNCTION__);
+		DBG(0, "%s: Restarting HC\n", __func__);
 		isp1362_hc_stop(hcd);
 		return isp1362_hc_start(hcd);
 	}
-	if (status != -EINPROGRESS) {
+	if (status != -EINPROGRESS)
 		return status;
-	}
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	port = isp1362_read_reg32(isp1362_hcd, HCRHDESCA) & RH_A_NDP;
 	while (port--) {
@@ -1978,10 +1900,10 @@ static int isp1362_bus_resume(struct usb_hcd *hcd)
 
 		/* force global, not selective, resume */
 		if (!(stat & RH_PS_PSS)) {
-			DBG(0, "%s: Not Resuming RH port %d\n", __FUNCTION__, port);
+			DBG(0, "%s: Not Resuming RH port %d\n", __func__, port);
 			continue;
 		}
-		DBG(0, "%s: Resuming RH port %d\n", __FUNCTION__, port);
+		DBG(0, "%s: Resuming RH port %d\n", __func__, port);
 		isp1362_write_reg32(isp1362_hcd, HCRHPORT1 + port, RH_PS_POCI);
 	}
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
@@ -2189,7 +2111,7 @@ static int proc_isp1362_show(struct seq_file *s, void *unused)
 		   max(isp1362_hcd->istl_queue[0] .stat_maxptds,
 		       isp1362_hcd->istl_queue[1] .stat_maxptds));
 
-	// FIXME: don't show the following in suspended state
+	/* FIXME: don't show the following in suspended state */
 	spin_lock_irq(&isp1362_hcd->lock);
 
 	dump_irq(s, "hc_irq_enable", isp1362_read_reg16(isp1362_hcd, HCuPINTENB));
@@ -2198,12 +2120,10 @@ static int proc_isp1362_show(struct seq_file *s, void *unused)
 	dump_int(s, "ohci_int_status", isp1362_read_reg32(isp1362_hcd, HCINTSTAT));
 	dump_ctrl(s, "ohci_control", isp1362_read_reg32(isp1362_hcd, HCCONTROL));
 
-	for (i = 0; i < NUM_ISP1362_IRQS; i++) {
-		if (isp1362_hcd->irq_stat[i]) {
+	for (i = 0; i < NUM_ISP1362_IRQS; i++)
+		if (isp1362_hcd->irq_stat[i])
 			seq_printf(s, "%-15s: %d\n",
 				   ISP1362_INT_NAME(i), isp1362_hcd->irq_stat[i]);
-		}
-	}
 
 	dump_regs(s, isp1362_hcd);
 	list_for_each_entry(ep, &isp1362_hcd->async, schedule) {
@@ -2236,9 +2156,8 @@ static int proc_isp1362_show(struct seq_file *s, void *unused)
 				   urb->transfer_buffer_length);
 		}
 	}
-	if (!list_empty(&isp1362_hcd->async)) {
+	if (!list_empty(&isp1362_hcd->async))
 		seq_printf(s, "\n");
-	}
 	dump_ptd_queue(&isp1362_hcd->atl_queue);
 
 	seq_printf(s, "periodic size= %d\n", PERIODIC_SIZE);
@@ -2280,7 +2199,7 @@ static int proc_isp1362_open(struct inode *inode, struct file *file)
 	return single_open(file, proc_isp1362_show, PDE(inode)->data);
 }
 
-static struct file_operations proc_ops = {
+static const struct file_operations proc_ops = {
 	.open = proc_isp1362_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
@@ -2296,7 +2215,7 @@ static void create_debug_file(struct isp1362_hcd *isp1362_hcd)
 
 	pde = create_proc_entry(proc_filename, 0, NULL);
 	if (pde == NULL) {
-		WARN("%s: Failed to create debug file '%s'\n", __FUNCTION__, proc_filename);
+		pr_warning("%s: Failed to create debug file '%s'\n", __func__, proc_filename);
 		return;
 	}
 
@@ -2307,9 +2226,8 @@ static void create_debug_file(struct isp1362_hcd *isp1362_hcd)
 
 static void remove_debug_file(struct isp1362_hcd *isp1362_hcd)
 {
-	if (isp1362_hcd->pde) {
+	if (isp1362_hcd->pde)
 		remove_proc_entry(proc_filename, 0);
-	}
 }
 
 #endif
@@ -2327,13 +2245,11 @@ static void isp1362_sw_reset(struct isp1362_hcd *isp1362_hcd)
 	isp1362_write_reg32(isp1362_hcd, HCCMDSTAT, OHCI_HCR);
 	while (--tmp) {
 		mdelay(1);
-		if (!(isp1362_read_reg32(isp1362_hcd, HCCMDSTAT) & OHCI_HCR)) {
+		if (!(isp1362_read_reg32(isp1362_hcd, HCCMDSTAT) & OHCI_HCR))
 			break;
-		}
 	}
-	if (!tmp) {
-		ERR("Software reset timeout\n");
-	}
+	if (!tmp)
+		pr_err("Software reset timeout\n");
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 }
 
@@ -2357,18 +2273,17 @@ static int isp1362_mem_config(struct usb_hcd *hcd)
 	WARN_ON(intl_blksize < PTD_HEADER_SIZE);
 
 	BUG_ON((unsigned)ISP1362_INTL_BUFFERS > 32);
-	if (atl_buffers > 32) {
+	if (atl_buffers > 32)
 		atl_buffers = 32;
-	}
 	atl_size = atl_buffers * atl_blksize;
 	total = atl_size + intl_size + istl_size;
 	dev_info(hcd->self.controller, "ISP1362 Memory usage:\n");
 	dev_info(hcd->self.controller, "  ISTL:    2 * %4d:     %4d @ $%04x:$%04x\n",
 		 istl_size / 2, istl_size, 0, istl_size / 2);
-	dev_info(hcd->self.controller, "  INTL: %4d * (%3ld+8):  %4d @ $%04x\n",
+	dev_info(hcd->self.controller, "  INTL: %4d * (%3lu+8):  %4d @ $%04x\n",
 		 ISP1362_INTL_BUFFERS, intl_blksize - PTD_HEADER_SIZE,
 		 intl_size, istl_size);
-	dev_info(hcd->self.controller, "  ATL : %4d * (%3ld+8):  %4d @ $%04x\n",
+	dev_info(hcd->self.controller, "  ATL : %4d * (%3lu+8):  %4d @ $%04x\n",
 		 atl_buffers, atl_blksize - PTD_HEADER_SIZE,
 		 atl_size, istl_size + intl_size);
 	dev_info(hcd->self.controller, "  USED/FREE:   %4d      %4d\n", total,
@@ -2376,7 +2291,7 @@ static int isp1362_mem_config(struct usb_hcd *hcd)
 
 	if (total > ISP1362_BUF_SIZE) {
 		dev_err(hcd->self.controller, "%s: Memory requested: %d, available %d\n",
-			__FUNCTION__, total, ISP1362_BUF_SIZE);
+			__func__, total, ISP1362_BUF_SIZE);
 		return -ENOMEM;
 	}
 
@@ -2390,7 +2305,7 @@ static int isp1362_mem_config(struct usb_hcd *hcd)
 		INIT_LIST_HEAD(&isp1362_hcd->istl_queue[i].active);
 		snprintf(isp1362_hcd->istl_queue[i].name,
 			 sizeof(isp1362_hcd->istl_queue[i].name), "ISTL%d", i);
-		DBG(3, "%s: %5s buf $%04x %d\n", __FUNCTION__,
+		DBG(3, "%s: %5s buf $%04x %d\n", __func__,
 		     isp1362_hcd->istl_queue[i].name,
 		     isp1362_hcd->istl_queue[i].buf_start,
 		     isp1362_hcd->istl_queue[i].buf_size);
@@ -2433,12 +2348,12 @@ static int isp1362_mem_config(struct usb_hcd *hcd)
 		 sizeof(isp1362_hcd->atl_queue.name), "ATL");
 	snprintf(isp1362_hcd->intl_queue.name,
 		 sizeof(isp1362_hcd->intl_queue.name), "INTL");
-	DBG(3, "%s: %5s buf $%04x %2d * %4d = %4d\n", __FUNCTION__,
+	DBG(3, "%s: %5s buf $%04x %2d * %4d = %4d\n", __func__,
 	     isp1362_hcd->intl_queue.name,
 	     isp1362_hcd->intl_queue.buf_start,
 	     ISP1362_INTL_BUFFERS, isp1362_hcd->intl_queue.blk_size,
 	     isp1362_hcd->intl_queue.buf_size);
-	DBG(3, "%s: %5s buf $%04x %2d * %4d = %4d\n", __FUNCTION__,
+	DBG(3, "%s: %5s buf $%04x %2d * %4d = %4d\n", __func__,
 	     isp1362_hcd->atl_queue.name,
 	     isp1362_hcd->atl_queue.buf_start,
 	     atl_buffers, isp1362_hcd->atl_queue.blk_size,
@@ -2458,33 +2373,34 @@ static int isp1362_hc_reset(struct usb_hcd *hcd)
 	unsigned long flags;
 	int clkrdy = 0;
 
-	INFO("%s:\n", __FUNCTION__);
+	pr_info("%s:\n", __func__);
 
 	if (isp1362_hcd->board && isp1362_hcd->board->reset) {
 		isp1362_hcd->board->reset(hcd->self.controller, 1);
 		msleep(20);
-		if (isp1362_hcd->board->clock) {
+		if (isp1362_hcd->board->clock)
 			isp1362_hcd->board->clock(hcd->self.controller, 1);
-		}
 		isp1362_hcd->board->reset(hcd->self.controller, 0);
-	} else {
+	} else
 		isp1362_sw_reset(isp1362_hcd);
-	}
 
-	// chip has been reset. First we need to see a clock
+	/* chip has been reset. First we need to see a clock */
 	t = jiffies + msecs_to_jiffies(timeout);
 	while (!clkrdy && time_before_eq(jiffies, t)) {
 		spin_lock_irqsave(&isp1362_hcd->lock, flags);
 		clkrdy = isp1362_read_reg16(isp1362_hcd, HCuPINT) & HCuPINT_CLKRDY;
 		spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
-		if (!clkrdy) {
+		if (!clkrdy)
 			msleep(4);
-		}
 	}
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	isp1362_write_reg16(isp1362_hcd, HCuPINT, HCuPINT_CLKRDY);
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
+	if (!clkrdy) {
+		pr_err("Clock not ready after %lums\n", timeout);
+		ret = -ENODEV;
+	}
 	return ret;
 }
 
@@ -2494,7 +2410,7 @@ static void isp1362_hc_stop(struct usb_hcd *hcd)
 	unsigned long flags;
 	u32 tmp;
 
-	INFO("%s:\n", __FUNCTION__);
+	pr_info("%s:\n", __func__);
 
 	del_timer_sync(&hcd->rh_timer);
 
@@ -2502,21 +2418,21 @@ static void isp1362_hc_stop(struct usb_hcd *hcd)
 
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, 0);
 
-	// Switch off power for all ports
+	/* Switch off power for all ports */
 	tmp = isp1362_read_reg32(isp1362_hcd, HCRHDESCA);
 	tmp &= ~(RH_A_NPS | RH_A_PSM);
 	isp1362_write_reg32(isp1362_hcd, HCRHDESCA, tmp);
 	isp1362_write_reg32(isp1362_hcd, HCRHSTATUS, RH_HS_LPS);
 
-	// Reset the chip
-	if (isp1362_hcd->board && isp1362_hcd->board->reset) {
+	/* Reset the chip */
+	if (isp1362_hcd->board && isp1362_hcd->board->reset)
 		isp1362_hcd->board->reset(hcd->self.controller, 1);
-	} else {
+	else
 		isp1362_sw_reset(isp1362_hcd);
-	}
-	if (isp1362_hcd->board && isp1362_hcd->board->clock) {
+
+	if (isp1362_hcd->board && isp1362_hcd->board->clock)
 		isp1362_hcd->board->clock(hcd->self.controller, 0);
-	}
+
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 }
 
@@ -2542,16 +2458,16 @@ static int isp1362_chip_test(struct isp1362_hcd *isp1362_hcd)
 
 			for (j = 0; j < 8; j++) {
 				spin_lock_irqsave(&isp1362_hcd->lock, flags);
-				isp1362_write_buffer(isp1362_hcd, (u8*)ref + offset, 0, j);
-				isp1362_read_buffer(isp1362_hcd, (u8*)tst + offset, 0, j);
+				isp1362_write_buffer(isp1362_hcd, (u8 *)ref + offset, 0, j);
+				isp1362_read_buffer(isp1362_hcd, (u8 *)tst + offset, 0, j);
 				spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 
 				if (memcmp(ref, tst, j)) {
 					ret = -ENODEV;
-					ERR("%s: memory check with %d byte offset %d failed\n",
-					    __FUNCTION__, j, offset);
-					dump_data((u8*)ref + offset, j);
-					dump_data((u8*)tst + offset, j);
+					pr_err("%s: memory check with %d byte offset %d failed\n",
+					    __func__, j, offset);
+					dump_data((u8 *)ref + offset, j);
+					dump_data((u8 *)tst + offset, j);
 				}
 			}
 		}
@@ -2563,8 +2479,8 @@ static int isp1362_chip_test(struct isp1362_hcd *isp1362_hcd)
 
 		if (memcmp(ref, tst, ISP1362_BUF_SIZE)) {
 			ret = -ENODEV;
-			ERR("%s: memory check failed\n", __FUNCTION__);
-			dump_data((u8*)tst, ISP1362_BUF_SIZE / 2);
+			pr_err("%s: memory check failed\n", __func__);
+			dump_data((u8 *)tst, ISP1362_BUF_SIZE / 2);
 		}
 
 		for (offset = 0; offset < 256; offset++) {
@@ -2579,8 +2495,8 @@ static int isp1362_chip_test(struct isp1362_hcd *isp1362_hcd)
 			spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 			if (memcmp(tst, tst + (ISP1362_BUF_SIZE / (2 * sizeof(*tst))),
 				   ISP1362_BUF_SIZE / 2)) {
-				ERR("%s: Failed to clear buffer\n", __FUNCTION__);
-				dump_data((u8*)tst, ISP1362_BUF_SIZE);
+				pr_err("%s: Failed to clear buffer\n", __func__);
+				dump_data((u8 *)tst, ISP1362_BUF_SIZE);
 				break;
 			}
 			spin_lock_irqsave(&isp1362_hcd->lock, flags);
@@ -2591,20 +2507,20 @@ static int isp1362_chip_test(struct isp1362_hcd *isp1362_hcd)
 					    PTD_HEADER_SIZE + test_size);
 			spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 			if (memcmp(ref, tst, PTD_HEADER_SIZE + test_size)) {
-				dump_data(((u8*)ref) + offset, PTD_HEADER_SIZE + test_size);
-				dump_data((u8*)tst, PTD_HEADER_SIZE + test_size);
+				dump_data(((u8 *)ref) + offset, PTD_HEADER_SIZE + test_size);
+				dump_data((u8 *)tst, PTD_HEADER_SIZE + test_size);
 				spin_lock_irqsave(&isp1362_hcd->lock, flags);
 				isp1362_read_buffer(isp1362_hcd, tst, offset * 2,
 						    PTD_HEADER_SIZE + test_size);
 				spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 				if (memcmp(ref, tst, PTD_HEADER_SIZE + test_size)) {
 					ret = -ENODEV;
-					ERR("%s: memory check with offset %02x failed\n",
-					    __FUNCTION__, offset);
+					pr_err("%s: memory check with offset %02x failed\n",
+					    __func__, offset);
 					break;
 				}
-				WARN("%s: memory check with offset %02x ok after second read\n",
-				     __FUNCTION__, offset);
+				pr_warning("%s: memory check with offset %02x ok after second read\n",
+				     __func__, offset);
 			}
 		}
 		kfree(ref);
@@ -2622,77 +2538,65 @@ static int isp1362_hc_start(struct usb_hcd *hcd)
 	u16 chipid;
 	unsigned long flags;
 
-	INFO("%s:\n", __FUNCTION__);
+	pr_info("%s:\n", __func__);
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 	chipid = isp1362_read_reg16(isp1362_hcd, HCCHIPID);
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 
 	if ((chipid & HCCHIPID_MASK) != HCCHIPID_MAGIC) {
-		ERR("%s: Invalid chip ID %04x\n", __func__, chipid);
+		pr_err("%s: Invalid chip ID %04x\n", __func__, chipid);
 		return -ENODEV;
 	}
 
 #ifdef CHIP_BUFFER_TEST
 	ret = isp1362_chip_test(isp1362_hcd);
-	if (ret) {
+	if (ret)
 		return -ENODEV;
-	}
 #endif
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
-	// clear interrupt status and disable all interrupt sources
+	/* clear interrupt status and disable all interrupt sources */
 	isp1362_write_reg16(isp1362_hcd, HCuPINT, 0xff);
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, 0);
 
-	// HW conf
+	/* HW conf */
 	hwcfg = HCHWCFG_INT_ENABLE | HCHWCFG_DBWIDTH(1);
-	if (board->sel15Kres) {
+	if (board->sel15Kres)
 		hwcfg |= HCHWCFG_PULLDOWN_DS2 |
 			(MAX_ROOT_PORTS > 1) ? HCHWCFG_PULLDOWN_DS1 : 0;
-	}
-	if (board->clknotstop) {
+	if (board->clknotstop)
 		hwcfg |= HCHWCFG_CLKNOTSTOP;
-	}
-	if (board->oc_enable) {
+	if (board->oc_enable)
 		hwcfg |= HCHWCFG_ANALOG_OC;
-	}
-	if (board->int_act_high) {
+	if (board->int_act_high)
 		hwcfg |= HCHWCFG_INT_POL;
-	}
-	if (board->int_edge_triggered) {
+	if (board->int_edge_triggered)
 		hwcfg |= HCHWCFG_INT_TRIGGER;
-	}
-	if (board->dreq_act_high) {
+	if (board->dreq_act_high)
 		hwcfg |= HCHWCFG_DREQ_POL;
-	}
-	if (board->dack_act_high) {
+	if (board->dack_act_high)
 		hwcfg |= HCHWCFG_DACK_POL;
-	}
 	isp1362_write_reg16(isp1362_hcd, HCHWCFG, hwcfg);
 	isp1362_show_reg(isp1362_hcd, HCHWCFG);
 	isp1362_write_reg16(isp1362_hcd, HCDMACFG, 0);
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 
 	ret = isp1362_mem_config(hcd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
 
-	// Root hub conf
+	/* Root hub conf */
 	isp1362_hcd->rhdesca = 0;
-	if (board->no_power_switching) {
+	if (board->no_power_switching)
 		isp1362_hcd->rhdesca |= RH_A_NPS;
-	}
-	if (board->power_switching_mode) {
+	if (board->power_switching_mode)
 		isp1362_hcd->rhdesca |= RH_A_PSM;
-	}
-	if (board->potpg) {
+	if (board->potpg)
 		isp1362_hcd->rhdesca |= (board->potpg << 24) & RH_A_POTPGT;
-	} else {
+	else
 		isp1362_hcd->rhdesca |= (25 << 24) & RH_A_POTPGT;
-	}
 
 	isp1362_write_reg32(isp1362_hcd, HCRHDESCA, isp1362_hcd->rhdesca & ~RH_A_OCPM);
 	isp1362_write_reg32(isp1362_hcd, HCRHDESCA, isp1362_hcd->rhdesca | RH_A_OCPM);
@@ -2712,16 +2616,16 @@ static int isp1362_hc_start(struct usb_hcd *hcd)
 	hcd->state = HC_STATE_RUNNING;
 
 	spin_lock_irqsave(&isp1362_hcd->lock, flags);
-	// Set up interrupts
+	/* Set up interrupts */
 	isp1362_hcd->intenb = OHCI_INTR_MIE | OHCI_INTR_RHSC | OHCI_INTR_UE;
 	isp1362_hcd->intenb |= OHCI_INTR_RD;
 	isp1362_hcd->irqenb = HCuPINT_OPR | HCuPINT_SUSP;
 	isp1362_write_reg32(isp1362_hcd, HCINTENB, isp1362_hcd->intenb);
 	isp1362_write_reg16(isp1362_hcd, HCuPINTENB, isp1362_hcd->irqenb);
 
-	// Go operational
+	/* Go operational */
 	isp1362_write_reg32(isp1362_hcd, HCCONTROL, isp1362_hcd->hc_control);
-	// enable global power
+	/* enable global power */
 	isp1362_write_reg32(isp1362_hcd, HCRHSTATUS, RH_HS_LPSC | RH_HS_DRWE);
 
 	spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
@@ -2766,28 +2670,30 @@ static int __devexit isp1362_remove(struct platform_device *pdev)
 	struct resource *res;
 
 	remove_debug_file(isp1362_hcd);
-	DBG(0, "%s: Removing HCD\n", __FUNCTION__);
+	DBG(0, "%s: Removing HCD\n", __func__);
 	usb_remove_hcd(hcd);
 
-	DBG(0, "%s: Unmapping data_reg @ %08x\n", __FUNCTION__,
-	    (u32)isp1362_hcd->data_reg);
+	DBG(0, "%s: Unmapping data_reg @ %p\n", __func__,
+	    isp1362_hcd->data_reg);
 	iounmap(isp1362_hcd->data_reg);
 
-	DBG(0, "%s: Unmapping addr_reg @ %08x\n", __FUNCTION__,
-	    (u32)isp1362_hcd->addr_reg);
+	DBG(0, "%s: Unmapping addr_reg @ %p\n", __func__,
+	    isp1362_hcd->addr_reg);
 	iounmap(isp1362_hcd->addr_reg);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	DBG(0, "%s: release mem_region: %08lx\n", __FUNCTION__, (long unsigned int)res->start);
-	if (res) release_mem_region(res->start, resource_len(res));
+	DBG(0, "%s: release mem_region: %08lx\n", __func__, (long unsigned int)res->start);
+	if (res)
+		release_mem_region(res->start, resource_len(res));
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	DBG(0, "%s: release mem_region: %08lx\n", __FUNCTION__, (long unsigned int)res->start);
-	if (res) release_mem_region(res->start, resource_len(res));
+	DBG(0, "%s: release mem_region: %08lx\n", __func__, (long unsigned int)res->start);
+	if (res)
+		release_mem_region(res->start, resource_len(res));
 
-	DBG(0, "%s: put_hcd\n", __FUNCTION__);
+	DBG(0, "%s: put_hcd\n", __func__);
 	usb_put_hcd(hcd);
-	DBG(0, "%s: Done\n", __FUNCTION__);
+	DBG(0, "%s: Done\n", __func__);
 
 	return 0;
 }
@@ -2885,39 +2791,37 @@ static int __init isp1362_probe(struct platform_device *pdev)
 	}
 #endif
 
-#ifdef	CONFIG_ARM
-	if (isp1362_hcd->board) {
+#ifdef CONFIG_ARM
+	if (isp1362_hcd->board)
 		set_irq_type(irq, isp1362_hcd->board->int_act_high ? IRQT_RISING : IRQT_FALLING);
-	}
 #endif
 
 	retval = usb_add_hcd(hcd, irq, IRQF_TRIGGER_LOW | IRQF_DISABLED | IRQF_SHARED);
-	if (retval != 0) {
+	if (retval != 0)
 		goto err6;
-	}
-	INFO("%s, irq %d\n", hcd->product_desc, irq);
+	pr_info("%s, irq %d\n", hcd->product_desc, irq);
 
 	create_debug_file(isp1362_hcd);
 
 	return 0;
 
  err6:
-	DBG(0, "%s: Freeing dev %08x\n", __FUNCTION__, (u32)isp1362_hcd);
+	DBG(0, "%s: Freeing dev %p\n", __func__, isp1362_hcd);
 	usb_put_hcd(hcd);
  err5:
-	DBG(0, "%s: Unmapping data_reg @ %08x\n", __FUNCTION__, (u32)data_reg);
+	DBG(0, "%s: Unmapping data_reg @ %p\n", __func__, data_reg);
 	iounmap(data_reg);
  err4:
-	DBG(0, "%s: Releasing mem region %08lx\n", __FUNCTION__, (long unsigned int)data->start);
+	DBG(0, "%s: Releasing mem region %08lx\n", __func__, (long unsigned int)data->start);
 	release_mem_region(data->start, resource_len(data));
  err3:
-	DBG(0, "%s: Unmapping addr_reg @ %08x\n", __FUNCTION__, (u32)addr_reg);
+	DBG(0, "%s: Unmapping addr_reg @ %p\n", __func__, addr_reg);
 	iounmap(addr_reg);
  err2:
-	DBG(0, "%s: Releasing mem region %08lx\n", __FUNCTION__, (long unsigned int)addr->start);
+	DBG(0, "%s: Releasing mem region %08lx\n", __func__, (long unsigned int)addr->start);
 	release_mem_region(addr->start, resource_len(addr));
  err1:
-	printk("init error, %d\n", retval);
+	pr_err("%s: init error, %d\n", __func__, retval);
 
 	return retval;
 }
@@ -2930,20 +2834,19 @@ static int isp1362_suspend(struct platform_device *pdev, pm_message_t state)
 	unsigned long flags;
 	int retval = 0;
 
-	DBG(0, "%s: Suspending device\n", __FUNCTION__);
+	DBG(0, "%s: Suspending device\n", __func__);
 
 	if (state.event == PM_EVENT_FREEZE) {
-		DBG(0, "%s: Suspending root hub\n", __FUNCTION__);
+		DBG(0, "%s: Suspending root hub\n", __func__);
 		retval = isp1362_bus_suspend(hcd);
 	} else {
-		DBG(0, "%s: Suspending RH ports\n", __FUNCTION__);
+		DBG(0, "%s: Suspending RH ports\n", __func__);
 		spin_lock_irqsave(&isp1362_hcd->lock, flags);
 		isp1362_write_reg32(isp1362_hcd, HCRHSTATUS, RH_HS_LPS);
 		spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
 	}
-	if (retval == 0) {
+	if (retval == 0)
 		pdev->dev.power.power_state = state;
-	}
 	return retval;
 }
 
@@ -2953,10 +2856,10 @@ static int isp1362_resume(struct platform_device *pdev)
 	struct isp1362_hcd *isp1362_hcd = hcd_to_isp1362_hcd(hcd);
 	unsigned long flags;
 
-	DBG(0, "%s: Resuming\n", __FUNCTION__);
+	DBG(0, "%s: Resuming\n", __func__);
 
 	if (pdev->dev.power.power_state.event == PM_EVENT_SUSPEND) {
-		DBG(0, "%s: Resume RH ports\n", __FUNCTION__);
+		DBG(0, "%s: Resume RH ports\n", __func__);
 		spin_lock_irqsave(&isp1362_hcd->lock, flags);
 		isp1362_write_reg32(isp1362_hcd, HCRHSTATUS, RH_HS_LPSC);
 		spin_unlock_irqrestore(&isp1362_hcd->lock, flags);
@@ -2988,18 +2891,15 @@ static struct platform_driver isp1362_driver = {
 
 static int __init isp1362_init(void)
 {
-	if (usb_disabled()) {
+	if (usb_disabled())
 		return -ENODEV;
-	}
-	INFO("driver %s, %s\n", hcd_name, DRIVER_VERSION);
+	pr_info("driver %s, %s\n", hcd_name, DRIVER_VERSION);
 	return platform_driver_register(&isp1362_driver);
 }
-
 module_init(isp1362_init);
 
 static void __exit isp1362_cleanup(void)
 {
 	platform_driver_unregister(&isp1362_driver);
 }
-
 module_exit(isp1362_cleanup);
