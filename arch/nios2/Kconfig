@@ -32,19 +32,19 @@ config NIOS2_HW_MUL_SUPPORT
        bool "HW mul support"
        default y
        help
-	Enables the -mno-hw-mul compiler flag.
+	Enables the -mhw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
        bool "HW mulx support"
        default n
        help
-	Enables the -mno-hw-mulx compiler flag
+	Enables the -mhw-mulx compiler flag.
 
 config NIOS2_HW_DIV_SUPPORT
        bool "HW div support"
        default n
        help
-	Enables/disables the -mno-hw-div compiler flag
+	Enables the -mhw-div compiler flag.
 
 config NIOS2_UIMAGE_FLASHADDR
        hex "Offset address for uImage.flash"
