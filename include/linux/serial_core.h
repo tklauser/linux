@@ -41,7 +41,8 @@
 #define PORT_XSCALE	15
 #define PORT_RM9000	16	/* PMC-Sierra RM9xxx internal UART */
 #define PORT_OCTEON	17	/* Cavium OCTEON internal UART */
-#define PORT_MAX_8250	17	/* max port ID */
+#define PORT_AR7	18	/* Texas Instruments AR7 internal UART */
+#define PORT_MAX_8250	18	/* max port ID */
 
 /*
  * ARM specific type numbers.  These are not currently guaranteed
@@ -156,14 +157,6 @@
 
 #define PORT_SC26XX	82
 
-/* Altera UARTs */
-#define PORT_ALTERA_JTAGUART	83
-#define PORT_ALTERA_UART	84
-
-/* Altera UARTs */
-#define PORT_ALTERA_JTAGUART	83
-#define PORT_ALTERA_UART	84
-
 #define PORT_S3C6400	84
 
 /* NWPSERIAL */
@@ -171,6 +164,16 @@
 
 /* MAX3100 */
 #define PORT_MAX3100    86
+
+/* Timberdale UART */
+#define PORT_TIMBUART	87
+
+/* Qualcomm MSM SoCs */
+#define PORT_MSM	88
+
+/* Altera UARTs */
+#define PORT_ALTERA_JTAGUART	89
+#define PORT_ALTERA_UART	90
 
 #ifdef __KERNEL__
 

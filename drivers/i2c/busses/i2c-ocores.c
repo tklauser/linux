@@ -218,6 +218,7 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 	struct ocores_i2c_platform_data *pdata;
 	struct resource *res, *res2;
 	int ret;
+	int i;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -235,14 +236,14 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 	if (!i2c)
 		return -ENOMEM;
 
-	if (!request_mem_region(res->start, res->end - res->start + 1,
+	if (!request_mem_region(res->start, resource_size(res),
 				pdev->name)) {
 		dev_err(&pdev->dev, "Memory region busy\n");
 		ret = -EBUSY;
 		goto request_mem_failed;
 	}
 
-	i2c->base = ioremap(res->start, res->end - res->start + 1);
+	i2c->base = ioremap(res->start, resource_size(res));
 	if (!i2c->base) {
 		dev_err(&pdev->dev, "Unable to map registers\n");
 		ret = -EIO;
@@ -282,6 +283,9 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 			i2c_adapter_id(&i2c->adap), (int) res->start, (int) res2->start);
 	printk(KERN_INFO "i2c-%d: Using %dkHz clock source\n", i2c_adapter_id(&i2c->adap),
 			i2c->clock_khz);
+	/* add in known devices to the bus */
+	for (i = 0; i < pdata->num_devices; i++)
+		i2c_new_device(&i2c->adap, pdata->devices + i);
 
 	return 0;
 
@@ -290,7 +294,7 @@ add_adapter_failed:
 request_irq_failed:
 	iounmap(i2c->base);
 map_failed:
-	release_mem_region(res->start, res->end - res->start + 1);
+	release_mem_region(res->start, resource_size(res));
 request_mem_failed:
 	kfree(i2c);
 
@@ -318,7 +322,7 @@ static int __devexit ocores_i2c_remove(struct platform_device* pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res)
-		release_mem_region(res->start, res->end - res->start + 1);
+		release_mem_region(res->start, resource_size(res));
 
 	kfree(i2c);
 
