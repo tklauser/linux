@@ -374,6 +374,7 @@ ENTRY(sys_call_table)
 	.long sys_preadv
 	.long sys_pwritev
 	.long sys_rt_sigqueueinfo
+	.long sys_perf_counter_open
 
 	.rept NR_syscalls-(.-sys_call_table)/4
 		.long sys_ni_syscall
