@@ -375,10 +375,10 @@ extern int unresolved_symbol;
 #define __NR_pipe2		329
 #define __NR_inotify_init1	330
 #define __NR_preadv		331
-#define __NR_pwritev    	332
+#define __NR_pwritev		332
+#define __NR_rt_tgsigqueueinfo	333
 
-
-#define NR_syscalls                     333
+#define NR_syscalls                     334
 
 #ifdef __KERNEL__
 

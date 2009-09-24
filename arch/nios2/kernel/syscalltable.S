@@ -373,8 +373,9 @@ ENTRY(sys_call_table)
 	.long sys_inotify_init1		/* 330 */
 	.long sys_preadv
 	.long sys_pwritev
+	.long sys_rt_sigqueueinfo
 
-	.rept NR_syscalls - 333
+	.rept NR_syscalls-(.-sys_call_table)/4
 		.long sys_ni_syscall
 	.endr
 
