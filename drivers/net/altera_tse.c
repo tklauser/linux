@@ -843,7 +843,7 @@ static int init_phy(struct net_device *dev)
 	struct alt_tse_private *tse_priv = netdev_priv(dev); 
 	struct alt_tse_config * tse_config = tse_priv->tse_config;
 	struct phy_device *phydev;
-	char phy_id[BUS_ID_SIZE];
+	char phy_id[MII_BUS_ID_SIZE];
 	char mii_id[MII_BUS_ID_SIZE];
 	
 	phy_interface_t interface;
@@ -858,7 +858,7 @@ static int init_phy(struct net_device *dev)
 	tse_priv->oldduplex = -1;	
 	
 	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id); 
-	snprintf(phy_id, BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
+	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
 	
 	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
 	
