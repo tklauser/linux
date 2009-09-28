@@ -270,13 +270,13 @@ static void altera_uart_rx_chars(struct altera_uart *pp)
 				 flag);
 	}
 
- 	tty_flip_buffer_push(port->info->port.tty);
+ 	tty_flip_buffer_push(port->state->port.tty);
 }
 
 static void altera_uart_tx_chars(struct altera_uart *pp)
 {
 	struct uart_port *port = &pp->port;
-	struct circ_buf *xmit = &port->info->xmit;
+	struct circ_buf *xmit = &port->state->xmit;
 
 	if (port->x_char) {
 		/* Send special char - probably flow control */
