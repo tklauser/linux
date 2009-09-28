@@ -1075,8 +1075,10 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ISTL0_FULL);
 		DBG(1, "%s: ISTL0\n", __func__);
 		WARN_ON((int)!!isp1362_hcd->istl_flip);
-		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL0_ACTIVE);
-		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL0_DONE));
+		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) &
+			HCBUFSTAT_ISTL0_ACTIVE);
+		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) &
+			HCBUFSTAT_ISTL0_DONE));
 		isp1362_hcd->irqenb &= ~HCuPINT_ISTL0;
 	}
 
@@ -1087,8 +1089,10 @@ static irqreturn_t isp1362_irq(struct usb_hcd *hcd)
 		isp1362_clr_mask16(isp1362_hcd, HCBUFSTAT, HCBUFSTAT_ISTL1_FULL);
 		DBG(1, "%s: ISTL1\n", __func__);
 		WARN_ON(!(int)isp1362_hcd->istl_flip);
-		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL1_ACTIVE);
-		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) & HCBUFSTAT_ISTL1_DONE));
+		WARN_ON(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) &
+			HCBUFSTAT_ISTL1_ACTIVE);
+		WARN_ON(!(isp1362_read_reg16(isp1362_hcd, HCBUFSTAT) &
+			HCBUFSTAT_ISTL1_DONE));
 		isp1362_hcd->irqenb &= ~HCuPINT_ISTL1;
 	}
 
@@ -2280,10 +2284,10 @@ static int isp1362_mem_config(struct usb_hcd *hcd)
 	dev_info(hcd->self.controller, "ISP1362 Memory usage:\n");
 	dev_info(hcd->self.controller, "  ISTL:    2 * %4d:     %4d @ $%04x:$%04x\n",
 		 istl_size / 2, istl_size, 0, istl_size / 2);
-	dev_info(hcd->self.controller, "  INTL: %4d * (%3lu+8):  %4d @ $%04x\n",
+	dev_info(hcd->self.controller, "  INTL: %4d * (%3u+8):  %4d @ $%04x\n",
 		 ISP1362_INTL_BUFFERS, intl_blksize - PTD_HEADER_SIZE,
 		 intl_size, istl_size);
-	dev_info(hcd->self.controller, "  ATL : %4d * (%3lu+8):  %4d @ $%04x\n",
+	dev_info(hcd->self.controller, "  ATL : %4d * (%3u+8):  %4d @ $%04x\n",
 		 atl_buffers, atl_blksize - PTD_HEADER_SIZE,
 		 atl_size, istl_size + intl_size);
 	dev_info(hcd->self.controller, "  USED/FREE:   %4d      %4d\n", total,
@@ -2563,7 +2567,7 @@ static int isp1362_hc_start(struct usb_hcd *hcd)
 	hwcfg = HCHWCFG_INT_ENABLE | HCHWCFG_DBWIDTH(1);
 	if (board->sel15Kres)
 		hwcfg |= HCHWCFG_PULLDOWN_DS2 |
-			(MAX_ROOT_PORTS > 1) ? HCHWCFG_PULLDOWN_DS1 : 0;
+			((MAX_ROOT_PORTS > 1) ? HCHWCFG_PULLDOWN_DS1 : 0);
 	if (board->clknotstop)
 		hwcfg |= HCHWCFG_CLKNOTSTOP;
 	if (board->oc_enable)
@@ -2673,12 +2677,12 @@ static int __devexit isp1362_remove(struct platform_device *pdev)
 	DBG(0, "%s: Removing HCD\n", __func__);
 	usb_remove_hcd(hcd);
 
-	DBG(0, "%s: Unmapping data_reg @ %p\n", __func__,
-	    isp1362_hcd->data_reg);
+	DBG(0, "%s: Unmapping data_reg @ %08x\n", __func__,
+	    (u32)isp1362_hcd->data_reg);
 	iounmap(isp1362_hcd->data_reg);
 
-	DBG(0, "%s: Unmapping addr_reg @ %p\n", __func__,
-	    isp1362_hcd->addr_reg);
+	DBG(0, "%s: Unmapping addr_reg @ %08x\n", __func__,
+	    (u32)isp1362_hcd->addr_reg);
 	iounmap(isp1362_hcd->addr_reg);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
@@ -2806,16 +2810,16 @@ static int __init isp1362_probe(struct platform_device *pdev)
 	return 0;
 
  err6:
-	DBG(0, "%s: Freeing dev %p\n", __func__, isp1362_hcd);
+	DBG(0, "%s: Freeing dev %08x\n", __func__, (u32)isp1362_hcd);
 	usb_put_hcd(hcd);
  err5:
-	DBG(0, "%s: Unmapping data_reg @ %p\n", __func__, data_reg);
+	DBG(0, "%s: Unmapping data_reg @ %08x\n", __func__, (u32)data_reg);
 	iounmap(data_reg);
  err4:
 	DBG(0, "%s: Releasing mem region %08lx\n", __func__, (long unsigned int)data->start);
 	release_mem_region(data->start, resource_len(data));
  err3:
-	DBG(0, "%s: Unmapping addr_reg @ %p\n", __func__, addr_reg);
+	DBG(0, "%s: Unmapping addr_reg @ %08x\n", __func__, (u32)addr_reg);
 	iounmap(addr_reg);
  err2:
 	DBG(0, "%s: Releasing mem region %08lx\n", __func__, (long unsigned int)addr->start);
