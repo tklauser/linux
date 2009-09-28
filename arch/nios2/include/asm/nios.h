@@ -11,9 +11,13 @@
 #error "No FPGA configuration selected
 #endif
 
+/* Fake CPU frequency if not defined by the design header file */
+#ifndef CPU_FREQ
+# define CPU_FREQ	0
+#endif
 
 /* Added compability mode with macro names from "old" design...
- * FIXME: we should really fix drivers instead. but this makes it 
+ * FIXME: we should really fix drivers instead. but this makes it
  * easier to switch between old and new design...
  */
 
