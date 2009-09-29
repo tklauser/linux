@@ -27,7 +27,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
 
-#include <asm/io.h>
+#include <linux/io.h>
 
 #define ALTERA_SPI_RXDATA	0
 #define ALTERA_SPI_TXDATA       4
