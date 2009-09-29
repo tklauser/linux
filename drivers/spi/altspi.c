@@ -1,4 +1,4 @@
-/* 
+/*
  * Altera Avalon SPI driver
  *
  * Copyright (C) 2008 Thomas Chou <thomas@wytron.com.tw>
@@ -58,7 +58,7 @@ struct altera_spi {
 	int irq;
 	int len;
 	int count;
-    int bytesPerWord;
+	int bytesPerWord;
 	unsigned long imr;
 
 	/* data buffers */
@@ -156,15 +156,16 @@ static int altera_spi_setup(struct spi_device *spi)
 
 static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 {
-    if (hw->tx)
-        switch (hw->bytesPerWord)
-        {
-            case 1:
-                return hw->tx[count];
-            case 2:
-                return (hw->tx[count * 2] | (hw->tx[count * 2 + 1] << 8));
-        }
-    else return 0;
+	if (hw->tx) {
+		switch (hw->bytesPerWord) {
+		case 1:
+			return hw->tx[count];
+		case 2:
+			return (hw->tx[count * 2] | (hw->tx[count * 2 + 1] << 8));
+		}
+	}
+
+	return 0;
 }
 
 static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
@@ -177,7 +178,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 	hw->tx = t->tx_buf;
 	hw->rx = t->rx_buf;
 	hw->count = 0;
-    hw->bytesPerWord = (t->bits_per_word ? : spi->bits_per_word) / 8;
+	hw->bytesPerWord = (t->bits_per_word ? : spi->bits_per_word) / 8;
 	hw->len = t->len / hw->bytesPerWord;
 
 	init_completion(&hw->done);
@@ -212,17 +213,17 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	hw->count++;
 
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
-	if (hw->rx)
-        switch (hw->bytesPerWord)
-        {
-            case 1:
-                hw->rx[count] = rxd;
-                break;
-            case 2:
-                hw->rx[count * 2] = rxd;
-                hw->rx[count * 2 + 1] = rxd >> 8;
-                break;
-        }
+	if (hw->rx) {
+		switch (hw->bytesPerWord) {
+		case 1:
+			hw->rx[count] = rxd;
+			break;
+		case 2:
+			hw->rx[count * 2] = rxd;
+			hw->rx[count * 2 + 1] = rxd >> 8;
+			break;
+		}
+	}
 
 	count++;
 
@@ -231,7 +232,7 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	else
 		complete(&hw->done);
 
-      irq_done:
+irq_done:
 	return IRQ_HANDLED;
 }
 
@@ -319,7 +320,8 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 		goto err_no_irq;
 	}
 
-	hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;	/* enable receive interrupt */
+	/* enable receive interrupt */
+	hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 
 	/* register our spi controller */
@@ -332,20 +334,16 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 
 	return 0;
 
-      err_register:
+err_register:
 	free_irq(hw->irq, hw);
-
-      err_no_irq:
+err_no_irq:
 	iounmap((void *)hw->base);
-
-      err_no_iomap:
+err_no_iomap:
 	release_resource(hw->ioarea);
 	kfree(hw->ioarea);
-
-      err_no_iores:
+err_no_iores:
 	spi_master_put(hw->master);;
-
-      err_nomem:
+err_nomem:
 	return err;
 }
 
@@ -353,7 +351,7 @@ static int __exit altera_spi_remove(struct platform_device *dev)
 {
 	struct altera_spi *hw = platform_get_drvdata(dev);
 
-	/* diable spi intrrupts */
+	/* disable spi interrupts */
 	hw->imr = 0;
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 
@@ -379,9 +377,9 @@ static struct platform_driver altera_spidrv = {
 	.suspend = altera_spi_suspend,
 	.resume = altera_spi_resume,
 	.driver = {
-		   .name = "altspi",
-		   .owner = THIS_MODULE,
-		   },
+		.name = "altspi",
+		.owner = THIS_MODULE,
+	},
 };
 
 static int __init altera_spi_init(void)
