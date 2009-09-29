@@ -369,16 +369,12 @@ static int __exit altera_spi_remove(struct platform_device *dev)
 	return 0;
 }
 
-#define altera_spi_suspend NULL
-#define altera_spi_resume  NULL
-
 static struct platform_driver altera_spidrv = {
 	.remove = __exit_p(altera_spi_remove),
-	.suspend = altera_spi_suspend,
-	.resume = altera_spi_resume,
 	.driver = {
 		.name = "altspi",
 		.owner = THIS_MODULE,
+		.pm = NULL,
 	},
 };
 
