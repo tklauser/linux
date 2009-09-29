@@ -520,22 +520,13 @@ static int nios_mmc_remove(struct platform_device *pdev)
 	}
 	return 0;
 }
-static int nios_mmc_suspend(struct platform_device *dev, pm_message_t state)
-{
-	return 0;
-}
-static int nios_mmc_resume(struct platform_device *dev)
-{
-	return 0;
-}
 
 static struct platform_driver nios_mmc_driver = {
 	.probe = nios_mmc_probe,
 	.remove = nios_mmc_remove,
-	.suspend = nios_mmc_suspend,
-	.resume = nios_mmc_resume,
 	.driver = {
 		   .name = DRIVER_NAME,
+		   .pm = NULL,
 		   },
 };
 
