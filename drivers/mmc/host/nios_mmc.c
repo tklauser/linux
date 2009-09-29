@@ -532,9 +532,7 @@ static struct platform_driver nios_mmc_driver = {
 
 static int __init nios_mmc_init(void)
 {
-	int ret;
-	ret = platform_driver_register(&nios_mmc_driver);
-	return ret;
+	return platform_driver_register(&nios_mmc_driver);
 }
 
 static void __exit nios_mmc_exit(void)
