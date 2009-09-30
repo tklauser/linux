@@ -1,9 +1,9 @@
 /*
- *	altuart.h -- Altera UART driver defines.
+ * altuart.h -- Altera UART driver defines.
  */
 
-#ifndef	altuart_h
-#define	altuart_h
+#ifndef	__ALTUART_H
+#define	__ALTUART_H
 
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
@@ -15,4 +15,4 @@ struct altera_uart_platform_uart {
 	unsigned int uartclk;	/* UART clock rate */
 };
 
-#endif /* altuart_h */
+#endif /* __ALTUART_H */

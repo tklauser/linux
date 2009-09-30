@@ -1,9 +1,9 @@
 /*
- *	altjuart.h -- Altera JTAG UART driver defines.
+ * altjuart.h -- Altera JTAG UART driver defines.
  */
 
-#ifndef	altjuart_h
-#define	altjuart_h
+#ifndef	__ALTJUART_H
+#define	__ALTJUART_H
 
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
@@ -14,4 +14,4 @@ struct altera_jtaguart_platform_uart {
 	unsigned int irq;	/* Interrupt vector */
 };
 
-#endif /* altjuart_h */
+#endif /* __ALTJUART_H */
