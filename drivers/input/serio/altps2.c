@@ -121,6 +121,10 @@ static int ps2_probe(struct platform_device *dev)
 	}
 	ps2if->base = (unsigned) ioremap(res->start,
 					 (res->end - res->start) + 1);
+	if (!ps2if->base) {
+		ret = -ENOMEM;
+		goto free;
+	}
 	printk(KERN_INFO DRV_NAME ": base %08x irq %d\n",
 	       ps2if->base, ps2if->irq);
 	/* clear fifo */
