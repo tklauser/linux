@@ -1,40 +1,36 @@
 /*
- *  altera DE2 PS/2
+ *  linux/drivers/input/serio/altps2.c
  *
- *  linux/drivers/input/serio/sa1111ps2.c
+ *  Based on sa1111ps2.c
  *
  *  Copyright (C) 2002 Russell King
+ *  Copyright (C) 2006 Thomas Chou <thomas@wytron.com.tw>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License.
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  */
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/serio.h>
-#include <linux/errno.h>
 #include <linux/interrupt.h>
-#include <linux/ioport.h>
-#include <linux/delay.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
+#include <linux/io.h>
 
-#include <asm/io.h>
-#include <asm/system.h>
-
+#define DRV_NAME "altps2"
 
 struct ps2if {
 	struct serio		*io;
 	struct platform_device	*dev;
 	unsigned base;
-        unsigned irq;
+	unsigned irq;
 };
 
 /*
  * Read all bytes waiting in the PS2 port.  There should be
- * at the most one, but we loop for safety.  If there was a
- * framing error, we have to manually clear the status.
+ * at the most one, but we loop for safety.
  */
 static irqreturn_t ps2_rxint(int irq, void *dev_id)
 {
@@ -50,18 +46,13 @@ static irqreturn_t ps2_rxint(int irq, void *dev_id)
 }
 
 /*
- * Write a byte to the PS2 port.  We have to wait for the
- * port to indicate that the transmitter is empty.
+ * Write a byte to the PS2 port.
  */
 static int ps2_write(struct serio *io, unsigned char val)
 {
 	struct ps2if *ps2if = io->port_data;
-	outl(val,ps2if->base);
-	// should check command send error
-	if (inl(ps2if->base+4) & (1<<10))
-	  {
-	    // printk("ps2 write error %02x\n",val);
-	  }
+
+	outl(val, ps2if->base);
 	return 0;
 }
 
@@ -71,20 +62,21 @@ static int ps2_open(struct serio *io)
 	int ret;
 
 	ret = request_irq(ps2if->irq, ps2_rxint, 0,
-			  "altps2", ps2if);
+			  DRV_NAME, ps2if);
 	if (ret) {
-		printk(KERN_ERR "altps2: could not allocate IRQ%d: %d\n",
+		printk(KERN_ERR DRV_NAME ": could not allocate IRQ%d: %d\n",
 			ps2if->irq, ret);
 		return ret;
 	}
-	outl(1,ps2if->base+4);  // enable rx irq
+	outl(1, ps2if->base + 4);	/* enable rx irq */
 	return 0;
 }
 
 static void ps2_close(struct serio *io)
 {
 	struct ps2if *ps2if = io->port_data;
-	outl(0,ps2if->base);  // disable rx irq
+
+	outl(0, ps2if->base);  /* disable rx irq */
 	free_irq(ps2if->irq, ps2if);
 }
 
@@ -95,7 +87,7 @@ static int ps2_probe(struct platform_device *dev)
 {
 	struct ps2if *ps2if;
 	struct serio *serio;
-	unsigned int status;
+	struct resource *res;
 	int ret;
 
 	ps2if = kzalloc(sizeof(struct ps2if), GFP_KERNEL);
@@ -104,7 +96,6 @@ static int ps2_probe(struct platform_device *dev)
 		ret = -ENOMEM;
 		goto free;
 	}
-
 
 	serio->id.type		= SERIO_8042;
 	serio->write		= ps2_write;
@@ -118,31 +109,26 @@ static int ps2_probe(struct platform_device *dev)
 	ps2if->dev		= dev;
 	platform_set_drvdata(dev, ps2if);
 
-	/*
-	 * Request the physical region for this PS2 port.
-	 */
-	if (dev->num_resources < 2) {
-		ret = -ENODEV;
-		goto out;
-	}
-	if (!request_mem_region(dev->resource[0].start,
-				4,
-				"altps2")) {
-		ret = -EBUSY;
+	res = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	if (res == NULL) {
+		ret = -ENOENT;
 		goto free;
 	}
-	ps2if->base = (unsigned) ioremap(dev->resource[0].start, 4);
-	ps2if->irq  = dev->resource[1].start;
-	printk("altps2 : base %08x irq %d\n",ps2if->base,ps2if->irq);
-	// clear fifo
-	while ((status = inl(ps2if->base)) & 0xffff0000) {
+	ps2if->irq  = platform_get_irq(dev, 0);
+	if (ps2if->irq < 0) {
+		ret = -ENXIO;
+		goto free;
 	}
-
+	ps2if->base = (unsigned) ioremap(res->start,
+					 (res->end - res->start) + 1);
+	printk(KERN_INFO DRV_NAME ": base %08x irq %d\n",
+	       ps2if->base, ps2if->irq);
+	/* clear fifo */
+	while (inl(ps2if->base) & 0xffff0000)
+		;
 	serio_register_port(ps2if->io);
 	return 0;
 
- out:
-	release_mem_region(dev->resource[0].start,4);
  free:
 	platform_set_drvdata(dev, NULL);
 	kfree(ps2if);
@@ -159,8 +145,7 @@ static int ps2_remove(struct platform_device *dev)
 
 	platform_set_drvdata(dev, NULL);
 	serio_unregister_port(ps2if->io);
-	release_mem_region(dev->resource[0].start,4);
-
+	iounmap((void *)ps2if->base);
 	kfree(ps2if);
 
 	return 0;
@@ -173,7 +158,7 @@ static struct platform_driver ps2_driver = {
 	.probe		= ps2_probe,
 	.remove		= ps2_remove,
 	.driver	= {
-		.name	= "altps2",
+		.name	= DRV_NAME,
 	},
 };
 
@@ -189,3 +174,8 @@ static void __exit ps2_exit(void)
 
 module_init(ps2_init);
 module_exit(ps2_exit);
+
+MODULE_AUTHOR("Thomas Chou");
+MODULE_DESCRIPTION("driver for Altera University Program PS2 controller");
+MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
