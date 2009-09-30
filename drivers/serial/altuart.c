@@ -544,6 +544,7 @@ static struct platform_driver altera_uart_platform_driver = {
 	.driver = {
 		.name = "altera_uart",
 		.owner = THIS_MODULE,
+		.pm = NULL,
 	},
 };
 
