@@ -1,10 +1,10 @@
 /*
- *	altjuart.c -- Altera JTAG UART driver
+ * altjuart.c -- Altera JTAG UART driver
  *
- *	Based on mcf.c -- Freescale ColdFire UART driver
+ * Based on mcf.c -- Freescale ColdFire UART driver
  *
- *	(C) Copyright 2003-2007, Greg Ungerer <gerg@snapgear.com>
- *	(C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
+ * (C) Copyright 2003-2007, Greg Ungerer <gerg@snapgear.com>
+ * (C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include <linux/altjuart.h>
 
 /*
- *	Altera JATG UART reg defs
+ * Altera JATG UART reg defs
  */
 
 #define ALTERA_JTAGUART_SIZE                      8
@@ -49,7 +49,7 @@
 #define ALTERA_JTAGUART_CONTROL_WSPACE_OFST       (16)
 
 /*
- *	Local per-uart structure.
+ * Local per-uart structure.
  */
 struct altera_jtaguart {
 	struct uart_port port;
@@ -299,7 +299,7 @@ int __init early_altera_jtaguart_setup(struct altera_jtaguart_platform_uart
 	struct uart_port *port;
 	int i;
 
-	for (i = 0; ((i < ALTERA_JTAGUART_MAXPORTS) && (platp[i].mapbase)); i++) {
+	for (i = 0; (i < ALTERA_JTAGUART_MAXPORTS) && (platp[i].mapbase); i++) {
 		port = &altera_jtaguart_ports[i].port;
 
 		port->line = i;
@@ -357,7 +357,7 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 static void altera_jtaguart_console_write(struct console *co, const char *s,
 					  unsigned int count)
 {
-	for (; (count); count--, s++) {
+	for (; count; count--, s++) {
 		altera_jtaguart_console_putc(co, *s);
 		if (*s == '\n')
 			altera_jtaguart_console_putc(co, '\r');
@@ -425,7 +425,7 @@ static int __devinit altera_jtaguart_probe(struct platform_device *pdev)
 	struct uart_port *port;
 	int i;
 
-	for (i = 0; ((i < ALTERA_JTAGUART_MAXPORTS) && (platp[i].mapbase)); i++) {
+	for (i = 0; (i < ALTERA_JTAGUART_MAXPORTS) && (platp[i].mapbase); i++) {
 		port = &altera_jtaguart_ports[i].port;
 
 		port->line = i;
@@ -448,7 +448,7 @@ static int __devexit altera_jtaguart_remove(struct platform_device *pdev)
 	struct uart_port *port;
 	int i;
 
-	for (i = 0; (i < ALTERA_JTAGUART_MAXPORTS); i++) {
+	for (i = 0; i < ALTERA_JTAGUART_MAXPORTS; i++) {
 		port = &altera_jtaguart_ports[i].port;
 		if (port)
 			uart_remove_one_port(&altera_jtaguart_driver, port);
@@ -461,9 +461,9 @@ static struct platform_driver altera_jtaguart_platform_driver = {
 	.probe = altera_jtaguart_probe,
 	.remove = __devexit_p(altera_jtaguart_remove),
 	.driver = {
-		   .name = "altera_jtaguart",
-		   .owner = THIS_MODULE,
-		   },
+		.name = "altera_jtaguart",
+		.owner = THIS_MODULE,
+	},
 };
 
 static int __init altera_jtaguart_init(void)
@@ -488,4 +488,6 @@ static void __exit altera_jtaguart_exit(void)
 module_init(altera_jtaguart_init);
 module_exit(altera_jtaguart_exit);
 
+MODULE_DESCRIPTION("Altera JTAG UART Driver");
+MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
