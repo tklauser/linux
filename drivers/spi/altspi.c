@@ -1,19 +1,8 @@
 /*
- * Altera Avalon SPI driver
+ * Altera SPI driver
  *
- * Copyright (C) 2008 Thomas Chou <thomas@wytron.com.tw>
- *
- * Based on linux/drivers/spi/spi_s3c24xx.c, which is:
- * Copyright (c) 2006 Ben Dooks
- * Copyright (c) 2006 Simtec Electronics
- *	Ben Dooks <ben@simtec.co.uk>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
-*/
-
+ * Based on spi_s3c24xx.c
+ */
 #include <linux/init.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -58,7 +47,7 @@ struct altera_spi {
 	int irq;
 	int len;
 	int count;
-	int bytesPerWord;
+	int bytes_per_word;
 	unsigned long imr;
 
 	/* data buffers */
@@ -157,7 +146,7 @@ static int altera_spi_setup(struct spi_device *spi)
 static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 {
 	if (hw->tx) {
-		switch (hw->bytesPerWord) {
+		switch (hw->bytes_per_word) {
 		case 1:
 			return hw->tx[count];
 		case 2:
@@ -178,8 +167,8 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 	hw->tx = t->tx_buf;
 	hw->rx = t->rx_buf;
 	hw->count = 0;
-	hw->bytesPerWord = (t->bits_per_word ? : spi->bits_per_word) / 8;
-	hw->len = t->len / hw->bytesPerWord;
+	hw->bytes_per_word = (t->bits_per_word ? : spi->bits_per_word) / 8;
+	hw->len = t->len / hw->bytes_per_word;
 
 	init_completion(&hw->done);
 
@@ -188,7 +177,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 
 	wait_for_completion(&hw->done);
 
-	return hw->count * hw->bytesPerWord;
+	return hw->count * hw->bytes_per_word;
 }
 
 static irqreturn_t altera_spi_irq(int irq, void *dev)
@@ -214,7 +203,7 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
 	if (hw->rx) {
-		switch (hw->bytesPerWord) {
+		switch (hw->bytes_per_word) {
 		case 1:
 			hw->rx[count] = rxd;
 			break;
@@ -391,6 +380,6 @@ static void __exit altera_spi_exit(void)
 module_init(altera_spi_init);
 module_exit(altera_spi_exit);
 
-MODULE_DESCRIPTION("ALTERA SPI Driver");
+MODULE_DESCRIPTION("Altera SPI Driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
