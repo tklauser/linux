@@ -1,10 +1,10 @@
 /*
- *	altuart.c -- Altera UART driver
+ * altuart.c -- Altera UART driver
  *
- *	Based on mcf.c -- Freescale ColdFire UART driver
+ * Based on mcf.c -- Freescale ColdFire UART driver
  *
- *	(C) Copyright 2003-2007, Greg Ungerer <gerg@snapgear.com>
- *	(C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
+ * (C) Copyright 2003-2007, Greg Ungerer <gerg@snapgear.com>
+ * (C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include <linux/altuart.h>
 
 /*
- *	Altera UART reg defs
+ * Altera UART reg defs
  */
 
 #define ALTERA_UART_SIZE                  32
@@ -68,23 +68,22 @@
 #define ALTERA_UART_EOP_OFST              (0)
 
 /*
- *	Some boards implement the DTR/DCD lines using GPIO lines, most
- *	don't. Dummy out the access macros for those that don't. Those
- *	that do should define these macros somewhere in there board
- *	specific inlude files.
+ * Some boards implement the DTR/DCD lines using GPIO lines, most don't. Dummy
+ * out the access macros for those that don't. Those that do should define these
+ * macros somewhere in there board specific inlude files.
  */
 #if !defined(altera_uart_getppdcd)
-#define	altera_uart_getppdcd(p)		(1)
+# define altera_uart_getppdcd(p)	(1)
 #endif
 #if !defined(altera_uart_getppdtr)
-#define	altera_uart_getppdtr(p)		(1)
+# define altera_uart_getppdtr(p)	(1)
 #endif
 #if !defined(altera_uart_setppdtr)
-#define	altera_uart_setppdtr(p, v)	do { } while (0)
+# define altera_uart_setppdtr(p, v)	do { } while (0)
 #endif
 
 /*
- *	Local per-uart structure.
+ * Local per-uart structure.
  */
 struct altera_uart {
 	struct uart_port port;
@@ -112,6 +111,7 @@ static unsigned int altera_uart_get_mctrl(struct uart_port *port)
 	sigs |= (altera_uart_getppdcd(port->line) ? TIOCM_CD : 0);
 	sigs |= (altera_uart_getppdtr(port->line) ? TIOCM_DTR : 0);
 	spin_unlock_irqrestore(&port->lock, flags);
+
 	return sigs;
 }
 
@@ -270,7 +270,7 @@ static void altera_uart_rx_chars(struct altera_uart *pp)
 				 flag);
 	}
 
- 	tty_flip_buffer_push(port->state->port.tty);
+	tty_flip_buffer_push(port->state->port.tty);
 }
 
 static void altera_uart_tx_chars(struct altera_uart *pp)
@@ -389,7 +389,7 @@ int __init early_altera_uart_setup(struct altera_uart_platform_uart *platp)
 	int i;
 
 	for (i = 0;
-	     ((i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase));
+	     (i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase);
 	     i++) {
 		port = &altera_uart_ports[i].port;
 
@@ -412,13 +412,13 @@ static void altera_uart_console_putc(struct console *co, const char c)
 	struct uart_port *port = &(altera_uart_ports + co->index)->port;
 	int i;
 
-	for (i = 0; (i < 0x10000); i++) {
+	for (i = 0; i < 0x10000; i++) {
 		if (readl(port->membase + ALTERA_UART_STATUS_REG) &
 		    ALTERA_UART_STATUS_TRDY_MSK)
 			break;
 	}
 	writel(c, port->membase + ALTERA_UART_TXDATA_REG);
-	for (i = 0; (i < 0x10000); i++) {
+	for (i = 0; i < 0x10000; i++) {
 		if (readl(port->membase + ALTERA_UART_STATUS_REG) &
 		    ALTERA_UART_STATUS_TRDY_MSK)
 			break;
@@ -428,7 +428,7 @@ static void altera_uart_console_putc(struct console *co, const char c)
 static void altera_uart_console_write(struct console *co, const char *s,
 				      unsigned int count)
 {
-	for (; (count); count--, s++) {
+	for (; count; count--, s++) {
 		altera_uart_console_putc(co, *s);
 		if (*s == '\n')
 			altera_uart_console_putc(co, '\r');
@@ -504,7 +504,7 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	int i;
 
 	for (i = 0;
-	     ((i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase));
+	     (i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase);
 	     i++) {
 		port = &altera_uart_ports[i].port;
 
@@ -529,7 +529,7 @@ static int altera_uart_remove(struct platform_device *pdev)
 	struct uart_port *port;
 	int i;
 
-	for (i = 0; (i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS); i++) {
+	for (i = 0; i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS; i++) {
 		port = &altera_uart_ports[i].port;
 		if (port)
 			uart_remove_one_port(&altera_uart_driver, port);
@@ -542,9 +542,9 @@ static struct platform_driver altera_uart_platform_driver = {
 	.probe = altera_uart_probe,
 	.remove = __devexit_p(altera_uart_remove),
 	.driver = {
-		   .name = "altera_uart",
-		   .owner = THIS_MODULE,
-		   },
+		.name = "altera_uart",
+		.owner = THIS_MODULE,
+	},
 };
 
 static int __init altera_uart_init(void)
@@ -569,4 +569,6 @@ static void __exit altera_uart_exit(void)
 module_init(altera_uart_init);
 module_exit(altera_uart_exit);
 
+MODULE_DESCRIPTION("Altera UART Driver");
+MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
