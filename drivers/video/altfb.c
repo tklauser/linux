@@ -242,6 +242,75 @@ static int altfb_dma_start(unsigned long start, unsigned long len)
 }
 #endif
 
+	/* R   G   B */
+#define COLOR_WHITE	{204, 204, 204}
+#define COLOR_AMBAR	{208, 208,   0}
+#define COLOR_CIAN	{  0, 206, 206}
+#define	COLOR_GREEN	{  0, 239,   0}
+#define COLOR_MAGENTA	{239,   0, 239}
+#define COLOR_RED	{205,   0,   0}
+#define COLOR_BLUE	{  0,   0, 255}
+#define COLOR_BLACK	{  0,   0,   0}
+
+struct bar_std {
+	u8 bar[8][3];
+};
+
+/* Maximum number of bars are 10 - otherwise, the input print code
+   should be modified */
+static struct bar_std bars[] = {
+	{	/* Standard ITU-R color bar sequence */
+		{
+			COLOR_WHITE,
+			COLOR_AMBAR,
+			COLOR_CIAN,
+			COLOR_GREEN,
+			COLOR_MAGENTA,
+			COLOR_RED,
+			COLOR_BLUE,
+			COLOR_BLACK,
+		}
+	}
+};
+
+#if (BPX == 16)
+static void altfb_color_bar(struct fb_info *info)
+{
+	unsigned short *p = (void *)info->screen_base;
+	unsigned xres = info->var.xres;
+	unsigned xbar = xres / 8;
+	unsigned yres = info->var.yres;
+	unsigned x,y,i;
+	for (y = 0; y < yres; y++) {
+		for (i = 0; i < 8; i++) {
+			unsigned short d;
+			d = bars[0].bar[i][2] >>3;
+			d |= (bars[0].bar[i][1] << 2) & 0x7e0;
+			d |= (bars[0].bar[i][0] << 8) & 0xf800;
+			for (x = 0; x < xbar; x++) *p++ = d;
+		}
+	}
+}
+#else
+static void altfb_color_bar(struct fb_info *info)
+{
+	unsigned *p = (void *)info->screen_base;
+	unsigned xres = info->var.xres;
+	unsigned xbar = xres / 8;
+	unsigned yres = info->var.yres;
+	unsigned x,y,i;
+	for (y = 0; y < yres; y++) {
+		for (i = 0; i < 8; i++) {
+			unsigned d;
+			d = bars[0].bar[i][2];
+			d |= bars[0].bar[i][1] << 8;
+			d |= bars[0].bar[i][0] << 16;
+			for (x = 0; x < xbar; x++) *p++ = d;
+		}
+	}
+}
+#endif
+
 static int __init altfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
@@ -250,7 +319,7 @@ static int __init altfb_probe(struct platform_device *dev)
 
 	altfb_fix.smem_len = VIDEOMEMSIZE;
 	if (!(fbmem_virt = dma_alloc_coherent(NULL, altfb_fix.smem_len, 
-			&altfb_fix.smem_start, GFP_KERNEL))) {
+					      (void *)&altfb_fix.smem_start, GFP_KERNEL))) {
 		printk("altfb: unable to allocate %d Bytes fb memory\n",
 		       altfb_fix.smem_len);
 		return -ENOMEM;
@@ -280,8 +349,10 @@ static int __init altfb_probe(struct platform_device *dev)
 	if (altfb_dma_start(altfb_fix.smem_start, altfb_fix.smem_len))
 		goto err2;
 
-	printk(KERN_INFO "fb%d: %s frame buffer device\n", info->node,
-	       info->fix.id);
+	printk(KERN_INFO "fb%d: %s frame buffer device at 0x%x+0x%x\n", info->node,
+	       info->fix.id, (unsigned)altfb_fix.smem_start, altfb_fix.smem_len);
+
+	altfb_color_bar(info);
 	return 0;
       err2:
 	fb_dealloc_cmap(&info->cmap);
