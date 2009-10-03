@@ -84,18 +84,6 @@ static inline struct thread_info *current_thread_info(void)
 	return ti;
 
 }
-
-#else /*  __ASSEMBLY__ */
-/* how to get the thread information struct from ASM 
-   usable only in supervisor mode */
-.macro GET_THREAD_INFO reg 
-.if THREAD_SIZE & 0xffff0000
-	andhi	\reg, sp, %hi(~(THREAD_SIZE-1))
-.else
-	addi	\reg, r0, %lo(~(THREAD_SIZE-1))
-	and	\reg, \reg, sp
-.endif
-.endm
 #endif /* !__ASSEMBLY__ */
 
 #define PREEMPT_ACTIVE		0x10000000
