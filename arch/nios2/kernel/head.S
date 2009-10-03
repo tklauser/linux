@@ -29,7 +29,7 @@
  * Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-
+#include <linux/init.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
@@ -72,7 +72,7 @@ _current_thread:
  * if the code resides in flash (looks for "Nios" at offset 0x0c from
  * the potential executable image).
  */
-	.text
+	__HEAD
 	.global _start
 _start:
 	/* Disable intruction trace
