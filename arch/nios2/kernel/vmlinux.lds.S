@@ -1,4 +1,6 @@
 #include <asm-generic/vmlinux.lds.h>
+#include <asm/cache.h>
+#include <asm/thread_info.h>
 #include <asm/nios.h>
 
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
@@ -7,9 +9,6 @@ OUTPUT_ARCH(nios)
 ENTRY(_start)	/* Defined in head.S */
 
 jiffies = jiffies_64;
-PAGE_SIZE = 4096;
-THREAD_SIZE = 8192;
-CACHE_LINE = 32;
 
 SECTIONS
 {
@@ -27,7 +26,7 @@ SECTIONS
 	} =0
 	_etext = .;
 
-	EXCEPTION_TABLE(CACHE_LINE)
+	EXCEPTION_TABLE(L1_CACHE_BYTES)
 
 	__init_begin = .;
 	INIT_TEXT_SECTION(PAGE_SIZE)
@@ -37,7 +36,7 @@ SECTIONS
 
         _sdata = .;
 	RO_DATA_SECTION(PAGE_SIZE)
-	RW_DATA_SECTION(CACHE_LINE, PAGE_SIZE, THREAD_SIZE)
+	RW_DATA_SECTION(L1_CACHE_BYTES, PAGE_SIZE, THREAD_SIZE)
 	_edata = .;
 
 	BSS_SECTION(0, 0, 0)
