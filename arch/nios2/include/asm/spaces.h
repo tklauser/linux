@@ -12,9 +12,6 @@
 
 #include <asm/nios.h>
 
-#define IO_BASE			0xa0000000
-#define UNCAC_BASE		0xa0000000
-
 /*
  * This handles the memory map.
  * We handle pages at KSEG0 for kernels with 32 bit address space.
