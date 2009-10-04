@@ -1396,7 +1396,14 @@ static void tse_device_init(void) {}
 #if defined(CONFIG_ETHOC) || defined(CONFIG_ETHOC_MODULE)
 #include <linux/etherdevice.h>
 #include <net/ethoc.h>
+
+#define na_igor_mac IGOR_MAC_BASE
+#define na_igor_mac_irq IGOR_MAC_IRQ
+#define na_ssram SSRAM_BASE
+#define na_ssram_end (SSRAM_BASE + SSRAM_SPAN)
+
 static struct ethoc_platform_data ethoc_platdata = {
+	.hwaddr = { 0x00,0x07,0xed,0x0a,0x03,0x29 },
 	.phy_id = -1,
 };
 
