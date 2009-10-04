@@ -1,31 +1,17 @@
 /*
  *  altfb.c -- Altera framebuffer driver
- * 
+ *
  *  Based on vfb.c -- Virtual frame buffer device
  *
- *	Copyright (C) 1997 Geert Uytterhoeven
- *      Copyright (C) 2002 James Simmons
- *	Copyright (C) 2006-2008 Thomas Chou
- *
- *  This file is subject to the terms and conditions of the GNU General Public
- *  License. See the file COPYING in the main directory of this archive for
- *  more details.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/errno.h>
-#include <linux/string.h>
-#include <linux/mm.h>
-#include <linux/tty.h>
-#include <linux/slab.h>
-#include <linux/vmalloc.h>
-#include <linux/delay.h>
-#include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
-
-#include <asm/uaccess.h>
 #include <linux/fb.h>
 #include <linux/init.h>
 
@@ -72,74 +58,53 @@ static struct fb_var_screeninfo altfb_default __initdata = {
 };
 
 static struct fb_fix_screeninfo altfb_fix __initdata = {
-	.id = "Altera FB",
+	.id = "altfb",
 	.type = FB_TYPE_PACKED_PIXELS,
 	.visual = FB_VISUAL_TRUECOLOR,
 	.line_length = (XRES * (BPX >> 3)),
 	.accel = FB_ACCEL_NONE,
 };
 
-/* We implement our own mmap to set MAY_SHARE and add the correct size */
-static int altfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
+static int altfb_setcolreg(unsigned regno, unsigned red, unsigned green,
+			   unsigned blue, unsigned transp, struct fb_info *info)
 {
-	vma->vm_flags |= VM_MAYSHARE | VM_SHARED;
+	/*
+	 *  Set a single color register. The values supplied have a 32/16 bit
+	 *  magnitude.
+	 *  Return != 0 for invalid regno.
+	 */
 
-	vma->vm_start = info->screen_base;
-	vma->vm_end = vma->vm_start + info->fix.smem_len;
+	if (regno > 255)
+		return 1;
+#if (BPX == 16)
+	red >>= 11;
+	green >>= 10;
+	blue >>= 11;
+
+	if (regno < 255) {
+		((u32 *) info->pseudo_palette)[regno] = ((red & 31) << 11) |
+		    ((green & 63) << 5) | (blue & 31);
+	}
+#else
+	red >>= 8;
+	green >>= 8;
+	blue >>= 8;
+
+	if (regno < 255) {
+		((u32 *) info->pseudo_palette)[regno] = ((red & 255) << 16) |
+		    ((green & 255) << 8) | (blue & 255);
+	}
+#endif
 	return 0;
 }
 
-static int altfb_setcolreg(unsigned regno, unsigned red, unsigned green,
-			   unsigned blue, unsigned transp,
-			   struct fb_info *info)
-{
-    /*
-     *  Set a single color register. The values supplied have a 32/16 bit
-     *  magnitude.
-     *  Return != 0 for invalid regno.
-     */
-
-    if (regno > 255)
-	    return 1;
-#if (BPX == 16)
-    red>>=11;
-    green>>=10;
-    blue>>=11;
-
-    if (regno < 255) {
-	((u32 *)info->pseudo_palette)[regno] = ((red & 31) <<11) |
-					       ((green & 63) << 5) |
-					       (blue & 31);
-    }
-#else
-    red>>=8;
-    green>>=8;
-    blue>>=8;
-
-    if (regno < 255) {
-	((u32 *)info->pseudo_palette)[regno] = ((red & 255) <<16) |
-					       ((green & 255) << 8) |
-					       (blue & 255);
-    }
-#endif
-    return 0;
-}
-
 static struct fb_ops altfb_ops = {
-	.owner		= THIS_MODULE,
+	.owner = THIS_MODULE,
 	.fb_fillrect = cfb_fillrect,
 	.fb_copyarea = cfb_copyarea,
 	.fb_imageblit = cfb_imageblit,
-	.fb_mmap = altfb_mmap,
 	.fb_setcolreg = altfb_setcolreg,
 };
-
-static void altfb_platform_release(struct device *device)
-{
-	/* This is called when the reference count goes to zero. */
-	dev_err(device,
-		"This driver is broken, please bug the authors so they will fix it.\n");
-}
 
 /*
  *  Initialization
@@ -160,19 +125,23 @@ static void altfb_platform_release(struct device *device)
 #define ALTERA_SGDMA_NEXT_DESC_POINTER 32
 
 /* SGDMA can only transfer this many bytes per descriptor */
-#define DISPLAY_BYTES_PER_DESC 0xFF00
+#define DISPLAY_BYTES_PER_DESC 0xFF00UL
 #define ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_EOP_MSK (0x1)
 #define ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_SOP_MSK (0x4)
 #define ALTERA_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK (0x80)
+#define DISPLAY_DESC_COUNT(len) (((len) + DISPLAY_BYTES_PER_DESC - 1) \
+				/ DISPLAY_BYTES_PER_DESC)
+#define DISPLAY_DESC_SIZE(len) (DISPLAY_DESC_COUNT(len) \
+				* sizeof(struct sgdma_desc))
 
-typedef struct {
-	u32 *read_addr;
+struct sgdma_desc {
+	u32 read_addr;
 	u32 read_addr_pad;
 
-	u32 *write_addr;
+	u32 write_addr;
 	u32 write_addr_pad;
 
-	u32 *next;
+	u32 next;
 	u32 next_pad;
 
 	u16 bytes_to_transfer;
@@ -183,55 +152,51 @@ typedef struct {
 	u8 status;
 	u8 control;
 
-} __attribute__ ((packed)) sgdma_desc;
+} __attribute__ ((packed));
 
-static int altfb_dma_start(unsigned long start, unsigned long len)
+static int __init altfb_dma_start(unsigned long start, unsigned long len,
+				  void *descp)
 {
 	unsigned long base =
 	    (unsigned long)ioremap(SGDMABASE, ALTERA_SGDMA_IO_EXTENT);
-	sgdma_desc *desc, *desc1;
-	int ndesc = (len + DISPLAY_BYTES_PER_DESC - 1) / DISPLAY_BYTES_PER_DESC;
-	int ndesc_size = sizeof(sgdma_desc) * ndesc;
-	int i;
+	unsigned long first_desc_phys = start + len;
+	unsigned long next_desc_phys = first_desc_phys;
+	struct sgdma_desc *desc = descp;
+	unsigned ctrl = ALTERA_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK;
 
-	writel(ALTERA_SGDMA_CONTROL_SOFTWARERESET_MSK,
+	writel(ALTERA_SGDMA_CONTROL_SOFTWARERESET_MSK, \
 	       base + ALTERA_SGDMA_CONTROL);	/* halt current transfer */
 	writel(0, base + ALTERA_SGDMA_CONTROL);	/* disable interrupts */
 	writel(0xff, base + ALTERA_SGDMA_STATUS);	/* clear status */
+	writel(first_desc_phys, base + ALTERA_SGDMA_NEXT_DESC_POINTER);
 
-	/* assume cache line size is 32, which is required by sgdma desc */
-	desc1 = kzalloc(ndesc_size, GFP_KERNEL);
-	if (desc1 == NULL)
-		return -ENOMEM;
-	desc1 = ioremap((unsigned long)desc1, ndesc_size);
-
-	for (i = 0, desc = desc1; i < ndesc; i++, desc++) {
-		unsigned ctrl = ALTERA_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK;
-		desc->read_addr = (void *)start;
-		if (i == (ndesc - 1)) {
-			desc->next = (void *)desc1;
-			desc->bytes_to_transfer = len;
-			ctrl |=
-			    ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_EOP_MSK;
-		} else {
-			desc->next = (void *)(desc + 1);
-			desc->bytes_to_transfer = DISPLAY_BYTES_PER_DESC;
-		}
-		if (i == 0)
-			ctrl |=
-			    ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_SOP_MSK;
+	while (len) {
+		unsigned long cc = min(len, DISPLAY_BYTES_PER_DESC);
+		next_desc_phys += sizeof(struct sgdma_desc);
+		desc->read_addr = start;
+		desc->next = next_desc_phys;
+		desc->bytes_to_transfer = cc;
 		desc->control = ctrl;
-		start += DISPLAY_BYTES_PER_DESC;
-		len -= DISPLAY_BYTES_PER_DESC;
+		start += cc;
+		len -= cc;
+		desc++;
 	}
 
-	writel((unsigned long)desc1, base + ALTERA_SGDMA_NEXT_DESC_POINTER);
-	writel(ALTERA_SGDMA_CONTROL_RUN_MSK | ALTERA_SGDMA_CONTROL_PARK_MSK,
+	desc--;
+	desc->next = first_desc_phys;
+	desc->control = ctrl | ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_EOP_MSK;
+	desc = descp;
+	desc->control = ctrl | ALTERA_SGDMA_DESCRIPTOR_CONTROL_GENERATE_SOP_MSK;
+	writel(ALTERA_SGDMA_CONTROL_RUN_MSK | ALTERA_SGDMA_CONTROL_PARK_MSK, \
 	       base + ALTERA_SGDMA_CONTROL);	/* start */
 	return 0;
 }
 #else
-static int altfb_dma_start(unsigned long start, unsigned long len)
+
+#define DISPLAY_DESC_SIZE(len) 0
+
+static int __init altfb_dma_start(unsigned long start, unsigned long len,
+				  void *descp)
 {
 	unsigned long base = ioremap(VGABASE, 16);
 	writel(0x0, base + 0);	/* Reset the VGA controller */
@@ -258,54 +223,56 @@ struct bar_std {
 
 /* Maximum number of bars are 10 - otherwise, the input print code
    should be modified */
-static struct bar_std bars[] = {
-	{	/* Standard ITU-R color bar sequence */
-		{
-			COLOR_WHITE,
-			COLOR_AMBAR,
-			COLOR_CIAN,
-			COLOR_GREEN,
-			COLOR_MAGENTA,
-			COLOR_RED,
-			COLOR_BLUE,
-			COLOR_BLACK,
-		}
-	}
+static struct bar_std __initdata bars[] = {
+	{			/* Standard ITU-R color bar sequence */
+	 {
+	  COLOR_WHITE,
+	  COLOR_AMBAR,
+	  COLOR_CIAN,
+	  COLOR_GREEN,
+	  COLOR_MAGENTA,
+	  COLOR_RED,
+	  COLOR_BLUE,
+	  COLOR_BLACK,
+	  }
+	 }
 };
 
 #if (BPX == 16)
-static void altfb_color_bar(struct fb_info *info)
+static void __init altfb_color_bar(struct fb_info *info)
 {
 	unsigned short *p = (void *)info->screen_base;
 	unsigned xres = info->var.xres;
 	unsigned xbar = xres / 8;
 	unsigned yres = info->var.yres;
-	unsigned x,y,i;
+	unsigned x, y, i;
 	for (y = 0; y < yres; y++) {
 		for (i = 0; i < 8; i++) {
 			unsigned short d;
-			d = bars[0].bar[i][2] >>3;
+			d = bars[0].bar[i][2] >> 3;
 			d |= (bars[0].bar[i][1] << 2) & 0x7e0;
 			d |= (bars[0].bar[i][0] << 8) & 0xf800;
-			for (x = 0; x < xbar; x++) *p++ = d;
+			for (x = 0; x < xbar; x++)
+				*p++ = d;
 		}
 	}
 }
 #else
-static void altfb_color_bar(struct fb_info *info)
+static void __init altfb_color_bar(struct fb_info *info)
 {
 	unsigned *p = (void *)info->screen_base;
 	unsigned xres = info->var.xres;
 	unsigned xbar = xres / 8;
 	unsigned yres = info->var.yres;
-	unsigned x,y,i;
+	unsigned x, y, i;
 	for (y = 0; y < yres; y++) {
 		for (i = 0; i < 8; i++) {
 			unsigned d;
 			d = bars[0].bar[i][2];
 			d |= bars[0].bar[i][1] << 8;
 			d |= bars[0].bar[i][0] << 16;
-			for (x = 0; x < xbar; x++) *p++ = d;
+			for (x = 0; x < xbar; x++)
+				*p++ = d;
 		}
 	}
 }
@@ -315,15 +282,21 @@ static int __init altfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	int retval = -ENOMEM;
-	void * fbmem_virt;
+	void *fbmem_virt;
+	u8 *desc_virt;
 
-	altfb_fix.smem_len = VIDEOMEMSIZE;
-	if (!(fbmem_virt = dma_alloc_coherent(NULL, altfb_fix.smem_len, 
-					      (void *)&altfb_fix.smem_start, GFP_KERNEL))) {
-		printk("altfb: unable to allocate %d Bytes fb memory\n",
-		       altfb_fix.smem_len);
+	/* sgdma descriptor table is located at the end of display memory */
+	fbmem_virt = dma_alloc_coherent(NULL,
+					VIDEOMEMSIZE +
+					DISPLAY_DESC_SIZE(VIDEOMEMSIZE),
+					(void *)&altfb_fix.smem_start,
+					GFP_KERNEL);
+	if (!fbmem_virt) {
+		printk(KERN_ERR "altfb: unable to allocate %ld Bytes fb memory\n",
+		       VIDEOMEMSIZE + DISPLAY_DESC_SIZE(VIDEOMEMSIZE));
 		return -ENOMEM;
 	}
+	altfb_fix.smem_len = VIDEOMEMSIZE;
 
 	info = framebuffer_alloc(sizeof(u32) * 256, &dev->dev);
 	if (!info)
@@ -346,21 +319,24 @@ static int __init altfb_probe(struct platform_device *dev)
 		goto err2;
 	platform_set_drvdata(dev, info);
 
-	if (altfb_dma_start(altfb_fix.smem_start, altfb_fix.smem_len))
+	desc_virt = fbmem_virt;
+	desc_virt += altfb_fix.smem_len;
+	if (altfb_dma_start
+	    (altfb_fix.smem_start, altfb_fix.smem_len, desc_virt))
 		goto err2;
 
-	printk(KERN_INFO "fb%d: %s frame buffer device at 0x%x+0x%x\n", info->node,
-	       info->fix.id, (unsigned)altfb_fix.smem_start, altfb_fix.smem_len);
-
+	printk(KERN_INFO "fb%d: %s frame buffer device at 0x%x+0x%x\n",
+	       info->node, info->fix.id, (unsigned)altfb_fix.smem_start,
+	       altfb_fix.smem_len);
 	altfb_color_bar(info);
 	return 0;
-      err2:
+err2:
 	fb_dealloc_cmap(&info->cmap);
-      err1:
+err1:
 	framebuffer_release(info);
-      err:
-	dma_free_coherent(NULL, altfb_fix.smem_len, fbmem_virt, 
-		altfb_fix.smem_start);
+err:
+	dma_free_coherent(NULL, altfb_fix.smem_len, fbmem_virt,
+			  altfb_fix.smem_start);
 	return retval;
 }
 
@@ -370,8 +346,8 @@ static int altfb_remove(struct platform_device *dev)
 
 	if (info) {
 		unregister_framebuffer(info);
-		dma_free_coherent(NULL, info->fix.smem_len, info->screen_base, 
-			info->fix.smem_start);
+		dma_free_coherent(NULL, info->fix.smem_len, info->screen_base,
+				  info->fix.smem_start);
 		framebuffer_release(info);
 	}
 	return 0;
@@ -388,9 +364,6 @@ static struct platform_driver altfb_driver = {
 static struct platform_device altfb_device = {
 	.name = "altfb",
 	.id = 0,
-	.dev = {
-		.release = altfb_platform_release,
-		}
 };
 
 static int __init altfb_init(void)
@@ -407,16 +380,15 @@ static int __init altfb_init(void)
 	return ret;
 }
 
-module_init(altfb_init);
-
-#ifdef MODULE
 static void __exit altfb_exit(void)
 {
 	platform_device_unregister(&altfb_device);
 	platform_driver_unregister(&altfb_driver);
 }
 
+module_init(altfb_init);
 module_exit(altfb_exit);
 
+MODULE_DESCRIPTION("Altera framebuffer driver");
+MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
-#endif /* MODULE */
