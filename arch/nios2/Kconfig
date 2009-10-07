@@ -123,6 +123,9 @@ config UID16
        bool
        default y
 
+config GENERIC_CSUM
+	def_bool y
+
 config GENERIC_FIND_NEXT_BIT
 	bool
 	default y

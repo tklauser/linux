@@ -50,10 +50,6 @@ EXPORT_SYMBOL(__iounmap);
 
 EXPORT_SYMBOL(kernel_thread);
 
-/* Networking helper routines. */
-EXPORT_SYMBOL(csum_partial_copy);
-EXPORT_SYMBOL(csum_partial);
-
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(memmove);
