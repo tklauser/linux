@@ -1,7 +1,12 @@
 /*
  * Altera SPI driver
  *
- * Based on spi_s3c24xx.c
+ * Copyright (C) 2008 Thomas Chou <thomas@wytron.com.tw>
+ *
+ * Based on spi_s3c24xx.c, which is:
+ * Copyright (c) 2006 Ben Dooks
+ * Copyright (c) 2006 Simtec Electronics
+ *	Ben Dooks <ben@simtec.co.uk>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -155,7 +160,8 @@ static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 		case 1:
 			return hw->tx[count];
 		case 2:
-			return (hw->tx[count * 2] | (hw->tx[count * 2 + 1] << 8));
+			return (hw->tx[count * 2]
+				| (hw->tx[count * 2 + 1] << 8));
 		}
 	}
 
