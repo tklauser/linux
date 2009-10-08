@@ -446,7 +446,7 @@ static struct resource epcs_controller_resource[] = {
 };
 
 static struct platform_device epcs_controller_device = {
-	.name = "altspi",
+	.name = "spi_altera",
 	.id = 0,		/* Bus number */
 	.num_resources = ARRAY_SIZE(epcs_controller_resource),
 	.resource = epcs_controller_resource,
@@ -511,7 +511,7 @@ static struct resource touch_panel_spi_resource[] = {
 };
 
 static struct platform_device touch_panel_spi_device = {
-	.name = "altspi",
+	.name = "spi_altera",
 	.id = 1,		/* Bus number */
 	.num_resources = ARRAY_SIZE(touch_panel_spi_resource),
 	.resource = touch_panel_spi_resource,
@@ -576,7 +576,7 @@ static struct resource mmc_spi_resource[] = {
 };
 
 static struct platform_device mmc_spi_device = {
-	.name = "altspi",
+	.name = "spi_altera",
 	.id = 2,		/* Bus number */
 	.num_resources = ARRAY_SIZE(mmc_spi_resource),
 	.resource = mmc_spi_resource,
