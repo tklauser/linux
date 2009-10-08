@@ -19,7 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 
-#define DRV_NAME "altps2"
+#define DRV_NAME "altera_ps2"
 
 struct ps2if {
 	struct serio		*io;

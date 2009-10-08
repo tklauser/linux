@@ -166,15 +166,6 @@ config SERIO_MACEPS2
 	  To compile this driver as a module, choose M here: the
 	  module will be called maceps2.
 
-config SERIO_ALTPS2
-	tristate "Altera UP PS2 controller"
-	depends on EMBEDDED
-	help
-	  Say Y here if you have Altera UP PS/2 ports.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called altps2.
-
 config SERIO_LIBPS2
 	tristate "PS/2 driver library" if EMBEDDED
 	help
@@ -208,5 +199,14 @@ config SERIO_XILINX_XPS_PS2
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called xilinx_ps2.
+
+config SERIO_ALTERA_PS2
+	tristate "Altera UP PS2 controller"
+	depends on EMBEDDED
+	help
+	  Say Y here if you have Altera University Program PS/2 ports.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called altera_ps2.
 
 endif
