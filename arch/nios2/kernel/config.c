@@ -950,7 +950,7 @@ static struct platform_device nios2_w1_gpio_0_device = {
  *	Altera PS2
  */
 
-#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_0_BASE)
+#if defined(CONFIG_SERIO_ALTERA_PS2) && defined(PS2_0_BASE)
 static struct resource altps2_0_resources[] = {
 	[0] = {
 		.start		= PS2_0_BASE,
@@ -964,7 +964,7 @@ static struct resource altps2_0_resources[] = {
 	},
 };
 static struct platform_device altps2_0_device = {
-	.name		= "altps2",
+	.name		= "altera_ps2",
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(altps2_0_resources),
 	.resource	= altps2_0_resources,
@@ -984,7 +984,7 @@ static struct resource altps2_1_resources[] = {
 	},
 };
 static struct platform_device altps2_1_device = {
-	.name		= "altps2",
+	.name		= "altera_ps2",
 	.id		= 1,
 	.num_resources	= ARRAY_SIZE(altps2_1_resources),
 	.resource	= altps2_1_resources,
@@ -1506,10 +1506,10 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&nios2_w1_gpio_0_device,
 #endif
 
-#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_0_BASE)
+#if defined(CONFIG_SERIO_ALTERA_PS2) && defined(PS2_0_BASE)
 	&altps2_0_device,
 #endif
-#if defined(CONFIG_SERIO_ALTPS2) && defined(PS2_1_BASE)
+#if defined(CONFIG_SERIO_ALTERA_PS2) && defined(PS2_1_BASE)
 	&altps2_1_device,
 #endif
 
