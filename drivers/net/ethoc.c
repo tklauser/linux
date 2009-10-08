@@ -409,7 +409,7 @@ static int ethoc_rx(struct net_device *dev, int limit)
 			struct sk_buff *skb = netdev_alloc_skb(dev, size);
 
 			size -= 4; /* strip the CRC */
-			skb_reserve(skb, 2); /* align TCP/IP header */
+			skb_reserve(skb, NET_IP_ALIGN);
 
 			if (likely(skb)) {
 				void *src = phys_to_virt(bd.addr);
