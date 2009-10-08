@@ -1,12 +1,16 @@
 /*
- *  Altera University Program PS2 controller driver
+ * Altera University Program PS2 controller driver
  *
- *  Based on sa1111ps2.c
+ * Copyright (C) 2008 Thomas Chou <thomas@wytron.com.tw>
+ *
+ * Based on sa1111ps2.c, which is:
+ * Copyright (C) 2002 Russell King
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/input.h>
@@ -178,3 +182,4 @@ module_exit(ps2_exit);
 MODULE_DESCRIPTION("Altera University Program PS2 controller driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
