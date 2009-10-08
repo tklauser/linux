@@ -22,11 +22,11 @@
 #include <linux/err.h>
 #include <linux/clk.h>
 #include <linux/platform_device.h>
-
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
-
 #include <linux/io.h>
+
+#define DRV_NAME "spi_altera"
 
 #define ALTERA_SPI_RXDATA	0
 #define ALTERA_SPI_TXDATA       4
@@ -372,7 +372,7 @@ static int __exit altera_spi_remove(struct platform_device *dev)
 static struct platform_driver altera_spidrv = {
 	.remove = __exit_p(altera_spi_remove),
 	.driver = {
-		.name = "altspi",
+		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
 	},
@@ -391,6 +391,7 @@ static void __exit altera_spi_exit(void)
 module_init(altera_spi_init);
 module_exit(altera_spi_exit);
 
-MODULE_DESCRIPTION("Altera SPI Driver");
+MODULE_DESCRIPTION("Altera SPI driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
