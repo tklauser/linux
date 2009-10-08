@@ -38,7 +38,7 @@ static irqreturn_t ps2_rxint(int irq, void *dev_id)
 	unsigned int status;
 	int handled = IRQ_NONE;
 
-	while ((status = inl(ps2if->base)) & 0xffff0000) {
+	while ((status = readl(ps2if->base)) & 0xffff0000) {
 		serio_interrupt(ps2if->io, status & 0xff, 0);
 		handled = IRQ_HANDLED;
 	}
@@ -52,7 +52,7 @@ static int ps2_write(struct serio *io, unsigned char val)
 {
 	struct ps2if *ps2if = io->port_data;
 
-	outl(val, ps2if->base);
+	writel(val, ps2if->base);
 	return 0;
 }
 
@@ -68,7 +68,7 @@ static int ps2_open(struct serio *io)
 			ps2if->irq, ret);
 		return ret;
 	}
-	outl(1, ps2if->base + 4);	/* enable rx irq */
+	writel(1, ps2if->base + 4); /* enable rx irq */
 	return 0;
 }
 
@@ -76,7 +76,7 @@ static void ps2_close(struct serio *io)
 {
 	struct ps2if *ps2if = io->port_data;
 
-	outl(0, ps2if->base);  /* disable rx irq */
+	writel(0, ps2if->base); /* disable rx irq */
 	free_irq(ps2if->irq, ps2if);
 }
 
@@ -128,7 +128,7 @@ static int ps2_probe(struct platform_device *dev)
 	printk(KERN_INFO DRV_NAME ": base %08x irq %d\n",
 	       ps2if->base, ps2if->irq);
 	/* clear fifo */
-	while (inl(ps2if->base) & 0xffff0000)
+	while (readl(ps2if->base) & 0xffff0000)
 		;
 	serio_register_port(ps2if->io);
 	return 0;
