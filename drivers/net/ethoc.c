@@ -19,7 +19,7 @@
 #include <linux/platform_device.h>
 #include <net/ethoc.h>
 
-static int buffer_size = 0x8000; /* 32 KBytes */
+static int buffer_size = (128 * 1536) + 4; /* total 128 buffer and align */
 module_param(buffer_size, int, 0);
 MODULE_PARM_DESC(buffer_size, "DMA buffer allocation size");
 
