@@ -201,8 +201,7 @@ config SERIO_XILINX_XPS_PS2
 	  module will be called xilinx_ps2.
 
 config SERIO_ALTERA_PS2
-	tristate "Altera UP PS2 controller"
-	depends on EMBEDDED
+	tristate "Altera UP PS/2 controller"
 	help
 	  Say Y here if you have Altera University Program PS/2 ports.
 
