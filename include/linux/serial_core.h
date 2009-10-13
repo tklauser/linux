@@ -173,6 +173,9 @@
 /* Qualcomm MSM SoCs */
 #define PORT_MSM	88
 
+/* BCM63xx family SoCs */
+#define PORT_BCM63XX	89
+
 /* Altera UARTs */
 #define PORT_ALTERA_JTAGUART	89
 #define PORT_ALTERA_UART	90

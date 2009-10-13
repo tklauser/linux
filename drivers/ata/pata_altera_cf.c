@@ -89,8 +89,6 @@
 #define WRITE_IDECTL(altcf, d)	\
 	writel((d), (altcf)->cfc_base + ALTCF_CFC_REG_IDECTL)
 
-typedef unsigned char __iomem *ptr_iomem;
-
 /*
  * This is the driver's private data for the device.  The struct device's
  * private data pointer is used by the libata core so we can't use it ourselves.
@@ -101,8 +99,8 @@ typedef unsigned char __iomem *ptr_iomem;
 struct altcf_private {
 	struct device *dev;		/* point back to device */
 	resource_size_t ide_raw_base;	/* unmapped IDE registers */
-	ptr_iomem ide_base;		/* mapped IDE registers */
-	ptr_iomem cfc_base;		/* mapped CF CONTROL registers */
+	unsigned char __iomem *ide_base;/* mapped IDE registers */
+	unsigned char __iomem *cfc_base;/* mapped CF CONTROL registers */
 	struct task_struct *cf_thread;	/* kthread to handle CF events */
 	int cfc_irq;			/* IRQ for CF CONTROL */
 	int ide_irq;			/* IRQ for IDE */
@@ -295,9 +293,8 @@ static void altcf_remove_ata(struct altcf_private *altcf)
 		dev_dbg(altcf->dev, "removing old CF\n");
 		/* Look for ATA host and detach it. */
 		host = dev_get_drvdata(altcf->dev);
-		if (host) {
+		if (host)
 			ata_host_detach(host);
-		}
 		/* Release ATA resources. */
 		devres_release_group(altcf->dev, group_id);
 	}
@@ -480,9 +477,8 @@ static int __devexit altcf_remove(struct device *dev)
 
 	/* Get pointer to our private data resource. */
 	altcf = devres_find(dev, altcf_private_release, NULL, NULL);
-	if (altcf == NULL) {
+	if (altcf == NULL)
 		return -ENXIO;
-	}
 	/* Hold off CF detect thread processing and mark device as dead. */
 	set_bit(EV_HOLD, &altcf->event);
 	set_bit(EV_DEAD, &altcf->event);
@@ -543,7 +539,7 @@ static int __devinit altcf_platform_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "no CF CONTROL IRQ resource\n");
 		return -EINVAL;
 	}
-	
+
 	return altcf_probe(&pdev->dev, ide_mem_res, ide_irq_res,
 			cfc_mem_res, cfc_irq_res);
 }
