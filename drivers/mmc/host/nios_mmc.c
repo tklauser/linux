@@ -62,11 +62,11 @@ unsigned int blk_prefetch = 1;
 unsigned int fmax = SD_MAX_FREQ;
 static unsigned int irq_count;
 /**************************** Low-level register access ******************************/
-static void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
+static inline void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
 {
 	writel(val, host->base + off);
 }
-static unsigned int nios_mmc_readl(NIOS_MMC_HOST *host, unsigned char off)
+static inline unsigned int nios_mmc_readl(NIOS_MMC_HOST *host, unsigned char off)
 {
 	return readl(host->base + off);
 }
