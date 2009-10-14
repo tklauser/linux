@@ -1,5 +1,5 @@
 /*
- * altjuart.h -- Altera JTAG UART driver defines.
+ * altera_jtaguart.h -- Altera JTAG UART driver defines.
  */
 
 #ifndef	__ALTJUART_H

@@ -1,5 +1,5 @@
 /*
- * altjuart.c -- Altera JTAG UART driver
+ * altera_jtaguart.c -- Altera JTAG UART driver
  *
  * Based on mcf.c -- Freescale ColdFire UART driver
  *
@@ -22,7 +22,9 @@
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/io.h>
-#include <linux/altjuart.h>
+#include <linux/altera_jtaguart.h>
+
+#define DRV_NAME "altera_jtaguart"
 
 /*
  * Altera JATG UART reg defs
@@ -461,7 +463,7 @@ static struct platform_driver altera_jtaguart_platform_driver = {
 	.probe = altera_jtaguart_probe,
 	.remove = __devexit_p(altera_jtaguart_remove),
 	.driver = {
-		.name = "altera_jtaguart",
+		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 	},
 };
@@ -490,6 +492,7 @@ static void __exit altera_jtaguart_exit(void)
 module_init(altera_jtaguart_init);
 module_exit(altera_jtaguart_exit);
 
-MODULE_DESCRIPTION("Altera JTAG UART Driver");
+MODULE_DESCRIPTION("Altera JTAG UART driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
