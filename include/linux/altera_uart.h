@@ -1,5 +1,5 @@
 /*
- * altuart.h -- Altera UART driver defines.
+ * altera_uart.h -- Altera UART driver defines.
  */
 
 #ifndef	__ALTUART_H

@@ -82,4 +82,4 @@ obj-$(CONFIG_KGDB_SERIAL_CONSOLE) += kgdboc.o
 obj-$(CONFIG_SERIAL_QE) += ucc_uart.o
 obj-$(CONFIG_SERIAL_TIMBERDALE)	+= timbuart.o
 obj-$(CONFIG_SERIAL_ALTERA_JTAGUART) += altjuart.o
-obj-$(CONFIG_SERIAL_ALTERA_UART) += altuart.o
+obj-$(CONFIG_SERIAL_ALTERA_UART) += altera_uart.o

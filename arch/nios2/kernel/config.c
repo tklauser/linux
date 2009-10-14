@@ -26,7 +26,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/altjuart.h>
-#include <linux/altuart.h>
+#include <linux/altera_uart.h>
 #include <linux/nios_mmc.h>
 #include <linux/gpio.h>
 #include <linux/leds.h>

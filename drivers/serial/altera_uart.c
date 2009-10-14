@@ -1,5 +1,5 @@
 /*
- * altuart.c -- Altera UART driver
+ * altera_uart.c -- Altera UART driver
  *
  * Based on mcf.c -- Freescale ColdFire UART driver
  *
@@ -22,7 +22,9 @@
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/io.h>
-#include <linux/altuart.h>
+#include <linux/altera_uart.h>
+
+#define DRV_NAME "altera_uart"
 
 /*
  * Altera UART reg defs
@@ -542,7 +544,7 @@ static struct platform_driver altera_uart_platform_driver = {
 	.probe = altera_uart_probe,
 	.remove = __devexit_p(altera_uart_remove),
 	.driver = {
-		.name = "altera_uart",
+		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
 	},
@@ -572,6 +574,7 @@ static void __exit altera_uart_exit(void)
 module_init(altera_uart_init);
 module_exit(altera_uart_exit);
 
-MODULE_DESCRIPTION("Altera UART Driver");
+MODULE_DESCRIPTION("Altera UART driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
