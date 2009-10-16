@@ -483,11 +483,6 @@ static struct flash_platform_data nios2_spi_flash_data = {
 	.name = "m25p80",
 	.parts = nios2_spi_flash_partitions,
 	.nr_parts = ARRAY_SIZE(nios2_spi_flash_partitions),
-#if defined(CONFIG_ALTERA_STRATIX_II) || defined(CONFIG_ALTERA_CYCLONE_II)
-	.type = "m25p64",	/* depend on the actual size of spi flash */
-#else
-	.type = "m25p16",	/* depend on the actual size of spi flash */
-#endif
 };
 #endif
 
