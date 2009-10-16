@@ -431,11 +431,10 @@ static void nios2_plat_nand_init(void) {}
 #endif
 
 #if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(EPCS_CONTROLLER_BASE)
-#define EPCS_SPI_OFFSET 0x200	/* FIXME */
 static struct resource epcs_controller_resource[] = {
 	[0] = {
-	       .start = EPCS_CONTROLLER_BASE + EPCS_SPI_OFFSET,
-	       .end = EPCS_CONTROLLER_BASE + EPCS_SPI_OFFSET + 31,
+	       .start = EPCS_CONTROLLER_BASE + EPCS_CONTROLLER_REGISTER_OFFSET,
+	       .end = EPCS_CONTROLLER_BASE + EPCS_CONTROLLER_REGISTER_OFFSET + 31,
 	       .flags = IORESOURCE_MEM,
 	       },
 	[1] = {
