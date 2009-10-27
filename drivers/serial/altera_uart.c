@@ -328,10 +328,9 @@ static void altera_uart_config_port(struct uart_port *port, int flags)
 	/* Clear mask, so no surprise interrupts. */
 	writel(0, port->membase + ALTERA_UART_CONTROL_REG);
 
-	if (request_irq
-	    (port->irq, altera_uart_interrupt, IRQF_DISABLED,
-	     "UART", port))
-		printk(KERN_ERR "ALTERA_UART: unable to attach Altera UART %d "
+	if (request_irq(port->irq, altera_uart_interrupt, IRQF_DISABLED,
+	                DRV_NAME, port))
+		pr_err(DRV_NAME ": unable to attach Altera UART %d "
 		       "interrupt vector=%d\n", port->line, port->irq);
 }
 
@@ -478,7 +477,7 @@ static int __init altera_uart_console_init(void)
 
 console_initcall(altera_uart_console_init);
 
-#define	ALTERA_UART_CONSOLE	&altera_uart_console
+#define	ALTERA_UART_CONSOLE	(&altera_uart_console)
 
 #else
 
@@ -491,7 +490,7 @@ console_initcall(altera_uart_console_init);
  */
 static struct uart_driver altera_uart_driver = {
 	.owner = THIS_MODULE,
-	.driver_name = "altera_uart",
+	.driver_name = DRV_NAME,
 	.dev_name = "ttyS",
 	.major = TTY_MAJOR,
 	.minor = 64,
