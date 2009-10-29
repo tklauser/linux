@@ -1232,58 +1232,9 @@ static struct resource alt_tse_resource[] = {
 
 };
 
-    
-static struct alt_tse_mdio_private alt_tse_mdio_private = {
-	.irq = {
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-		PHY_POLL,
-	}
-};
-
-     
-static struct platform_device alt_tse_mdio_device = {
-	.name	= ALT_TSE_MDIO_NAME,
-	.id	= 0,
-	.num_resources  = ARRAY_SIZE(alt_tse_resource),
-	.resource = alt_tse_resource,
-	.dev	= {
-	  .platform_data = &alt_tse_mdio_private,
-	}
-};
-
 /* all of this, except mii_id can be changed with ethtool */
 static struct alt_tse_config tsemac0_config = {
-	.mii_id = 0, /* should match alt_tse_mdio_device->id from above */
+	.mii_id = 0,
 	.phy_addr = 18,
 	.tse_supported_modes =  PHY_GBIT_FEATURES,
 /*
@@ -1524,7 +1475,6 @@ static struct platform_device *nios2_devices[] __initdata = {
 #endif
 
 #if defined (CONFIG_ALT_TSE)
-	&alt_tse_mdio_device,
 	&alt_tse_device,
 #endif
 

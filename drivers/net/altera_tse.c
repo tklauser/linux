@@ -151,6 +151,130 @@ int tse_set_hw_address(struct net_device *dev, void *port);
 static int tse_open(struct net_device *dev);
 static int tse_shutdown(struct net_device *dev);
 
+/*
+ * MDIO specific functions
+ */
+
+static int altera_tse_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
+{
+	alt_tse_mac *mac_dev;
+	unsigned int *mdio_regs;
+	unsigned int data;
+
+	mac_dev = (alt_tse_mac *) bus->priv;
+
+	/* set MDIO address */
+	writel(mii_id, &mac_dev->mdio_phy0_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
+
+	/* get the data */
+	data = readl(&mdio_regs[regnum]);
+
+	return data & 0xffff;
+}
+
+static int altera_tse_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u16 value)
+{
+	alt_tse_mac *mac_dev;
+	unsigned int *mdio_regs;
+	unsigned int data;
+
+	mac_dev = (alt_tse_mac *) bus->priv;
+
+	/* set MDIO address */
+	writel(mii_id, &mac_dev->mdio_phy0_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
+
+	/* get the data */
+	data = (unsigned int) value;
+
+	writel(data, &mdio_regs[regnum]);
+
+	return 0;
+}
+
+static int altera_tse_mdio_irqs[] = {
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+};
+
+int altera_tse_mdio_register(struct alt_tse_private *tse_priv)
+{
+	struct mii_bus *mdio_bus;
+	int ret;
+	int i;
+
+	mdio_bus = mdiobus_alloc();
+	if (!mdio_bus)
+		return -ENOMEM;
+
+	mdio_bus->name = "Altera TSE MII Bus";
+	mdio_bus->read = &altera_tse_mdio_read;
+	mdio_bus->write = &altera_tse_mdio_write;
+	snprintf(mdio_bus->id, MII_BUS_ID_SIZE, "%u", tse_priv->tse_config->mii_id);
+
+	mdio_bus->irq = altera_tse_mdio_irqs;
+	mdio_bus->priv = (void *) tse_priv->mac_dev;
+
+	ret = mdiobus_register(mdio_bus);
+	if (ret) {
+		printk(KERN_ERR "%s: Cannot register as MDIO bus\n",
+				mdio_bus->name);
+		mdiobus_free(mdio_bus);
+		return ret;
+	}
+
+	/* report available PHYs */
+	for (i = 31; i >= 0; i--) {
+		u32 phy_id;
+		u32 phy_id_bottom;
+		u32 phy_id_top;
+		int r;
+
+		r = get_phy_id(mdio_bus, i, &phy_id);
+		phy_id_top = (phy_id >> 16) & 0xffff;
+		phy_id_bottom = (phy_id) & 0xffff;
+		if (r)
+			return r;
+
+		if (phy_id_top != phy_id_bottom)
+			printk(KERN_INFO "Found PHY with ID=0x%x at address=0x%x\n",
+				phy_id, i);
+	}
+
+	return ret;
+}
+
 /*******************************************************************************
 *	SGDMA Control Stuff
 *
@@ -1754,6 +1878,10 @@ static int __devinit alt_tse_probe(struct platform_device *pdev)
 	}
 
 	tse_priv->tse_config = tse_config;
+
+	ret = altera_tse_mdio_register(tse_priv);
+	if (ret)
+		goto out_desc_mem;
 
 	/* Probe ethernet device */
 	tse_dev_probe(dev);

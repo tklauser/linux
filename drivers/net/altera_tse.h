@@ -65,7 +65,6 @@
 #define SOURCE_BUSY       -23
 
 #define ALT_TSE_NAME               "altera_tse"
-#define ALT_TSE_MDIO_NAME               "altera_tse_mdio"
 #define TSE_RESOURCE_MAC_DEV       "Altera_tse_resource_mac_dev"
 #define TSE_RESOURCE_SGDMA_RX_DEV  "Altera_tse_resource_sgdma_rx_dev"
 #define TSE_RESOURCE_SGDMA_TX_DEV  "Altera_tse_resource_sgdma_tx_dev"
@@ -574,12 +573,7 @@ struct alt_sgdma_registers {
   unsigned int      descriptor_pad[3];
 };
 
-/*----------------------------------------------------------------------*/
-//MDIO stuff
-
-struct alt_tse_mdio_private {
-	int irq[32];
-};
+/* Function prototypes */
 
 extern void tse_set_ethtool_ops(struct net_device *netdev);
 
