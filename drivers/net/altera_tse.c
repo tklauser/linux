@@ -56,12 +56,11 @@
 #include <asm/io.h>		/* I/O functions */
 #include <asm/uaccess.h>	/* User space memory access functions */
 
-#include "altera_tse.h"    
-
+#include "altera_tse.h"
 
 static const char version[] =
     "Altera Triple Speed MAC IP Driver(v8.0) "
-    "developed by SLS,August-2008," "--Linux 2.6.27-rc3\n";
+    "developed by SLS,August-2008\n";
 
 /* DEBUG flags */
 //#define DEBUG_INFO     1  
