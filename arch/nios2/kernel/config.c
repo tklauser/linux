@@ -1330,7 +1330,7 @@ static void tse_device_init(void)
 #ifndef na_descriptor_memory
 	alt_tse_resource[5].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
 	if (!alt_tse_resource[5].start)
-		return -ENOMEM;
+		panic("Couldn't allocate memory for Altera TSE MAC SGDMA descriptors");
 	alt_tse_resource[5].end   = alt_tse_resource[5].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
 #endif
 }
