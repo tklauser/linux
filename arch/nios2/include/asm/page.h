@@ -111,7 +111,7 @@ typedef struct page *pgtable_t;
 				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
 #define UNCAC_ADDR(addr) ((void *)((unsigned)(addr) | IO_REGION_BASE))
-#define CAC_ADDR(addr) ((void *)((unsigned)(addr) & ~IO_REGION_BASE | KERNEL_REGION_BASE))
+#define CAC_ADDR(addr) ((void *)(((unsigned)(addr) & ~IO_REGION_BASE) | KERNEL_REGION_BASE))
 
 #define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
 
