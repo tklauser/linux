@@ -608,11 +608,11 @@ static int tse_poll(struct napi_struct *napi, int budget)
 		    NULL;
 
 		rx_bytes = temp_desc_pointer->actual_bytes_transferred;
-		rx_bytes -= ALIGNED_BYTES;
-		
+		rx_bytes -= NET_IP_ALIGN;
+
 		//process packet
 		/* Align IP header to 32 bits */
-		skb_reserve(skb, ALIGNED_BYTES);
+		skb_reserve(skb, NET_IP_ALIGN);
 		skb_Rxbuffer = skb_put(skb, rx_bytes);
 		skb->protocol = eth_type_trans(skb, dev);
 
@@ -841,8 +841,8 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 //	offset = aligned_tx_buffer & 0x3;
 	if ((unsigned int)skb->data & 0x2) {
 		req_tx_shift_16 = 0x1;
-		aligned_tx_buffer -= ALIGNED_BYTES;
-		len += ALIGNED_BYTES;
+		aligned_tx_buffer -= NET_IP_ALIGN;
+		len += NET_IP_ALIGN;
 	} else {
 		req_tx_shift_16 = 0x0;
 	}
@@ -860,14 +860,14 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 //	aligned_tx_buffer = (unsigned int)skb->data;
 //	len = skb->len;
 //	if (aligned_tx_buffer & 0x2) {
-//		aligned_tx_buffer -= ALIGNED_BYTES;
-//		len += ALIGNED_BYTES;
+//		aligned_tx_buffer -= NET_IP_ALIGN;
+//		len += NET_IP_ALIGN;
 //	} else {
-//		new_skb = alloc_skb(skb->len + ALIGNED_BYTES, GFP_KERNEL);
-//		skb_reserve(new_skb, ALIGNED_BYTES);
+//		new_skb = alloc_skb(skb->len + NET_IP_ALIGN, GFP_KERNEL);
+//		skb_reserve(new_skb, NET_IP_ALIGN);
 //		memcpy(new_skb->data, skb->data,  skb->len);
-//		aligned_tx_buffer = (unsigned int)new_skb->data - ALIGNED_BYTES;
-//		len = skb->len + ALIGNED_BYTES;
+//		aligned_tx_buffer = (unsigned int)new_skb->data - NET_IP_ALIGN;
+//		len = skb->len + NET_IP_ALIGN;
 //		dev_kfree_skb(skb);
 //		skb = new_skb;
 //	}       

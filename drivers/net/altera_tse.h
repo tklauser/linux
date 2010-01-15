@@ -85,9 +85,6 @@
 #define ALT_TX_RING_MOD_MASK 		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
 #define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
 
-
-#define ALIGNED_BYTES                        2
-
 #define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
 
 /* define Mac address */
