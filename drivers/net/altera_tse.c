@@ -146,7 +146,7 @@ static void tse_set_hash_table(struct net_device *dev, int count,
 			       struct dev_mc_list *addrs);
 
 static void tse_set_multicast_list(struct net_device *dev);
-static void tse_set_hw_address(struct net_device *dev, void *port);
+static int tse_set_hw_address(struct net_device *dev, void *port);
 static int tse_open(struct net_device *dev);
 static int tse_shutdown(struct net_device *dev);
 
@@ -1410,10 +1410,13 @@ static void tse_set_multicast_list(struct net_device *dev)
 * arg2    : address passed from upper layer
 * return : 0
 */
-static void tse_set_hw_address(struct net_device *dev, void *port)
+static int tse_set_hw_address(struct net_device *dev, void *port)
 {
 	struct sockaddr *addr = port;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
+
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
 
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 
@@ -1453,6 +1456,8 @@ static void tse_set_hw_address(struct net_device *dev, void *port)
 	if (netif_msg_hw(tse_priv))
 		printk(KERN_INFO "%s :Set MAC address %pM\n", dev->name,
 		       dev->dev_addr);
+
+	return 0;
 }
 
 /*******************************************************************************
