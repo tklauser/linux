@@ -146,7 +146,7 @@ static void tse_set_hash_table(struct net_device *dev, int count,
 			       struct dev_mc_list *addrs);
 
 static void tse_set_multicast_list(struct net_device *dev);
-int tse_set_hw_address(struct net_device *dev, void *port);
+static void tse_set_hw_address(struct net_device *dev, void *port);
 static int tse_open(struct net_device *dev);
 static int tse_shutdown(struct net_device *dev);
 
@@ -1410,7 +1410,7 @@ static void tse_set_multicast_list(struct net_device *dev)
 * arg2    : address passed from upper layer
 * return : 0
 */
-int tse_set_hw_address(struct net_device *dev, void *port)
+static void tse_set_hw_address(struct net_device *dev, void *port)
 {
 	struct sockaddr *addr = port;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
@@ -1451,18 +1451,9 @@ int tse_set_hw_address(struct net_device *dev, void *port)
 	tse_priv->mac_dev->supp_mac_addr_3_1 = tse_priv->mac_dev->mac_addr_1;
 
 	if (netif_msg_hw(tse_priv))
-		printk(KERN_INFO "%s :Set Mac Address %2x:%2x:%2x:%2x:%2x:%2x\n", 
-			dev->name,
-			dev->dev_addr[0],
-			dev->dev_addr[1],
-			dev->dev_addr[2],
-			dev->dev_addr[3], dev->dev_addr[4], dev->dev_addr[5]);
-	//PRINTK1("read add mac_0 = 0x%x\n", tse_priv->mac_dev->mac_addr_0);
-	//PRINTK1("read add mac_1 = 0x%x\n", tse_priv->mac_dev->mac_addr_1);
-	return 0;
+		printk(KERN_INFO "%s :Set MAC address %pM\n", dev->name,
+		       dev->dev_addr);
 }
-
-
 
 /*******************************************************************************
 * Driver Open, shutdown, probe functions
@@ -1556,7 +1547,6 @@ static int tse_open(struct net_device *dev)
 
 	/* Start network queue */     	
 	netif_start_queue(dev);
-	tse_priv->tse_up = 1;
 	//tasklet_init(&tse_priv->tse_rx_tasklet, tse_sgdma_rx, (unsigned long)dev);
 	return SUCCESS;
 }
@@ -1638,11 +1628,9 @@ static int tse_shutdown(struct net_device *dev)
 
 	phy_disconnect(tse_priv->phydev);
 	tse_priv->phydev = NULL;
-	
+
 	netif_stop_queue(dev);
-	
-	tse_priv->tse_up = 0;
-	
+
 	return SUCCESS;
 }
 

@@ -389,7 +389,7 @@ struct alt_tse_private {
 
 /* NAPI struct for NAPI interface */
 	struct napi_struct napi;
-	                           
+
 	alt_tse_mac *mac_dev;
 
 	volatile struct alt_sgdma_registers *rx_sgdma_dev;
@@ -404,9 +404,8 @@ struct alt_tse_private {
 	unsigned char rx_shift_16_ok;
 	unsigned char last_tx_shift_16;
 	unsigned char last_rx_shift_16;
-	
+
 	unsigned int desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
-	unsigned int chain_loop;
 
 	unsigned int tse_tx_depth;	/* TX Receive FIFO depth                                 */
 	unsigned int tse_rx_depth;	/* RX Receive FIFO depth                                 */
@@ -440,7 +439,6 @@ struct alt_tse_private {
 
 /* system info */
 	struct phy_device *phydev;
-	struct mii_bus *mii_bus;
 	int oldspeed;
 	int oldduplex;
 	int oldlink;
@@ -458,10 +456,6 @@ struct alt_tse_private {
 /*link info */
 //	unsigned int alarm_irq;
 //	struct timer_reg *alarm_link_check;
-	unsigned int tse_up;
-	
-	uint32_t msg_enable;
-
 };
 
 /*----------------------------------------------------------------------*/
