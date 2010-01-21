@@ -375,8 +375,9 @@ ENTRY(sys_call_table)
 	.long sys_pwritev
 	.long sys_rt_sigqueueinfo
 	.long sys_perf_event_open
+	.long sys_recvmmsg		/* 335 */
 
-	.rept NR_syscalls - 335
+	.rept NR_syscalls - 336
 		.long sys_ni_syscall
 	.endr
 

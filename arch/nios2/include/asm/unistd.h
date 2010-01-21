@@ -378,8 +378,9 @@ extern int unresolved_symbol;
 #define __NR_pwritev		332
 #define __NR_rt_tgsigqueueinfo	333
 #define __NR_perf_event_open	334
+#define __NR_recvmmsg		335
 
-#define NR_syscalls                     335
+#define NR_syscalls		336
 
 #ifdef __KERNEL__
 
