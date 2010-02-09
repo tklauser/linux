@@ -27,52 +27,52 @@
 #define DRV_NAME "altera_uart"
 
 /*
- * Altera UART reg defs
+ * Altera UART reg defs according to the Nios UART datasheet:
+ * http://www.altera.com/literature/ds/ds_nios_uart.pdf
  */
 
-#define ALTERA_UART_SIZE                  32
+#define ALTERA_UART_SIZE		32
 
-#define ALTERA_UART_RXDATA_REG            0
-#define ALTERA_UART_TXDATA_REG            4
-#define ALTERA_UART_STATUS_REG            8
-#define ALTERA_UART_CONTROL_REG           12
-#define ALTERA_UART_DIVISOR_REG           16
-#define ALTERA_UART_EOP_REG               20
+#define ALTERA_UART_RXDATA_REG		0
+#define ALTERA_UART_TXDATA_REG		4
+#define ALTERA_UART_STATUS_REG		8
+#define ALTERA_UART_CONTROL_REG		12
+#define ALTERA_UART_DIVISOR_REG		16
+#define ALTERA_UART_EOP_REG		20
 
-#define ALTERA_UART_STATUS_PE_MSK         (0x1)
-#define ALTERA_UART_STATUS_FE_MSK         (0x2)
-#define ALTERA_UART_STATUS_BRK_MSK        (0x4)
-#define ALTERA_UART_STATUS_ROE_MSK        (0x8)
-#define ALTERA_UART_STATUS_TOE_MSK        (0x10)
-#define ALTERA_UART_STATUS_TMT_MSK        (0x20)
-#define ALTERA_UART_STATUS_TRDY_MSK       (0x40)
-#define ALTERA_UART_STATUS_RRDY_MSK       (0x80)
-#define ALTERA_UART_STATUS_E_MSK          (0x100)
-#define ALTERA_UART_STATUS_DCTS_MSK       (0x400)
-#define ALTERA_UART_STATUS_CTS_MSK        (0x800)
-#define ALTERA_UART_STATUS_EOP_MSK        (0x1000)
+#define ALTERA_UART_STATUS_PE_MSK	0x0001	/* parity error */
+#define ALTERA_UART_STATUS_FE_MSK	0x0002	/* framing error */
+#define ALTERA_UART_STATUS_BRK_MSK	0x0004	/* break */
+#define ALTERA_UART_STATUS_ROE_MSK	0x0008	/* RX overrun error */
+#define ALTERA_UART_STATUS_TOE_MSK	0x0010	/* TX overrun error */
+#define ALTERA_UART_STATUS_TMT_MSK	0x0020	/* TX shift register state */
+#define ALTERA_UART_STATUS_TRDY_MSK	0x0040	/* TX ready */
+#define ALTERA_UART_STATUS_RRDY_MSK	0x0080	/* RX ready */
+#define ALTERA_UART_STATUS_E_MSK	0x0100	/* exception condition */
+#define ALTERA_UART_STATUS_DCTS_MSK	0x0400	/* CTS logic-level change */
+#define ALTERA_UART_STATUS_CTS_MSK	0x0800	/* CTS logic state */
+#define ALTERA_UART_STATUS_EOP_MSK	0x1000	/* EOP written/read */
 
-#define ALTERA_UART_CONTROL_PE_MSK        (0x1)
-#define ALTERA_UART_CONTROL_FE_MSK        (0x2)
-#define ALTERA_UART_CONTROL_BRK_MSK       (0x4)
-#define ALTERA_UART_CONTROL_ROE_MSK       (0x8)
-#define ALTERA_UART_CONTROL_TOE_MSK       (0x10)
-#define ALTERA_UART_CONTROL_TMT_MSK       (0x20)
-#define ALTERA_UART_CONTROL_TRDY_MSK      (0x40)
-#define ALTERA_UART_CONTROL_RRDY_MSK      (0x80)
-#define ALTERA_UART_CONTROL_E_MSK         (0x100)
-#define ALTERA_UART_CONTROL_TRBK_MSK      (0x200)
-#define ALTERA_UART_CONTROL_DCTS_MSK      (0x400)
-#define ALTERA_UART_CONTROL_RTS_MSK       (0x800)
-#define ALTERA_UART_CONTROL_EOP_MSK       (0x1000)
+						/* Enable interrupt on... */
+#define ALTERA_UART_CONTROL_PE_MSK	0x0001	/* ...parity error */
+#define ALTERA_UART_CONTROL_FE_MSK	0x0002	/* ...framing error */
+#define ALTERA_UART_CONTROL_BRK_MSK	0x0004	/* ...break */
+#define ALTERA_UART_CONTROL_ROE_MSK	0x0008	/* ...RX overrun */
+#define ALTERA_UART_CONTROL_TOE_MSK	0x0010	/* ...TX overrun */
+#define ALTERA_UART_CONTROL_TMT_MSK	0x0020	/* ...TX shift register empty */
+#define ALTERA_UART_CONTROL_TRDY_MSK	0x0040	/* ...TX ready */
+#define ALTERA_UART_CONTROL_RRDY_MSK	0x0080	/* ...RX ready */
+#define ALTERA_UART_CONTROL_E_MSK	0x0100	/* ...exception*/
 
-#define ALTERA_UART_EOP_MSK               (0xFF)
-#define ALTERA_UART_EOP_OFST              (0)
+#define ALTERA_UART_CONTROL_TRBK_MSK	0x0200	/* TX break */
+#define ALTERA_UART_CONTROL_DCTS_MSK	0x0400	/* Interrupt on CTS change */
+#define ALTERA_UART_CONTROL_RTS_MSK	0x0800	/* RTS signal */
+#define ALTERA_UART_CONTROL_EOP_MSK	0x1000	/* Interrupt on EOP */
 
 /*
  * Some boards implement the DTR/DCD lines using GPIO lines, most don't. Dummy
  * out the access macros for those that don't. Those that do should define these
- * macros somewhere in there board specific inlude files.
+ * macros somewhere in their board specific inlude files.
  */
 #if !defined(altera_uart_getppdcd)
 # define altera_uart_getppdcd(p)	(1)
@@ -362,22 +362,22 @@ static int altera_uart_verify_port(struct uart_port *port,
  *	Define the basic serial functions we support.
  */
 static struct uart_ops altera_uart_ops = {
-	.tx_empty = altera_uart_tx_empty,
-	.get_mctrl = altera_uart_get_mctrl,
-	.set_mctrl = altera_uart_set_mctrl,
-	.start_tx = altera_uart_start_tx,
-	.stop_tx = altera_uart_stop_tx,
-	.stop_rx = altera_uart_stop_rx,
-	.enable_ms = altera_uart_enable_ms,
-	.break_ctl = altera_uart_break_ctl,
-	.startup = altera_uart_startup,
-	.shutdown = altera_uart_shutdown,
-	.set_termios = altera_uart_set_termios,
-	.type = altera_uart_type,
-	.request_port = altera_uart_request_port,
-	.release_port = altera_uart_release_port,
-	.config_port = altera_uart_config_port,
-	.verify_port = altera_uart_verify_port,
+	.tx_empty	= altera_uart_tx_empty,
+	.get_mctrl	= altera_uart_get_mctrl,
+	.set_mctrl	= altera_uart_set_mctrl,
+	.start_tx	= altera_uart_start_tx,
+	.stop_tx	= altera_uart_stop_tx,
+	.stop_rx	= altera_uart_stop_rx,
+	.enable_ms	= altera_uart_enable_ms,
+	.break_ctl	= altera_uart_break_ctl,
+	.startup	= altera_uart_startup,
+	.shutdown	= altera_uart_shutdown,
+	.set_termios	= altera_uart_set_termios,
+	.type		= altera_uart_type,
+	.request_port	= altera_uart_request_port,
+	.release_port	= altera_uart_release_port,
+	.config_port	= altera_uart_config_port,
+	.verify_port	= altera_uart_verify_port,
 };
 
 static struct altera_uart altera_uart_ports[CONFIG_SERIAL_ALTERA_UART_MAXPORTS];
@@ -460,13 +460,13 @@ static int __init altera_uart_console_setup(struct console *co, char *options)
 static struct uart_driver altera_uart_driver;
 
 static struct console altera_uart_console = {
-	.name = "ttyS",
-	.write = altera_uart_console_write,
-	.device = uart_console_device,
-	.setup = altera_uart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &altera_uart_driver,
+	.name	= "ttyS",
+	.write	= altera_uart_console_write,
+	.device	= uart_console_device,
+	.setup	= altera_uart_console_setup,
+	.flags	= CON_PRINTBUFFER,
+	.index	= -1,
+	.data	= &altera_uart_driver,
 };
 
 static int __init altera_uart_console_init(void)
@@ -489,13 +489,13 @@ console_initcall(altera_uart_console_init);
  *	Define the altera_uart UART driver structure.
  */
 static struct uart_driver altera_uart_driver = {
-	.owner = THIS_MODULE,
-	.driver_name = DRV_NAME,
-	.dev_name = "ttyS",
-	.major = TTY_MAJOR,
-	.minor = 64,
-	.nr = CONFIG_SERIAL_ALTERA_UART_MAXPORTS,
-	.cons = ALTERA_UART_CONSOLE,
+	.owner		= THIS_MODULE,
+	.driver_name	= DRV_NAME,
+	.dev_name	= "ttyS",
+	.major		= TTY_MAJOR,
+	.minor		= 64,
+	.nr		= CONFIG_SERIAL_ALTERA_UART_MAXPORTS,
+	.cons		= ALTERA_UART_CONSOLE,
 };
 
 static int __devinit altera_uart_probe(struct platform_device *pdev)
@@ -540,12 +540,12 @@ static int altera_uart_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver altera_uart_platform_driver = {
-	.probe = altera_uart_probe,
-	.remove = __devexit_p(altera_uart_remove),
-	.driver = {
-		.name = DRV_NAME,
-		.owner = THIS_MODULE,
-		.pm = NULL,
+	.probe	= altera_uart_probe,
+	.remove	= __devexit_p(altera_uart_remove),
+	.driver	= {
+		.name	= DRV_NAME,
+		.owner	= THIS_MODULE,
+		.pm	= NULL,
 	},
 };
 
