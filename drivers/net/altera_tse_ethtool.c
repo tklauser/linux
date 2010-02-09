@@ -182,9 +182,7 @@ static int tse_sset_count(struct net_device *dev, int sset)
 	}
 }
 
-
-
-static uint32_t tse_get_msglevel(struct net_device *dev)
+static u32 tse_get_msglevel(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	return tse_priv->msg_enable;

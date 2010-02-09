@@ -456,6 +456,8 @@ struct alt_tse_private {
 /*link info */
 //	unsigned int alarm_irq;
 //	struct timer_reg *alarm_link_check;
+
+	u32 msg_enable;
 };
 
 /*----------------------------------------------------------------------*/
