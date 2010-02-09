@@ -327,6 +327,8 @@ static void altera_uart_config_port(struct uart_port *port, int flags)
 
 	/* Clear mask, so no surprise interrupts. */
 	writel(0, port->membase + ALTERA_UART_CONTROL_REG);
+	/* Clear status register */
+	writel(0, port->membase + ALTERA_UART_STATUS_REG);
 
 	if (request_irq(port->irq, altera_uart_interrupt, IRQF_DISABLED,
 	                DRV_NAME, port))
