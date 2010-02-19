@@ -5,6 +5,7 @@
  *
  * (C) Copyright 2003-2007, Greg Ungerer <gerg@snapgear.com>
  * (C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
+ * (C) Copyright 2010, Tobias Klauser <tklauser@distanz.ch>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -111,38 +112,6 @@ static void altera_jtaguart_enable_ms(struct uart_port *port)
 {
 }
 
-static int altera_jtaguart_startup(struct uart_port *port)
-{
-	struct altera_jtaguart *pp =
-	    container_of(port, struct altera_jtaguart, port);
-	unsigned long flags;
-
-	spin_lock_irqsave(&port->lock, flags);
-
-	/* Enable RX interrupts now */
-	pp->imr = ALTERA_JTAGUART_CONTROL_RE_MSK;
-	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
-
-	spin_unlock_irqrestore(&port->lock, flags);
-
-	return 0;
-}
-
-static void altera_jtaguart_shutdown(struct uart_port *port)
-{
-	struct altera_jtaguart *pp =
-	    container_of(port, struct altera_jtaguart, port);
-	unsigned long flags;
-
-	spin_lock_irqsave(&port->lock, flags);
-
-	/* Disable all interrupts now */
-	pp->imr = 0;
-	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
-
-	spin_unlock_irqrestore(&port->lock, flags);
-}
-
 static void altera_jtaguart_set_termios(struct uart_port *port,
 					struct ktermios *termios,
 					struct ktermios *old)
@@ -236,12 +205,49 @@ static void altera_jtaguart_config_port(struct uart_port *port, int flags)
 
 	/* Clear mask, so no surprise interrupts. */
 	writel(0, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+}
 
-	if (request_irq(port->irq, altera_jtaguart_interrupt, IRQF_DISABLED,
-	                "JTAGUART", port))
-		printk(KERN_ERR
-		       "ALTERA_JTAGUART: unable to attach Altera JTAG UART %d "
+static int altera_jtaguart_startup(struct uart_port *port)
+{
+	struct altera_jtaguart *pp =
+	    container_of(port, struct altera_jtaguart, port);
+	unsigned long flags;
+	int ret;
+
+	ret = request_irq(port->irq, altera_jtaguart_interrupt, IRQF_DISABLED,
+	                  DRV_NAME, port);
+	if (ret) {
+		pr_err(DRV_NAME ": unable to attach Altera JTAG UART %d "
 		       "interrupt vector=%d\n", port->line, port->irq);
+		return ret;
+	}
+
+	spin_lock_irqsave(&port->lock, flags);
+
+	/* Enable RX interrupts now */
+	pp->imr = ALTERA_JTAGUART_CONTROL_RE_MSK;
+	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+
+	spin_unlock_irqrestore(&port->lock, flags);
+
+	return 0;
+}
+
+static void altera_jtaguart_shutdown(struct uart_port *port)
+{
+	struct altera_jtaguart *pp =
+	    container_of(port, struct altera_jtaguart, port);
+	unsigned long flags;
+
+	spin_lock_irqsave(&port->lock, flags);
+
+	/* Disable all interrupts now */
+	pp->imr = 0;
+	writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
+
+	spin_unlock_irqrestore(&port->lock, flags);
+
+	free_irq(port->irq, port);
 }
 
 static const char *altera_jtaguart_type(struct uart_port *port)
