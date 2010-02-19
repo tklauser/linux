@@ -22,13 +22,14 @@
 #include <linux/tty_flip.h>
 #include <linux/serial.h>
 #include <linux/serial_core.h>
+#include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/altera_uart.h>
 
 #define DRV_NAME "altera_uart"
 
 /*
- * Altera UART reg defs according to the Nios UART datasheet:
+ * Altera UART register definitions according to the Nios UART datasheet:
  * http://www.altera.com/literature/ds/ds_nios_uart.pdf
  */
 

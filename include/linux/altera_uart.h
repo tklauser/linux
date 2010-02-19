@@ -5,9 +5,6 @@
 #ifndef	__ALTUART_H
 #define	__ALTUART_H
 
-#include <linux/serial_core.h>
-#include <linux/platform_device.h>
-
 struct altera_uart_platform_uart {
 	unsigned long mapbase;	/* Physical address base */
 	unsigned int irq;	/* Interrupt vector */
