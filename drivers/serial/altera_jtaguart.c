@@ -21,6 +21,7 @@
 #include <linux/tty_flip.h>
 #include <linux/serial.h>
 #include <linux/serial_core.h>
+#include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/altera_jtaguart.h>
 
