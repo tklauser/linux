@@ -36,6 +36,7 @@
  *	Altera JTAG UART
  */
 
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART)
 static struct altera_jtaguart_platform_uart nios2_jtaguart_platform[] = {
 #ifdef JTAG_UART_BASE
 	{
@@ -51,7 +52,9 @@ static struct platform_device nios2_jtaguart = {
 	.id = 0,
 	.dev.platform_data = nios2_jtaguart_platform,
 };
+#endif
 
+#if defined(CONFIG_SERIAL_ALTERA_UART)
 /*
  *	Altera UART
  */
@@ -93,6 +96,7 @@ static struct platform_device nios2_uart = {
 	.id = 0,
 	.dev.platform_data = nios2_uart_platform,
 };
+#endif
 
 /*
  *	openip gpio
@@ -1477,9 +1481,13 @@ static struct platform_device oeth_device = {
  */
 
 static struct platform_device *nios2_devices[] __initdata = {
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART)
 	&nios2_jtaguart,
+#endif
 
+#if defined(CONFIG_SERIAL_ALTERA_UART)
 	&nios2_uart,
+#endif
 
 #if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
 	&gpio_leds_device,
