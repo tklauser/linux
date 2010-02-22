@@ -97,6 +97,12 @@ config PIO_LED
          Enable the example PIO led driver (which just
          displays a timer value on the 8 leds)
 
+config EARLY_PRINTK
+       bool "Activate early kernel debugging"
+       default y
+       help
+         Enable early printk on console
+
 source "arch/nios2/drivers/Kconfig"
 
 endmenu
@@ -149,10 +155,6 @@ config NO_IOPORT
 	def_bool y
 
 config ZONE_DMA
-       bool
-       default y
-
-config EARLY_PRINTK
        bool
        default y
 

@@ -17,6 +17,8 @@
 #include <linux/init.h>
 #include <asm/io.h>
 
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
+
 #if JTAG_UART_BASE > 0x20000000
 #error Cannot map JTAG uart directly to IO_REGION
 #error please disable early console
@@ -46,6 +48,34 @@ static void early_console_write(struct console *con, const char *s, unsigned n)
      __builtin_stwio((void *)base, *s++);
    }
 }
+
+#elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
+
+#if UART_BASE > 0x20000000
+#error Cannot map UART directly to IO_REGION
+#error please disable early console
+#endif
+
+#define ALTERA_UART_TXDATA_REG		4
+#define ALTERA_UART_STATUS_REG		8
+#define ALTERA_UART_STATUS_TRDY		0x0040
+
+static void early_console_write(struct console *con, const char *s, unsigned n)
+{
+  unsigned long base = UART_BASE + IO_REGION_BASE;
+  int crlf = 0;
+
+  while (n-- && *s) {
+     while (!(__builtin_ldwio((void *)(base + ALTERA_UART_STATUS_REG)) & ALTERA_UART_STATUS_TRDY))
+       ;
+     crlf = (*s == '\n' && !crlf);	/* '\n' -> '\r' + '\n' */
+     __builtin_stwio((void *)(base + ALTERA_UART_TXDATA_REG), crlf ? (n++, '\r') : *s++);
+   }
+}
+
+#else
+#error Neither SERIAL_ALTERA_JTAGUART_CONSOLE nor SERIAL_ALTERA_UART_CONSOLE selected???
+#endif
 
 static struct console early_console = {
 	.name	= "early",
