@@ -37,6 +37,8 @@ head-y		:= arch/nios2/kernel/head.o
 libs-y		+= arch/nios2/lib/
 core-y		+= arch/nios2/kernel/ arch/nios2/mm/
 
+drivers-y	+= arch/nios2/drivers/
+
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
 
