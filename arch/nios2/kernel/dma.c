@@ -1,15 +1,14 @@
 /*
- * arch/nios2nommu/kernel/dma.c
- *
- * Copyright (C) 2005 Microtronix Datacom Ltd
+ * arch/nios2/kernel/dma.c
  *
  * PC like DMA API for Nios's DMAC.
+ *
+ * Copyright (C) 2005 Microtronix Datacom Ltd
+ *   Written by Wentao Xu <wentao@microtronix.com>
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * Written by Wentao Xu <wentao@microtronix.com>
  */
 
 #include <linux/init.h>
@@ -51,16 +50,17 @@
 #define CT_QUAD			0x800
 
 struct dma_channel {
-	unsigned int addr;  /* control address */
+	unsigned int addr;	/* control address */
 	unsigned int irq;	/* interrupt number */
 	atomic_t idle;
-	unsigned int mode;  /* dma mode: width, stream etc */
-	int (*handler)(void*, int );
-	void*	user;
-	
+	unsigned int mode;	/* dma mode: width, stream etc */
+	int (*handler)(void *, int);
+	void *user;
+
 	char id[16];
 	char dev_id[16];
 };
+
 static struct dma_channel dma_channels[]={
 #ifdef na_dma_0
 	{
@@ -85,159 +85,175 @@ void enable_dma(unsigned int dmanr)
 	if (dmanr < MAX_DMA_CHANNELS) {
 		unsigned int ctl = dma_channels[dmanr].mode;
 		ctl |= CT_GO | CT_IEEN;
-		outl(ctl, dma_channels[dmanr].addr+REG_DMA_CONTROL);
+		outl(ctl, dma_channels[dmanr].addr + REG_DMA_CONTROL);
 	}
 }
+EXPORT_SYMBOL(enable_dma);
 
 void disable_dma(unsigned int dmanr)
 {
 	if (dmanr < MAX_DMA_CHANNELS) {
 		unsigned int ctl = dma_channels[dmanr].mode;
 		ctl &= ~(CT_GO | CT_IEEN);
-		outl(ctl, dma_channels[dmanr].addr+REG_DMA_CONTROL);
+		outl(ctl, dma_channels[dmanr].addr + REG_DMA_CONTROL);
 	}
 }
+EXPORT_SYMBOL(disable_dma);
 
 void set_dma_count(unsigned int dmanr, unsigned int count)
 {
 	if (dmanr < MAX_DMA_CHANNELS) {
 		dma_channels[dmanr].mode |= CT_LEEN;
-		outl(count, dma_channels[dmanr].addr+REG_DMA_LENGTH);
+		outl(count, dma_channels[dmanr].addr + REG_DMA_LENGTH);
 	}
 }
+EXPORT_SYMBOL(set_dma_count);
 
 int get_dma_residue(unsigned int dmanr)
 {
-	int result =-1;
-	if (dmanr < MAX_DMA_CHANNELS) {
-		result = inl(dma_channels[dmanr].addr+REG_DMA_LENGTH);
-	}
+	int result = -1;
+
+	if (dmanr < MAX_DMA_CHANNELS)
+		result = inl(dma_channels[dmanr].addr + REG_DMA_LENGTH);
+
 	return result;
 }
+EXPORT_SYMBOL(get_dma_residue);
 
 int request_dma(unsigned int chan, const char *dev_id)
 {
 	struct dma_channel *channel;
 
-	if ( chan >= MAX_DMA_CHANNELS) {
+	if (chan >= MAX_DMA_CHANNELS)
 		return -EINVAL;
-	}
 
 	channel = &dma_channels[chan];
-	
-	if (!atomic_dec_and_test(&channel->idle)) {
+
+	if (!atomic_dec_and_test(&channel->idle))
 		return -EBUSY;
-	}
 
 	strlcpy(channel->dev_id, dev_id, sizeof(channel->dev_id));
-	channel->handler=NULL;
-	channel->user=NULL;
-	channel->mode =0;
+	channel->handler = NULL;
+	channel->user = NULL;
+	channel->mode = 0;
 
 	return 0;
 }
+EXPORT_SYMBOL(request_dma);
 
 void free_dma(unsigned int chan)
 {
-	if ( chan < MAX_DMA_CHANNELS) {
-		dma_channels[chan].handler=NULL;
-		dma_channels[chan].user=NULL;
+	if (chan < MAX_DMA_CHANNELS) {
+		dma_channels[chan].handler = NULL;
+		dma_channels[chan].user = NULL;
 		atomic_set(&dma_channels[chan].idle, 1);
 	}
 }
+EXPORT_SYMBOL(free_dma);
 
 int nios2_request_dma(const char *dev_id)
 {
 	int chann;
 
-	for ( chann=0; chann < MAX_DMA_CHANNELS; chann++) {
-		if (request_dma(chann, dev_id)==0)
+	for (chann = 0; chann < MAX_DMA_CHANNELS; chann++) {
+		if (request_dma(chann, dev_id) == 0)
 			return chann;
 	}
 
 	return -EINVAL;
 }
+EXPORT_SYMBOL(nios2_request_dma);
+
 void nios2_set_dma_handler(unsigned int dmanr, int (*handler)(void*, int), void* user)
 {
 	if (dmanr < MAX_DMA_CHANNELS) {
-		dma_channels[dmanr].handler=handler;
-		dma_channels[dmanr].user=user;
-	}	
+		dma_channels[dmanr].handler = handler;
+		dma_channels[dmanr].user = user;
+	}
 }
+EXPORT_SYMBOL(nios2_set_dma_handler);
+
 #define NIOS2_DMA_WIDTH_MASK	(CT_BYTE | CT_HW | CT_WORD | CT_DOUBLE | CT_QUAD)
 #define NIOS2_MODE_MASK (NIOS2_DMA_WIDTH_MASK | CT_REEN | CT_WEEN | CT_LEEN | CT_RCON | CT_WCON)
 void nios2_set_dma_data_width(unsigned int dmanr, unsigned int width)
 {
-	if (dmanr < MAX_DMA_CHANNELS) {		
-		 dma_channels[dmanr].mode &= ~NIOS2_DMA_WIDTH_MASK;
-		 switch (width) {
-		 	case 1:
+	if (dmanr < MAX_DMA_CHANNELS) {
+		dma_channels[dmanr].mode &= ~NIOS2_DMA_WIDTH_MASK;
+		switch (width) {
+		case 1:
 			dma_channels[dmanr].mode |= CT_BYTE;
 			break;
-			case 2:
+		case 2:
 			dma_channels[dmanr].mode |= CT_HW;
 			break;
-			case 8:
+		case 8:
 			dma_channels[dmanr].mode |= CT_DOUBLE;
 			break;
-			case 16:
+		case 16:
 			dma_channels[dmanr].mode |= CT_QUAD;
 			break;
-			case 4:
-			default:
+		case 4:
+		default:
 			dma_channels[dmanr].mode |= CT_WORD;
-			break;			
-		 }
+			break;
+		}
 	}
 }
+EXPORT_SYMBOL(nios2_set_dma_data_width);
 
-void nios2_set_dma_rcon(unsigned int dmanr,unsigned int set)
+void nios2_set_dma_rcon(unsigned int dmanr, unsigned int set)
 {
-	if (dmanr < MAX_DMA_CHANNELS) {		
-		 dma_channels[dmanr].mode &= ~(CT_REEN | CT_RCON);
-		 if (set)
-		 	dma_channels[dmanr].mode |= (CT_REEN | CT_RCON);
+	if (dmanr < MAX_DMA_CHANNELS) {
+		dma_channels[dmanr].mode &= ~(CT_REEN | CT_RCON);
+		if (set)
+			dma_channels[dmanr].mode |= (CT_REEN | CT_RCON);
 	}
 }
-void nios2_set_dma_wcon(unsigned int dmanr,unsigned int set)
+EXPORT_SYMBOL(nios2_set_dma_rcon);
+
+void nios2_set_dma_wcon(unsigned int dmanr, unsigned int set)
 {
-	if (dmanr < MAX_DMA_CHANNELS) {		
-		 dma_channels[dmanr].mode &= ~(CT_WEEN | CT_WCON);
-		 if (set)
-		 	dma_channels[dmanr].mode |= (CT_WEEN | CT_WCON);
+	if (dmanr < MAX_DMA_CHANNELS) {
+		dma_channels[dmanr].mode &= ~(CT_WEEN | CT_WCON);
+		if (set)
+			dma_channels[dmanr].mode |= (CT_WEEN | CT_WCON);
 	}
 }
+EXPORT_SYMBOL(nios2_set_dma_wcon);
+
 void nios2_set_dma_mode(unsigned int dmanr, unsigned int mode)
 {
 	if (dmanr < MAX_DMA_CHANNELS) {
-		/* set_dma_mode is only allowed to change the bus width,
-		   stream setting, etc.
+		/*
+		 * set_dma_mode is only allowed to change the bus width,
+		 * stream setting, etc.
 		 */
 		 mode &= NIOS2_MODE_MASK;
 		 dma_channels[dmanr].mode &= ~NIOS2_MODE_MASK;
 		 dma_channels[dmanr].mode |= mode;
 	}
 }
+EXPORT_SYMBOL(nios2_set_dma_mode);
 
 void nios2_set_dma_raddr(unsigned int dmanr, unsigned int a)
 {
-	if (dmanr < MAX_DMA_CHANNELS) {
-		outl(a, dma_channels[dmanr].addr+REG_DMA_READADDR);
-	}
+	if (dmanr < MAX_DMA_CHANNELS)
+		outl(a, dma_channels[dmanr].addr + REG_DMA_READADDR);
 }
+EXPORT_SYMBOL(nios2_set_dma_raddr);
+
 void nios2_set_dma_waddr(unsigned int dmanr, unsigned int a)
 {
-	if (dmanr < MAX_DMA_CHANNELS) {
-		outl(a, dma_channels[dmanr].addr+REG_DMA_WRITEADDR);
-	}
+	if (dmanr < MAX_DMA_CHANNELS)
+		outl(a, dma_channels[dmanr].addr + REG_DMA_WRITEADDR);
 }
-
+EXPORT_SYMBOL(nios2_set_dma_waddr);
 
 static irqreturn_t dma_isr(int irq, void *dev_id)
 {
-	struct dma_channel	*chann=(struct dma_channel*)dev_id;
-	
-	if (chann) {		
+	struct dma_channel *chann = dev_id;
+
+	if (chann) {
 		int status = inl(chann->addr+REG_DMA_STATUS);
 		/* ack the interrupt, and clear the DONE bit */
 		outl(0, chann->addr+REG_DMA_STATUS);
@@ -248,8 +264,6 @@ static irqreturn_t dma_isr(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
-
-
 
 #ifdef CONFIG_PROC_FS
 static int proc_dma_show(struct seq_file *m, void *v)
@@ -289,8 +303,8 @@ __initcall(proc_dma_init);
 int __init init_dma(void)
 {
 	int i;
-		
-	for (i = 0 ; i < MAX_DMA_CHANNELS ; i++) {
+
+	for (i = 0; i < MAX_DMA_CHANNELS; i++) {
 		sprintf(dma_channels[i].id, "dmac-%d", i);
 		/* disable the dmac channel */
 		disable_dma(i);
@@ -306,8 +320,8 @@ int __init init_dma(void)
 static void __exit exit_dma(void)
 {
 	int i;
-		
-	for (i = 0 ; i < MAX_DMA_CHANNELS ; i++) {
+
+	for (i = 0; i < MAX_DMA_CHANNELS; i++) {
 		/* disable the dmac channel */
 		disable_dma(i);
 		free_irq(dma_channels[i].irq, dma_channels[i].id);
@@ -318,21 +332,3 @@ module_init(init_dma);
 module_exit(exit_dma);
 
 MODULE_LICENSE("GPL");
-
-//EXPORT_SYMBOL(claim_dma_lock);
-//EXPORT_SYMBOL(release_dma_lock);
-EXPORT_SYMBOL(enable_dma);
-EXPORT_SYMBOL(disable_dma);
-EXPORT_SYMBOL(set_dma_count);
-EXPORT_SYMBOL(get_dma_residue);
-EXPORT_SYMBOL(request_dma);
-EXPORT_SYMBOL(free_dma);
-EXPORT_SYMBOL(nios2_request_dma);
-EXPORT_SYMBOL(nios2_set_dma_handler);
-EXPORT_SYMBOL(nios2_set_dma_data_width);
-EXPORT_SYMBOL(nios2_set_dma_rcon);
-EXPORT_SYMBOL(nios2_set_dma_wcon);
-EXPORT_SYMBOL(nios2_set_dma_mode);
-EXPORT_SYMBOL(nios2_set_dma_raddr);
-EXPORT_SYMBOL(nios2_set_dma_waddr);
-
