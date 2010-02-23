@@ -16,9 +16,6 @@ obj-y   := entry.o traps.o irq.o syscall.o syscalltable.o \
 
 obj-$(CONFIG_MODULES) += module.o
 obj-$(CONFIG_CONSOLE) += console.o
-obj-$(CONFIG_PIO_DEVICES) += pio.o
 obj-$(CONFIG_AVALON_DMA) += dma.o
 obj-$(CONFIG_EARLY_PRINTK) += early_printk.o
 #obj-$(CONFIG_NIOS_DEBUG_DEV) += debugdev.o
-
-

@@ -33,4 +33,17 @@ config ALTERA_REMOTE_UPDATE_FLASH_WIDTH_16
 	bool "16 bits (shift address by 3)"
 endchoice
 
+config PIO_DEVICES
+	tristate "Enable NiosII PIO driver"
+	default n
+	help
+
+config PIO_LED
+	bool "Enable NiosII PIO LED driver"
+	depends on PIO_DEVICES
+	default n
+	help
+	  Enable the example PIO LED driver (which just displays a timer value
+	  on the 8 LEDs)
+
 endmenu

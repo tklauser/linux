@@ -1,18 +1,18 @@
 /*
- *  linux/arch/nios2nommu/kernel/pio.c
- *  "Example" drivers(LEDs and 7 seg displays) of the PIO interface
- *  on Nios Development Kit.
+ * arch/nios2/drivers/pio.c
  *
- *  Copyright (C) 2004 Microtronix Datacom Ltd
+ * "Example" drivers (LEDs and 7 seg displays) of the PIO interface
+ * on Nios Development Kit.
  *
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version
- *  2 of the License, or (at your option) any later version.
- * 
- *  Written by Wentao Xu <wentao@microtronix.com>
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ *   Written by Wentao Xu <wentao@microtronix.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version
+ * 2 of the License, or (at your option) any later version.
  */
- 
+
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>

@@ -84,19 +84,6 @@ config GENERIC_GPIO
     	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
     	  than the Altera PIO. The spinlock is no longer needed.
 
-config PIO_DEVICES
-       tristate "Enable NiosII PIO driver"
-       default y
-       help
-
-config PIO_LED
-       bool "Enable NiosII PIO led driver"
-       depends on PIO_DEVICES
-       default y
-       help
-         Enable the example PIO led driver (which just
-         displays a timer value on the 8 leds)
-
 config EARLY_PRINTK
        bool "Activate early kernel debugging"
        default y
