@@ -176,9 +176,12 @@
 /* BCM63xx family SoCs */
 #define PORT_BCM63XX	89
 
+/* Aeroflex Gaisler GRLIB APBUART */
+#define PORT_APBUART    90
+
 /* Altera UARTs */
-#define PORT_ALTERA_JTAGUART	89
-#define PORT_ALTERA_UART	90
+#define PORT_ALTERA_JTAGUART	91
+#define PORT_ALTERA_UART	92
 
 #ifdef __KERNEL__
 
