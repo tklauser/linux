@@ -310,7 +310,7 @@ static int altera_uart_startup(struct uart_port *port)
 	int ret;
 
 	ret = request_irq(port->irq, altera_uart_interrupt, IRQF_DISABLED,
-	                  DRV_NAME, port);
+			DRV_NAME, port);
 	if (ret) {
 		pr_err(DRV_NAME ": unable to attach Altera UART %d "
 		       "interrupt vector=%d\n", port->line, port->irq);
@@ -399,9 +399,7 @@ int __init early_altera_uart_setup(struct altera_uart_platform_uart *platp)
 	struct uart_port *port;
 	int i;
 
-	for (i = 0;
-	     (i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase);
-	     i++) {
+	for (i = 0; i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS && platp[i].mapbase; i++) {
 		port = &altera_uart_ports[i].port;
 
 		port->line = i;
@@ -514,9 +512,7 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	struct uart_port *port;
 	int i;
 
-	for (i = 0;
-	     (i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS) && (platp[i].mapbase);
-	     i++) {
+	for (i = 0; i < CONFIG_SERIAL_ALTERA_UART_MAXPORTS && platp[i].mapbase; i++) {
 		port = &altera_uart_ports[i].port;
 
 		port->line = i;
