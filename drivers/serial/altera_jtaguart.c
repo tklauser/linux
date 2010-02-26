@@ -147,14 +147,11 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 	struct circ_buf *xmit = &port->state->xmit;
 	unsigned int pending, count;
 
-	spin_lock(&port->lock);
-
 	if (port->x_char) {
 		/* Send special char - probably flow control */
 		writel(port->x_char, port->membase + ALTERA_JTAGUART_DATA_REG);
 		port->x_char = 0;
 		port->icount.tx++;
-		spin_unlock(&port->lock);
 		return;
 	}
 
@@ -182,8 +179,6 @@ static void altera_jtaguart_tx_chars(struct altera_jtaguart *pp)
 		pp->imr &= ~ALTERA_JTAGUART_CONTROL_WE_MSK;
 		writel(pp->imr, port->membase + ALTERA_JTAGUART_CONTROL_REG);
 	}
-
-	spin_unlock(&port->lock);
 }
 
 static irqreturn_t altera_jtaguart_interrupt(int irq, void *data)
@@ -195,10 +190,16 @@ static irqreturn_t altera_jtaguart_interrupt(int irq, void *data)
 
 	isr = (readl(port->membase + ALTERA_JTAGUART_CONTROL_REG) >>
 	       ALTERA_JTAGUART_CONTROL_RI_OFF) & pp->imr;
+
+	spin_lock(&port->lock);
+
 	if (isr & ALTERA_JTAGUART_CONTROL_RE_MSK)
 		altera_jtaguart_rx_chars(pp);
 	if (isr & ALTERA_JTAGUART_CONTROL_WE_MSK)
 		altera_jtaguart_tx_chars(pp);
+
+	spin_unlock(&port->lock);
+
 	return IRQ_RETVAL(isr);
 }
 
