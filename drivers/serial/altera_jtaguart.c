@@ -215,7 +215,7 @@ static int altera_jtaguart_startup(struct uart_port *port)
 	int ret;
 
 	ret = request_irq(port->irq, altera_jtaguart_interrupt, IRQF_DISABLED,
-	                  DRV_NAME, port);
+			DRV_NAME, port);
 	if (ret) {
 		pr_err(DRV_NAME ": unable to attach Altera JTAG UART %d "
 		       "interrupt vector=%d\n", port->line, port->irq);
@@ -405,7 +405,7 @@ static int __init altera_jtaguart_console_init(void)
 
 console_initcall(altera_jtaguart_console_init);
 
-#define	ALTERA_JTAGUART_CONSOLE	&altera_jtaguart_console
+#define	ALTERA_JTAGUART_CONSOLE	(&altera_jtaguart_console)
 
 #else
 
@@ -417,8 +417,8 @@ static struct uart_driver altera_jtaguart_driver = {
 	.owner		= THIS_MODULE,
 	.driver_name	= "altera_jtaguart",
 	.dev_name	= "ttyJ",
-	.major		= 232,
-	.minor		= 16,
+	.major		= ALTERA_JTAGUART_MAJOR,
+	.minor		= ALTERA_JTAGUART_MINOR,
 	.nr		= ALTERA_JTAGUART_MAXPORTS,
 	.cons		= ALTERA_JTAGUART_CONSOLE,
 };
