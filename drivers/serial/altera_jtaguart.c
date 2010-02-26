@@ -116,6 +116,9 @@ static void altera_jtaguart_set_termios(struct uart_port *port,
 					struct ktermios *termios,
 					struct ktermios *old)
 {
+	/* Just copy the old termios settings back */
+	if (old)
+		tty_termios_copy_hw(termios, old);
 }
 
 static void altera_jtaguart_rx_chars(struct altera_jtaguart *pp)
