@@ -1492,7 +1492,6 @@ config SERIAL_GRLIB_GAISLER_APBUART_CONSOLE
 
 config SERIAL_ALTERA_JTAGUART
 	bool "Altera JTAG UART support"
-	depends on  EMBEDDED
 	select SERIAL_CORE
 	help
 	  This driver supports the Altera JTAG UART port.
@@ -1510,11 +1509,10 @@ config SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS
 	select SERIAL_CORE_CONSOLE
 	help
 	  Bypass console output and keep going even if there is no
-	  JTAG terminal connection with PC.
+	  JTAG terminal connection with the host.
 
 config SERIAL_ALTERA_UART
 	bool "Altera UART support"
-	depends on  EMBEDDED
 	select SERIAL_CORE
 	help
 	  This driver supports the Altera softcore UART port.
