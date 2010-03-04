@@ -196,6 +196,10 @@ static void altera_uart_set_termios(struct uart_port *port,
 	baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
 	baudclk = port->uartclk / baud;
 
+	if (old)
+		tty_termios_copy_hw(termios, old);
+	tty_termios_encode_baud_rate(termios, baud, baud);
+
 	spin_lock_irqsave(&port->lock, flags);
 	writel(baudclk, port->membase + ALTERA_UART_DIVISOR_REG);
 	spin_unlock_irqrestore(&port->lock, flags);
