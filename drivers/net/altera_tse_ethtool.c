@@ -114,7 +114,7 @@ static char stat_gstrings[][ETH_GSTRING_LEN] = {
 static void tse_get_drvinfo(struct net_device *dev,
 			    struct ethtool_drvinfo *info)
 {
-	strcpy(info->driver, "Altera Triple Speed MAC IP Driver");
+	strcpy(info->driver, "Altera TSE MAC IP Driver");
 	strcpy(info->version, "v 8.0");
 	sprintf(info->bus_info, "AVALON");
 //	PRINTK1("Drvinfo :Drv=%s ,version=%s,bus=%s\n", info->driver,
