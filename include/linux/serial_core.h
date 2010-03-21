@@ -159,6 +159,9 @@
 
 #define PORT_SC26XX	82
 
+/* SH-SCI */
+#define PORT_SCIFA	83
+
 #define PORT_S3C6400	84
 
 /* NWPSERIAL */
@@ -492,9 +495,13 @@ uart_handle_dcd_change(struct uart_port *uport, unsigned int status)
 {
 	struct uart_state *state = uport->state;
 	struct tty_port *port = &state->port;
+	struct tty_ldisc *ld = tty_ldisc_ref(port->tty);
+	struct timespec ts;
+
+	if (ld && ld->ops->dcd_change)
+		getnstimeofday(&ts);
 
 	uport->icount.dcd++;
-
 #ifdef CONFIG_HARD_PPS
 	if ((uport->flags & UPF_HARDPPS_CD) && status)
 		hardpps();
@@ -506,6 +513,11 @@ uart_handle_dcd_change(struct uart_port *uport, unsigned int status)
 		else if (port->tty)
 			tty_hangup(port->tty);
 	}
+
+	if (ld && ld->ops->dcd_change)
+		ld->ops->dcd_change(port->tty, status, &ts);
+	if (ld)
+		tty_ldisc_deref(ld);
 }
 
 /**

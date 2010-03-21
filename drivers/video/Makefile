@@ -79,6 +79,7 @@ obj-$(CONFIG_FB_N411)             += n411.o
 obj-$(CONFIG_FB_HGA)              += hgafb.o
 obj-$(CONFIG_FB_XVR500)           += sunxvr500.o
 obj-$(CONFIG_FB_XVR2500)          += sunxvr2500.o
+obj-$(CONFIG_FB_XVR1000)          += sunxvr1000.o
 obj-$(CONFIG_FB_IGA)              += igafb.o
 obj-$(CONFIG_FB_APOLLO)           += dnfb.o
 obj-$(CONFIG_FB_Q40)              += q40fb.o
@@ -130,6 +131,7 @@ obj-$(CONFIG_FB_CARMINE)          += carminefb.o
 obj-$(CONFIG_FB_ALTERA_VGA)  	  += altfb.o
 obj-$(CONFIG_FB_MB862XX)	  += mb862xx/
 obj-$(CONFIG_FB_MSM)              += msm/
+obj-$(CONFIG_FB_NUC900)           += nuc900fb.o
 
 # Platform or fallback drivers go here
 obj-$(CONFIG_FB_UVESA)            += uvesafb.o
