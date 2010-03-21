@@ -130,7 +130,7 @@ ENTRY(sys_call_table)
 	.long sys_swapon
 	.long sys_reboot
 	.long sys_ni_syscall	/* sys_readdir */
-	.long sys_mmap		/* 90 */
+	.long sys_old_mmap		/* 90 */
 	.long sys_munmap
 	.long sys_truncate
 	.long sys_ftruncate
@@ -232,7 +232,7 @@ ENTRY(sys_call_table)
 	.long sys_ni_syscall	/* streams2 */
 	.long sys_vfork		/* 190 */
 	.long sys_getrlimit
-	.long sys_ni_syscall
+	.long sys_mmap_pgoff
 	.long sys_truncate64
 	.long sys_ftruncate64
 	.long sys_stat64	/* 195 */
