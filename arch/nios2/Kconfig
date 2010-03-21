@@ -99,6 +99,7 @@ config NIOS2
 	default y
 	# Horrible source of confusion.  Die, die, die ...
 	select EMBEDDED
+	select USB_ARCH_HAS_HCD
 
 config MMU
        bool
