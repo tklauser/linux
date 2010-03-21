@@ -42,6 +42,25 @@
 #define TIMER_1MS_SPAN SYS_CLK_TIMER_SPAN
 #define TIMER_1MS_IRQ SYS_CLK_TIMER_IRQ
 
+#elif defined(CONFIG_NIOS2_NEEK_OCM)
+#include <asm/neek_ocm_fpga.h>
+
+#define CONFIG_ALTERA_NEEK_C3
+#define DDR2_TOP_BASE DDR_SDRAM_BASE
+#define DDR2_TOP_SPAN DDR_SDRAM_SPAN
+#define TIMER_1MS_FREQ SYS_CLK_TIMER_FREQ
+#define TIMER_1MS_BASE SYS_CLK_TIMER_BASE
+#define TIMER_1MS_SPAN SYS_CLK_TIMER_SPAN
+#define TIMER_1MS_IRQ SYS_CLK_TIMER_IRQ
+#define GPIO_I2C_0_SDA 7
+#define GPIO_I2C_0_SCL 6
+#define GPIO_I2C_1_SDA 1
+#define GPIO_I2C_1_SCL 0
+#define GPIO_I2C_2_SDA 5
+#define GPIO_I2C_2_SCL 4
+#define GPIO_SCEN 3 /* LCD i2c en */
+#define GPIO_LED1 2
+
 #else
 #error "No FPGA configuration selected
 #endif

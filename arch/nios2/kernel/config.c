@@ -88,10 +88,10 @@ static void nios2_gpio_init(void)
 {
 	nios2_gpio_mapbase = (resource_size_t)ioremap(GPIO_0_BASE, 32);
 #if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
-	gpio_direction_output(6,1); /* output only I2C SCLK on NEEK */
-	gpio_direction_output(0,1);
-	gpio_direction_output(4,1);
-	gpio_direction_output(3,0);
+	gpio_direction_output(GPIO_I2C_0_SCL,1); /* output only I2C SCLK on NEEK */
+	gpio_direction_output(GPIO_I2C_1_SCL,1);
+	gpio_direction_output(GPIO_I2C_2_SCL,1);
+	gpio_direction_output(GPIO_SCEN,0);  /* LCD i2c en */
 #endif
 }
 #else
@@ -103,7 +103,7 @@ static struct gpio_led nios2_led_pins[] = {
 	{
 		.name		= "led0",
 		.default_trigger = "heartbeat", /* optional */
-		.gpio		= 2, /* FIXME: gpio pin assignment */
+		.gpio		= GPIO_LED1, /* FIXME: gpio pin assignment */
 		.active_low	= 1,
 	},
 };
@@ -853,8 +853,8 @@ static struct platform_device i2c_oc_1_device = {
 #include <linux/i2c-gpio.h>
 
 static struct i2c_gpio_platform_data i2c_gpio_0_data = {
-	.sda_pin		= 7, /* FIXME: gpio pin assignment */
-	.scl_pin		= 6, /* FIXME: gpio pin assignment */
+	.sda_pin		= GPIO_I2C_0_SDA, /* FIXME: gpio pin assignment */
+	.scl_pin		= GPIO_I2C_0_SCL, /* FIXME: gpio pin assignment */
 	.sda_is_open_drain	= 0,
 	.scl_is_open_drain	= 0,
 	.scl_is_output_only	= 1,
@@ -870,8 +870,8 @@ static struct platform_device i2c_gpio_0_device = {
 };
 
 static struct i2c_gpio_platform_data i2c_gpio_1_data = {
-	.sda_pin		= 1, /* FIXME: gpio pin assignment */
-	.scl_pin		= 0, /* FIXME: gpio pin assignment */
+	.sda_pin		= GPIO_I2C_1_SDA, /* FIXME: gpio pin assignment */
+	.scl_pin		= GPIO_I2C_1_SCL, /* FIXME: gpio pin assignment */
 	.sda_is_open_drain	= 0,
 	.scl_is_open_drain	= 0,
 	.scl_is_output_only	= 1,
@@ -887,8 +887,8 @@ static struct platform_device i2c_gpio_1_device = {
 };
 
 static struct i2c_gpio_platform_data i2c_gpio_2_data = {
-	.sda_pin		= 5, /* FIXME: gpio pin assignment */
-	.scl_pin		= 4, /* FIXME: gpio pin assignment */
+	.sda_pin		= GPIO_I2C_2_SDA, /* FIXME: gpio pin assignment */
+	.scl_pin		= GPIO_I2C_2_SCL, /* FIXME: gpio pin assignment */
 	.sda_is_open_drain	= 0,
 	.scl_is_open_drain	= 0,
 	.scl_is_output_only	= 1,

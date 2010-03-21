@@ -26,6 +26,12 @@ config NIOS2_CUSTOM_FPGA
 	  "sopc-create-header-files" scripts provided by Altera.
 	  The file "include/asm-nios2/custom_fpga.h" will be used.
 
+config NIOS2_NEEK_OCM
+	bool "neek_ocm_spi_mmu"
+	help
+	  The neek_ocm_spi_mmu example design. You may find this
+	  design from http://nioswiki.com/Linux.
+
 endchoice
 
 config NIOS2_HW_MUL_SUPPORT
