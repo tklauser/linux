@@ -122,7 +122,7 @@ ENTRY(sys_call_table)
 	.long sys_settimeofday
 	.long sys_getgroups	/* 80 */
 	.long sys_setgroups
-	.long sys_select
+	.long sys_old_select
 	.long sys_symlink
 	.long sys_ni_syscall
 	.long sys_readlink	/* 85 */
