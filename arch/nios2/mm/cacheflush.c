@@ -142,9 +142,9 @@ extern void flush_dcache_page(struct page* page) {
 EXPORT_SYMBOL(flush_dcache_page);
 
 void update_mmu_cache(struct vm_area_struct *vma,
-				          unsigned long address, pte_t pte)
+				          unsigned long address, pte_t *pte)
 {
-	unsigned long pfn = pte_pfn(pte);
+	unsigned long pfn = pte_pfn(*pte);
 	struct page *page;
 
 

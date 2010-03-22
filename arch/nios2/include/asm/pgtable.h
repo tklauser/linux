@@ -178,7 +178,7 @@ void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
 pte_t mk_pte(struct page *page, pgprot_t pgprot);
 
 void update_mmu_cache(struct vm_area_struct *vma,
-				    unsigned long address, pte_t pte);
+				    unsigned long address, pte_t *pte);
 
 void pte_unmap(pte_t *pte);
 void pte_unmap_nested(pte_t *pte);
