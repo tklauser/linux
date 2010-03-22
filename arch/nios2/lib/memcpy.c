@@ -8,10 +8,6 @@
 */
 
 #include <linux/types.h>
-#include <linux/autoconf.h>
-#include <asm/string.h>
-
-#ifdef __HAVE_ARCH_MEMCPY
 
 /* Type to use for aligned memory operations.
    This should normally be the biggest type supported by a single load
@@ -196,4 +192,3 @@ void *memcpyb (void *dstpp, const void *srcpp, unsigned len)
 
   return dstpp;
 }
-#endif
