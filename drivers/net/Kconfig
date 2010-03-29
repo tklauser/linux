@@ -904,6 +904,7 @@ config SMC9194
 
 config OPEN_ETH
 	bool "Opencores (Igor) Emac support"
+	select MII
 	help
 	  This is support for the opencores Igor emac driver implemented
 	  in an FPGA.
