@@ -1439,6 +1439,38 @@ static struct platform_device ethoc_device = {
 };
 #endif
 
+#if defined(CONFIG_OPEN_ETH)
+#include <linux/etherdevice.h>
+#include <net/open_eth.h>
+
+static struct oeth_platform_data oeth_platdata = {
+      .hwaddr = { 0x00, 0x07, 0xed, 0x0a, 0x03, 0x29 },
+      .phy_id = -1,
+};
+
+static struct resource oeth_resources[] = {
+      {
+       .start = IGOR_MAC_BASE,
+       .end = IGOR_MAC_BASE + IGOR_MAC_SPAN - 1,
+       .flags = IORESOURCE_MEM,
+       },
+      {
+       .start = IGOR_MAC_IRQ,
+       .end = IGOR_MAC_IRQ,
+       .flags = IORESOURCE_IRQ,
+       },
+};
+
+static struct platform_device oeth_device = {
+      .name = "oeth",
+      .id = -1,
+      .dev = {
+              .platform_data = &oeth_platdata,
+              },
+      .num_resources = ARRAY_SIZE(oeth_resources),
+      .resource = oeth_resources,
+};
+#endif
 
 /*
  *	Nios2 platform devices
@@ -1536,6 +1568,9 @@ static struct platform_device *nios2_devices[] __initdata = {
 
 #if defined(CONFIG_ETHOC) || defined(CONFIG_ETHOC_MODULE)
 	&ethoc_device,
+#endif
+#if defined(CONFIG_OPEN_ETH)
+    &oeth_device,
 #endif
 };
 

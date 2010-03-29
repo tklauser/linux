@@ -194,7 +194,7 @@ static struct devprobe2 isa_probes[] __initdata = {
 	{smc_init, 0},
 #endif
 #if defined(CONFIG_OPEN_ETH)
-	{oeth_init, 0},
+//	{oeth_init, 0},
 #endif
 #if defined(CONFIG_MTIP1000_ETH)
 	{mtip1000_init, 0},
