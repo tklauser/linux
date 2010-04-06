@@ -26,34 +26,18 @@
  */
 
 #ifndef _ALTERA_TSE_H_
-  #define _ALTERA_TSE_H_
+#define _ALTERA_TSE_H_
 
-  
 #include <linux/kernel.h>
-#include <linux/sched.h>
 #include <linux/string.h>
-#include <linux/errno.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
-#include <linux/init.h>
-#include <linux/delay.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
-#include <linux/mm.h>
 #include <linux/mii.h>
 #include <linux/phy.h>
-
-#include <asm/io.h>
-#include <asm/irq.h>
-#include <asm/uaccess.h>
-#include <linux/module.h>
-#include <linux/crc32.h>
-#include <linux/workqueue.h>
 #include <linux/ethtool.h>
-#include <linux/fsl_devices.h>  
-
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
 //#define REMAP_CACHED(address) ((unsigned int) address | 0x80000000)
