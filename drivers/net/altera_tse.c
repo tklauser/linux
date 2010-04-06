@@ -1728,7 +1728,7 @@ static int __devinit alt_tse_probe(struct platform_device *pdev)
 
 	dev = alloc_etherdev(sizeof(struct alt_tse_private));
 	if (!dev) {
-		printk(KERN_ERR "%s: Etherdev alloc failed, aborting.\n", dev->name);
+		printk(KERN_ERR "Could not allocate network device\n");
 		return -ENODEV;
 	}
 	//printk("\n\nTSE DEV NAME : %s", dev->name);
