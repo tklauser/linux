@@ -99,52 +99,6 @@ static const char version[] =
 #define my_flush_dcache_range(x,y) flush_cache_all()
 #endif
 
-static void sgdma_config(struct alt_tse_private *tse_priv);
-
-static void alt_sgdma_construct_descriptor_burst(volatile struct
-						 alt_sgdma_descriptor *desc,
-						 volatile struct
-						 alt_sgdma_descriptor *next,
-						 unsigned int *read_addr,
-						 unsigned int *write_addr,
-						 unsigned short length_or_eop,
-						 int generate_eop,
-						 int read_fixed,
-						 int write_fixed_or_sop,
-						 int read_burst,
-						 int write_burst,
-						 unsigned char atlantic_channel);
-
-static int sgdma_async_read(struct alt_tse_private *tse_priv,
-	volatile struct alt_sgdma_descriptor *rx_desc);
-
-static int sgdma_async_write(struct alt_tse_private *tse_priv,
-			    volatile struct alt_sgdma_descriptor *tx_desc);
-
-static int tse_sgdma_add_buffer(struct net_device *dev);
-static unsigned int sgdma_read_init(struct net_device *dev); 
-static int tse_poll(struct napi_struct *napi, int budget);
-static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs);
-
-#ifdef CONFIG_NET_POLL_CONTROLLER                                        
-static void tse_net_poll_controller(struct net_device *dev);
-#endif
-
-static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev);
-static int init_phy(struct net_device *dev);
-static void adjust_link(struct net_device *dev);
-static int init_mac(struct net_device *dev);
-static int tse_change_mtu(struct net_device *dev, int new_mtu);
-static struct net_device_stats *tse_get_statistics(struct net_device *dev);
-
-static void tse_set_hash_table(struct net_device *dev, int count,
-			       struct dev_mc_list *addrs);
-
-static void tse_set_multicast_list(struct net_device *dev);
-static int tse_set_hw_address(struct net_device *dev, void *port);
-static int tse_open(struct net_device *dev);
-static int tse_shutdown(struct net_device *dev);
-
 /*
  * MDIO specific functions
  */
@@ -947,60 +901,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	return SUCCESS;
 }            
 
-
-/*******************************************************************************
-* Phy init
-*	Using shared PHY control interface
-*
-*******************************************************************************/
-/* Initializes driver's PHY state, and attaches to the PHY.
- * Returns 0 on success.
- */
-static int init_phy(struct net_device *dev)
-{
-	struct alt_tse_private *tse_priv = netdev_priv(dev); 
-	struct alt_tse_config * tse_config = tse_priv->tse_config;
-	struct phy_device *phydev;
-	char phy_id[MII_BUS_ID_SIZE];
-	char mii_id[MII_BUS_ID_SIZE];
-	
-	phy_interface_t interface;
-//	unsigned int phy_addr;
-	
-	
-	//hard code for now
-	interface = tse_config->interface;              
-	
-	tse_priv->oldlink = 0;
-	tse_priv->oldspeed = 0;
-	tse_priv->oldduplex = -1;	
-	
-	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id); 
-	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
-	
-	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
-	
-	if (IS_ERR(phydev)) {
-		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
-		return PTR_ERR(phydev);
-	}
-
-	phydev->supported &= tse_config->tse_supported_modes;
-	phydev->advertising = phydev->supported;  
-
-	if (tse_config->autoneg == AUTONEG_DISABLE)
-	{
-		phydev->autoneg = tse_config->autoneg;
-		phydev->speed = tse_config->speed;
-		phydev->duplex = tse_config->duplex;
-	}
-	
-	tse_priv->phydev = phydev;
-	
-	return 0;
-}                           
-
-
 /* Called every time the controller might need to be made
  * aware of new link state.  The PHY code conveys this                                  
  * information through variables in the phydev structure, and this
@@ -1083,6 +983,54 @@ static void adjust_link(struct net_device *dev)
 
 	spin_unlock_irqrestore(&tse_priv->tx_lock, flags);
 
+}
+
+/*******************************************************************************
+* Phy init
+*	Using shared PHY control interface
+*
+*******************************************************************************/
+/* Initializes driver's PHY state, and attaches to the PHY.
+ * Returns 0 on success.
+ */
+static int init_phy(struct net_device *dev)
+{
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
+	struct alt_tse_config * tse_config = tse_priv->tse_config;
+	struct phy_device *phydev;
+	char phy_id[MII_BUS_ID_SIZE];
+	char mii_id[MII_BUS_ID_SIZE];
+	phy_interface_t interface;
+
+	/* hard code for now */
+	interface = tse_config->interface;
+
+	tse_priv->oldlink = 0;
+	tse_priv->oldspeed = 0;
+	tse_priv->oldduplex = -1;
+
+	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
+	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
+
+	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
+
+	if (IS_ERR(phydev)) {
+		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
+		return PTR_ERR(phydev);
+	}
+
+	phydev->supported &= tse_config->tse_supported_modes;
+	phydev->advertising = phydev->supported;
+
+	if (tse_config->autoneg == AUTONEG_DISABLE) {
+		phydev->autoneg = tse_config->autoneg;
+		phydev->speed = tse_config->speed;
+		phydev->duplex = tse_config->duplex;
+	}
+
+	tse_priv->phydev = phydev;
+
+	return 0;
 }
 
 /*******************************************************************************

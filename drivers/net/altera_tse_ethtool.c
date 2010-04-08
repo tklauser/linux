@@ -33,14 +33,6 @@
 
 #include "altera_tse.h"
 
-static void tse_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info);
-static uint32_t tse_get_msglevel(struct net_device *dev);
-static void tse_set_msglevel(struct net_device *dev, uint32_t data);
-static int tse_reglen(struct net_device *dev);
-static void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbuf);
-static int tse_get_settings(struct net_device *dev, struct ethtool_cmd *cmd);
-static int tse_set_settings(struct net_device *dev, struct ethtool_cmd *cmd);
-
 #define TSE_STATS_LEN 35
 
 static char stat_gstrings[][ETH_GSTRING_LEN] = {
