@@ -480,28 +480,26 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 
 }
 
-/* Init and setup SGDMA Descriptor chain.
-* arg1     :TSE private data structure
-* return    SUCCESS
-*/
-static unsigned int sgdma_read_init(struct net_device *dev)                       
+/* Init and setup SGDMA descriptor chain */
+static int sgdma_read_init(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	int rx_loop;
-	
+	int ret;
+
 	for (rx_loop = 0; rx_loop < ALT_TSE_RX_SGDMA_DESC_COUNT; rx_loop++) {
-		//Should do some checking here.
-		tse_sgdma_add_buffer(dev);
+		ret = tse_sgdma_add_buffer(dev);
+		if (ret)
+			return ret;
 	}
 	sgdma_async_read(tse_priv,
 			 &tse_priv->sgdma_rx_desc[tse_priv->
 						  rx_sgdma_descriptor_tail]);
 	if (netif_msg_rx_status(tse_priv))
-		printk(KERN_WARNING "%s :Read init is completed\n", dev->name);
-	
-	return SUCCESS;
-}
+		printk(KERN_INFO "%s: Read init is completed\n", dev->name);
 
+	return 0;
+}
 
 /*******************************************************************************
 * actual ethernet stuff
@@ -1187,6 +1185,7 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int free_loop;
+	int ret;
 
 	if ((new_mtu > (tse_priv->tse_tx_depth * ALT_TSE_MAC_FIFO_WIDTH)) ||
 	    (new_mtu > (tse_priv->tse_rx_depth * ALT_TSE_MAC_FIFO_WIDTH))) {
@@ -1216,13 +1215,16 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 	}
 
 	/* Prepare RX SGDMA to receive packets */
-	sgdma_read_init(dev);
+	ret = sgdma_read_init(dev);
+	if (ret)
+		goto out;
 
 	printk("TSE: new mtu is %d \n", new_mtu);
 
+out:
 	spin_unlock(&tse_priv->rx_lock);
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -1418,7 +1420,6 @@ static int tse_set_hw_address(struct net_device *dev, void *port)
 static int tse_open(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	int status;
 	int retval = 0;
 
 	/* start NAPI */
@@ -1444,8 +1445,11 @@ static int tse_open(struct net_device *dev)
 	sgdma_config(tse_priv);
 
 	/* Prepare RX SGDMA to receive packets */
-	status = sgdma_read_init(dev);
-
+	retval = sgdma_read_init(dev);
+	if (retval) {
+		napi_disable(&tse_priv->napi);
+		return retval;
+	}
 
 	/* Register RX SGDMA interrupt */
 	retval =
