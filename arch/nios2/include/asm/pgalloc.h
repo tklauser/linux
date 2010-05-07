@@ -6,8 +6,13 @@
  * Copyright (C) 1994 - 2001, 2003 by Ralf Baechle
  * Copyright (C) 1999, 2000, 2001 Silicon Graphics, Inc.
  */
+
 #ifndef _ASM_NIOS2_PGALLOC_H
 #define _ASM_NIOS2_PGALLOC_H
+
+#ifndef CONFIG_MMU
+# include <asm-generic/pgalloc.h>
+#else
 
 #include <linux/highmem.h>
 #include <linux/mm.h>
@@ -95,13 +100,10 @@ do {							\
 	tlb_remove_page((tlb),(pte));			\
 } while (0)
 
-/*
- * allocating and freeing a pmd is trivial: the 1-entry pmd is
- * inside the pgd, so has no extra memory associated with it.
- */
+extern void pagetable_init(void);
+
+#endif /* CONFIG_MMU */
 
 #define check_pgt_cache()	do { } while (0)
-
-extern void pagetable_init(void);
 
 #endif /* _ASM_NIOS2_PGALLOC_H */
