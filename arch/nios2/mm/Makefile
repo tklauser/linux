@@ -7,9 +7,8 @@
 #
 # Note 2! The CFLAGS definition is now in the main makefile...
 
-obj-y	:= init.o ioremap.o memory.o pgtable.o tlb.o pg.o uaccess.o fault.o 
+obj-y	:= init.o ioremap.o memory.o pgtable.o tlb.o uaccess.o fault.o
 obj-y	+= dma-noncoherent.o
 obj-y   += pgalloc.o
 obj-y   += mmu_context.o
 obj-y	+= mmdump.o extable.o cacheflush.o
-
