@@ -39,6 +39,8 @@ core-y		+= arch/nios2/kernel/ arch/nios2/mm/
 
 drivers-y	+= arch/nios2/drivers/
 
+include $(srctree)/arch/$(ARCH)/boards/Makefile
+
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
 

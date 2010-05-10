@@ -5,34 +5,7 @@
 
 menu "NiosII Configuration"
 
-choice
-	prompt "NiosII FPGA configuration"
-
-config NIOS2_DEFAULT_MMU
-	bool "MMU_DEFAULT"
-	help
-	  The default mmu config for the v17 release
-
-config NIOS2_MAXIMUM_MMU
-	bool "MAXIMUM_MMU"
-	help
-	  The maximum mmu config for the v17 release
-
-config NIOS2_CUSTOM_FPGA
-	bool "CUSTOM_FPGA"
-	help
-	  Adapt the kernel to custom FPGA configuration. You will
-          need to generate a header file for your desgin using the
-	  "sopc-create-header-files" scripts provided by Altera.
-	  The file "include/asm-nios2/custom_fpga.h" will be used.
-
-config NIOS2_NEEK_OCM
-	bool "neek_ocm_spi_mmu"
-	help
-	  The neek_ocm_spi_mmu example design. You may find this
-	  design from http://nioswiki.com/Linux.
-
-endchoice
+source "arch/nios2/boards/Kconfig"
 
 config NIOS2_HW_MUL_SUPPORT
        bool "HW mul support"

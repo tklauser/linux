@@ -12,7 +12,7 @@ extra-y := head.o vmlinux.lds
 obj-y   := entry.o traps.o irq.o syscall.o syscalltable.o \
 	    process.o signal.o setup.o sys_nios2.o \
 	    usb.o  init_task.o \
-	    time.o ptrace.o start.o nios2_ksyms.o insnemu.o config.o
+	    time.o ptrace.o start.o nios2_ksyms.o insnemu.o
 
 obj-$(CONFIG_MODULES) += module.o
 obj-$(CONFIG_CONSOLE) += console.o
