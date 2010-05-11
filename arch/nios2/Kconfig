@@ -7,23 +7,27 @@ menu "NiosII Configuration"
 
 source "arch/nios2/boards/Kconfig"
 
+menu "NiosII specific compiler options"
+
 config NIOS2_HW_MUL_SUPPORT
-       bool "HW mul support"
-       default y
-       help
-	Enables the -mhw-mul compiler flag.
+	bool "Enable MUL instruction"
+	default y
+	help
+	  Enables the -mhw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
-       bool "HW mulx support"
-       default n
-       help
-	Enables the -mhw-mulx compiler flag.
+	bool "Enable MULX instruction"
+	default n
+	help
+	  Enables the -mhw-mulx compiler flag.
 
 config NIOS2_HW_DIV_SUPPORT
-       bool "HW div support"
-       default n
-       help
-	Enables the -mhw-div compiler flag.
+	bool "Enable DIV instruction"
+	default n
+	help
+	  Enables the -mhw-div compiler flag.
+
+endmenu
 
 config NIOS2_UIMAGE_FLASHADDR
        hex "Offset address for uImage.flash"
@@ -32,6 +36,16 @@ config NIOS2_UIMAGE_FLASHADDR
        	  uImage.flash is simply an srec of the uImage with an
           offset. Suitable for use with the nios2-flash-programmer
           tool.
+
+config CMDLINE
+	string "Default kernel command string"
+	default ""
+	help
+	  On some platforms, there is currently no way for the boot loader to
+	  pass arguments to the kernel. For these platforms, you can supply
+	  some command-line options at build time by entering them here.  In
+	  other cases you can specify kernel args so that you don't have
+	  to set them up in board prom initialization routines.
 
 config PASS_CMDLINE
 	bool "Passed kernel command line from u-boot"
