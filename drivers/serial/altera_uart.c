@@ -72,21 +72,6 @@
 #define ALTERA_UART_CONTROL_EOP_MSK	0x1000	/* Interrupt on EOP */
 
 /*
- * Some boards implement the DTR/DCD lines using GPIO lines, most don't. Dummy
- * out the access macros for those that don't. Those that do should define these
- * macros somewhere in their board specific inlude files.
- */
-#if !defined(altera_uart_getppdcd)
-# define altera_uart_getppdcd(p)	(1)
-#endif
-#if !defined(altera_uart_getppdtr)
-# define altera_uart_getppdtr(p)	(1)
-#endif
-#if !defined(altera_uart_setppdtr)
-# define altera_uart_setppdtr(p, v)	do { } while (0)
-#endif
-
-/*
  * Local per-uart structure.
  */
 struct altera_uart {
@@ -112,8 +97,6 @@ static unsigned int altera_uart_get_mctrl(struct uart_port *port)
 	    (readl(port->membase + ALTERA_UART_STATUS_REG) &
 	     ALTERA_UART_STATUS_CTS_MSK) ? TIOCM_CTS : 0;
 	sigs |= (pp->sigs & TIOCM_RTS);
-	sigs |= (altera_uart_getppdcd(port->line) ? TIOCM_CD : 0);
-	sigs |= (altera_uart_getppdtr(port->line) ? TIOCM_DTR : 0);
 	spin_unlock_irqrestore(&port->lock, flags);
 
 	return sigs;
@@ -126,7 +109,6 @@ static void altera_uart_set_mctrl(struct uart_port *port, unsigned int sigs)
 
 	spin_lock_irqsave(&port->lock, flags);
 	pp->sigs = sigs;
-	altera_uart_setppdtr(port->line, (sigs & TIOCM_DTR));
 	if (sigs & TIOCM_RTS)
 		pp->imr |= ALTERA_UART_CONTROL_RTS_MSK;
 	else
