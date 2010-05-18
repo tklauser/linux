@@ -48,7 +48,6 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
-#include <asm/traps.h>
 #include <asm/io.h>
 
 unsigned long kernel_map(unsigned long paddr, unsigned long size,

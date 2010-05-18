@@ -17,7 +17,6 @@
 #include <linux/irq.h>
 #include <linux/seq_file.h>
 #include <asm/system.h>
-#include <asm/traps.h>
 
 #define IENABLE 3
 

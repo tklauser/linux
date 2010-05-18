@@ -42,7 +42,6 @@
 #include <asm/segment.h>
 #include <asm/entry.h>
 #include <asm/unistd.h>
-#include <asm/traps.h>
 #include <asm/processor.h>
 
 .macro GET_THREAD_INFO reg 

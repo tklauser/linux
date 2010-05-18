@@ -25,9 +25,6 @@
  *
  ---------------------------------------------------------------------*/
 
-
-#include <asm/traps.h>
-
 #if defined(__ASSEMBLY__) || defined(ASSEMBLER)
 
 #define UR ERROR

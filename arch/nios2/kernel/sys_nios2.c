@@ -45,7 +45,6 @@
 
 #include <asm/setup.h>
 #include <asm/cachectl.h>
-#include <asm/traps.h>
 #include <asm/cacheflush.h>
 
 /* sys_cacheflush -- flush the processor cache.  
