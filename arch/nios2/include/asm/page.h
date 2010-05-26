@@ -6,11 +6,24 @@
  * Copyright (C) 1994 - 1999, 2000, 03 Ralf Baechle
  * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
  */
+
 #ifndef _ASM_NIOS2_PAGE_H
 #define _ASM_NIOS2_PAGE_H
 
+#include <asm/nios.h>
 
-#include <asm/spaces.h>
+/*
+ * This handles the memory map.
+ * We handle pages at KSEG0 for kernels with 32 bit address space.
+ */
+#define PAGE_OFFSET		(KERNEL_REGION_BASE + DDR2_TOP_BASE)
+
+/*
+ * Memory above this physical address will be considered highmem.
+ */
+#ifndef HIGHMEM_START
+# define HIGHMEM_START		0x20000000UL
+#endif
 
 /*
  * PAGE_SHIFT determines the page size
