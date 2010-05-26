@@ -76,12 +76,6 @@ config GENERIC_GPIO
     	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
     	  than the Altera PIO. The spinlock is no longer needed.
 
-config EARLY_PRINTK
-	bool "Activate early kernel debugging"
-	default y
-	help
-	  Enable early printk on console
-
 source "arch/nios2/drivers/Kconfig"
 
 endmenu
