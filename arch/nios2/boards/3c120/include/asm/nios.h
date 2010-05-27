@@ -62,7 +62,7 @@
 #define GPIO_LED1 2
 
 #else
-#error "No FPGA configuration selected
+#error "No FPGA configuration selected"
 #endif
 
 /* Fake CPU frequency if not defined by the design header file */
