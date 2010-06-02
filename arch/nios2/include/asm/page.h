@@ -103,8 +103,14 @@ typedef struct page *pgtable_t;
  */
 #define __pa_page_offset(x)	PAGE_OFFSET
 #define __pa_symbol(x)	__pa(RELOC_HIDE((unsigned long)(x),0))
-#define __pa(x)		((unsigned long)(x) - PAGE_OFFSET + PHYS_OFFSET)
-#define __va(x)		((void *)((unsigned long)(x) + PAGE_OFFSET - PHYS_OFFSET))
+
+#ifdef CONFIG_MMU
+# define __pa(x)		((unsigned long)(x) - PAGE_OFFSET + PHYS_OFFSET)
+# define __va(x)		((void *)((unsigned long)(x) + PAGE_OFFSET - PHYS_OFFSET))
+#else
+# define __pa(x)		((unsigned long) (x))
+# define __va(x)		((void *) (x))
+#endif
 
 #define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
 
