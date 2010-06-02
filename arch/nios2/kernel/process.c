@@ -209,6 +209,7 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 	regs.estatus =  NIOS2_STATUS_PIE_MSK;
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
 }
+EXPORT_SYMBOL(kernel_thread);
 
 void flush_thread(void)
 {
@@ -427,6 +428,7 @@ unsigned long get_wchan(struct task_struct *p)
 	} while (count++ < 16);                                 //;dgt2;tmp
 	return 0;
 }
+EXPORT_SYMBOL(get_wchan);
 
 /* Return saved PC of a blocked thread. */
 unsigned long thread_saved_pc(struct task_struct *t)
