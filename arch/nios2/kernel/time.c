@@ -33,11 +33,6 @@
 static unsigned long nios2_timer_count;
 static unsigned long timer_membase;
 
-static inline int set_rtc_mmss(unsigned long nowtime)
-{
-	return 0;
-}
-
 static inline unsigned long read_timersnapshot(void)
 {
 	unsigned long count;
@@ -62,9 +57,6 @@ static inline void write_timerperiod(unsigned long period)
  */
 irqreturn_t timer_interrupt(int irq, void *dummy)
 {
-	/* last time the cmos clock got updated */
-	static long last_rtc_update = 0;
-
 	/* Clear the interrupt condition */
 	outw(0, timer_membase + ALTERA_TIMER_STATUS_REG);
 	nios2_timer_count += NIOS2_TIMER_PERIOD;
@@ -72,30 +64,12 @@ irqreturn_t timer_interrupt(int irq, void *dummy)
 	profile_tick(CPU_PROFILING);
 
 	write_seqlock(&xtime_lock);
-
 	do_timer(1);
-	/*
-	 * If we have an externally synchronized Linux clock, then update
-	 * CMOS clock accordingly every ~11 minutes. Set_rtc_mmss() has to be
-	 * called as close as possible to 500 ms before the new second starts.
-	 */
-	if (ntp_synced() &&
-	    xtime.tv_sec > last_rtc_update + 660 &&
-	    (xtime.tv_nsec / 1000) >= 500000 - ((unsigned)TICK_SIZE) / 2 &&
-	    (xtime.tv_nsec / 1000) <= 500000 + ((unsigned)TICK_SIZE) / 2) {
-		if (set_rtc_mmss(xtime.tv_sec) == 0)
-			last_rtc_update = xtime.tv_sec;
-		else
-			last_rtc_update = xtime.tv_sec - 600;	/* do it again in 60 s */
-	}
-
 	write_sequnlock(&xtime_lock);
 
-#ifndef CONFIG_SMP
 	update_process_times(user_mode(get_irq_regs()));
-#endif
 
-	return (IRQ_HANDLED);
+	return IRQ_HANDLED;
 }
 
 static cycle_t nios2_timer_read(struct clocksource *cs)
@@ -129,18 +103,7 @@ static struct irqaction nios2_timer_irq = {
 
 void __init nios2_late_time_init(void)
 {
-	unsigned int year, mon, day, hour, min, sec;
-	extern void arch_gettod(int *year, int *mon, int *day, int *hour,
-				int *min, int *sec);
 	unsigned ctrl;
-
-	arch_gettod(&year, &mon, &day, &hour, &min, &sec);
-
-	if ((year += 1900) < 1970)
-		year += 100;
-	xtime.tv_sec = mktime(year, mon, day, hour, min, sec);
-	xtime.tv_nsec = 0;
-	wall_to_monotonic.tv_sec = -xtime.tv_sec;
 
 	timer_membase = (unsigned long)ioremap(TIMER_1MS_BASE, TIMER_1MS_SPAN);
 	setup_irq(TIMER_1MS_IRQ, &nios2_timer_irq);
@@ -156,6 +119,12 @@ void __init nios2_late_time_init(void)
 	    ALTERA_TIMER_CONTROL_ITO_MSK | ALTERA_TIMER_CONTROL_CONT_MSK |
 	    ALTERA_TIMER_CONTROL_START_MSK;
 	outw(ctrl, timer_membase + ALTERA_TIMER_CONTROL_REG);
+}
+
+void read_persistent_clock(struct timespec *ts)
+{
+	ts->tv_sec = mktime(2007, 1, 1, 0, 0, 0);
+	ts->tv_nsec = 0;
 }
 
 extern void (*late_time_init)(void);

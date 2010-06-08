@@ -259,11 +259,6 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 	return 0;
 }
 
-void arch_gettod(int *year, int *month, int *date, int *hour, int *min, int *sec)
-{
-	*year = *month = *date = *hour = *min = *sec = 0;
-}
-
 static void *cpuinfo_start (struct seq_file *m, loff_t *pos)
 {
 	return *pos < NR_CPUS ? ((void *) 0x12345678) : NULL;
