@@ -113,12 +113,9 @@ void show_stack(struct task_struct *task, unsigned long *stack)
 	printk(KERN_EMERG "\n");
 }
 
-void die_if_kernel(char *str, struct pt_regs *pregs)
+static void die_if_kernel(char *str, struct pt_regs *pregs)
 {
-	unsigned long pc;
-
-	pc = pregs->ra;
-	printk("0x%08lx\n trapped to die_if_kernel\n",pregs->ra);
+	printk("0x%08lx\n trapped to die_if_kernel\n", pregs->ra);
 	show_regs(pregs);
 	add_taint(TAINT_DIE);
 	if(!user_mode(pregs))
@@ -128,10 +125,10 @@ void die_if_kernel(char *str, struct pt_regs *pregs)
 
 void do_hw_interrupt(unsigned long type, unsigned long psr, unsigned long pc)
 {
-	if(type < 0x10) {
+	if (type < 0x10) {
 		printk("Unimplemented Nios2 TRAP, type = %02lx\n", type);
 		die_if_kernel("Whee... Hello Mr. Penguin", current->thread.kregs);
-	}	
+	}
 }
 
 void trap_init(void)
