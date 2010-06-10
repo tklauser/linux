@@ -255,7 +255,7 @@ restore_all:
 	/* If the syscall number was invalid return ENOSYS
 	*/
 ret_invsyscall:
-	movi	r2,-LENOSYS
+	movi	r2,-ENOSYS
 	br translate_rc_and_ret
 
 
