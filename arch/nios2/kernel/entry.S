@@ -174,7 +174,7 @@ ENTRY(handle_system_call)
 	/* Check that the requested system call is within limits
 	 */
 	movui	r1,NR_syscalls
-	bgtu	r2,r1,ret_invsyscall
+	bgeu	r2,r1,ret_invsyscall
 	slli	r1,r2,2
 	movhi	r11,%hiadj(sys_call_table)
 	add	r1,r1,r11
