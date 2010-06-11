@@ -93,26 +93,3 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
 			addr = COLOUR_ALIGN(addr, pgoff);
 	}
 }
-
-asmlinkage int sys_set_thread_area(unsigned long addr)
-{
-   BUG();
-   return 0;
-}
-
-/*
- * No implemented yet ...
- */
-asmlinkage int sys_cachectl(char *addr, int nbytes, int op)
-{
-	return -ENOSYS;
-}
-
-/*
- * If we ever come here the user sp is bad.  Zap the process right away.
- * Due to the bad stack signaling wouldn't work.
- */
-asmlinkage void bad_stack(void)
-{
-	do_exit(SIGSEGV);
-}
