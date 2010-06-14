@@ -36,6 +36,18 @@ config NIOS2_UIMAGE_FLASHADDR
 	  uImage.flash is simply an srec of the uImage with an offset. Suitable
 	  for use with the nios2-flash-programmer tool.
 
+choice
+	prompt "Kernel executes from"
+	help
+	  Choose the memory type that the kernel will be running in.
+
+config RAMKERNEL
+	bool "RAM"
+	help
+	  The kernel will be resident in RAM when running.
+
+endchoice
+
 config CMDLINE
 	string "Default kernel command string"
 	default ""
