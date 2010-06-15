@@ -1,0 +1,21 @@
+menu "NiosII board configuration"
+
+choice
+	prompt "board configuration"
+
+config 3C120
+	bool "3C120 dev board"
+	help
+	  The Altera 3C120 dev board support.
+
+config NEEK
+	bool "Nios Embedded Evaluation Kit"
+	help
+	  The Altear Nios Embedded Evaluation Kit support.
+
+endchoice
+
+source "arch/nios2/boards/3c120/Kconfig"
+source "arch/nios2/boards/neek/Kconfig"
+
+endmenu

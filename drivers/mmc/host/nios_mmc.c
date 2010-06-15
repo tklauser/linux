@@ -1,7 +1,8 @@
 /*
  *  linux/drivers/mmc/nios_mmc.c - FPS-Tech NIOS_MMC Driver
  *
- *  Copyright (C) 2008 Jai Dhar / FPS-Tech, All Rights Reserved.
+ *  Copyright (C) 2010 Jai Dhar / FPS-Tech, All Rights Reserved.
+ *  Web: http://www.fps-tech.net
  *  Credits: This driver is partially derived from pxamci.c
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,7 +30,7 @@
 
 #define DRIVER_NAME	"nios_mmc"
 #define NR_SG 1
-#define debug_level 0
+#define debug_level 1
 
 #if defined(CONFIG_MMC_DEBUG)
 #define MMC_DEBUG(l,x...) {\
@@ -62,11 +63,11 @@ unsigned int blk_prefetch = 1;
 unsigned int fmax = SD_MAX_FREQ;
 static unsigned int irq_count;
 /**************************** Low-level register access ******************************/
-static void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
+static inline void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
 {
 	writel(val, host->base + off);
 }
-static unsigned int nios_mmc_readl(NIOS_MMC_HOST *host, unsigned char off)
+static inline unsigned int nios_mmc_readl(NIOS_MMC_HOST *host, unsigned char off)
 {
 	return readl(host->base + off);
 }
@@ -168,10 +169,12 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 	if (host->dat_width)
 		xfer_ctl |= NIOS_MMC_XFER_CTL_DAT_WIDTH;
 	cmdidx = (xfer_ctl >> NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT) & 0x3F;
-	/* Setup DMA base */
-	flush_dcache_range(buf, buf + bytes * blocks);
-	nios_mmc_writel(buf, host, NIOS_MMC_REG_DMA_BASE);
 	if (bytes) {
+		/* Setup DMA base */
+		flush_dcache_range(buf, buf + bytes * blocks);
+		MMC_DEBUG(3, "Flushed d-cache range 0x%X + %d bytes\n",
+				buf, bytes * blocks);
+		nios_mmc_writel(buf, host, NIOS_MMC_REG_DMA_BASE);
 		MMC_DEBUG(1,
 			  "XFER_CTL: 0x%X (CMD%d), DMA_BASE(%c): 0x%X, ARG_IN: 0x%X, %d/%db\n",
 			  xfer_ctl, cmdidx,
@@ -218,7 +221,7 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 	unsigned char resp_type = 0, nocrc = 0, rwn = 0;
 	struct mmc_data *data = cmd->data;
 	struct scatterlist *sg;
-	unsigned int current_address, bytes = 0, blocks = 0;
+	unsigned int current_address = 0, bytes = 0, blocks = 0;
 
 	/* Do a sanity check that we are being passed the same CMD that is in host struct */
 	if (host->cmd != cmd) {
@@ -245,10 +248,11 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 		break;
 	}
 
-	sg = data->sg;
-	current_address = (unsigned int)sg_phys(sg);
 	cmd->error = 0;
 	if (data) {
+		sg = data->sg;
+		current_address = (unsigned int)sg_phys(sg);
+		MMC_DEBUG(3, "Completed sg_phys() mapping to 0x%X\n", current_address);
 		if (data->sg_len > 1) {
 			MMC_CRIT_ERR("sg_len is > 1!");
 		}
@@ -520,30 +524,19 @@ static int nios_mmc_remove(struct platform_device *pdev)
 	}
 	return 0;
 }
-static int nios_mmc_suspend(struct platform_device *dev, pm_message_t state)
-{
-	return 0;
-}
-static int nios_mmc_resume(struct platform_device *dev)
-{
-	return 0;
-}
 
 static struct platform_driver nios_mmc_driver = {
 	.probe = nios_mmc_probe,
 	.remove = nios_mmc_remove,
-	.suspend = nios_mmc_suspend,
-	.resume = nios_mmc_resume,
 	.driver = {
 		   .name = DRIVER_NAME,
+		   .pm = NULL,
 		   },
 };
 
 static int __init nios_mmc_init(void)
 {
-	int ret;
-	ret = platform_driver_register(&nios_mmc_driver);
-	return ret;
+	return platform_driver_register(&nios_mmc_driver);
 }
 
 static void __exit nios_mmc_exit(void)

@@ -66,6 +66,7 @@
 #include <linux/kthread.h>
 #include <linux/mutex.h>
 #include <linux/freezer.h>
+#include <linux/slab.h>
 
 #include <asm/unaligned.h>
 
@@ -306,6 +307,7 @@ enum {
 #define FW_GET_BYTE(p)	*((__u8 *) (p))
 
 #define FW_DIR "ueagle-atm/"
+#define UEA_FW_NAME_MAX 30
 #define NB_MODEM 4
 
 #define BULK_TIMEOUT 300
@@ -666,12 +668,12 @@ static void uea_upload_pre_firmware(const struct firmware *fw_entry, void *conte
 	else
 		uea_info(usb, "firmware uploaded\n");
 
-	uea_leaves(usb);
-	return;
+	goto err;
 
 err_fw_corrupted:
 	uea_err(usb, "firmware is corrupted\n");
 err:
+	release_firmware(fw_entry);
 	uea_leaves(usb);
 }
 
@@ -704,7 +706,8 @@ static int uea_load_firmware(struct usb_device *usb, unsigned int ver)
 		break;
 	}
 
-	ret = request_firmware_nowait(THIS_MODULE, 1, fw_name, &usb->dev, usb, uea_upload_pre_firmware);
+	ret = request_firmware_nowait(THIS_MODULE, 1, fw_name, &usb->dev,
+				      GFP_KERNEL, usb, uea_upload_pre_firmware);
 	if (ret)
 		uea_err(usb, "firmware %s is not available\n", fw_name);
 	else
@@ -1564,9 +1567,9 @@ static void cmvs_file_name(struct uea_softc *sc, char *const cmv_name, int ver)
 		file = cmv_file[sc->modem_index];
 
 	strcpy(cmv_name, FW_DIR);
-	strlcat(cmv_name, file, FIRMWARE_NAME_MAX);
+	strlcat(cmv_name, file, UEA_FW_NAME_MAX);
 	if (ver == 2)
-		strlcat(cmv_name, ".v2", FIRMWARE_NAME_MAX);
+		strlcat(cmv_name, ".v2", UEA_FW_NAME_MAX);
 }
 
 static int request_cmvs_old(struct uea_softc *sc,
@@ -1574,7 +1577,7 @@ static int request_cmvs_old(struct uea_softc *sc,
 {
 	int ret, size;
 	u8 *data;
-	char cmv_name[FIRMWARE_NAME_MAX]; /* 30 bytes stack variable */
+	char cmv_name[UEA_FW_NAME_MAX]; /* 30 bytes stack variable */
 
 	cmvs_file_name(sc, cmv_name, 1);
 	ret = request_firmware(fw, cmv_name, &sc->usb_dev->dev);
@@ -1608,7 +1611,7 @@ static int request_cmvs(struct uea_softc *sc,
 	int ret, size;
 	u32 crc;
 	u8 *data;
-	char cmv_name[FIRMWARE_NAME_MAX]; /* 30 bytes stack variable */
+	char cmv_name[UEA_FW_NAME_MAX]; /* 30 bytes stack variable */
 
 	cmvs_file_name(sc, cmv_name, 2);
 	ret = request_firmware(fw, cmv_name, &sc->usb_dev->dev);
@@ -1957,7 +1960,7 @@ static void uea_dispatch_cmv_e1(struct uea_softc *sc, struct intr_pkt *intr)
 		goto bad1;
 
 	/* FIXME : ADI930 reply wrong preambule (func = 2, sub = 2) to
-	 * the first MEMACESS cmv. Ignore it...
+	 * the first MEMACCESS cmv. Ignore it...
 	 */
 	if (cmv->bFunction != dsc->function) {
 		if (UEA_CHIP_VERSION(sc) == ADI930

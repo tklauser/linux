@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
+#include <linux/mtd/physmap.h>
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
 #include <linux/apm-emulation.h>
@@ -31,17 +32,17 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
-#include <asm/mach/flash.h>
 
 #include <mach/gpio.h>
-#include <mach/mux.h>
-#include <mach/usb.h>
-#include <mach/tc.h>
-#include <mach/dma.h>
-#include <mach/board.h>
-#include <mach/irda.h>
-#include <mach/keypad.h>
-#include <mach/common.h>
+#include <plat/flash.h>
+#include <plat/mux.h>
+#include <plat/usb.h>
+#include <plat/tc.h>
+#include <plat/dma.h>
+#include <plat/board.h>
+#include <plat/irda.h>
+#include <plat/keypad.h>
+#include <plat/common.h>
 
 #define PALMTE_USBDETECT_GPIO	0
 #define PALMTE_USB_OR_DC_GPIO	1
@@ -126,9 +127,9 @@ static struct mtd_partition palmte_rom_partitions[] = {
 	},
 };
 
-static struct flash_platform_data palmte_rom_data = {
-	.map_name	= "map_rom",
+static struct physmap_flash_data palmte_rom_data = {
 	.width		= 2,
+	.set_vpp	= omap1_set_vpp,
 	.parts		= palmte_rom_partitions,
 	.nr_parts	= ARRAY_SIZE(palmte_rom_partitions),
 };
@@ -140,7 +141,7 @@ static struct resource palmte_rom_resource = {
 };
 
 static struct platform_device palmte_rom_device = {
-	.name		= "omapflash",
+	.name		= "physmap-flash",
 	.id		= -1,
 	.dev		= {
 		.platform_data	= &palmte_rom_data,
@@ -210,10 +211,6 @@ static struct omap_usb_config palmte_usb_config __initdata = {
 
 static struct omap_lcd_config palmte_lcd_config __initdata = {
 	.ctrl_name	= "internal",
-};
-
-static struct omap_uart_config palmte_uart_config __initdata = {
-	.enabled_uarts = (1 << 0) | (1 << 1) | (0 << 2),
 };
 
 #ifdef CONFIG_APM
@@ -302,7 +299,6 @@ static void palmte_get_power_status(struct apm_power_info *info, int *battery)
 
 static struct omap_board_config_kernel palmte_config[] __initdata = {
 	{ OMAP_TAG_LCD,		&palmte_lcd_config },
-	{ OMAP_TAG_UART,	&palmte_uart_config },
 };
 
 static struct spi_board_info palmte_spi_info[] __initdata = {
@@ -347,6 +343,14 @@ static void __init palmte_misc_gpio_setup(void)
 
 static void __init omap_palmte_init(void)
 {
+	/* mux pins for uarts */
+	omap_cfg_reg(UART1_TX);
+	omap_cfg_reg(UART1_RTS);
+	omap_cfg_reg(UART2_TX);
+	omap_cfg_reg(UART2_RTS);
+	omap_cfg_reg(UART3_TX);
+	omap_cfg_reg(UART3_RX);
+
 	omap_board_config = palmte_config;
 	omap_board_config_size = ARRAY_SIZE(palmte_config);
 

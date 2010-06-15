@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/amba/bus.h>
 #include <linux/io.h>
+#include <linux/slab.h>
 
 #define RTC_DR		(0)
 #define RTC_MR		(4)
@@ -117,7 +118,7 @@ static int pl030_probe(struct amba_device *dev, struct amba_id *id)
 		goto err_rtc;
 	}
 
-	rtc->base = ioremap(dev->res.start, SZ_4K);
+	rtc->base = ioremap(dev->res.start, resource_size(&dev->res));
 	if (!rtc->base) {
 		ret = -ENOMEM;
 		goto err_map;

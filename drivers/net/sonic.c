@@ -211,7 +211,7 @@ static int sonic_send_packet(struct sk_buff *skb, struct net_device *dev)
 	length = skb->len;
 	if (length < ETH_ZLEN) {
 		if (skb_padto(skb, ETH_ZLEN))
-			return 0;
+			return NETDEV_TX_OK;
 		length = ETH_ZLEN;
 	}
 
@@ -223,7 +223,7 @@ static int sonic_send_packet(struct sk_buff *skb, struct net_device *dev)
 	if (!laddr) {
 		printk(KERN_ERR "%s: failed to map tx DMA buffer.\n", dev->name);
 		dev_kfree_skb(skb);
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 
 	sonic_tda_put(dev, entry, SONIC_TD_STATUS, 0);       /* clear status */
@@ -265,7 +265,7 @@ static int sonic_send_packet(struct sk_buff *skb, struct net_device *dev)
 
 	dev->trans_start = jiffies;
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -531,7 +531,7 @@ static void sonic_multicast_list(struct net_device *dev)
 {
 	struct sonic_local *lp = netdev_priv(dev);
 	unsigned int rcr;
-	struct dev_mc_list *dmi = dev->mc_list;
+	struct dev_mc_list *dmi;
 	unsigned char *addr;
 	int i;
 
@@ -541,19 +541,22 @@ static void sonic_multicast_list(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC) {	/* set promiscuous mode */
 		rcr |= SONIC_RCR_PRO;
 	} else {
-		if ((dev->flags & IFF_ALLMULTI) || (dev->mc_count > 15)) {
+		if ((dev->flags & IFF_ALLMULTI) ||
+		    (netdev_mc_count(dev) > 15)) {
 			rcr |= SONIC_RCR_AMC;
 		} else {
 			if (sonic_debug > 2)
-				printk("sonic_multicast_list: mc_count %d\n", dev->mc_count);
+				printk("sonic_multicast_list: mc_count %d\n",
+				       netdev_mc_count(dev));
 			sonic_set_cam_enable(dev, 1);  /* always enable our own address */
-			for (i = 1; i <= dev->mc_count; i++) {
+			i = 1;
+			netdev_for_each_mc_addr(dmi, dev) {
 				addr = dmi->dmi_addr;
-				dmi = dmi->next;
 				sonic_cda_put(dev, i, SONIC_CD_CAP0, addr[1] << 8 | addr[0]);
 				sonic_cda_put(dev, i, SONIC_CD_CAP1, addr[3] << 8 | addr[2]);
 				sonic_cda_put(dev, i, SONIC_CD_CAP2, addr[5] << 8 | addr[4]);
 				sonic_set_cam_enable(dev, sonic_get_cam_enable(dev) | (1 << i));
+				i++;
 			}
 			SONIC_WRITE(SONIC_CDC, 16);
 			/* issue Load CAM command */

@@ -3,6 +3,7 @@
 #include <linux/stringify.h>
 #include <linux/kthread.h>
 #include <linux/delay.h>
+#include <linux/slab.h>
 
 static inline int trace_valid_entry(struct trace_entry *entry)
 {
@@ -16,6 +17,8 @@ static inline int trace_valid_entry(struct trace_entry *entry)
 	case TRACE_BRANCH:
 	case TRACE_GRAPH_ENT:
 	case TRACE_GRAPH_RET:
+	case TRACE_HW_BRANCHES:
+	case TRACE_KSYM:
 		return 1;
 	}
 	return 0;
@@ -65,7 +68,7 @@ static int trace_test_buffer(struct trace_array *tr, unsigned long *count)
 
 	/* Don't allow flipping of max traces now */
 	local_irq_save(flags);
-	__raw_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&ftrace_max_lock);
 
 	cnt = ring_buffer_entries(tr->buffer);
 
@@ -83,7 +86,7 @@ static int trace_test_buffer(struct trace_array *tr, unsigned long *count)
 			break;
 	}
 	tracing_on();
-	__raw_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&ftrace_max_lock);
 	local_irq_restore(flags);
 
 	if (count)
@@ -188,6 +191,7 @@ int trace_selftest_startup_dynamic_tracing(struct tracer *trace,
 #else
 # define trace_selftest_startup_dynamic_tracing(trace, tr, func) ({ 0; })
 #endif /* CONFIG_DYNAMIC_FTRACE */
+
 /*
  * Simple verification test of ftrace function tracer.
  * Enable ftrace, sleep 1/10 second, and then read the trace
@@ -286,6 +290,7 @@ trace_selftest_startup_function_graph(struct tracer *trace,
 	 * to detect and recover from possible hangs
 	 */
 	tracing_reset_online_cpus(tr);
+	set_graph_array(tr);
 	ret = register_ftrace_graph(&trace_graph_return,
 				    &trace_graph_entry_watchdog);
 	if (ret) {
@@ -749,3 +754,113 @@ trace_selftest_startup_branch(struct tracer *trace, struct trace_array *tr)
 	return ret;
 }
 #endif /* CONFIG_BRANCH_TRACER */
+
+#ifdef CONFIG_HW_BRANCH_TRACER
+int
+trace_selftest_startup_hw_branches(struct tracer *trace,
+				   struct trace_array *tr)
+{
+	struct trace_iterator *iter;
+	struct tracer tracer;
+	unsigned long count;
+	int ret;
+
+	if (!trace->open) {
+		printk(KERN_CONT "missing open function...");
+		return -1;
+	}
+
+	ret = tracer_init(trace, tr);
+	if (ret) {
+		warn_failed_init_tracer(trace, ret);
+		return ret;
+	}
+
+	/*
+	 * The hw-branch tracer needs to collect the trace from the various
+	 * cpu trace buffers - before tracing is stopped.
+	 */
+	iter = kzalloc(sizeof(*iter), GFP_KERNEL);
+	if (!iter)
+		return -ENOMEM;
+
+	memcpy(&tracer, trace, sizeof(tracer));
+
+	iter->trace = &tracer;
+	iter->tr = tr;
+	iter->pos = -1;
+	mutex_init(&iter->mutex);
+
+	trace->open(iter);
+
+	mutex_destroy(&iter->mutex);
+	kfree(iter);
+
+	tracing_stop();
+
+	ret = trace_test_buffer(tr, &count);
+	trace->reset(tr);
+	tracing_start();
+
+	if (!ret && !count) {
+		printk(KERN_CONT "no entries found..");
+		ret = -1;
+	}
+
+	return ret;
+}
+#endif /* CONFIG_HW_BRANCH_TRACER */
+
+#ifdef CONFIG_KSYM_TRACER
+static int ksym_selftest_dummy;
+
+int
+trace_selftest_startup_ksym(struct tracer *trace, struct trace_array *tr)
+{
+	unsigned long count;
+	int ret;
+
+	/* start the tracing */
+	ret = tracer_init(trace, tr);
+	if (ret) {
+		warn_failed_init_tracer(trace, ret);
+		return ret;
+	}
+
+	ksym_selftest_dummy = 0;
+	/* Register the read-write tracing request */
+
+	ret = process_new_ksym_entry("ksym_selftest_dummy",
+				     HW_BREAKPOINT_R | HW_BREAKPOINT_W,
+					(unsigned long)(&ksym_selftest_dummy));
+
+	if (ret < 0) {
+		printk(KERN_CONT "ksym_trace read-write startup test failed\n");
+		goto ret_path;
+	}
+	/* Perform a read and a write operation over the dummy variable to
+	 * trigger the tracer
+	 */
+	if (ksym_selftest_dummy == 0)
+		ksym_selftest_dummy++;
+
+	/* stop the tracing. */
+	tracing_stop();
+	/* check the trace buffer */
+	ret = trace_test_buffer(tr, &count);
+	trace->reset(tr);
+	tracing_start();
+
+	/* read & write operations - one each is performed on the dummy variable
+	 * triggering two entries in the trace buffer
+	 */
+	if (!ret && count != 2) {
+		printk(KERN_CONT "Ksym tracer startup test failed");
+		ret = -1;
+	}
+
+ret_path:
+	return ret;
+}
+#endif /* CONFIG_KSYM_TRACER */
+

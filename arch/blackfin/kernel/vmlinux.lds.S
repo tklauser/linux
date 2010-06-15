@@ -1,33 +1,8 @@
 /*
- * File:         arch/blackfin/kernel/vmlinux.lds.S
- * Based on:     none - original work
- * Author:
+ * Copyright 2004-2009 Analog Devices Inc.
  *
- * Created:      Tue Sep 21 2004
- * Description:  Master linker script for blackfin architecture
- *
- * Modified:
- *               Copyright 2004-2007 Analog Devices Inc.
- *
- * Bugs:         Enter bugs at http://blackfin.uclinux.org/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see the file COPYING, or write
- * to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Licensed under the GPL-2 or later
  */
-
-#define VMLINUX_SYMBOL(_sym_) _##_sym_
 
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/mem_map.h>
@@ -40,7 +15,12 @@ _jiffies = _jiffies_64;
 
 SECTIONS
 {
+#ifdef CONFIG_RAMKERNEL
 	. = CONFIG_BOOT_LOAD;
+#else
+	. = CONFIG_ROM_BASE;
+#endif
+
 	/* Neither the text, ro_data or bss section need to be aligned
 	 * So pack them back to back
 	 */
@@ -50,9 +30,18 @@ SECTIONS
 		_text = .;
 		__stext = .;
 		TEXT_TEXT
+#ifndef CONFIG_SCHEDULE_L1
 		SCHED_TEXT
+#endif
 		LOCK_TEXT
+		IRQENTRY_TEXT
 		KPROBES_TEXT
+#ifdef CONFIG_ROMKERNEL
+		__sinittext = .;
+		INIT_TEXT
+		__einittext = .;
+		EXIT_TEXT
+#endif
 		*(.text.*)
 		*(.fixup)
 
@@ -72,8 +61,14 @@ SECTIONS
 
 	/* Just in case the first read only is a 32-bit access */
 	RO_DATA(4)
+	__rodata_end = .;
 
+#ifdef CONFIG_ROMKERNEL
+	. = CONFIG_BOOT_LOAD;
+	.bss : AT(__rodata_end)
+#else
 	.bss :
+#endif
 	{
 		. = ALIGN(4);
 		___bss_start = .;
@@ -89,12 +84,15 @@ SECTIONS
 		___bss_stop = .;
 	}
 
+#if defined(CONFIG_ROMKERNEL)
+	.data : AT(LOADADDR(.bss) + SIZEOF(.bss))
+#else
 	.data :
+#endif
 	{
 		__sdata = .;
 		/* This gets done first, so the glob doesn't suck it in */
-		. = ALIGN(32);
-		*(.data.cacheline_aligned)
+		CACHELINE_ALIGNED_DATA(32)
 
 #if !L1_DATA_A_LENGTH
 		. = ALIGN(32);
@@ -113,15 +111,12 @@ SECTIONS
 		DATA_DATA
 		CONSTRUCTORS
 
-		/* make sure the init_task is aligned to the
-		 * kernel thread size so we can locate the kernel
-		 * stack properly and quickly.
-		 */
-		. = ALIGN(THREAD_SIZE);
-		*(.init_task.data)
+		INIT_TASK_DATA(THREAD_SIZE)
 
 		__edata = .;
 	}
+	__data_lma = LOADADDR(.data);
+	__data_len = SIZEOF(.data);
 
 	/* The init section should be last, so when we free it, it goes into
 	 * the general memory pool, and (hopefully) will decrease fragmentation
@@ -131,61 +126,73 @@ SECTIONS
 	. = ALIGN(PAGE_SIZE);
 	___init_begin = .;
 
-	.init.text :
+#ifdef CONFIG_RAMKERNEL
+	INIT_TEXT_SECTION(PAGE_SIZE)
+
+	/* We have to discard exit text and such at runtime, not link time, to
+	 * handle embedded cross-section references (alt instructions, bug
+	 * table, eh_frame, etc...).  We need all of our .text up front and
+	 * .data after it for PCREL call issues.
+	 */
+	.exit.text :
 	{
-		. = ALIGN(PAGE_SIZE);
-		__sinittext = .;
-		INIT_TEXT
-		__einittext = .;
+		EXIT_TEXT
 	}
-	.init.data :
-	{
-		. = ALIGN(16);
-		INIT_DATA
-	}
-	.init.setup :
-	{
-		. = ALIGN(16);
-		___setup_start = .;
-		*(.init.setup)
-		___setup_end = .;
-	}
-	.initcall.init :
-	{
-		___initcall_start = .;
-		INITCALLS
-		___initcall_end = .;
-	}
-	.con_initcall.init :
-	{
-		___con_initcall_start = .;
-		*(.con_initcall.init)
-		___con_initcall_end = .;
-	}
+
+	. = ALIGN(16);
+	INIT_DATA_SECTION(16)
 	PERCPU(4)
-	SECURITY_INIT
-	.init.ramfs :
+
+	.exit.data :
 	{
-		. = ALIGN(4);
-		___initramfs_start = .;
-		*(.init.ramfs)
-		. = ALIGN(4);
-		___initramfs_end = .;
+		EXIT_DATA
 	}
 
-	__l1_lma_start = .;
+	.text_l1 L1_CODE_START : AT(LOADADDR(.exit.data) + SIZEOF(.exit.data))
+#else
+	.init.data : AT(__data_lma + __data_len)
+	{
+		__sinitdata = .;
+		INIT_DATA
+		INIT_SETUP(16)
+		INIT_CALLS
+		CON_INITCALL
+		SECURITY_INITCALL
+		INIT_RAM_FS
 
-	.text_l1 L1_CODE_START : AT(LOADADDR(.init.ramfs) + SIZEOF(.init.ramfs))
+		. = ALIGN(4);
+		___per_cpu_load = .;
+		___per_cpu_start = .;
+		*(.data.percpu.first)
+		*(.data.percpu.page_aligned)
+		*(.data.percpu)
+		*(.data.percpu.shared_aligned)
+		___per_cpu_end = .;
+
+		EXIT_DATA
+		__einitdata = .;
+	}
+	__init_data_lma = LOADADDR(.init.data);
+	__init_data_len = SIZEOF(.init.data);
+	__init_data_end = .;
+
+	.text_l1 L1_CODE_START : AT(__init_data_lma + __init_data_len)
+#endif
 	{
 		. = ALIGN(4);
 		__stext_l1 = .;
 		*(.l1.text)
+#ifdef CONFIG_SCHEDULE_L1
+		SCHED_TEXT
+#endif
 		. = ALIGN(4);
 		__etext_l1 = .;
 	}
-	ASSERT (SIZEOF(.text_l1) <= L1_CODE_LENGTH, "L1 text overflow!")
+	__text_l1_lma = LOADADDR(.text_l1);
+	__text_l1_len = SIZEOF(.text_l1);
+	ASSERT (__text_l1_len <= L1_CODE_LENGTH, "L1 text overflow!")
 
-	.data_l1 L1_DATA_A_START : AT(LOADADDR(.text_l1) + SIZEOF(.text_l1))
+	.data_l1 L1_DATA_A_START : AT(__text_l1_lma + __text_l1_len)
 	{
 		. = ALIGN(4);
 		__sdata_l1 = .;
@@ -201,9 +208,11 @@ SECTIONS
 		. = ALIGN(4);
 		__ebss_l1 = .;
 	}
-	ASSERT (SIZEOF(.data_a_l1) <= L1_DATA_A_LENGTH, "L1 data A overflow!")
+	__data_l1_lma = LOADADDR(.data_l1);
+	__data_l1_len = SIZEOF(.data_l1);
+	ASSERT (__data_l1_len <= L1_DATA_A_LENGTH, "L1 data A overflow!")
 
-	.data_b_l1 L1_DATA_B_START : AT(LOADADDR(.data_l1) + SIZEOF(.data_l1))
+	.data_b_l1 L1_DATA_B_START : AT(__data_l1_lma + __data_l1_len)
 	{
 		. = ALIGN(4);
 		__sdata_b_l1 = .;
@@ -216,11 +225,11 @@ SECTIONS
 		. = ALIGN(4);
 		__ebss_b_l1 = .;
 	}
-	ASSERT (SIZEOF(.data_b_l1) <= L1_DATA_B_LENGTH, "L1 data B overflow!")
+	__data_b_l1_lma = LOADADDR(.data_b_l1);
+	__data_b_l1_len = SIZEOF(.data_b_l1);
+	ASSERT (__data_b_l1_len <= L1_DATA_B_LENGTH, "L1 data B overflow!")
 
-	__l2_lma_start = LOADADDR(.data_b_l1) + SIZEOF(.data_b_l1);
-
-	.text_data_l2 L2_START : AT(LOADADDR(.data_b_l1) + SIZEOF(.data_b_l1))
+	.text_data_l2 L2_START : AT(__data_b_l1_lma + __data_b_l1_len)
 	{
 		. = ALIGN(4);
 		__stext_l2 = .;
@@ -242,12 +251,18 @@ SECTIONS
 		. = ALIGN(4);
 		__ebss_l2 = .;
 	}
-	ASSERT (SIZEOF(.text_data_l1) <= L2_LENGTH, "L2 overflow!")
+	__l2_lma = LOADADDR(.text_data_l2);
+	__l2_len = SIZEOF(.text_data_l2);
+	ASSERT (__l2_len <= L2_LENGTH, "L2 overflow!")
 
 	/* Force trailing alignment of our init section so that when we
 	 * free our init memory, we don't leave behind a partial page.
 	 */
-	. = LOADADDR(.text_data_l2) + SIZEOF(.text_data_l2);
+#ifdef CONFIG_RAMKERNEL
+	. = __l2_lma + __l2_len;
+#else
+	. = __init_data_end;
+#endif
 	. = ALIGN(PAGE_SIZE);
 	___init_end = .;
 
@@ -257,10 +272,5 @@ SECTIONS
 
 	DWARF_DEBUG
 
-	/DISCARD/ :
-	{
-		EXIT_TEXT
-		EXIT_DATA
-		*(.exitcall.exit)
-	}
+	DISCARDS
 }

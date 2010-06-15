@@ -18,6 +18,7 @@
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <linux/string.h>
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
@@ -40,7 +41,7 @@
 #include <plat/iic.h>
 
 #include <plat/s3c2410.h>
-#include <plat/s3c2440.h>
+#include <plat/s3c244x.h>
 #include <plat/clock.h>
 #include <plat/devs.h>
 #include <plat/cpu.h>
@@ -105,7 +106,7 @@ static struct platform_device nexcoder_device_nor = {
 /* Standard Nexcoder devices */
 
 static struct platform_device *nexcoder_devices[] __initdata = {
-	&s3c_device_usb,
+	&s3c_device_ohci,
 	&s3c_device_lcd,
 	&s3c_device_wdt,
 	&s3c_device_i2c0,
@@ -120,16 +121,16 @@ static struct platform_device *nexcoder_devices[] __initdata = {
 static void __init nexcoder_sensorboard_init(void)
 {
 	// Initialize SCCB bus
-	s3c2410_gpio_setpin(S3C2410_GPE14, 1); // IICSCL
-	s3c2410_gpio_cfgpin(S3C2410_GPE14, S3C2410_GPE14_OUTP);
-	s3c2410_gpio_setpin(S3C2410_GPE15, 1); // IICSDA
-	s3c2410_gpio_cfgpin(S3C2410_GPE15, S3C2410_GPE15_OUTP);
+	s3c2410_gpio_setpin(S3C2410_GPE(14), 1); // IICSCL
+	s3c2410_gpio_cfgpin(S3C2410_GPE(14), S3C2410_GPIO_OUTPUT);
+	s3c2410_gpio_setpin(S3C2410_GPE(15), 1); // IICSDA
+	s3c2410_gpio_cfgpin(S3C2410_GPE(15), S3C2410_GPIO_OUTPUT);
 
 	// Power up the sensor board
-	s3c2410_gpio_setpin(S3C2410_GPF1, 1);
-	s3c2410_gpio_cfgpin(S3C2410_GPF1, S3C2410_GPF1_OUTP); // CAM_GPIO7 => nLDO_PWRDN
-	s3c2410_gpio_setpin(S3C2410_GPF2, 0);
-	s3c2410_gpio_cfgpin(S3C2410_GPF2, S3C2410_GPF2_OUTP); // CAM_GPIO6 => CAM_PWRDN
+	s3c2410_gpio_setpin(S3C2410_GPF(1), 1);
+	s3c2410_gpio_cfgpin(S3C2410_GPF(1), S3C2410_GPIO_OUTPUT); // CAM_GPIO7 => nLDO_PWRDN
+	s3c2410_gpio_setpin(S3C2410_GPF(2), 0);
+	s3c2410_gpio_cfgpin(S3C2410_GPF(2), S3C2410_GPIO_OUTPUT); // CAM_GPIO6 => CAM_PWRDN
 }
 
 static void __init nexcoder_map_io(void)

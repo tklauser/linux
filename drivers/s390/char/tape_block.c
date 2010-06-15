@@ -11,6 +11,7 @@
  */
 
 #define KMSG_COMPONENT "tape"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
 #include <linux/fs.h>
 #include <linux/module.h>
@@ -45,16 +46,13 @@
  */
 static int tapeblock_open(struct block_device *, fmode_t);
 static int tapeblock_release(struct gendisk *, fmode_t);
-static int tapeblock_ioctl(struct block_device *, fmode_t, unsigned int,
-				unsigned long);
 static int tapeblock_medium_changed(struct gendisk *);
 static int tapeblock_revalidate_disk(struct gendisk *);
 
-static struct block_device_operations tapeblock_fops = {
+static const struct block_device_operations tapeblock_fops = {
 	.owner		 = THIS_MODULE,
 	.open		 = tapeblock_open,
 	.release	 = tapeblock_release,
-	.locked_ioctl           = tapeblock_ioctl,
 	.media_changed   = tapeblock_medium_changed,
 	.revalidate_disk = tapeblock_revalidate_disk,
 };
@@ -74,13 +72,6 @@ tapeblock_trigger_requeue(struct tape_device *device)
  * Post finished request.
  */
 static void
-tapeblock_end_request(struct request *req, int error)
-{
-	if (blk_end_request(req, error, blk_rq_bytes(req)))
-		BUG();
-}
-
-static void
 __tapeblock_end_request(struct tape_request *ccw_req, void *data)
 {
 	struct tape_device *device;
@@ -90,17 +81,17 @@ __tapeblock_end_request(struct tape_request *ccw_req, void *data)
 
 	device = ccw_req->device;
 	req = (struct request *) data;
-	tapeblock_end_request(req, (ccw_req->rc == 0) ? 0 : -EIO);
+	blk_end_request_all(req, (ccw_req->rc == 0) ? 0 : -EIO);
 	if (ccw_req->rc == 0)
 		/* Update position. */
 		device->blk_data.block_position =
-			(req->sector + req->nr_sectors) >> TAPEBLOCK_HSEC_S2B;
+		  (blk_rq_pos(req) + blk_rq_sectors(req)) >> TAPEBLOCK_HSEC_S2B;
 	else
 		/* We lost the position information due to an error. */
 		device->blk_data.block_position = -1;
 	device->discipline->free_bread(ccw_req);
 	if (!list_empty(&device->req_queue) ||
-	    elv_next_request(device->blk_data.request_queue))
+	    blk_peek_request(device->blk_data.request_queue))
 		tapeblock_trigger_requeue(device);
 }
 
@@ -118,7 +109,7 @@ tapeblock_start_request(struct tape_device *device, struct request *req)
 	ccw_req = device->discipline->bread(device, req);
 	if (IS_ERR(ccw_req)) {
 		DBF_EVENT(1, "TBLOCK: bread failed\n");
-		tapeblock_end_request(req, -EIO);
+		blk_end_request_all(req, -EIO);
 		return PTR_ERR(ccw_req);
 	}
 	ccw_req->callback = __tapeblock_end_request;
@@ -131,7 +122,7 @@ tapeblock_start_request(struct tape_device *device, struct request *req)
 		 * Start/enqueueing failed. No retries in
 		 * this case.
 		 */
-		tapeblock_end_request(req, -EIO);
+		blk_end_request_all(req, -EIO);
 		device->discipline->free_bread(ccw_req);
 	}
 
@@ -169,19 +160,17 @@ tapeblock_requeue(struct work_struct *work) {
 	spin_lock_irq(&device->blk_data.request_queue_lock);
 	while (
 		!blk_queue_plugged(queue) &&
-		elv_next_request(queue)   &&
+		blk_peek_request(queue) &&
 		nr_queued < TAPEBLOCK_MIN_REQUEUE
 	) {
-		req = elv_next_request(queue);
+		req = blk_fetch_request(queue);
 		if (rq_data_dir(req) == WRITE) {
 			DBF_EVENT(1, "TBLOCK: Rejecting write request\n");
-			blkdev_dequeue_request(req);
 			spin_unlock_irq(&device->blk_data.request_queue_lock);
-			tapeblock_end_request(req, -EIO);
+			blk_end_request_all(req, -EIO);
 			spin_lock_irq(&device->blk_data.request_queue_lock);
 			continue;
 		}
-		blkdev_dequeue_request(req);
 		nr_queued++;
 		spin_unlock_irq(&device->blk_data.request_queue_lock);
 		rc = tapeblock_start_request(device, req);
@@ -232,10 +221,9 @@ tapeblock_setup_device(struct tape_device * device)
 	if (rc)
 		goto cleanup_queue;
 
-	blk_queue_hardsect_size(blkdat->request_queue, TAPEBLOCK_HSEC_SIZE);
-	blk_queue_max_sectors(blkdat->request_queue, TAPEBLOCK_MAX_SEC);
-	blk_queue_max_phys_segments(blkdat->request_queue, -1L);
-	blk_queue_max_hw_segments(blkdat->request_queue, -1L);
+	blk_queue_logical_block_size(blkdat->request_queue, TAPEBLOCK_HSEC_SIZE);
+	blk_queue_max_hw_sectors(blkdat->request_queue, TAPEBLOCK_MAX_SEC);
+	blk_queue_max_segments(blkdat->request_queue, -1L);
 	blk_queue_max_segment_size(blkdat->request_queue, -1L);
 	blk_queue_segment_boundary(blkdat->request_queue, -1L);
 
@@ -248,7 +236,7 @@ tapeblock_setup_device(struct tape_device * device)
 	disk->major = tapeblock_major;
 	disk->first_minor = device->first_minor;
 	disk->fops = &tapeblock_fops;
-	disk->private_data = tape_get_device_reference(device);
+	disk->private_data = tape_get_device(device);
 	disk->queue = blkdat->request_queue;
 	set_capacity(disk, 0);
 	sprintf(disk->disk_name, "btibm%d",
@@ -256,11 +244,11 @@ tapeblock_setup_device(struct tape_device * device)
 
 	blkdat->disk = disk;
 	blkdat->medium_changed = 1;
-	blkdat->request_queue->queuedata = tape_get_device_reference(device);
+	blkdat->request_queue->queuedata = tape_get_device(device);
 
 	add_disk(disk);
 
-	tape_get_device_reference(device);
+	tape_get_device(device);
 	INIT_WORK(&blkdat->requeue_task, tapeblock_requeue);
 
 	return 0;
@@ -283,13 +271,14 @@ tapeblock_cleanup_device(struct tape_device *device)
 	}
 
 	del_gendisk(device->blk_data.disk);
-	device->blk_data.disk->private_data =
-		tape_put_device(device->blk_data.disk->private_data);
+	device->blk_data.disk->private_data = NULL;
+	tape_put_device(device);
 	put_disk(device->blk_data.disk);
 
 	device->blk_data.disk = NULL;
 cleanup_queue:
-	device->blk_data.request_queue->queuedata = tape_put_device(device);
+	device->blk_data.request_queue->queuedata = NULL;
+	tape_put_device(device);
 
 	blk_cleanup_queue(device->blk_data.request_queue);
 	device->blk_data.request_queue = NULL;
@@ -312,8 +301,6 @@ tapeblock_revalidate_disk(struct gendisk *disk)
 	if (!device->blk_data.medium_changed)
 		return 0;
 
-	dev_info(&device->cdev->dev, "Determining the size of the recorded "
-		"area...\n");
 	rc = tape_mtop(device, MTFSFM, 1);
 	if (rc)
 		return rc;
@@ -322,6 +309,8 @@ tapeblock_revalidate_disk(struct gendisk *disk)
 	if (rc < 0)
 		return rc;
 
+	pr_info("%s: Determining the size of the recorded area...\n",
+		dev_name(&device->cdev->dev));
 	DBF_LH(3, "Image file ends at %d\n", rc);
 	nr_of_blks = rc;
 
@@ -340,8 +329,8 @@ tapeblock_revalidate_disk(struct gendisk *disk)
 	device->bof = rc;
 	nr_of_blks -= rc;
 
-	dev_info(&device->cdev->dev, "The size of the recorded area is %i "
-		"blocks\n", nr_of_blks);
+	pr_info("%s: The size of the recorded area is %i blocks\n",
+		dev_name(&device->cdev->dev), nr_of_blks);
 	set_capacity(device->blk_data.disk,
 		nr_of_blks*(TAPEBLOCK_HSEC_SIZE/512));
 
@@ -372,12 +361,12 @@ tapeblock_open(struct block_device *bdev, fmode_t mode)
 	struct tape_device *	device;
 	int			rc;
 
-	device = tape_get_device_reference(disk->private_data);
+	device = tape_get_device(disk->private_data);
 
 	if (device->required_tapemarks) {
 		DBF_EVENT(2, "TBLOCK: missing tapemarks\n");
-		dev_warn(&device->cdev->dev, "Opening the tape failed because"
-			" of missing end-of-file marks\n");
+		pr_warning("%s: Opening the tape failed because of missing "
+			   "end-of-file marks\n", dev_name(&device->cdev->dev));
 		rc = -EPERM;
 		goto put_device;
 	}
@@ -420,42 +409,6 @@ tapeblock_release(struct gendisk *disk, fmode_t mode)
 	tape_put_device(device);
 
 	return 0;
-}
-
-/*
- * Support of some generic block device IOCTLs.
- */
-static int
-tapeblock_ioctl(
-	struct block_device *	bdev,
-	fmode_t			mode,
-	unsigned int		command,
-	unsigned long		arg
-) {
-	int rc;
-	int minor;
-	struct gendisk *disk = bdev->bd_disk;
-	struct tape_device *device;
-
-	rc     = 0;
-	BUG_ON(!disk);
-	device = disk->private_data;
-	BUG_ON(!device);
-	minor  = MINOR(bdev->bd_dev);
-
-	DBF_LH(6, "tapeblock_ioctl(0x%0x)\n", command);
-	DBF_LH(6, "device = %d:%d\n", tapeblock_major, minor);
-
-	switch (command) {
-		/* Refuse some IOCTL calls without complaining (mount). */
-		case 0x5310:		/* CDROMMULTISESSION */
-			rc = -EINVAL;
-			break;
-		default:
-			rc = -EINVAL;
-	}
-
-	return rc;
 }
 
 /*

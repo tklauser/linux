@@ -22,6 +22,7 @@
 #ifndef __HW_H__
 #define __HW_H__
 
+#include "viamode.h"
 #include "global.h"
 
 /***************************************************
@@ -147,14 +148,8 @@ is reserved, so it may have problem to set 1600x1200 on IGA2. */
 /* location: {CR5F,0,4} */
 #define IGA2_VER_SYNC_END_REG_NUM       1
 
-/* Define Offset and Fetch Count Register*/
+/* Define Fetch Count Register*/
 
-/* location: {CR13,0,7},{CR35,5,7} */
-#define IGA1_OFFSET_REG_NUM             2
-/* 8 bytes alignment. */
-#define IGA1_OFFSER_ALIGN_BYTE          8
-/* x: H resolution, y: color depth */
-#define IGA1_OFFSET_FORMULA(x, y)        ((x*y)/IGA1_OFFSER_ALIGN_BYTE)
 /* location: {SR1C,0,7},{SR1D,0,1} */
 #define IGA1_FETCH_COUNT_REG_NUM        2
 /* 16 bytes alignment. */
@@ -164,11 +159,6 @@ is reserved, so it may have problem to set 1600x1200 on IGA2. */
 #define IGA1_FETCH_COUNT_FORMULA(x, y)   \
 	(((x*y)/IGA1_FETCH_COUNT_ALIGN_BYTE) + IGA1_FETCH_COUNT_PATCH_VALUE)
 
-/* location: {CR66,0,7},{CR67,0,1} */
-#define IGA2_OFFSET_REG_NUM             2
-#define IGA2_OFFSET_ALIGN_BYTE          8
-/* x: H resolution, y: color depth */
-#define IGA2_OFFSET_FORMULA(x, y)        ((x*y)/IGA2_OFFSET_ALIGN_BYTE)
 /* location: {CR65,0,7},{CR67,2,3} */
 #define IGA2_FETCH_COUNT_REG_NUM        2
 #define IGA2_FETCH_COUNT_ALIGN_BYTE     16
@@ -334,6 +324,17 @@ is reserved, so it may have problem to set 1600x1200 on IGA2. */
 #define VX800_IGA2_FIFO_HIGH_THRESHOLD          32
 /* location: {CR94,0,6} */
 #define VX800_IGA2_DISPLAY_QUEUE_EXPIRE_NUM     128
+
+/* For VT3409 */
+#define VX855_IGA1_FIFO_MAX_DEPTH               400
+#define VX855_IGA1_FIFO_THRESHOLD               320
+#define VX855_IGA1_FIFO_HIGH_THRESHOLD          320
+#define VX855_IGA1_DISPLAY_QUEUE_EXPIRE_NUM     160
+
+#define VX855_IGA2_FIFO_MAX_DEPTH               200
+#define VX855_IGA2_FIFO_THRESHOLD               160
+#define VX855_IGA2_FIFO_HIGH_THRESHOLD          160
+#define VX855_IGA2_DISPLAY_QUEUE_EXPIRE_NUM     320
 
 #define IGA1_FIFO_DEPTH_SELECT_REG_NUM          1
 #define IGA1_FIFO_THRESHOLD_REG_NUM             2
@@ -617,23 +618,6 @@ struct iga2_ver_sync_end {
 	struct io_register reg[IGA2_VER_SYNC_END_REG_NUM];
 };
 
-/* IGA1 Offset Register */
-struct iga1_offset {
-	int reg_num;
-	struct io_register reg[IGA1_OFFSET_REG_NUM];
-};
-
-/* IGA2 Offset Register */
-struct iga2_offset {
-	int reg_num;
-	struct io_register reg[IGA2_OFFSET_REG_NUM];
-};
-
-struct offset {
-	struct iga1_offset iga1_offset_reg;
-	struct iga2_offset iga2_offset_reg;
-};
-
 /* IGA1 Fetch Count Register */
 struct iga1_fetch_count {
 	int reg_num;
@@ -716,6 +700,7 @@ struct pll_map {
 	u32 cle266_pll;
 	u32 k800_pll;
 	u32 cx700_pll;
+	u32 vx855_pll;
 };
 
 struct rgbLUT {
@@ -860,6 +845,8 @@ struct iga2_crtc_timing {
 #define P4M900_FUNCTION3    0x3364
 /* VT3353 chipset*/
 #define VX800_FUNCTION3     0x3353
+/* VT3409 chipset*/
+#define VX855_FUNCTION3     0x3409
 
 #define NUM_TOTAL_PLL_TABLE ARRAY_SIZE(pll_value)
 
@@ -876,21 +863,19 @@ struct pci_device_id_info {
 };
 
 extern unsigned int viafb_second_virtual_xres;
-extern unsigned int viafb_second_offset;
-extern int viafb_second_size;
 extern int viafb_SAMM_ON;
 extern int viafb_dual_fb;
 extern int viafb_LCD2_ON;
 extern int viafb_LCD_ON;
 extern int viafb_DVI_ON;
-extern int viafb_accel;
 extern int viafb_hotplug;
 
 void viafb_write_reg_mask(u8 index, int io_port, u8 data, u8 mask);
 void viafb_set_output_path(int device, int set_iga,
 	int output_interface);
+
 void viafb_fill_crtc_timing(struct crt_mode_table *crt_table,
-		      int mode_index, int bpp_byte, int set_iga);
+	struct VideoModeTable *video_mode, int bpp_byte, int set_iga);
 
 void viafb_set_vclock(u32 CLK, int set_iga);
 void viafb_load_reg(int timing_value, int viafb_load_reg_num,
@@ -904,30 +889,33 @@ void viafb_write_reg(u8 index, u16 io_port, u8 data);
 u8 viafb_read_reg(int io_port, u8 index);
 void viafb_lock_crt(void);
 void viafb_unlock_crt(void);
-void viafb_load_offset_reg(int h_addr, int bpp_byte, int set_iga);
 void viafb_load_fetch_count_reg(int h_addr, int bpp_byte, int set_iga);
 void viafb_write_regx(struct io_reg RegTable[], int ItemNum);
-struct VideoModeTable *viafb_get_modetbl_pointer(int Index);
 u32 viafb_get_clk_value(int clk);
 void viafb_load_FIFO_reg(int set_iga, int hor_active, int ver_active);
-void viafb_set_color_depth(int bpp_byte, int set_iga);
 void viafb_set_dpa_gfx(int output_interface, struct GFX_DPA_SETTING\
 					*p_gfx_dpa_setting);
 
-int viafb_setmode(int vmode_index, int hor_res, int ver_res,
-	    int video_bpp, int vmode_index1, int hor_res1,
-	    int ver_res1, int video_bpp1);
-void viafb_init_chip_info(void);
+int viafb_setmode(struct VideoModeTable *vmode_tbl, int video_bpp,
+	struct VideoModeTable *vmode_tbl1, int video_bpp1);
+void viafb_fill_var_timing_info(struct fb_var_screeninfo *var, int refresh,
+	struct VideoModeTable *vmode_tbl);
+void viafb_init_chip_info(struct pci_dev *pdev,
+			  const struct pci_device_id *pdi);
 void viafb_init_dac(int set_iga);
 int viafb_get_pixclock(int hres, int vres, int vmode_refresh);
 int viafb_get_refresh(int hres, int vres, u32 float_refresh);
 void viafb_update_device_setting(int hres, int vres, int bpp,
 			   int vmode_refresh, int flag);
-void viafb_get_mmio_info(unsigned long *mmio_base,
-	unsigned long *mmio_len);
 
+int viafb_get_fb_size_from_pci(void);
 void viafb_set_iga_path(void);
-void viafb_set_start_addr(void);
+void viafb_set_primary_address(u32 addr);
+void viafb_set_secondary_address(u32 addr);
+void viafb_set_primary_pitch(u32 pitch);
+void viafb_set_secondary_pitch(u32 pitch);
+void viafb_set_primary_color_register(u8 index, u8 red, u8 green, u8 blue);
+void viafb_set_secondary_color_register(u8 index, u8 red, u8 green, u8 blue);
 void viafb_get_fb_info(unsigned int *fb_base, unsigned int *fb_len);
 
 #endif /* __HW_H__ */

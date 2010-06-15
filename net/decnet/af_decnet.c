@@ -157,7 +157,7 @@ static struct hlist_head dn_sk_hash[DN_SK_HASH_SIZE];
 static struct hlist_head dn_wild_sk;
 static atomic_t decnet_memory_allocated;
 
-static int __dn_setsockopt(struct socket *sock, int level, int optname, char __user *optval, int optlen, int flags);
+static int __dn_setsockopt(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen, int flags);
 static int __dn_getsockopt(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen, int flags);
 
 static struct hlist_head *dn_find_list(struct sock *sk)
@@ -675,11 +675,12 @@ char *dn_addr2asc(__u16 addr, char *buf)
 
 
 
-static int dn_create(struct net *net, struct socket *sock, int protocol)
+static int dn_create(struct net *net, struct socket *sock, int protocol,
+		     int kern)
 {
 	struct sock *sk;
 
-	if (net != &init_net)
+	if (!net_eq(net, &init_net))
 		return -EAFNOSUPPORT;
 
 	switch(sock->type) {
@@ -749,9 +750,9 @@ static int dn_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 
 	if (!(saddr->sdn_flags & SDF_WILD)) {
 		if (le16_to_cpu(saddr->sdn_nodeaddrl)) {
-			read_lock(&dev_base_lock);
+			rcu_read_lock();
 			ldev = NULL;
-			for_each_netdev(&init_net, dev) {
+			for_each_netdev_rcu(&init_net, dev) {
 				if (!dev->dn_ptr)
 					continue;
 				if (dn_dev_islocal(dev, dn_saddr2dn(saddr))) {
@@ -759,7 +760,7 @@ static int dn_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 					break;
 				}
 			}
-			read_unlock(&dev_base_lock);
+			rcu_read_unlock();
 			if (ldev == NULL)
 				return -EADDRNOTAVAIL;
 		}
@@ -1075,6 +1076,7 @@ static int dn_accept(struct socket *sock, struct socket *newsock, int flags)
 	int err = 0;
 	unsigned char type;
 	long timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
+	struct dst_entry *dst;
 
 	lock_sock(sk);
 
@@ -1102,8 +1104,9 @@ static int dn_accept(struct socket *sock, struct socket *newsock, int flags)
 	}
 	release_sock(sk);
 
-	dst_release(xchg(&newsk->sk_dst_cache, skb->dst));
-	skb->dst = NULL;
+	dst = skb_dst(skb);
+	dst_release(xchg(&newsk->sk_dst_cache, dst));
+	skb_dst_set(skb, NULL);
 
 	DN_SK(newsk)->state        = DN_CR;
 	DN_SK(newsk)->addrrem      = cb->src_port;
@@ -1238,7 +1241,7 @@ static int dn_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		return val;
 
 	case TIOCOUTQ:
-		amount = sk->sk_sndbuf - atomic_read(&sk->sk_wmem_alloc);
+		amount = sk->sk_sndbuf - sk_wmem_alloc_get(sk);
 		if (amount < 0)
 			amount = 0;
 		err = put_user(amount, (int __user *)arg);
@@ -1250,14 +1253,8 @@ static int dn_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		if (skb) {
 			amount = skb->len;
 		} else {
-			skb = sk->sk_receive_queue.next;
-			for (;;) {
-				if (skb ==
-				    (struct sk_buff *)&sk->sk_receive_queue)
-					break;
+			skb_queue_walk(&sk->sk_receive_queue, skb)
 				amount += skb->len;
-				skb = skb->next;
-			}
 		}
 		release_sock(sk);
 		err = put_user(amount, (int __user *)arg);
@@ -1329,7 +1326,7 @@ out:
 	return err;
 }
 
-static int dn_setsockopt(struct socket *sock, int level, int optname, char __user *optval, int optlen)
+static int dn_setsockopt(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen)
 {
 	struct sock *sk = sock->sk;
 	int err;
@@ -1341,7 +1338,7 @@ static int dn_setsockopt(struct socket *sock, int level, int optname, char __use
 	return err;
 }
 
-static int __dn_setsockopt(struct socket *sock, int level,int optname, char __user *optval, int optlen, int flags)
+static int __dn_setsockopt(struct socket *sock, int level,int optname, char __user *optval, unsigned int optlen, int flags)
 {
 	struct	sock *sk = sock->sk;
 	struct dn_scp *scp = DN_SK(sk);
@@ -1644,13 +1641,13 @@ static int __dn_getsockopt(struct socket *sock, int level,int optname, char __us
 
 static int dn_data_ready(struct sock *sk, struct sk_buff_head *q, int flags, int target)
 {
-	struct sk_buff *skb = q->next;
+	struct sk_buff *skb;
 	int len = 0;
 
 	if (flags & MSG_OOB)
 		return !skb_queue_empty(q) ? 1 : 0;
 
-	while(skb != (struct sk_buff *)q) {
+	skb_queue_walk(q, skb) {
 		struct dn_skb_cb *cb = DN_SKB_CB(skb);
 		len += skb->len;
 
@@ -1666,8 +1663,6 @@ static int dn_data_ready(struct sock *sk, struct sk_buff_head *q, int flags, int
 		/* minimum data length for read exceeded */
 		if (len >= target)
 			return 1;
-
-		skb = skb->next;
 	}
 
 	return 0;
@@ -1683,7 +1678,7 @@ static int dn_recvmsg(struct kiocb *iocb, struct socket *sock,
 	size_t target = size > 1 ? 1 : 0;
 	size_t copied = 0;
 	int rv = 0;
-	struct sk_buff *skb, *nskb;
+	struct sk_buff *skb, *n;
 	struct dn_skb_cb *cb = NULL;
 	unsigned char eor = 0;
 	long timeo = sock_rcvtimeo(sk, flags & MSG_DONTWAIT);
@@ -1758,7 +1753,7 @@ static int dn_recvmsg(struct kiocb *iocb, struct socket *sock,
 		finish_wait(sk->sk_sleep, &wait);
 	}
 
-	for(skb = queue->next; skb != (struct sk_buff *)queue; skb = nskb) {
+	skb_queue_walk_safe(queue, skb, n) {
 		unsigned int chunk = skb->len;
 		cb = DN_SKB_CB(skb);
 
@@ -1775,7 +1770,6 @@ static int dn_recvmsg(struct kiocb *iocb, struct socket *sock,
 			skb_pull(skb, chunk);
 
 		eor = cb->nsp_flags & 0x40;
-		nskb = skb->next;
 
 		if (skb->len == 0) {
 			skb_unlink(skb, queue);
@@ -1962,7 +1956,7 @@ static int dn_sendmsg(struct kiocb *iocb, struct socket *sock,
 	}
 
 	if ((flags & MSG_TRYHARD) && sk->sk_dst_cache)
-		dst_negative_advice(&sk->sk_dst_cache);
+		dst_negative_advice(&sk->sk_dst_cache, sk);
 
 	mss = scp->segsize_rem;
 	fctype = scp->services_rem & NSP_FC_MASK;
@@ -2332,7 +2326,7 @@ static const struct file_operations dn_socket_seq_fops = {
 };
 #endif
 
-static struct net_proto_family	dn_family_ops = {
+static const struct net_proto_family	dn_family_ops = {
 	.family =	AF_DECnet,
 	.create =	dn_create,
 	.owner	=	THIS_MODULE,
@@ -2420,6 +2414,8 @@ static void __exit decnet_exit(void)
 	proc_net_remove(&init_net, "decnet");
 
 	proto_unregister(&dn_proto);
+
+	rcu_barrier_bh(); /* Wait for completion of call_rcu_bh()'s */
 }
 module_exit(decnet_exit);
 #endif

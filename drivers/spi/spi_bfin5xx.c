@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/irq.h>
@@ -169,7 +170,7 @@ static int bfin_spi_flush(struct driver_data *drv_data)
 	unsigned long limit = loops_per_jiffy << 1;
 
 	/* wait for stop and clear stat */
-	while (!(read_STAT(drv_data) & BIT_STAT_SPIF) && limit--)
+	while (!(read_STAT(drv_data) & BIT_STAT_SPIF) && --limit)
 		cpu_relax();
 
 	write_STAT(drv_data, BIT_STAT_CLR);
@@ -803,7 +804,7 @@ static void bfin_spi_pump_transfers(unsigned long data)
 				drv_data->rx, drv_data->len_in_bytes);
 
 			/* invalidate caches, if needed */
-			if (bfin_addr_dcachable((unsigned long) drv_data->rx))
+			if (bfin_addr_dcacheable((unsigned long) drv_data->rx))
 				invalidate_dcache_range((unsigned long) drv_data->rx,
 							(unsigned long) (drv_data->rx +
 							drv_data->len_in_bytes));
@@ -816,7 +817,7 @@ static void bfin_spi_pump_transfers(unsigned long data)
 			dev_dbg(&drv_data->pdev->dev, "doing DMA out.\n");
 
 			/* flush caches, if needed */
-			if (bfin_addr_dcachable((unsigned long) drv_data->tx))
+			if (bfin_addr_dcacheable((unsigned long) drv_data->tx))
 				flush_dcache_range((unsigned long) drv_data->tx,
 						(unsigned long) (drv_data->tx +
 						drv_data->len_in_bytes));
@@ -1009,16 +1010,6 @@ static int bfin_spi_setup(struct spi_device *spi)
 	struct chip_data *chip;
 	struct driver_data *drv_data = spi_master_get_devdata(spi->master);
 	int ret;
-
-	/* Abort device setup if requested features are not supported */
-	if (spi->mode & ~(SPI_CPOL | SPI_CPHA | SPI_LSB_FIRST)) {
-		dev_err(&spi->dev, "requested mode not fully supported\n");
-		return -EINVAL;
-	}
-
-	/* Zero (the default) here means 8 bits */
-	if (!spi->bits_per_word)
-		spi->bits_per_word = 8;
 
 	if (spi->bits_per_word != 8 && spi->bits_per_word != 16)
 		return -EINVAL;
@@ -1287,6 +1278,9 @@ static int __init bfin_spi_probe(struct platform_device *pdev)
 	drv_data->pdev = pdev;
 	drv_data->pin_req = platform_info->pin_req;
 
+	/* the spi->mode bits supported by this driver: */
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_LSB_FIRST;
+
 	master->bus_num = pdev->id;
 	master->num_chipselect = platform_info->num_chipselect;
 	master->cleanup = bfin_spi_cleanup;
@@ -1301,7 +1295,7 @@ static int __init bfin_spi_probe(struct platform_device *pdev)
 		goto out_error_get_res;
 	}
 
-	drv_data->regs_base = ioremap(res->start, (res->end - res->start + 1));
+	drv_data->regs_base = ioremap(res->start, resource_size(res));
 	if (drv_data->regs_base == NULL) {
 		dev_err(dev, "Cannot map IO\n");
 		status = -ENXIO;

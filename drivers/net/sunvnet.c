@@ -765,7 +765,7 @@ static void __update_mc_list(struct vnet *vp, struct net_device *dev)
 {
 	struct dev_addr_list *p;
 
-	for (p = dev->mc_list; p; p = p->next) {
+	netdev_for_each_mc_addr(p, dev) {
 		struct vnet_mcast_entry *m;
 
 		m = __vnet_mc_find(vp, p->dmi_addr);
@@ -1017,6 +1017,7 @@ static const struct net_device_ops vnet_ops = {
 	.ndo_stop		= vnet_close,
 	.ndo_set_multicast_list	= vnet_set_rx_mode,
 	.ndo_set_mac_address	= vnet_set_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_tx_timeout		= vnet_tx_timeout,
 	.ndo_change_mtu		= vnet_change_mtu,
 	.ndo_start_xmit		= vnet_start_xmit,
@@ -1061,10 +1062,7 @@ static struct vnet * __devinit vnet_new(const u64 *local_mac)
 		goto err_out_free_dev;
 	}
 
-	printk(KERN_INFO "%s: Sun LDOM vnet ", dev->name);
-
-	for (i = 0; i < 6; i++)
-		printk("%2.2x%c", dev->dev_addr[i], i == 5 ? '\n' : ':');
+	printk(KERN_INFO "%s: Sun LDOM vnet %pM\n", dev->name, dev->dev_addr);
 
 	list_add(&vp->list, &vnet_list);
 

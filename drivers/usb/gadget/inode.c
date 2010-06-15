@@ -30,6 +30,7 @@
 #include <linux/wait.h>
 #include <linux/compiler.h>
 #include <asm/uaccess.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/poll.h>
 #include <linux/smp_lock.h>
@@ -193,7 +194,7 @@ enum ep_state {
 };
 
 struct ep_data {
-	struct semaphore		lock;
+	struct mutex			lock;
 	enum ep_state			state;
 	atomic_t			count;
 	struct dev_data			*dev;
@@ -297,10 +298,10 @@ get_ready_ep (unsigned f_flags, struct ep_data *epdata)
 	int	val;
 
 	if (f_flags & O_NONBLOCK) {
-		if (down_trylock (&epdata->lock) != 0)
+		if (!mutex_trylock(&epdata->lock))
 			goto nonblock;
 		if (epdata->state != STATE_EP_ENABLED) {
-			up (&epdata->lock);
+			mutex_unlock(&epdata->lock);
 nonblock:
 			val = -EAGAIN;
 		} else
@@ -308,7 +309,8 @@ nonblock:
 		return val;
 	}
 
-	if ((val = down_interruptible (&epdata->lock)) < 0)
+	val = mutex_lock_interruptible(&epdata->lock);
+	if (val < 0)
 		return val;
 
 	switch (epdata->state) {
@@ -322,7 +324,7 @@ nonblock:
 		// FALLTHROUGH
 	case STATE_EP_UNBOUND:			/* clean disconnect */
 		val = -ENODEV;
-		up (&epdata->lock);
+		mutex_unlock(&epdata->lock);
 	}
 	return val;
 }
@@ -384,16 +386,15 @@ ep_read (struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 		return value;
 
 	/* halt any endpoint by doing a "wrong direction" i/o call */
-	if (data->desc.bEndpointAddress & USB_DIR_IN) {
-		if ((data->desc.bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
-				== USB_ENDPOINT_XFER_ISOC)
+	if (usb_endpoint_dir_in(&data->desc)) {
+		if (usb_endpoint_xfer_isoc(&data->desc))
 			return -EINVAL;
 		DBG (data->dev, "%s halt\n", data->name);
 		spin_lock_irq (&data->dev->lock);
 		if (likely (data->ep != NULL))
 			usb_ep_set_halt (data->ep);
 		spin_unlock_irq (&data->dev->lock);
-		up (&data->lock);
+		mutex_unlock(&data->lock);
 		return -EBADMSG;
 	}
 
@@ -411,7 +412,7 @@ ep_read (struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 		value = -EFAULT;
 
 free1:
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	kfree (kbuf);
 	return value;
 }
@@ -428,16 +429,15 @@ ep_write (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 		return value;
 
 	/* halt any endpoint by doing a "wrong direction" i/o call */
-	if (!(data->desc.bEndpointAddress & USB_DIR_IN)) {
-		if ((data->desc.bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
-				== USB_ENDPOINT_XFER_ISOC)
+	if (!usb_endpoint_dir_in(&data->desc)) {
+		if (usb_endpoint_xfer_isoc(&data->desc))
 			return -EINVAL;
 		DBG (data->dev, "%s halt\n", data->name);
 		spin_lock_irq (&data->dev->lock);
 		if (likely (data->ep != NULL))
 			usb_ep_set_halt (data->ep);
 		spin_unlock_irq (&data->dev->lock);
-		up (&data->lock);
+		mutex_unlock(&data->lock);
 		return -EBADMSG;
 	}
 
@@ -456,7 +456,7 @@ ep_write (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 	VDEBUG (data->dev, "%s write %zu IN, status %d\n",
 		data->name, len, (int) value);
 free1:
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	kfree (kbuf);
 	return value;
 }
@@ -467,7 +467,8 @@ ep_release (struct inode *inode, struct file *fd)
 	struct ep_data		*data = fd->private_data;
 	int value;
 
-	if ((value = down_interruptible(&data->lock)) < 0)
+	value = mutex_lock_interruptible(&data->lock);
+	if (value < 0)
 		return value;
 
 	/* clean up if this can be reopened */
@@ -477,7 +478,7 @@ ep_release (struct inode *inode, struct file *fd)
 		data->hs_desc.bDescriptorType = 0;
 		usb_ep_disable(data->ep);
 	}
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	put_ep (data);
 	return 0;
 }
@@ -508,7 +509,7 @@ static long ep_ioctl(struct file *fd, unsigned code, unsigned long value)
 	} else
 		status = -ENODEV;
 	spin_unlock_irq (&data->dev->lock);
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	return status;
 }
 
@@ -674,7 +675,7 @@ fail:
 		value = -ENODEV;
 	spin_unlock_irq(&epdata->dev->lock);
 
-	up(&epdata->lock);
+	mutex_unlock(&epdata->lock);
 
 	if (unlikely(value)) {
 		kfree(priv);
@@ -691,7 +692,7 @@ ep_aio_read(struct kiocb *iocb, const struct iovec *iov,
 	struct ep_data		*epdata = iocb->ki_filp->private_data;
 	char			*buf;
 
-	if (unlikely(epdata->desc.bEndpointAddress & USB_DIR_IN))
+	if (unlikely(usb_endpoint_dir_in(&epdata->desc)))
 		return -EINVAL;
 
 	buf = kmalloc(iocb->ki_left, GFP_KERNEL);
@@ -711,7 +712,7 @@ ep_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	size_t			len = 0;
 	int			i = 0;
 
-	if (unlikely(!(epdata->desc.bEndpointAddress & USB_DIR_IN)))
+	if (unlikely(!usb_endpoint_dir_in(&epdata->desc)))
 		return -EINVAL;
 
 	buf = kmalloc(iocb->ki_left, GFP_KERNEL);
@@ -766,7 +767,8 @@ ep_config (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 	u32			tag;
 	int			value, length = len;
 
-	if ((value = down_interruptible (&data->lock)) < 0)
+	value = mutex_lock_interruptible(&data->lock);
+	if (value < 0)
 		return value;
 
 	if (data->state != STATE_EP_READY) {
@@ -855,7 +857,7 @@ fail:
 		data->desc.bDescriptorType = 0;
 		data->hs_desc.bDescriptorType = 0;
 	}
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	return value;
 fail0:
 	value = -EINVAL;
@@ -871,7 +873,7 @@ ep_open (struct inode *inode, struct file *fd)
 	struct ep_data		*data = inode->i_private;
 	int			value = -EBUSY;
 
-	if (down_interruptible (&data->lock) != 0)
+	if (mutex_lock_interruptible(&data->lock) != 0)
 		return -EINTR;
 	spin_lock_irq (&data->dev->lock);
 	if (data->dev->state == STATE_DEV_UNBOUND)
@@ -886,7 +888,7 @@ ep_open (struct inode *inode, struct file *fd)
 		DBG (data->dev, "%s state %d\n",
 			data->name, data->state);
 	spin_unlock_irq (&data->dev->lock);
-	up (&data->lock);
+	mutex_unlock(&data->lock);
 	return value;
 }
 
@@ -1632,7 +1634,7 @@ static int activate_ep_files (struct dev_data *dev)
 		if (!data)
 			goto enomem0;
 		data->state = STATE_EP_DISABLED;
-		init_MUTEX (&data->lock);
+		mutex_init(&data->lock);
 		init_waitqueue_head (&data->wait);
 
 		strncpy (data->name, ep->name, sizeof (data->name) - 1);
@@ -2035,7 +2037,7 @@ gadgetfs_create_file (struct super_block *sb, char const *name,
 	return inode;
 }
 
-static struct super_operations gadget_fs_operations = {
+static const struct super_operations gadget_fs_operations = {
 	.statfs =	simple_statfs,
 	.drop_inode =	generic_delete_inode,
 };

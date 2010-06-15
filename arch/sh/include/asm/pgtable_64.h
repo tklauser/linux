@@ -43,11 +43,6 @@ static __inline__ void set_pte(pte_t *pteptr, pte_t pteval)
 }
 #define set_pte_at(mm,addr,ptep,pteval) set_pte(ptep,pteval)
 
-static __inline__ void pmd_set(pmd_t *pmdp,pte_t *ptep)
-{
-	pmd_val(*pmdp) = (unsigned long) ptep;
-}
-
 /*
  * PGD defines. Top level.
  */
@@ -59,6 +54,9 @@ static __inline__ void pmd_set(pmd_t *pmdp,pte_t *ptep)
 
 /* To find an entry in a kernel PGD. */
 #define pgd_offset_k(address) pgd_offset(&init_mm, address)
+
+#define __pud_offset(address)	(((address) >> PUD_SHIFT) & (PTRS_PER_PUD-1))
+#define __pmd_offset(address)	(((address) >> PMD_SHIFT) & (PTRS_PER_PMD-1))
 
 /*
  * PMD level access routines. Same notes as above.
@@ -79,6 +77,8 @@ static __inline__ void pmd_set(pmd_t *pmdp,pte_t *ptep)
 /* PMD to PTE dereferencing */
 #define pte_index(address) \
 		((address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
+
+#define __pte_offset(address)	pte_index(address)
 
 #define pte_offset_kernel(dir, addr) \
 		((pte_t *) ((pmd_val(*(dir))) & PAGE_MASK) + pte_index((addr)))
@@ -123,8 +123,21 @@ static __inline__ void pmd_set(pmd_t *pmdp,pte_t *ptep)
 #define _PAGE_DIRTY	0x400  /* software: page accessed in write */
 #define _PAGE_ACCESSED	0x800  /* software: page referenced */
 
+/* Wrapper for extended mode pgprot twiddling */
+#define _PAGE_EXT(x)		((unsigned long long)(x) << 32)
+
+/*
+ * We can use the sign-extended bits in the PTEL to get 32 bits of
+ * software flags. This works for now because no implementations uses
+ * anything above the PPN field.
+ */
+#define _PAGE_WIRED	_PAGE_EXT(0x001) /* software: wire the tlb entry */
+
+#define _PAGE_CLEAR_FLAGS	(_PAGE_PRESENT | _PAGE_FILE | _PAGE_SHARED | \
+				 _PAGE_DIRTY | _PAGE_ACCESSED | _PAGE_WIRED)
+
 /* Mask which drops software flags */
-#define _PAGE_FLAGS_HARDWARE_MASK	0xfffffffffffff3dbLL
+#define _PAGE_FLAGS_HARDWARE_MASK	(NEFF_MASK & ~(_PAGE_CLEAR_FLAGS))
 
 /*
  * HugeTLB support
@@ -196,12 +209,6 @@ static __inline__ void pmd_set(pmd_t *pmdp,pte_t *ptep)
    registers into user-space via /dev/map).  */
 #define pgprot_noncached(x) __pgprot(((x).pgprot & ~(_PAGE_CACHABLE)) | _PAGE_DEVICE)
 #define pgprot_writecombine(prot) __pgprot(pgprot_val(prot) & ~_PAGE_CACHABLE)
-
-/*
- * Handling allocation failures during page table setup.
- */
-extern void __handle_bad_pmd_kernel(pmd_t * pmd);
-#define __handle_bad_pmd(x)	__handle_bad_pmd_kernel(x)
 
 /*
  * PTE level access routines.

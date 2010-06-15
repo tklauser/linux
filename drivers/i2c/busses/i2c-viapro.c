@@ -37,6 +37,7 @@
    VT8251             0x3287             yes
    CX700              0x8324             yes
    VX800/VX820        0x8353             yes
+   VX855/VX875        0x8409             yes
 
    Note: we assume there can only be one device, with one SMBus interface.
 */
@@ -164,10 +165,10 @@ static int vt596_transaction(u8 size)
 	do {
 		msleep(1);
 		temp = inb_p(SMBHSTSTS);
-	} while ((temp & 0x01) && (timeout++ < MAX_TIMEOUT));
+	} while ((temp & 0x01) && (++timeout < MAX_TIMEOUT));
 
 	/* If the SMBus is still busy, we give up */
-	if (timeout >= MAX_TIMEOUT) {
+	if (timeout == MAX_TIMEOUT) {
 		result = -ETIMEDOUT;
 		dev_err(&vt596_adapter.dev, "SMBus timeout!\n");
 	}
@@ -364,7 +365,7 @@ static int __devinit vt596_probe(struct pci_dev *pdev,
 found:
 	error = acpi_check_region(vt596_smba, 8, vt596_driver.name);
 	if (error)
-		return error;
+		return -ENODEV;
 
 	if (!request_region(vt596_smba, 8, vt596_driver.name)) {
 		dev_err(&pdev->dev, "SMBus region 0x%x already in use!\n",
@@ -404,6 +405,7 @@ found:
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_VIA_CX700:
 	case PCI_DEVICE_ID_VIA_VX800:
+	case PCI_DEVICE_ID_VIA_VX855:
 	case PCI_DEVICE_ID_VIA_8251:
 	case PCI_DEVICE_ID_VIA_8237:
 	case PCI_DEVICE_ID_VIA_8237A:
@@ -442,7 +444,7 @@ release_region:
 	return error;
 }
 
-static struct pci_device_id vt596_ids[] = {
+static const struct pci_device_id vt596_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_82C596_3),
 	  .driver_data = SMBBA1 },
 	{ PCI_DEVICE(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_82C596B_3),
@@ -468,6 +470,8 @@ static struct pci_device_id vt596_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_CX700),
 	  .driver_data = SMBBA3 },
 	{ PCI_DEVICE(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_VX800),
+	  .driver_data = SMBBA3 },
+	{ PCI_DEVICE(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_VX855),
 	  .driver_data = SMBBA3 },
 	{ 0, }
 };

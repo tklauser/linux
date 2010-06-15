@@ -19,6 +19,7 @@
  *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 #include <linux/fs.h>
+#include <linux/slab.h>
 #include "cifs_unicode.h"
 #include "cifs_uniupr.h"
 #include "cifspdu.h"
@@ -44,7 +45,7 @@ cifs_ucs2_bytes(const __le16 *from, int maxbytes,
 	int maxwords = maxbytes / 2;
 	char tmp[NLS_MAX_CHARSET_SIZE];
 
-	for (i = 0; from[i] && i < maxwords; i++) {
+	for (i = 0; i < maxwords && from[i]; i++) {
 		charlen = codepage->uni2char(le16_to_cpu(from[i]), tmp,
 					     NLS_MAX_CHARSET_SIZE);
 		if (charlen > 0)

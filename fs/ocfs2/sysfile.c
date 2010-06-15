@@ -25,7 +25,6 @@
 
 #include <linux/fs.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/highmem.h>
 
 #define MLOG_MASK_PREFIX ML_INODE
@@ -49,6 +48,10 @@ static inline int is_global_system_inode(int type);
 static inline int is_in_system_inode_array(struct ocfs2_super *osb,
 					   int type,
 					   u32 slot);
+
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+static struct lock_class_key ocfs2_sysfile_cluster_lock_key[NUM_SYSTEM_INODES];
+#endif
 
 static inline int is_global_system_inode(int type)
 {
@@ -118,6 +121,21 @@ static struct inode * _ocfs2_get_system_file_inode(struct ocfs2_super *osb,
 		inode = NULL;
 		goto bail;
 	}
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	if (type == LOCAL_USER_QUOTA_SYSTEM_INODE ||
+	    type == LOCAL_GROUP_QUOTA_SYSTEM_INODE ||
+	    type == JOURNAL_SYSTEM_INODE) {
+		/* Ignore inode lock on these inodes as the lock does not
+		 * really belong to any process and lockdep cannot handle
+		 * that */
+		OCFS2_I(inode)->ip_inode_lockres.l_lockdep_map.key = NULL;
+	} else {
+		lockdep_init_map(&OCFS2_I(inode)->ip_inode_lockres.
+								l_lockdep_map,
+				 ocfs2_system_inodes[type].si_name,
+				 &ocfs2_sysfile_cluster_lock_key[type], 0);
+	}
+#endif
 bail:
 
 	return inode;

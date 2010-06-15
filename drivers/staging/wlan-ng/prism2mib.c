@@ -50,12 +50,10 @@
 * --------------------------------------------------------------------
 */
 
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/wireless.h>
 #include <linux/netdevice.h>
 #include <linux/io.h>
@@ -331,8 +329,7 @@ int prism2mgmt_mibset_mibget(wlandevice_t *wlandev, void *msgp)
 
 	if (msg->resultcode.data == P80211ENUM_resultcode_success) {
 		if (result != 0) {
-			pr_debug("get/set failure, result=%d\n",
-			       result);
+			pr_debug("get/set failure, result=%d\n", result);
 			msg->resultcode.data =
 			    P80211ENUM_resultcode_implementation_failure;
 		} else {
@@ -728,7 +725,7 @@ static int prism2mib_priv(mibrec_t *mib,
 			if (isget) {
 				hfa384x_drvr_getconfig(hw,
 						       HFA384x_RID_CNFWPADATA,
-						       (u8 *)&wpa,
+						       (u8 *) &wpa,
 						       sizeof(wpa));
 				pstr->len = le16_to_cpu(wpa.datalen);
 				memcpy(pstr->data, wpa.data, pstr->len);
@@ -738,9 +735,9 @@ static int prism2mib_priv(mibrec_t *mib,
 
 				result =
 				    hfa384x_drvr_setconfig(hw,
-							   HFA384x_RID_CNFWPADATA,
-							   (u8 *)&wpa,
-							   sizeof(wpa));
+						   HFA384x_RID_CNFWPADATA,
+						   (u8 *) &wpa,
+						   sizeof(wpa));
 			}
 			break;
 		}
@@ -833,8 +830,3 @@ void prism2mgmt_bytearea2pstr(u8 *bytearea, p80211pstrd_t *pstr, int len)
 	pstr->len = (u8) len;
 	memcpy(pstr->data, bytearea, len);
 }
-
-
-
-
-

@@ -21,6 +21,7 @@
 #include <linux/fs.h>
 #include <linux/xattr.h>
 #include <linux/posix_acl_xattr.h>
+#include <linux/slab.h>
 #include <linux/quotaops.h>
 #include <linux/security.h>
 #include "jfs_incore.h"
@@ -260,14 +261,14 @@ static int ea_write(struct inode *ip, struct jfs_ea_list *ealist, int size,
 	nblocks = (size + (sb->s_blocksize - 1)) >> sb->s_blocksize_bits;
 
 	/* Allocate new blocks to quota. */
-	if (vfs_dq_alloc_block(ip, nblocks)) {
-		return -EDQUOT;
-	}
+	rc = dquot_alloc_block(ip, nblocks);
+	if (rc)
+		return rc;
 
 	rc = dbAlloc(ip, INOHINT(ip), nblocks, &blkno);
 	if (rc) {
 		/*Rollback quota allocation. */
-		vfs_dq_free_block(ip, nblocks);
+		dquot_free_block(ip, nblocks);
 		return rc;
 	}
 
@@ -332,7 +333,7 @@ static int ea_write(struct inode *ip, struct jfs_ea_list *ealist, int size,
 
       failed:
 	/* Rollback quota allocation. */
-	vfs_dq_free_block(ip, nblocks);
+	dquot_free_block(ip, nblocks);
 
 	dbFree(ip, blkno, nblocks);
 	return rc;
@@ -538,7 +539,8 @@ static int ea_get(struct inode *inode, struct ea_buffer *ea_buf, int min_size)
 
 	if (blocks_needed > current_blocks) {
 		/* Allocate new blocks to quota. */
-		if (vfs_dq_alloc_block(inode, blocks_needed))
+		rc = dquot_alloc_block(inode, blocks_needed);
+		if (rc)
 			return -EDQUOT;
 
 		quota_allocation = blocks_needed;
@@ -602,7 +604,7 @@ static int ea_get(struct inode *inode, struct ea_buffer *ea_buf, int min_size)
       clean_up:
 	/* Rollback quota allocation */
 	if (quota_allocation)
-		vfs_dq_free_block(inode, quota_allocation);
+		dquot_free_block(inode, quota_allocation);
 
 	return (rc);
 }
@@ -677,7 +679,7 @@ static int ea_put(tid_t tid, struct inode *inode, struct ea_buffer *ea_buf,
 
 	/* If old blocks exist, they must be removed from quota allocation. */
 	if (old_blocks)
-		vfs_dq_free_block(inode, old_blocks);
+		dquot_free_block(inode, old_blocks);
 
 	inode->i_ctime = CURRENT_TIME;
 
@@ -727,10 +729,7 @@ static int can_set_system_xattr(struct inode *inode, const char *name,
 		/*
 		 * We're changing the ACL.  Get rid of the cached one
 		 */
-		acl =JFS_IP(inode)->i_acl;
-		if (acl != JFS_ACL_NOT_CACHED)
-			posix_acl_release(acl);
-		JFS_IP(inode)->i_acl = JFS_ACL_NOT_CACHED;
+		forget_cached_acl(inode, ACL_TYPE_ACCESS);
 
 		return 0;
 	} else if (strcmp(name, POSIX_ACL_XATTR_DEFAULT) == 0) {
@@ -746,10 +745,7 @@ static int can_set_system_xattr(struct inode *inode, const char *name,
 		/*
 		 * We're changing the default ACL.  Get rid of the cached one
 		 */
-		acl =JFS_IP(inode)->i_default_acl;
-		if (acl && (acl != JFS_ACL_NOT_CACHED))
-			posix_acl_release(acl);
-		JFS_IP(inode)->i_default_acl = JFS_ACL_NOT_CACHED;
+		forget_cached_acl(inode, ACL_TYPE_DEFAULT);
 
 		return 0;
 	}

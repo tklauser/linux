@@ -34,6 +34,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
+#include <linux/slab.h>
 #include <linux/bitops.h>
 #include <linux/random.h>
 
@@ -106,6 +107,8 @@ struct mcast_group {
 	struct ib_sa_query	*query;
 	int			query_id;
 	u16			pkey_index;
+	u8			leave_state;
+	int			retries;
 };
 
 struct mcast_member {
@@ -350,6 +353,7 @@ static int send_leave(struct mcast_group *group, u8 leave_state)
 
 	rec = group->rec;
 	rec.join_state = leave_state;
+	group->leave_state = leave_state;
 
 	ret = ib_sa_mcmember_rec_query(&sa_client, port->dev->device,
 				       port->port_num, IB_SA_METHOD_DELETE, &rec,
@@ -542,7 +546,11 @@ static void leave_handler(int status, struct ib_sa_mcmember_rec *rec,
 {
 	struct mcast_group *group = context;
 
-	mcast_work_handler(&group->work);
+	if (status && group->retries > 0 &&
+	    !send_leave(group, group->leave_state))
+		group->retries--;
+	else
+		mcast_work_handler(&group->work);
 }
 
 static struct mcast_group *acquire_group(struct mcast_port *port,
@@ -565,6 +573,7 @@ static struct mcast_group *acquire_group(struct mcast_port *port,
 	if (!group)
 		return NULL;
 
+	group->retries = 3;
 	group->port = port;
 	group->rec.mgid = *mgid;
 	group->pkey_index = MCAST_INVALID_PKEY_INDEX;

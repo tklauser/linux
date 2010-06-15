@@ -31,6 +31,7 @@
 #include <linux/initrd.h>
 #include <linux/pagemap.h>
 #include <linux/lmb.h>
+#include <linux/gfp.h>
 
 #include <asm/pgalloc.h>
 #include <asm/prom.h>
@@ -47,14 +48,12 @@
 #include "mmu_decl.h"
 
 #if defined(CONFIG_KERNEL_START_BOOL) || defined(CONFIG_LOWMEM_SIZE_BOOL)
-/* The ammount of lowmem must be within 0xF0000000 - KERNELBASE. */
+/* The amount of lowmem must be within 0xF0000000 - KERNELBASE. */
 #if (CONFIG_LOWMEM_SIZE > (0xF0000000 - PAGE_OFFSET))
 #error "You must adjust CONFIG_LOWMEM_SIZE or CONFIG_START_KERNEL"
 #endif
 #endif
 #define MAX_LOW_MEM	CONFIG_LOWMEM_SIZE
-
-DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 
 phys_addr_t total_memory;
 phys_addr_t total_lowmem;
@@ -83,6 +82,11 @@ extern struct task_struct *current_set[NR_CPUS];
  */
 int __map_without_bats;
 int __map_without_ltlbs;
+
+/*
+ * This tells the system to allow ioremapping memory marked as reserved.
+ */
+int __allow_ioremap_reserved;
 
 /* max amount of low RAM to map in */
 unsigned long __max_low_memory = MAX_LOW_MEM;
@@ -133,9 +137,13 @@ void __init MMU_init(void)
 	MMU_setup();
 
 	if (lmb.memory.cnt > 1) {
+#ifndef CONFIG_WII
 		lmb.memory.cnt = 1;
 		lmb_analyze();
 		printk(KERN_WARNING "Only using first contiguous memory region");
+#else
+		wii_memory_fixups();
+#endif
 	}
 
 	total_lowmem = total_memory = lmb_end_of_DRAM() - memstart_addr;
@@ -244,39 +252,3 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 }
 #endif
 
-#ifdef CONFIG_PROC_KCORE
-static struct kcore_list kcore_vmem;
-
-static int __init setup_kcore(void)
-{
-	int i;
-
-	for (i = 0; i < lmb.memory.cnt; i++) {
-		unsigned long base;
-		unsigned long size;
-		struct kcore_list *kcore_mem;
-
-		base = lmb.memory.region[i].base;
-		size = lmb.memory.region[i].size;
-
-		kcore_mem = kmalloc(sizeof(struct kcore_list), GFP_ATOMIC);
-		if (!kcore_mem)
-			panic("%s: kmalloc failed\n", __func__);
-
-		/* must stay under 32 bits */
-		if ( 0xfffffffful - (unsigned long)__va(base) < size) {
-			size = 0xfffffffful - (unsigned long)(__va(base));
-			printk(KERN_DEBUG "setup_kcore: restrict size=%lx\n",
-						size);
-		}
-
-		kclist_add(kcore_mem, __va(base), size);
-	}
-
-	kclist_add(&kcore_vmem, (void *)VMALLOC_START,
-		VMALLOC_END-VMALLOC_START);
-
-	return 0;
-}
-module_init(setup_kcore);
-#endif

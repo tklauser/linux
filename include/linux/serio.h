@@ -15,6 +15,7 @@
 
 #ifdef __KERNEL__
 
+#include <linux/types.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
@@ -28,7 +29,7 @@ struct serio {
 	char name[32];
 	char phys[32];
 
-	unsigned int manual_bind;
+	bool manual_bind;
 
 	struct serio_device_id id;
 
@@ -47,7 +48,6 @@ struct serio {
 	struct mutex drv_mutex;		/* protects serio->drv so attributes can pin driver */
 
 	struct device dev;
-	unsigned int registered;	/* port has been fully registered with driver core */
 
 	struct list_head node;
 };
@@ -58,7 +58,7 @@ struct serio_driver {
 	char *description;
 
 	struct serio_device_id *id_table;
-	unsigned int manual_bind;
+	bool manual_bind;
 
 	void (*write_wakeup)(struct serio *);
 	irqreturn_t (*interrupt)(struct serio *, unsigned char, unsigned int);
@@ -135,25 +135,6 @@ static inline void serio_continue_rx(struct serio *serio)
 	spin_unlock_irq(&serio->lock);
 }
 
-/*
- * Use the following functions to pin serio's driver in process context
- */
-static inline int serio_pin_driver(struct serio *serio)
-{
-	return mutex_lock_interruptible(&serio->drv_mutex);
-}
-
-static inline void serio_pin_driver_uninterruptible(struct serio *serio)
-{
-	mutex_lock(&serio->drv_mutex);
-}
-
-static inline void serio_unpin_driver(struct serio *serio)
-{
-	mutex_unlock(&serio->drv_mutex);
-}
-
-
 #endif
 
 /*
@@ -214,5 +195,6 @@ static inline void serio_unpin_driver(struct serio *serio)
 #define SERIO_INEXIO	0x37
 #define SERIO_TOUCHIT213	0x38
 #define SERIO_W8001	0x39
+#define SERIO_DYNAPRO	0x3a
 
 #endif

@@ -55,11 +55,11 @@
 #include <linux/interrupt.h>
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
+#include <linux/tick.h>
 #include <linux/fs.h>
 #include <linux/err.h>
 
 #include <asm/system.h>
-#include <asm/traps.h>
 #include <asm/setup.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
@@ -99,8 +99,10 @@ void (*idle)(void) = default_idle;
 void cpu_idle(void)
 {
 	while (1) {
+		tick_nohz_stop_sched_tick(1);
 		while (!need_resched())
 			idle();
+		tick_nohz_restart_sched_tick();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
@@ -210,6 +212,7 @@ int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 	regs.estatus =  NIOS2_STATUS_PIE_MSK;
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
 }
+EXPORT_SYMBOL(kernel_thread);
 
 void flush_thread(void)
 {
@@ -428,6 +431,7 @@ unsigned long get_wchan(struct task_struct *p)
 	} while (count++ < 16);                                 //;dgt2;tmp
 	return 0;
 }
+EXPORT_SYMBOL(get_wchan);
 
 /* Return saved PC of a blocked thread. */
 unsigned long thread_saved_pc(struct task_struct *t)

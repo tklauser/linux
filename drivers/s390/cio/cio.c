@@ -12,6 +12,7 @@
 #define KMSG_COMPONENT "cio"
 #define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
+#include <linux/ftrace.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -28,7 +29,7 @@
 #include <asm/chpid.h>
 #include <asm/airq.h>
 #include <asm/isc.h>
-#include <asm/cpu.h>
+#include <asm/cputime.h>
 #include <asm/fcx.h>
 #include <asm/nmi.h>
 #include <asm/crw.h>
@@ -138,12 +139,11 @@ cio_start_key (struct subchannel *sch,	/* subchannel structure */
 	       __u8 lpm,		/* logical path mask */
 	       __u8 key)                /* storage key */
 {
-	char dbf_txt[15];
 	int ccode;
 	union orb *orb;
 
-	CIO_TRACE_EVENT(4, "stIO");
-	CIO_TRACE_EVENT(4, dev_name(&sch->dev));
+	CIO_TRACE_EVENT(5, "stIO");
+	CIO_TRACE_EVENT(5, dev_name(&sch->dev));
 
 	orb = &to_io_private(sch)->orb;
 	memset(orb, 0, sizeof(union orb));
@@ -168,8 +168,7 @@ cio_start_key (struct subchannel *sch,	/* subchannel structure */
 	ccode = ssch(sch->schid, orb);
 
 	/* process condition code */
-	sprintf(dbf_txt, "ccode:%d", ccode);
-	CIO_TRACE_EVENT(4, dbf_txt);
+	CIO_HEX_EVENT(5, &ccode, sizeof(ccode));
 
 	switch (ccode) {
 	case 0:
@@ -200,16 +199,14 @@ cio_start (struct subchannel *sch, struct ccw1 *cpa, __u8 lpm)
 int
 cio_resume (struct subchannel *sch)
 {
-	char dbf_txt[15];
 	int ccode;
 
-	CIO_TRACE_EVENT (4, "resIO");
+	CIO_TRACE_EVENT(4, "resIO");
 	CIO_TRACE_EVENT(4, dev_name(&sch->dev));
 
 	ccode = rsch (sch->schid);
 
-	sprintf (dbf_txt, "ccode:%d", ccode);
-	CIO_TRACE_EVENT (4, dbf_txt);
+	CIO_HEX_EVENT(4, &ccode, sizeof(ccode));
 
 	switch (ccode) {
 	case 0:
@@ -234,13 +231,12 @@ cio_resume (struct subchannel *sch)
 int
 cio_halt(struct subchannel *sch)
 {
-	char dbf_txt[15];
 	int ccode;
 
 	if (!sch)
 		return -ENODEV;
 
-	CIO_TRACE_EVENT (2, "haltIO");
+	CIO_TRACE_EVENT(2, "haltIO");
 	CIO_TRACE_EVENT(2, dev_name(&sch->dev));
 
 	/*
@@ -248,8 +244,7 @@ cio_halt(struct subchannel *sch)
 	 */
 	ccode = hsch (sch->schid);
 
-	sprintf (dbf_txt, "ccode:%d", ccode);
-	CIO_TRACE_EVENT (2, dbf_txt);
+	CIO_HEX_EVENT(2, &ccode, sizeof(ccode));
 
 	switch (ccode) {
 	case 0:
@@ -269,13 +264,12 @@ cio_halt(struct subchannel *sch)
 int
 cio_clear(struct subchannel *sch)
 {
-	char dbf_txt[15];
 	int ccode;
 
 	if (!sch)
 		return -ENODEV;
 
-	CIO_TRACE_EVENT (2, "clearIO");
+	CIO_TRACE_EVENT(2, "clearIO");
 	CIO_TRACE_EVENT(2, dev_name(&sch->dev));
 
 	/*
@@ -283,8 +277,7 @@ cio_clear(struct subchannel *sch)
 	 */
 	ccode = csch (sch->schid);
 
-	sprintf (dbf_txt, "ccode:%d", ccode);
-	CIO_TRACE_EVENT (2, dbf_txt);
+	CIO_HEX_EVENT(2, &ccode, sizeof(ccode));
 
 	switch (ccode) {
 	case 0:
@@ -305,19 +298,17 @@ cio_clear(struct subchannel *sch)
 int
 cio_cancel (struct subchannel *sch)
 {
-	char dbf_txt[15];
 	int ccode;
 
 	if (!sch)
 		return -ENODEV;
 
-	CIO_TRACE_EVENT (2, "cancelIO");
+	CIO_TRACE_EVENT(2, "cancelIO");
 	CIO_TRACE_EVENT(2, dev_name(&sch->dev));
 
 	ccode = xsch (sch->schid);
 
-	sprintf (dbf_txt, "ccode:%d", ccode);
-	CIO_TRACE_EVENT (2, dbf_txt);
+	CIO_HEX_EVENT(2, &ccode, sizeof(ccode));
 
 	switch (ccode) {
 	case 0:		/* success */
@@ -370,7 +361,7 @@ int cio_commit_config(struct subchannel *sch)
 	struct schib schib;
 	int ccode, retry, ret = 0;
 
-	if (stsch(sch->schid, &schib) || !css_sch_is_valid(&schib))
+	if (stsch_err(sch->schid, &schib) || !css_sch_is_valid(&schib))
 		return -ENODEV;
 
 	for (retry = 0; retry < 5; retry++) {
@@ -381,7 +372,7 @@ int cio_commit_config(struct subchannel *sch)
 			return ccode;
 		switch (ccode) {
 		case 0: /* successful */
-			if (stsch(sch->schid, &schib) ||
+			if (stsch_err(sch->schid, &schib) ||
 			    !css_sch_is_valid(&schib))
 				return -ENODEV;
 			if (cio_check_config(sch, &schib)) {
@@ -413,7 +404,7 @@ int cio_update_schib(struct subchannel *sch)
 {
 	struct schib schib;
 
-	if (stsch(sch->schid, &schib) || !css_sch_is_valid(&schib))
+	if (stsch_err(sch->schid, &schib) || !css_sch_is_valid(&schib))
 		return -ENODEV;
 
 	memcpy(&sch->schib, &schib, sizeof(schib));
@@ -428,11 +419,10 @@ EXPORT_SYMBOL_GPL(cio_update_schib);
  */
 int cio_enable_subchannel(struct subchannel *sch, u32 intparm)
 {
-	char dbf_txt[15];
 	int retry;
 	int ret;
 
-	CIO_TRACE_EVENT (2, "ensch");
+	CIO_TRACE_EVENT(2, "ensch");
 	CIO_TRACE_EVENT(2, dev_name(&sch->dev));
 
 	if (sch_is_pseudo_sch(sch))
@@ -459,8 +449,7 @@ int cio_enable_subchannel(struct subchannel *sch, u32 intparm)
 		} else
 			break;
 	}
-	sprintf (dbf_txt, "ret:%d", ret);
-	CIO_TRACE_EVENT (2, dbf_txt);
+	CIO_HEX_EVENT(2, &ret, sizeof(ret));
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cio_enable_subchannel);
@@ -471,11 +460,10 @@ EXPORT_SYMBOL_GPL(cio_enable_subchannel);
  */
 int cio_disable_subchannel(struct subchannel *sch)
 {
-	char dbf_txt[15];
 	int retry;
 	int ret;
 
-	CIO_TRACE_EVENT (2, "dissch");
+	CIO_TRACE_EVENT(2, "dissch");
 	CIO_TRACE_EVENT(2, dev_name(&sch->dev));
 
 	if (sch_is_pseudo_sch(sch))
@@ -494,8 +482,7 @@ int cio_disable_subchannel(struct subchannel *sch)
 		} else
 			break;
 	}
-	sprintf (dbf_txt, "ret:%d", ret);
-	CIO_TRACE_EVENT (2, dbf_txt);
+	CIO_HEX_EVENT(2, &ret, sizeof(ret));
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cio_disable_subchannel);
@@ -577,11 +564,6 @@ int cio_validate_subchannel(struct subchannel *sch, struct subchannel_id schid)
 			goto out;
 	}
 	mutex_init(&sch->reg_mutex);
-	/* Set a name for the subchannel */
-	if (cio_is_console(schid))
-		sch->dev.init_name = cio_get_console_sch_name(schid);
-	else
-		dev_set_name(&sch->dev, "0.%x.%04x", schid.ssid, schid.sch_no);
 
 	/*
 	 * The first subchannel that is not-operational (ccode==3)
@@ -626,8 +608,7 @@ out:
  *	    handlers).
  *
  */
-void
-do_IRQ (struct pt_regs *regs)
+void __irq_entry do_IRQ(struct pt_regs *regs)
 {
 	struct tpi_info *tpi_info;
 	struct subchannel *sch;
@@ -637,14 +618,15 @@ do_IRQ (struct pt_regs *regs)
 	old_regs = set_irq_regs(regs);
 	s390_idle_check();
 	irq_enter();
+	__get_cpu_var(s390_idle).nohz_delay = 1;
 	if (S390_lowcore.int_clock >= S390_lowcore.clock_comparator)
 		/* Serve timer interrupts first. */
 		clock_comparator_work();
 	/*
 	 * Get interrupt information from lowcore
 	 */
-	tpi_info = (struct tpi_info *) __LC_SUBCHANNEL_ID;
-	irb = (struct irb *) __LC_IRB;
+	tpi_info = (struct tpi_info *)&S390_lowcore.subchannel_id;
+	irb = (struct irb *)&S390_lowcore.irb;
 	do {
 		kstat_cpu(smp_processor_id()).irqs[IO_INTERRUPT]++;
 		/*
@@ -679,14 +661,13 @@ do_IRQ (struct pt_regs *regs)
 		 * We don't do this for VM because a tpi drops the cpu
 		 * out of the sie which costs more cycles than it saves.
 		 */
-	} while (!MACHINE_IS_VM && tpi (NULL) != 0);
+	} while (MACHINE_IS_LPAR && tpi(NULL) != 0);
 	irq_exit();
 	set_irq_regs(old_regs);
 }
 
 #ifdef CONFIG_CCW_CONSOLE
 static struct subchannel console_subchannel;
-static char console_sch_name[10] = "0.x.xxxx";
 static struct io_subchannel_private console_priv;
 static int console_subchannel_in_use;
 
@@ -701,10 +682,10 @@ static int cio_tpi(void)
 	struct irb *irb;
 	int irq_context;
 
-	tpi_info = (struct tpi_info *) __LC_SUBCHANNEL_ID;
+	tpi_info = (struct tpi_info *)&S390_lowcore.subchannel_id;
 	if (tpi(NULL) != 1)
 		return 0;
-	irb = (struct irb *) __LC_IRB;
+	irb = (struct irb *)&S390_lowcore.irb;
 	/* Store interrupt response block to lowcore. */
 	if (tsch(tpi_info->schid, irb) != 0)
 		/* Not status pending or not operational. */
@@ -790,7 +771,7 @@ cio_get_console_sch_no(void)
 	if (console_irq != -1) {
 		/* VM provided us with the irq number of the console. */
 		schid.sch_no = console_irq;
-		if (stsch(schid, &console_subchannel.schib) != 0 ||
+		if (stsch_err(schid, &console_subchannel.schib) != 0 ||
 		    (console_subchannel.schib.pmcw.st != SUBCHANNEL_TYPE_IO) ||
 		    !console_subchannel.schib.pmcw.dnv)
 			return -1;
@@ -873,12 +854,6 @@ cio_get_console_subchannel(void)
 	return &console_subchannel;
 }
 
-const char *cio_get_console_sch_name(struct subchannel_id schid)
-{
-	snprintf(console_sch_name, 10, "0.%x.%04x", schid.ssid, schid.sch_no);
-	return (const char *)console_sch_name;
-}
-
 #endif
 static int
 __disable_subchannel_easy(struct subchannel_id schid, struct schib *schib)
@@ -888,10 +863,10 @@ __disable_subchannel_easy(struct subchannel_id schid, struct schib *schib)
 	cc = 0;
 	for (retry=0;retry<3;retry++) {
 		schib->pmcw.ena = 0;
-		cc = msch(schid, schib);
+		cc = msch_err(schid, schib);
 		if (cc)
 			return (cc==3?-ENODEV:-EBUSY);
-		if (stsch(schid, schib) || !css_sch_is_valid(schib))
+		if (stsch_err(schid, schib) || !css_sch_is_valid(schib))
 			return -ENODEV;
 		if (!schib->pmcw.ena)
 			return 0;
@@ -910,7 +885,7 @@ __clear_io_subchannel_easy(struct subchannel_id schid)
 		struct tpi_info ti;
 
 		if (tpi(&ti)) {
-			tsch(ti.schid, (struct irb *)__LC_IRB);
+			tsch(ti.schid, (struct irb *)&S390_lowcore.irb);
 			if (schid_equal(&ti.schid, &schid))
 				return 0;
 		}
@@ -938,7 +913,7 @@ static int stsch_reset(struct subchannel_id schid, struct schib *addr)
 
 	pgm_check_occured = 0;
 	s390_base_pgm_handler_fn = cio_reset_pgm_check_handler;
-	rc = stsch(schid, addr);
+	rc = stsch_err(schid, addr);
 	s390_base_pgm_handler_fn = NULL;
 
 	/* The program check handler could have changed pgm_check_occured. */
@@ -975,7 +950,7 @@ static int __shutdown_subchannel_easy(struct subchannel_id schid, void *data)
 			/* No default clear strategy */
 			break;
 		}
-		stsch(schid, &schib);
+		stsch_err(schid, &schib);
 		__disable_subchannel_easy(schid, &schib);
 	}
 out:
@@ -1108,10 +1083,10 @@ int __init cio_get_iplinfo(struct cio_iplinfo *iplinfo)
 	struct subchannel_id schid;
 	struct schib schib;
 
-	schid = *(struct subchannel_id *)__LC_SUBCHANNEL_ID;
+	schid = *(struct subchannel_id *)&S390_lowcore.subchannel_id;
 	if (!schid.one)
 		return -ENODEV;
-	if (stsch(schid, &schib))
+	if (stsch_err(schid, &schib))
 		return -ENODEV;
 	if (schib.pmcw.st != SUBCHANNEL_TYPE_IO)
 		return -ENODEV;

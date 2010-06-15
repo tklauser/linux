@@ -5,6 +5,7 @@
  */
 
 #include <linux/ata.h>
+#include <linux/slab.h>
 #include <linux/hdreg.h>
 #include <linux/blkdev.h>
 #include <linux/skbuff.h>
@@ -34,13 +35,6 @@ new_skb(ulong len)
 		skb_reset_mac_header(skb);
 		skb_reset_network_header(skb);
 		skb->protocol = __constant_htons(ETH_P_AOE);
-		skb->priority = 0;
-		skb->next = skb->prev = NULL;
-
-		/* tell the network layer not to perform IP checksums
-		 * or to get the NIC to do it
-		 */
-		skb->ip_summed = CHECKSUM_NONE;
 	}
 	return skb;
 }
@@ -860,8 +854,12 @@ aoecmd_ata_rsp(struct sk_buff *skb)
 
 	if (buf && --buf->nframesout == 0 && buf->resid == 0) {
 		diskstats(d->gd, buf->bio, jiffies - buf->stime, buf->sector);
-		n = (buf->flags & BUFFL_FAIL) ? -EIO : 0;
-		bio_endio(buf->bio, n);
+		if (buf->flags & BUFFL_FAIL)
+			bio_endio(buf->bio, -EIO);
+		else {
+			bio_flush_dcache_pages(buf->bio);
+			bio_endio(buf->bio, 0);
+		}
 		mempool_free(buf, d->bufpool);
 	}
 

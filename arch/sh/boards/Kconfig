@@ -46,6 +46,15 @@ config SH_7722_SOLUTION_ENGINE
 	  Select 7722 SolutionEngine if configuring for a Hitachi SH772
 	  evaluation board.
 
+config SH_7724_SOLUTION_ENGINE
+	bool "SolutionEngine7724"
+	select SOLUTION_ENGINE
+	depends on CPU_SUBTYPE_SH7724
+	select ARCH_REQUIRE_GPIOLIB
+	help
+	  Select 7724 SolutionEngine if configuring for a Hitachi SH7724
+	  evaluation board.
+
 config SH_7751_SOLUTION_ENGINE
 	bool "SolutionEngine7751"
 	select SOLUTION_ENGINE
@@ -121,7 +130,7 @@ config SH_RTS7751R2D
 	bool "RTS7751R2D"
 	depends on CPU_SUBTYPE_SH7751R
 	select SYS_SUPPORTS_PCI
-	select IO_TRAPPED
+	select IO_TRAPPED if MMU
 	help
 	  Select RTS7751R2D if configuring for a Renesas Technology
 	  Sales SH-Graphics board.
@@ -141,17 +150,24 @@ config SH_SDK7780
 	  Select SDK7780 if configuring for a Renesas SH7780 SDK7780R3
 	  evaluation board.
 
+config SH_SDK7786
+	bool "SDK7786"
+	depends on CPU_SUBTYPE_SH7786
+	select SYS_SUPPORTS_PCI
+	help
+	  Select SDK7786 if configuring for a Renesas Technology Europe
+	  SH7786-65nm board.
+
 config SH_HIGHLANDER
 	bool "Highlander"
 	depends on CPU_SUBTYPE_SH7780 || CPU_SUBTYPE_SH7785
 	select SYS_SUPPORTS_PCI
-	select IO_TRAPPED
+	select IO_TRAPPED if MMU
 
 config SH_SH7785LCR
 	bool "SH7785LCR"
 	depends on CPU_SUBTYPE_SH7785
 	select SYS_SUPPORTS_PCI
-	select IO_TRAPPED
 
 config SH_SH7785LCR_29BIT_PHYSMAPS
 	bool "SH7785LCR 29bit physmaps"
@@ -162,10 +178,18 @@ config SH_SH7785LCR_29BIT_PHYSMAPS
 	  DIP switch(S2-5). If you set the DIP switch for S2-5 = ON,
 	  you can access all on-board device in 29bit address mode.
 
+config SH_SH7785LCR_PT
+	bool "SH7785LCR prototype board on 32-bit MMU mode"
+	depends on SH_SH7785LCR && 32BIT
+	default n
+	help
+	  If you use prototype board, this option is enabled.
+
 config SH_URQUELL
 	bool "Urquell"
 	depends on CPU_SUBTYPE_SH7786
 	select ARCH_REQUIRE_GPIOLIB
+	select SYS_SUPPORTS_PCI
 
 config SH_MIGOR
 	bool "Migo-R"
@@ -182,6 +206,20 @@ config SH_AP325RXA
 	help
 	  Renesas "AP-325RXA" support.
 	  Compatible with ALGO SYSTEM CO.,LTD. "AP-320A"
+
+config SH_KFR2R09
+	bool "KFR2R09"
+	depends on CPU_SUBTYPE_SH7724
+	select ARCH_REQUIRE_GPIOLIB
+	help
+	  "Kit For R2R for 2009" support.
+
+config SH_ECOVEC
+	bool "EcoVec"
+	depends on CPU_SUBTYPE_SH7724
+	select ARCH_REQUIRE_GPIOLIB
+	help
+	  Renesas "R0P7724LC0011/21RL (EcoVec)" support.
 
 config SH_SH7763RDP
 	bool "SH7763RDP"

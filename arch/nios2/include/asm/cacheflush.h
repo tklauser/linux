@@ -28,6 +28,8 @@
 #include <linux/mm.h>
 #include <asm/page.h>
 
+#define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 1
+
 extern void flush_cache_all(void);
 extern void flush_cache_dup_mm(struct mm_struct *mm);
 extern void flush_cache_mm(struct mm_struct *mm);

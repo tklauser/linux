@@ -40,6 +40,7 @@
 #include <linux/file.h>
 #include <linux/parser.h>
 #include <linux/semaphore.h>
+#include <linux/slab.h>
 #include <net/9p/9p.h>
 #include <net/9p/client.h>
 #include <net/9p/transport.h>
@@ -67,14 +68,15 @@
  * @pd: Protection Domain pointer
  * @qp: Queue Pair pointer
  * @cq: Completion Queue pointer
+ * @dm_mr: DMA Memory Region pointer
  * @lkey: The local access only memory region key
  * @timeout: Number of uSecs to wait for connection management events
  * @sq_depth: The depth of the Send Queue
  * @sq_sem: Semaphore for the SQ
  * @rq_depth: The depth of the Receive Queue.
+ * @rq_count: Count of requests in the Receive Queue.
  * @addr: The remote peer's address
  * @req_lock: Protects the active request list
- * @send_wait: Wait list when the SQ fills up
  * @cm_done: Completion event for connection management tracking
  */
 struct p9_trans_rdma {
@@ -154,9 +156,9 @@ static match_table_t tokens = {
 };
 
 /**
- * parse_options - parse mount options into session structure
- * @options: options string passed from mount
- * @opts: transport-specific structure to parse options into
+ * parse_opts - parse mount options into rdma options structure
+ * @params: options string passed from mount
+ * @opts: rdma transport-specific structure to parse options into
  *
  * Returns 0 upon success, -ERRNO upon failure
  */
@@ -165,7 +167,7 @@ static int parse_opts(char *params, struct p9_rdma_opts *opts)
 	char *p;
 	substring_t args[MAX_OPT_ARGS];
 	int option;
-	char *options;
+	char *options, *tmp_options;
 	int ret;
 
 	opts->port = P9_PORT;
@@ -176,12 +178,13 @@ static int parse_opts(char *params, struct p9_rdma_opts *opts)
 	if (!params)
 		return 0;
 
-	options = kstrdup(params, GFP_KERNEL);
-	if (!options) {
+	tmp_options = kstrdup(params, GFP_KERNEL);
+	if (!tmp_options) {
 		P9_DPRINTK(P9_DEBUG_ERROR,
 			   "failed to allocate copy of option string\n");
 		return -ENOMEM;
 	}
+	options = tmp_options;
 
 	while ((p = strsep(&options, ",")) != NULL) {
 		int token;
@@ -215,7 +218,7 @@ static int parse_opts(char *params, struct p9_rdma_opts *opts)
 	}
 	/* RQ must be at least as large as the SQ */
 	opts->rq_depth = max(opts->rq_depth, opts->sq_depth);
-	kfree(options);
+	kfree(tmp_options);
 	return 0;
 }
 

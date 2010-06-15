@@ -66,13 +66,6 @@ UNUSUAL_DEV(  0x03eb, 0x2002, 0x0100, 0x0100,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE),
 
-/* modified by Tobias Lorenz <tobias.lorenz@gmx.net> */
-UNUSUAL_DEV(  0x03ee, 0x6901, 0x0000, 0x0200,
-		"Mitsumi",
-		"USB FDD",
-		US_SC_DEVICE, US_PR_DEVICE, NULL,
-		US_FL_SINGLE_LUN ),
-
 /* Reported by Rodolfo Quesada <rquesada@roqz.net> */
 UNUSUAL_DEV(  0x03ee, 0x6906, 0x0003, 0x0003,
 		"VIA Technologies Inc.",
@@ -233,13 +226,6 @@ UNUSUAL_DEV(  0x0421, 0x0495, 0x0370, 0x0370,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_MAX_SECTORS_64 ),
 
-/* Reported by Olaf Hering <olh@suse.de> from novell bug #105878 */
-UNUSUAL_DEV(  0x0424, 0x0fdc, 0x0210, 0x0210,
-		"SMSC",
-		"FDC GOLD-2.30",
-		US_SC_DEVICE, US_PR_DEVICE, NULL,
-		US_FL_SINGLE_LUN ),
-
 #ifdef NO_SDDR09
 UNUSUAL_DEV(  0x0436, 0x0005, 0x0100, 0x0100,
 		"Microtech",
@@ -387,6 +373,15 @@ UNUSUAL_DEV(  0x04ce, 0x0002, 0x0074, 0x0074,
 		"SL11R-IDE",
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_FIX_INQUIRY),
+
+/* Reported by Ondrej Zary <linux@rainbow-software.org>
+ * The device reports one sector more and breaks when that sector is accessed
+ */
+UNUSUAL_DEV(  0x04ce, 0x0002, 0x026c, 0x026c,
+		"ScanLogic",
+		"SL11R-IDE",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_FIX_CAPACITY),
 
 /* Reported by Kriston Fincher <kriston@airmail.net>
  * Patch submitted by Sean Millichamp <sean@bruenor.org>
@@ -664,17 +659,11 @@ UNUSUAL_DEV(  0x055d, 0x2020, 0x0000, 0x0210,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_SINGLE_LUN ),
 
-		
+/* We keep this entry to force the transport; firmware 3.00 and later is ok. */
 UNUSUAL_DEV(  0x057b, 0x0000, 0x0000, 0x0299,
 		"Y-E Data",
 		"Flashbuster-U",
 		US_SC_DEVICE,  US_PR_CB, NULL,
-		US_FL_SINGLE_LUN),
-
-UNUSUAL_DEV(  0x057b, 0x0000, 0x0300, 0x9999,
-		"Y-E Data",
-		"Flashbuster-U",
-		US_SC_DEVICE,  US_PR_DEVICE, NULL,
 		US_FL_SINGLE_LUN),
 
 /* Reported by Johann Cardon <johann.cardon@free.fr>
@@ -838,6 +827,20 @@ UNUSUAL_DEV( 0x066f, 0x8000, 0x0001, 0x0001,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_FIX_CAPACITY ),
 
+/* Reported by Daniel Kukula <daniel.kuku@gmail.com> */
+UNUSUAL_DEV( 0x067b, 0x1063, 0x0100, 0x0100,
+		"Prolific Technology, Inc.",
+		"Prolific Storage Gadget",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_BAD_SENSE ),
+
+/* Reported by Rogerio Brito <rbrito@ime.usp.br> */
+UNUSUAL_DEV( 0x067b, 0x2317, 0x0001, 0x001,
+		"Prolific Technology, Inc.",
+		"Mass Storage Device",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		US_FL_NOT_LOCKABLE ),
+
 /* Reported by Richard -=[]=- <micro_flyer@hotmail.com> */
 /* Change to bcdDeviceMin (0x0100 to 0x0001) reported by
  * Thomas Bartosik <tbartdev@gmx-topmail.de> */
@@ -947,7 +950,7 @@ UNUSUAL_DEV(  0x07ab, 0xfccd, 0x0000, 0x9999,
 UNUSUAL_DEV(  0x07af, 0x0004, 0x0100, 0x0133,
 		"Microtech",
 		"USB-SCSI-DB25",
-		US_SC_SCSI, US_PR_BULK, usb_stor_euscsi_init,
+		US_SC_DEVICE, US_PR_DEVICE, usb_stor_euscsi_init,
 		US_FL_SCM_MULT_TARG ), 
 
 UNUSUAL_DEV(  0x07af, 0x0005, 0x0100, 0x0100,
@@ -1153,12 +1156,96 @@ UNUSUAL_DEV( 0x0af0, 0x7401, 0x0000, 0x0000,
 		0 ),
 
 /* Reported by Jan Dumon <j.dumon@option.com>
- * This device (wrongly) has a vendor-specific device descriptor.
- * The entry is needed so usb-storage can bind to it's mass-storage
+ * These devices (wrongly) have a vendor-specific device descriptor.
+ * These entries are needed so usb-storage can bind to their mass-storage
  * interface as an interface driver */
 UNUSUAL_DEV( 0x0af0, 0x7501, 0x0000, 0x0000,
 		"Option",
 		"GI 0431 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x7701, 0x0000, 0x0000,
+		"Option",
+		"GI 0451 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x7706, 0x0000, 0x0000,
+		"Option",
+		"GI 0451 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x7901, 0x0000, 0x0000,
+		"Option",
+		"GI 0452 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x7A01, 0x0000, 0x0000,
+		"Option",
+		"GI 0461 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x7A05, 0x0000, 0x0000,
+		"Option",
+		"GI 0461 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x8300, 0x0000, 0x0000,
+		"Option",
+		"GI 033x SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x8302, 0x0000, 0x0000,
+		"Option",
+		"GI 033x SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0x8304, 0x0000, 0x0000,
+		"Option",
+		"GI 033x SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xc100, 0x0000, 0x0000,
+		"Option",
+		"GI 070x SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xd057, 0x0000, 0x0000,
+		"Option",
+		"GI 1505 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xd058, 0x0000, 0x0000,
+		"Option",
+		"GI 1509 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xd157, 0x0000, 0x0000,
+		"Option",
+		"GI 1515 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xd257, 0x0000, 0x0000,
+		"Option",
+		"GI 1215 SD-Card",
+		US_SC_DEVICE, US_PR_DEVICE, NULL,
+		0 ),
+
+UNUSUAL_DEV( 0x0af0, 0xd357, 0x0000, 0x0000,
+		"Option",
+		"GI 1505 SD-Card",
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		0 ),
 
@@ -1302,20 +1389,6 @@ UNUSUAL_DEV(  0x0f19, 0x0105, 0x0100, 0x0100,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE ),
 
-/* Jeremy Katz <katzj@redhat.com>:
- * The Blackberry Pearl can run in two modes; a usb-storage only mode
- * and a mode that allows access via mass storage and to its database.
- * The berry_charge module will set the device to dual mode and thus we
- * should ignore its native mode if that module is built
- */
-#ifdef CONFIG_USB_BERRY_CHARGE
-UNUSUAL_DEV(  0x0fca, 0x0006, 0x0001, 0x0001,
-		"RIM",
-		"Blackberry Pearl",
-		US_SC_DEVICE, US_PR_DEVICE, NULL,
-		US_FL_IGNORE_DEVICE ),
-#endif
-
 /* Reported by Michael Stattmann <michael@stattmann.com> */
 UNUSUAL_DEV(  0x0fce, 0xd008, 0x0000, 0x0000,
 		"Sony Ericsson",
@@ -1385,7 +1458,7 @@ UNUSUAL_DEV(  0x10d6, 0x2200, 0x0100, 0x0100,
 UNUSUAL_DEV(  0x1186, 0x3e04, 0x0000, 0x0000,
            "D-Link",
            "USB Mass Storage",
-           US_SC_DEVICE, US_PR_DEVICE, option_ms_init, 0),
+           US_SC_DEVICE, US_PR_DEVICE, option_ms_init, US_FL_IGNORE_DEVICE),
 
 /* Reported by Kevin Lloyd <linux@sierrawireless.com>
  * Entry is needed for the initializer function override,
@@ -1813,13 +1886,6 @@ UNUSUAL_DEV(  0x2735, 0x100b, 0x0000, 0x9999,
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_GO_SLOW ),
 
-/* Reported by Rohan Hart <rohan.hart17@gmail.com> */
-UNUSUAL_DEV(  0x2770, 0x915d, 0x0010, 0x0010,
-		"INTOVA",
-		"Pixtreme",
-		US_SC_DEVICE, US_PR_DEVICE, NULL,
-		US_FL_FIX_CAPACITY ),
-
 /* Reported by Frederic Marchal <frederic.marchal@wowcompany.com>
  * Mio Moov 330
  */
@@ -1835,6 +1901,13 @@ UNUSUAL_DEV(  0x4102, 0x1020, 0x0100,  0x0100,
 		"MP3 T10",
 		US_SC_DEVICE, US_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE ),
+
+/* Reported by Sergey Pinaev <dfo@antex.ru> */
+UNUSUAL_DEV(  0x4102, 0x1059, 0x0000,  0x0000,
+               "iRiver",
+               "P7K",
+               US_SC_DEVICE, US_PR_DEVICE, NULL,
+               US_FL_MAX_SECTORS_64 ),
 
 /*
  * David Härdeman <david@2gen.com>

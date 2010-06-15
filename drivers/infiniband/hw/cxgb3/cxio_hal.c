@@ -37,6 +37,7 @@
 #include <linux/spinlock.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
+#include <linux/slab.h>
 #include <net/net_namespace.h>
 
 #include "cxio_resource.h"
@@ -109,7 +110,6 @@ int cxio_hal_cq_op(struct cxio_rdev *rdev_p, struct t3_cq *cq,
 		while (!CQ_VLD_ENTRY(rptr, cq->size_log2, cqe)) {
 			udelay(1);
 			if (i++ > 1000000) {
-				BUG_ON(1);
 				printk(KERN_ERR "%s: stalled rnic\n",
 				       rdev_p->dev_name);
 				return -EIO;
@@ -155,7 +155,7 @@ static int cxio_hal_clear_qp_ctx(struct cxio_rdev *rdev_p, u32 qpid)
 	return iwch_cxgb3_ofld_send(rdev_p->t3cdev_p, skb);
 }
 
-int cxio_create_cq(struct cxio_rdev *rdev_p, struct t3_cq *cq)
+int cxio_create_cq(struct cxio_rdev *rdev_p, struct t3_cq *cq, int kernel)
 {
 	struct rdma_cq_setup setup;
 	int size = (1UL << (cq->size_log2)) * sizeof(struct t3_cqe);
@@ -163,12 +163,12 @@ int cxio_create_cq(struct cxio_rdev *rdev_p, struct t3_cq *cq)
 	cq->cqid = cxio_hal_get_cqid(rdev_p->rscp);
 	if (!cq->cqid)
 		return -ENOMEM;
-	cq->sw_queue = kzalloc(size, GFP_KERNEL);
-	if (!cq->sw_queue)
-		return -ENOMEM;
-	cq->queue = dma_alloc_coherent(&(rdev_p->rnic_info.pdev->dev),
-					     (1UL << (cq->size_log2)) *
-					     sizeof(struct t3_cqe),
+	if (kernel) {
+		cq->sw_queue = kzalloc(size, GFP_KERNEL);
+		if (!cq->sw_queue)
+			return -ENOMEM;
+	}
+	cq->queue = dma_alloc_coherent(&(rdev_p->rnic_info.pdev->dev), size,
 					     &(cq->dma_addr), GFP_KERNEL);
 	if (!cq->queue) {
 		kfree(cq->sw_queue);
@@ -589,7 +589,7 @@ static int cxio_hal_destroy_ctrl_qp(struct cxio_rdev *rdev_p)
 
 /* write len bytes of data into addr (32B aligned address)
  * If data is NULL, clear len byte of memory to zero.
- * caller aquires the ctrl_qp lock before the call
+ * caller acquires the ctrl_qp lock before the call
  */
 static int cxio_hal_ctrl_qp_write_mem(struct cxio_rdev *rdev_p, u32 addr,
 				      u32 len, void *data)
@@ -852,7 +852,9 @@ int cxio_rdma_init(struct cxio_rdev *rdev_p, struct t3_rdma_init_attr *attr)
 	wqe->qpcaps = attr->qpcaps;
 	wqe->ulpdu_size = cpu_to_be16(attr->tcp_emss);
 	wqe->rqe_count = cpu_to_be16(attr->rqe_count);
-	wqe->flags_rtr_type = cpu_to_be16(attr->flags|V_RTR_TYPE(attr->rtr_type));
+	wqe->flags_rtr_type = cpu_to_be16(attr->flags |
+					  V_RTR_TYPE(attr->rtr_type) |
+					  V_CHAN(attr->chan));
 	wqe->ord = cpu_to_be32(attr->ord);
 	wqe->ird = cpu_to_be32(attr->ird);
 	wqe->qp_dma_addr = cpu_to_be64(attr->qp_dma_addr);
@@ -1032,6 +1034,7 @@ err3:
 err2:
 	cxio_hal_destroy_ctrl_qp(rdev_p);
 err1:
+	rdev_p->t3cdev_p->ulp = NULL;
 	list_del(&rdev_p->entry);
 	return err;
 }

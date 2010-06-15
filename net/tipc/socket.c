@@ -40,9 +40,9 @@
 #include <linux/socket.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
-#include <linux/slab.h>
 #include <linux/poll.h>
 #include <linux/fcntl.h>
+#include <linux/gfp.h>
 #include <asm/string.h>
 #include <asm/atomic.h>
 #include <net/sock.h>
@@ -177,6 +177,7 @@ static void reject_rx_queue(struct sock *sk)
  * @net: network namespace (must be default network)
  * @sock: pre-allocated socket structure
  * @protocol: protocol indicator (must be 0)
+ * @kern: caused by kernel or by userspace?
  *
  * This routine creates additional data structures used by the TIPC socket,
  * initializes them, and links them together.
@@ -184,7 +185,8 @@ static void reject_rx_queue(struct sock *sk)
  * Returns 0 on success, errno otherwise
  */
 
-static int tipc_create(struct net *net, struct socket *sock, int protocol)
+static int tipc_create(struct net *net, struct socket *sock, int protocol,
+		       int kern)
 {
 	const struct proto_ops *ops;
 	socket_state state;
@@ -193,7 +195,7 @@ static int tipc_create(struct net *net, struct socket *sock, int protocol)
 
 	/* Validate arguments */
 
-	if (net != &init_net)
+	if (!net_eq(net, &init_net))
 		return -EAFNOSUPPORT;
 
 	if (unlikely(protocol != 0))
@@ -1134,13 +1136,11 @@ restart:
 
 	/* Loop around if more data is required */
 
-	if ((sz_copied < buf_len)    /* didn't get all requested data */
-	    && (!skb_queue_empty(&sk->sk_receive_queue) ||
-		(flags & MSG_WAITALL))
-				     /* ... and more is ready or required */
-	    && (!(flags & MSG_PEEK)) /* ... and aren't just peeking at data */
-	    && (!err)                /* ... and haven't reached a FIN */
-	    )
+	if ((sz_copied < buf_len) &&	/* didn't get all requested data */
+	    (!skb_queue_empty(&sk->sk_receive_queue) ||
+	     (flags & MSG_WAITALL)) &&	/* and more is ready or required */
+	    (!(flags & MSG_PEEK)) &&	/* and aren't just peeking at data */
+	    (!err))			/* and haven't reached a FIN */
 		goto restart;
 
 exit:
@@ -1322,8 +1322,10 @@ static u32 dispatch(struct tipc_port *tport, struct sk_buff *buf)
 	if (!sock_owned_by_user(sk)) {
 		res = filter_rcv(sk, buf);
 	} else {
-		sk_add_backlog(sk, buf);
-		res = TIPC_OK;
+		if (sk_add_backlog(sk, buf))
+			res = TIPC_ERR_OVERLOAD;
+		else
+			res = TIPC_OK;
 	}
 	bh_unlock_sock(sk);
 
@@ -1528,7 +1530,7 @@ static int accept(struct socket *sock, struct socket *new_sock, int flags)
 
 	buf = skb_peek(&sk->sk_receive_queue);
 
-	res = tipc_create(sock_net(sock->sk), new_sock, 0);
+	res = tipc_create(sock_net(sock->sk), new_sock, 0, 0);
 	if (!res) {
 		struct sock *new_sk = new_sock->sk;
 		struct tipc_sock *new_tsock = tipc_sk(new_sk);
@@ -1658,7 +1660,7 @@ restart:
  */
 
 static int setsockopt(struct socket *sock,
-		      int lvl, int opt, char __user *ov, int ol)
+		      int lvl, int opt, char __user *ov, unsigned int ol)
 {
 	struct sock *sk = sock->sk;
 	struct tipc_port *tport = tipc_sk_port(sk);
@@ -1747,6 +1749,12 @@ static int getsockopt(struct socket *sock,
 	case TIPC_CONN_TIMEOUT:
 		value = jiffies_to_msecs(sk->sk_rcvtimeo);
 		/* no need to set "res", since already 0 at this point */
+		break;
+	 case TIPC_NODE_RECVQ_DEPTH:
+		value = (u32)atomic_read(&tipc_queue_size);
+		break;
+	 case TIPC_SOCK_RECVQ_DEPTH:
+		value = skb_queue_len(&sk->sk_receive_queue);
 		break;
 	default:
 		res = -EINVAL;

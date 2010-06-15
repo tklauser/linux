@@ -530,7 +530,7 @@ static int nsp_negate_signal(struct scsi_cmnd *SCpnt, unsigned char mask,
 		if (reg == 0xff) {
 			break;
 		}
-	} while ((time_out-- != 0) && (reg & mask) != 0);
+	} while ((--time_out != 0) && (reg & mask) != 0);
 
 	if (time_out == 0) {
 		nsp_msg(KERN_DEBUG, " %s signal off timeut", str);
@@ -801,7 +801,7 @@ static void nsp_pio_read(struct scsi_cmnd *SCpnt)
 
 	data->FifoCount = ocount;
 
-	if (time_out == 0) {
+	if (time_out < 0) {
 		nsp_msg(KERN_DEBUG, "pio read timeout resid=%d this_residual=%d buffers_residual=%d",
 			scsi_get_resid(SCpnt), SCpnt->SCp.this_residual,
 			SCpnt->SCp.buffers_residual);
@@ -897,7 +897,7 @@ static void nsp_pio_write(struct scsi_cmnd *SCpnt)
 
 	data->FifoCount = ocount;
 
-	if (time_out == 0) {
+	if (time_out < 0) {
 		nsp_msg(KERN_DEBUG, "pio write timeout resid=0x%x",
 		                                        scsi_get_resid(SCpnt));
 	}
@@ -1564,12 +1564,10 @@ static int nsp_cs_probe(struct pcmcia_device *link)
 	link->io.IOAddrLines	 = 10;	/* not used */
 
 	/* Interrupt setup */
-	link->irq.Attributes	 = IRQ_TYPE_EXCLUSIVE | IRQ_HANDLE_PRESENT;
-	link->irq.IRQInfo1	 = IRQ_LEVEL_ID;
+	link->irq.Attributes	 = IRQ_TYPE_EXCLUSIVE;
 
 	/* Interrupt handler */
 	link->irq.Handler	 = &nspintr;
-	link->irq.Instance       = info;
 	link->irq.Attributes     |= IRQF_SHARED;
 
 	/* General socket configuration */
@@ -1684,10 +1682,10 @@ static int nsp_cs_config_check(struct pcmcia_device *p_dev,
 			if (cfg_mem->req.Size < 0x1000)
 				cfg_mem->req.Size = 0x1000;
 			cfg_mem->req.AccessSpeed = 0;
-			if (pcmcia_request_window(&p_dev, &cfg_mem->req, &p_dev->win) != 0)
+			if (pcmcia_request_window(p_dev, &cfg_mem->req, &p_dev->win) != 0)
 				goto next_entry;
 			map.Page = 0; map.CardOffset = mem->win[0].card_addr;
-			if (pcmcia_map_mem_page(p_dev->win, &map) != 0)
+			if (pcmcia_map_mem_page(p_dev, p_dev->win, &map) != 0)
 				goto next_entry;
 
 			cfg_mem->data->MmioAddress = (unsigned long) ioremap_nocache(cfg_mem->req.Base, cfg_mem->req.Size);
@@ -1713,12 +1711,13 @@ static int nsp_cs_config(struct pcmcia_device *link)
 
 	nsp_dbg(NSP_DEBUG_INIT, "in");
 
-	cfg_mem = kzalloc(sizeof(cfg_mem), GFP_KERNEL);
+	cfg_mem = kzalloc(sizeof(*cfg_mem), GFP_KERNEL);
 	if (!cfg_mem)
 		return -ENOMEM;
 	cfg_mem->data = data;
 
 	ret = pcmcia_loop_config(link, nsp_cs_config_check, cfg_mem);
+	if (ret)
 		goto cs_failed;
 
 	if (link->conf.Attributes & CONF_ENABLE_IRQ) {

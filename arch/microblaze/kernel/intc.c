@@ -12,6 +12,7 @@
 #include <linux/irq.h>
 #include <asm/page.h>
 #include <linux/io.h>
+#include <linux/bug.h>
 
 #include <asm/prom.h>
 #include <asm/irq.h>
@@ -41,8 +42,16 @@ unsigned int nr_irq;
 
 static void intc_enable_or_unmask(unsigned int irq)
 {
+	unsigned long mask = 1 << irq;
 	pr_debug("enable_or_unmask: %d\n", irq);
-	out_be32(INTC_BASE + SIE, 1 << irq);
+	out_be32(INTC_BASE + SIE, mask);
+
+	/* ack level irqs because they can't be acked during
+	 * ack function since the handle_level_irq function
+	 * acks the irq before calling the interrupt handler
+	 */
+	if (irq_desc[irq].status & IRQ_LEVEL)
+		out_be32(INTC_BASE + IAR, mask);
 }
 
 static void intc_disable_or_mask(unsigned int irq)
@@ -130,6 +139,7 @@ void __init init_IRQ(void)
 		if (intc)
 			break;
 	}
+	BUG_ON(!intc);
 
 	intc_baseaddr = *(int *) of_get_property(intc, "reg", NULL);
 	intc_baseaddr = (unsigned long) ioremap(intc_baseaddr, PAGE_SIZE);

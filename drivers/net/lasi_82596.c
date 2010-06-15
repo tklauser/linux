@@ -47,7 +47,7 @@
    TBD:
    * look at deferring rx frames rather than discarding (as per tulip)
    * handle tx ring full as per tulip
-   * performace test to tune rx_copybreak
+   * performance test to tune rx_copybreak
 
    Most of my modifications relate to the braindead big-endian
    implementation by Intel.  When the i596 is operating in
@@ -74,7 +74,6 @@
 #include <linux/ptrace.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/netdevice.h>
@@ -161,12 +160,12 @@ lan_init_chip(struct parisc_device *dev)
 
 	if (!dev->irq) {
 		printk(KERN_ERR "%s: IRQ not found for i82596 at 0x%lx\n",
-			__FILE__, dev->hpa.start);
+			__FILE__, (unsigned long)dev->hpa.start);
 		return -ENODEV;
 	}
 
-	printk(KERN_INFO "Found i82596 at 0x%lx, IRQ %d\n", dev->hpa.start,
-			dev->irq);
+	printk(KERN_INFO "Found i82596 at 0x%lx, IRQ %d\n",
+			(unsigned long)dev->hpa.start, dev->irq);
 
 	netdevice = alloc_etherdev(sizeof(struct i596_private));
 	if (!netdevice)

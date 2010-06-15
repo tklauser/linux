@@ -39,6 +39,7 @@
  *     i1480u_set_config():
  */
 
+#include <linux/slab.h>
 #include <linux/if_arp.h>
 #include <linux/etherdevice.h>
 
@@ -214,7 +215,7 @@ int i1480u_open(struct net_device *net_dev)
 
 	netif_wake_queue(net_dev);
 #ifdef i1480u_FLOW_CONTROL
-	result = usb_submit_urb(i1480u->notif_urb, GFP_KERNEL);;
+	result = usb_submit_urb(i1480u->notif_urb, GFP_KERNEL);
 	if (result < 0) {
 		dev_err(dev, "Can't submit notification URB: %d\n", result);
 		goto error_notif_urb_submit;

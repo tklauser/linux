@@ -30,6 +30,7 @@
 #include <linux/wireless.h>
 #include <linux/skbuff.h>
 #include <linux/udp.h>
+#include <linux/slab.h>
 #include <net/sock.h>
 #include <net/inet_common.h>
 #include <linux/stat.h>
@@ -457,15 +458,15 @@ static int econet_sendmsg(struct kiocb *iocb, struct socket *sock,
 	iov[0].iov_len = size;
 	for (i = 0; i < msg->msg_iovlen; i++) {
 		void __user *base = msg->msg_iov[i].iov_base;
-		size_t len = msg->msg_iov[i].iov_len;
+		size_t iov_len = msg->msg_iov[i].iov_len;
 		/* Check it now since we switch to KERNEL_DS later. */
-		if (!access_ok(VERIFY_READ, base, len)) {
+		if (!access_ok(VERIFY_READ, base, iov_len)) {
 			mutex_unlock(&econet_mutex);
 			return -EFAULT;
 		}
 		iov[i+1].iov_base = base;
-		iov[i+1].iov_len = len;
-		size += len;
+		iov[i+1].iov_len = iov_len;
+		size += iov_len;
 	}
 
 	/* Get a skbuff (no data, just holds our cb information) */
@@ -520,6 +521,7 @@ static int econet_getname(struct socket *sock, struct sockaddr *uaddr,
 	if (peer)
 		return -EOPNOTSUPP;
 
+	memset(sec, 0, sizeof(*sec));
 	mutex_lock(&econet_mutex);
 
 	sk = sock->sk;
@@ -540,8 +542,7 @@ static void econet_destroy_timer(unsigned long data)
 {
 	struct sock *sk=(struct sock *)data;
 
-	if (!atomic_read(&sk->sk_wmem_alloc) &&
-	    !atomic_read(&sk->sk_rmem_alloc)) {
+	if (!sk_has_allocations(sk)) {
 		sk_free(sk);
 		return;
 	}
@@ -579,8 +580,7 @@ static int econet_release(struct socket *sock)
 
 	skb_queue_purge(&sk->sk_receive_queue);
 
-	if (atomic_read(&sk->sk_rmem_alloc) ||
-	    atomic_read(&sk->sk_wmem_alloc)) {
+	if (sk_has_allocations(sk)) {
 		sk->sk_timer.data     = (unsigned long)sk;
 		sk->sk_timer.expires  = jiffies + HZ;
 		sk->sk_timer.function = econet_destroy_timer;
@@ -606,13 +606,14 @@ static struct proto econet_proto = {
  *	Create an Econet socket
  */
 
-static int econet_create(struct net *net, struct socket *sock, int protocol)
+static int econet_create(struct net *net, struct socket *sock, int protocol,
+			 int kern)
 {
 	struct sock *sk;
 	struct econet_sock *eo;
 	int err;
 
-	if (net != &init_net)
+	if (!net_eq(net, &init_net))
 		return -EAFNOSUPPORT;
 
 	/* Econet only provides datagram services. */
@@ -743,7 +744,7 @@ static int econet_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg
 	return 0;
 }
 
-static struct net_proto_family econet_family_ops = {
+static const struct net_proto_family econet_family_ops = {
 	.family =	PF_ECONET,
 	.create =	econet_create,
 	.owner	=	THIS_MODULE,
@@ -901,15 +902,10 @@ static void aun_tx_ack(unsigned long seq, int result)
 	struct ec_cb *eb;
 
 	spin_lock_irqsave(&aun_queue_lock, flags);
-	skb = skb_peek(&aun_queue);
-	while (skb && skb != (struct sk_buff *)&aun_queue)
-	{
-		struct sk_buff *newskb = skb->next;
+	skb_queue_walk(&aun_queue, skb) {
 		eb = (struct ec_cb *)&skb->cb;
 		if (eb->seq == seq)
 			goto foundit;
-
-		skb = newskb;
 	}
 	spin_unlock_irqrestore(&aun_queue_lock, flags);
 	printk(KERN_DEBUG "AUN: unknown sequence %ld\n", seq);
@@ -982,23 +978,18 @@ static void aun_data_available(struct sock *sk, int slen)
 
 static void ab_cleanup(unsigned long h)
 {
-	struct sk_buff *skb;
+	struct sk_buff *skb, *n;
 	unsigned long flags;
 
 	spin_lock_irqsave(&aun_queue_lock, flags);
-	skb = skb_peek(&aun_queue);
-	while (skb && skb != (struct sk_buff *)&aun_queue)
-	{
-		struct sk_buff *newskb = skb->next;
+	skb_queue_walk_safe(&aun_queue, skb, n) {
 		struct ec_cb *eb = (struct ec_cb *)&skb->cb;
-		if ((jiffies - eb->start) > eb->timeout)
-		{
+		if ((jiffies - eb->start) > eb->timeout) {
 			tx_result(skb->sk, eb->cookie,
 				  ECTYPE_TRANSMIT_NOT_PRESENT);
 			skb_unlink(skb, &aun_queue);
 			kfree_skb(skb);
 		}
-		skb = newskb;
 	}
 	spin_unlock_irqrestore(&aun_queue_lock, flags);
 
@@ -1084,7 +1075,7 @@ static int econet_rcv(struct sk_buff *skb, struct net_device *dev, struct packet
 		skb->protocol = htons(ETH_P_IP);
 		skb_pull(skb, sizeof(struct ec_framehdr));
 		netif_rx(skb);
-		return 0;
+		return NET_RX_SUCCESS;
 	}
 
 	sk = ec_listening_socket(hdr->port, hdr->src_stn, hdr->src_net);
@@ -1095,7 +1086,7 @@ static int econet_rcv(struct sk_buff *skb, struct net_device *dev, struct packet
 			    hdr->port))
 		goto drop;
 
-	return 0;
+	return NET_RX_SUCCESS;
 
 drop:
 	kfree_skb(skb);

@@ -63,6 +63,7 @@
 #include <linux/spinlock.h>
 #include <linux/bitops.h>
 #include <linux/firmware.h>
+#include <linux/slab.h>
 
 #include <net/checksum.h>
 
@@ -79,7 +80,7 @@ MODULE_AUTHOR("Mike Phillips <mikep@linuxtr.net>") ;
 MODULE_DESCRIPTION("3Com 3C359 Velocity XL Token Ring Adapter Driver \n") ;
 MODULE_FIRMWARE(FW_NAME);
 
-/* Module paramters */
+/* Module parameters */
 
 /* Ring Speed 0,4,16 
  * 0 = Autosense   
@@ -117,7 +118,7 @@ MODULE_PARM_DESC(message_level, "3c359: Level of reported messages") ;
  *	will be stuck with 1555 lines of hex #'s in the code.
  */
 
-static struct pci_device_id xl_pci_tbl[] =
+static DEFINE_PCI_DEVICE_TABLE(xl_pci_tbl) =
 {
 	{PCI_VENDOR_ID_3COM,PCI_DEVICE_ID_3COM_3C359, PCI_ANY_ID, PCI_ANY_ID, },
 	{ }			/* terminate list */
@@ -128,7 +129,7 @@ static int xl_init(struct net_device *dev);
 static int xl_open(struct net_device *dev);
 static int xl_open_hw(struct net_device *dev) ;  
 static int xl_hw_reset(struct net_device *dev); 
-static int xl_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t xl_xmit(struct sk_buff *skb, struct net_device *dev);
 static void xl_dn_comp(struct net_device *dev); 
 static int xl_close(struct net_device *dev);
 static void xl_set_rx_mode(struct net_device *dev);
@@ -610,9 +611,8 @@ static int xl_open(struct net_device *dev)
 
 	u16 switchsettings, switchsettings_eeprom  ;
  
-	if(request_irq(dev->irq, &xl_interrupt, IRQF_SHARED , "3c359", dev)) {
+	if (request_irq(dev->irq, xl_interrupt, IRQF_SHARED , "3c359", dev))
 		return -EAGAIN;
-	}
 
 	/* 
 	 * Read the information from the EEPROM that we need.
@@ -1193,7 +1193,7 @@ static irqreturn_t xl_interrupt(int irq, void *dev_id)
  *	Tx - Polling configuration
  */
 	
-static int xl_xmit(struct sk_buff *skb, struct net_device *dev) 
+static netdev_tx_t xl_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct xl_private *xl_priv=netdev_priv(dev);
 	struct xl_tx_desc *txd ; 
@@ -1240,10 +1240,10 @@ static int xl_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		spin_unlock_irqrestore(&xl_priv->xl_lock,flags) ; 
  
-		return 0;
+		return NETDEV_TX_OK;
 	} else {
 		spin_unlock_irqrestore(&xl_priv->xl_lock,flags) ; 
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 
 }
@@ -1391,10 +1391,9 @@ static int xl_close(struct net_device *dev)
 static void xl_set_rx_mode(struct net_device *dev) 
 {
 	struct xl_private *xl_priv = netdev_priv(dev);
-	struct dev_mc_list *dmi ; 
+	struct dev_mc_list *dmi;
 	unsigned char dev_mc_address[4] ; 
 	u16 options ; 
-	int i ; 
 
 	if (dev->flags & IFF_PROMISC)
 		options = 0x0004 ; 
@@ -1409,7 +1408,7 @@ static void xl_set_rx_mode(struct net_device *dev)
 
 	dev_mc_address[0] = dev_mc_address[1] = dev_mc_address[2] = dev_mc_address[3] = 0 ;
 
-        for (i=0,dmi=dev->mc_list;i < dev->mc_count; i++,dmi = dmi->next) {
+	netdev_for_each_mc_addr(dmi, dev) {
                 dev_mc_address[0] |= dmi->dmi_addr[2] ;
                 dev_mc_address[1] |= dmi->dmi_addr[3] ;
                 dev_mc_address[2] |= dmi->dmi_addr[4] ;

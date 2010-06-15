@@ -1055,7 +1055,7 @@ static const struct stb0899_s1_reg knc1_stb0899_s1_init_3[] = {
 	{ STB0899_TSCFGH		, 0x0c },
 	{ STB0899_TSCFGM		, 0x00 },
 	{ STB0899_TSCFGL		, 0x0c },
-	{ STB0899_TSOUT			, 0x0d }, /* 0x0d for CAM */
+	{ STB0899_TSOUT			, 0x4d }, /* 0x0d for CAM */
 	{ STB0899_RSSYNCDEL		, 0x00 },
 	{ STB0899_TSINHDELH		, 0x02 },
 	{ STB0899_TSINHDELM		, 0x00 },
@@ -1413,7 +1413,7 @@ static struct v4l2_input knc1_inputs[KNC1_INPUTS] = {
 static int vidioc_enum_input(struct file *file, void *fh, struct v4l2_input *i)
 {
 	dprintk(1, "VIDIOC_ENUMINPUT %d.\n", i->index);
-	if (i->index < 0 || i->index >= KNC1_INPUTS)
+	if (i->index >= KNC1_INPUTS)
 		return -EINVAL;
 	memcpy(i, &knc1_inputs[i->index], sizeof(struct v4l2_input));
 	return 0;

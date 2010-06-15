@@ -37,17 +37,21 @@
 #include <linux/inetdevice.h>
 #include <linux/if_arp.h>
 #include <linux/delay.h>
+#include <linux/slab.h>
 
 #include "rds.h"
 #include "ib.h"
 
 unsigned int fmr_pool_size = RDS_FMR_POOL_SIZE;
 unsigned int fmr_message_size = RDS_FMR_SIZE + 1; /* +1 allows for unaligned MRs */
+unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 
 module_param(fmr_pool_size, int, 0444);
 MODULE_PARM_DESC(fmr_pool_size, " Max number of fmr per HCA");
 module_param(fmr_message_size, int, 0444);
 MODULE_PARM_DESC(fmr_message_size, " Max size of a RDMA transfer");
+module_param(rds_ib_retry_count, int, 0444);
+MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
 
 struct list_head rds_ib_devices;
 
@@ -82,9 +86,6 @@ void rds_ib_add_one(struct ib_device *device)
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
 
-	rds_ibdev->fmr_page_shift = max(9, ffs(dev_attr->page_size_cap) - 1);
-	rds_ibdev->fmr_page_size  = 1 << rds_ibdev->fmr_page_shift;
-	rds_ibdev->fmr_page_mask  = ~((u64) rds_ibdev->fmr_page_size - 1);
 	rds_ibdev->fmr_max_remaps = dev_attr->max_map_per_fmr?: 32;
 	rds_ibdev->max_fmrs = dev_attr->max_fmr ?
 			min_t(unsigned int, dev_attr->max_fmr, fmr_pool_size) :
@@ -182,8 +183,8 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		ic = conn->c_transport_data;
 		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
 
-		ib_addr_get_sgid(dev_addr, (union ib_gid *) &iinfo->src_gid);
-		ib_addr_get_dgid(dev_addr, (union ib_gid *) &iinfo->dst_gid);
+		rdma_addr_get_sgid(dev_addr, (union ib_gid *) &iinfo->src_gid);
+		rdma_addr_get_dgid(dev_addr, (union ib_gid *) &iinfo->dst_gid);
 
 		rds_ibdev = ib_get_client_data(ic->i_cm_id->device, &rds_ib_client);
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -224,8 +225,8 @@ static int rds_ib_laddr_check(__be32 addr)
 	 * IB and iWARP capable NICs.
 	 */
 	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP);
-	if (!cm_id)
-		return -EADDRNOTAVAIL;
+	if (IS_ERR(cm_id))
+		return PTR_ERR(cm_id);
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
@@ -282,6 +283,7 @@ struct rds_transport rds_ib_transport = {
 	.flush_mrs		= rds_ib_flush_mrs,
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
+	.t_type			= RDS_TRANS_IB
 };
 
 int __init rds_ib_init(void)

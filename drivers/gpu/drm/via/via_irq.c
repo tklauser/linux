@@ -150,7 +150,7 @@ irqreturn_t via_driver_irq_handler(DRM_IRQ_ARGS)
 		cur_irq++;
 	}
 
-	/* Acknowlege interrupts */
+	/* Acknowledge interrupts */
 	VIA_WRITE(VIA_REG_INTERRUPT, status);
 
 
@@ -165,7 +165,7 @@ static __inline__ void viadrv_acknowledge_irqs(drm_via_private_t * dev_priv)
 	u32 status;
 
 	if (dev_priv) {
-		/* Acknowlege interrupts */
+		/* Acknowledge interrupts */
 		status = VIA_READ(VIA_REG_INTERRUPT);
 		VIA_WRITE(VIA_REG_INTERRUPT, status |
 			  dev_priv->irq_pending_mask);
@@ -183,7 +183,7 @@ int via_enable_vblank(struct drm_device *dev, int crtc)
 	}
 
 	status = VIA_READ(VIA_REG_INTERRUPT);
-	VIA_WRITE(VIA_REG_INTERRUPT, status & VIA_IRQ_VBLANK_ENABLE);
+	VIA_WRITE(VIA_REG_INTERRUPT, status | VIA_IRQ_VBLANK_ENABLE);
 
 	VIA_WRITE8(0x83d4, 0x11);
 	VIA_WRITE8(0x83d5, VIA_READ8(0x83d5) | 0x30);
@@ -194,6 +194,10 @@ int via_enable_vblank(struct drm_device *dev, int crtc)
 void via_disable_vblank(struct drm_device *dev, int crtc)
 {
 	drm_via_private_t *dev_priv = dev->dev_private;
+	u32 status;
+
+	status = VIA_READ(VIA_REG_INTERRUPT);
+	VIA_WRITE(VIA_REG_INTERRUPT, status & ~VIA_IRQ_VBLANK_ENABLE);
 
 	VIA_WRITE8(0x83d4, 0x11);
 	VIA_WRITE8(0x83d5, VIA_READ8(0x83d5) & ~0x30);

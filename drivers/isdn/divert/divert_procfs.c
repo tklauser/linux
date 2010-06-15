@@ -11,11 +11,13 @@
 
 #include <linux/module.h>
 #include <linux/poll.h>
+#include <linux/slab.h>
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
 #else
 #include <linux/fs.h>
 #endif
+#include <linux/sched.h>
 #include <linux/isdnif.h>
 #include <net/net_namespace.h>
 #include "isdn_divert.h"

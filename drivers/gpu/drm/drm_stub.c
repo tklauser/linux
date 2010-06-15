@@ -33,6 +33,7 @@
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/slab.h>
 #include "drmP.h"
 #include "drm_core.h"
 
@@ -51,7 +52,22 @@ struct idr drm_minors_idr;
 struct class *drm_class;
 struct proc_dir_entry *drm_proc_root;
 struct dentry *drm_debugfs_root;
+void drm_ut_debug_printk(unsigned int request_level,
+			 const char *prefix,
+			 const char *function_name,
+			 const char *format, ...)
+{
+	va_list args;
 
+	if (drm_debug & request_level) {
+		if (function_name)
+			printk(KERN_DEBUG "[%s:%s], ", prefix, function_name);
+		va_start(args, format);
+		vprintk(format, args);
+		va_end(args);
+	}
+}
+EXPORT_SYMBOL(drm_ut_debug_printk);
 static int drm_minor_get_id(struct drm_device *dev, int type)
 {
 	int new_id;
@@ -92,7 +108,7 @@ struct drm_master *drm_master_create(struct drm_minor *minor)
 {
 	struct drm_master *master;
 
-	master = drm_calloc(1, sizeof(*master), DRM_MEM_DRIVER);
+	master = kzalloc(sizeof(*master), GFP_KERNEL);
 	if (!master)
 		return NULL;
 
@@ -113,6 +129,7 @@ struct drm_master *drm_master_get(struct drm_master *master)
 	kref_get(&master->refcount);
 	return master;
 }
+EXPORT_SYMBOL(drm_master_get);
 
 static void drm_master_destroy(struct kref *kref)
 {
@@ -134,7 +151,7 @@ static void drm_master_destroy(struct kref *kref)
 	}
 
 	if (master->unique) {
-		drm_free(master->unique, master->unique_size, DRM_MEM_DRIVER);
+		kfree(master->unique);
 		master->unique = NULL;
 		master->unique_len = 0;
 	}
@@ -142,12 +159,12 @@ static void drm_master_destroy(struct kref *kref)
 	list_for_each_entry_safe(pt, next, &master->magicfree, head) {
 		list_del(&pt->head);
 		drm_ht_remove_item(&master->magiclist, &pt->hash_item);
-		drm_free(pt, sizeof(*pt), DRM_MEM_MAGIC);
+		kfree(pt);
 	}
 
 	drm_ht_remove(&master->magiclist);
 
-	drm_free(master, sizeof(*master), DRM_MEM_DRIVER);
+	kfree(master);
 }
 
 void drm_master_put(struct drm_master **master)
@@ -155,10 +172,13 @@ void drm_master_put(struct drm_master **master)
 	kref_put(&(*master)->refcount, drm_master_destroy);
 	*master = NULL;
 }
+EXPORT_SYMBOL(drm_master_put);
 
 int drm_setmaster_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
+	int ret = 0;
+
 	if (file_priv->is_master)
 		return 0;
 
@@ -173,6 +193,13 @@ int drm_setmaster_ioctl(struct drm_device *dev, void *data,
 		mutex_lock(&dev->struct_mutex);
 		file_priv->minor->master = drm_master_get(file_priv->master);
 		file_priv->is_master = 1;
+		if (dev->driver->master_set) {
+			ret = dev->driver->master_set(dev, file_priv, false);
+			if (unlikely(ret != 0)) {
+				file_priv->is_master = 0;
+				drm_master_put(&file_priv->minor->master);
+			}
+		}
 		mutex_unlock(&dev->struct_mutex);
 	}
 
@@ -189,6 +216,8 @@ int drm_dropmaster_ioctl(struct drm_device *dev, void *data,
 		return -EINVAL;
 
 	mutex_lock(&dev->struct_mutex);
+	if (dev->driver->master_drop)
+		dev->driver->master_drop(dev, file_priv, false);
 	drm_master_put(&file_priv->minor->master);
 	file_priv->is_master = 0;
 	mutex_unlock(&dev->struct_mutex);
@@ -205,9 +234,11 @@ static int drm_fill_in_dev(struct drm_device * dev, struct pci_dev *pdev,
 	INIT_LIST_HEAD(&dev->ctxlist);
 	INIT_LIST_HEAD(&dev->vmalist);
 	INIT_LIST_HEAD(&dev->maplist);
+	INIT_LIST_HEAD(&dev->vblank_event_list);
 
 	spin_lock_init(&dev->count_lock);
 	spin_lock_init(&dev->drw_lock);
+	spin_lock_init(&dev->event_lock);
 	init_timer(&dev->timer);
 	mutex_init(&dev->struct_mutex);
 	mutex_init(&dev->ctxlist_mutex);
@@ -328,7 +359,7 @@ static int drm_get_minor(struct drm_device *dev, struct drm_minor **minor, int t
 #if defined(CONFIG_DEBUG_FS)
 	ret = drm_debugfs_init(new_minor, minor_id, drm_debugfs_root);
 	if (ret) {
-		DRM_ERROR("DRM: Failed to initialize /debugfs/dri.\n");
+		DRM_ERROR("DRM: Failed to initialize /sys/kernel/debug/dri.\n");
 		goto err_g2;
 	}
 #endif
@@ -375,7 +406,7 @@ int drm_get_dev(struct pci_dev *pdev, const struct pci_device_id *ent,
 
 	DRM_DEBUG("\n");
 
-	dev = drm_calloc(1, sizeof(*dev), DRM_MEM_STUB);
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
 		return -ENOMEM;
 
@@ -428,7 +459,7 @@ err_g3:
 err_g2:
 	pci_disable_device(pdev);
 err_g1:
-	drm_free(dev, sizeof(*dev), DRM_MEM_STUB);
+	kfree(dev);
 	return ret;
 }
 EXPORT_SYMBOL(drm_get_dev);
@@ -474,7 +505,7 @@ int drm_put_minor(struct drm_minor **minor_p)
  */
 void drm_put_dev(struct drm_device *dev)
 {
-	struct drm_driver *driver = dev->driver;
+	struct drm_driver *driver;
 	struct drm_map_list *r_list, *list_temp;
 
 	DRM_DEBUG("\n");
@@ -483,8 +514,7 @@ void drm_put_dev(struct drm_device *dev)
 		DRM_ERROR("cleanup called no dev\n");
 		return;
 	}
-
-	drm_vblank_cleanup(dev);
+	driver = dev->driver;
 
 	drm_lastclose(dev);
 
@@ -501,9 +531,11 @@ void drm_put_dev(struct drm_device *dev)
 		dev->driver->unload(dev);
 
 	if (drm_core_has_AGP(dev) && dev->agp) {
-		drm_free(dev->agp, sizeof(*dev->agp), DRM_MEM_AGPLISTS);
+		kfree(dev->agp);
 		dev->agp = NULL;
 	}
+
+	drm_vblank_cleanup(dev);
 
 	list_for_each_entry_safe(r_list, list_temp, &dev->maplist, head)
 		drm_rmmap(dev, r_list->map);
@@ -520,10 +552,9 @@ void drm_put_dev(struct drm_device *dev)
 	drm_put_minor(&dev->primary);
 
 	if (dev->devname) {
-		drm_free(dev->devname, strlen(dev->devname) + 1,
-			 DRM_MEM_DRIVER);
+		kfree(dev->devname);
 		dev->devname = NULL;
 	}
-	drm_free(dev, sizeof(*dev), DRM_MEM_STUB);
+	kfree(dev);
 }
 EXPORT_SYMBOL(drm_put_dev);

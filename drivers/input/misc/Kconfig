@@ -12,6 +12,16 @@ menuconfig INPUT_MISC
 
 if INPUT_MISC
 
+config INPUT_88PM860X_ONKEY
+	tristate "88PM860x ONKEY support"
+	depends on MFD_88PM860X
+	help
+	  Support the ONKEY of Marvell 88PM860x PMICs as an input device
+	  reporting power button status.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called 88pm860x_onkey.
+
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
 	depends on PCSPKR_PLATFORM
@@ -80,6 +90,7 @@ config INPUT_WISTRON_BTNS
 	tristate "x86 Wistron laptop button interface"
 	depends on X86 && !X86_64
 	select INPUT_POLLDEV
+	select INPUT_SPARSEKMAP
 	select NEW_LEDS
 	select LEDS_CLASS
 	select CHECK_SIGNATURE
@@ -193,6 +204,27 @@ config INPUT_CM109
 	  To compile this driver as a module, choose M here: the module will be
 	  called cm109.
 
+config INPUT_TWL4030_PWRBUTTON
+	tristate "TWL4030 Power button Driver"
+	depends on TWL4030_CORE
+	help
+	  Say Y here if you want to enable power key reporting via the
+	  TWL4030 family of chips.
+
+	  To compile this driver as a module, choose M here. The module will
+	  be called twl4030_pwrbutton.
+
+config INPUT_TWL4030_VIBRA
+	tristate "Support for TWL4030 Vibrator"
+	depends on TWL4030_CORE
+	select TWL4030_CODEC
+	select INPUT_FF_MEMLESS
+	help
+	  This option enables support for TWL4030 Vibrator Driver.
+
+	  To compile this driver as a module, choose M here. The module will
+	  be called twl4030_vibra.
+
 config INPUT_UINPUT
 	tristate "User level driver support"
 	help
@@ -211,6 +243,24 @@ config INPUT_SGI_BTNS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called sgi_btns.
+
+config INPUT_WINBOND_CIR
+	tristate "Winbond IR remote control"
+	depends on X86 && PNP
+	select NEW_LEDS
+	select LEDS_CLASS
+	select LEDS_TRIGGERS
+	select BITREVERSE
+	help
+	  Say Y here if you want to use the IR remote functionality found
+	  in some Winbond SuperI/O chips. Currently only the WPCD376I
+	  chip is supported (included in some Intel Media series motherboards).
+
+	  IR Receive and wake-on-IR from suspend and power-off is currently
+	  supported.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called winbond_cir.
 
 config HP_SDC_RTC
 	tristate "HP SDC Real Time Clock"
@@ -232,7 +282,7 @@ config INPUT_GPIO_ROTARY_ENCODER
 	depends on GPIOLIB && GENERIC_GPIO
 	help
 	  Say Y here to add support for rotary encoders connected to GPIO lines.
-	  Check file:Documentation/incput/rotary_encoder.txt for more
+	  Check file:Documentation/input/rotary-encoder.txt for more
 	  information.
 
 	  To compile this driver as a module, choose M here: the
@@ -249,5 +299,45 @@ config INPUT_RB532_BUTTON
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called rb532_button.
+
+config INPUT_DM355EVM
+	tristate "TI DaVinci DM355 EVM Keypad and IR Remote"
+	depends on MFD_DM355EVM_MSP
+	select INPUT_SPARSEKMAP
+	help
+	  Supports the pushbuttons and IR remote used with
+	  the DM355 EVM board.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called dm355evm_keys.
+
+config INPUT_BFIN_ROTARY
+	tristate "Blackfin Rotary support"
+	depends on BF54x || BF52x
+	help
+	  Say Y here if you want to use the Blackfin Rotary.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called bfin-rotary.
+
+config INPUT_WM831X_ON
+	tristate "WM831X ON pin"
+	depends on MFD_WM831X
+	help
+	  Support the ON pin of WM831X PMICs as an input device
+	  reporting power button status.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called wm831x_on.
+
+config INPUT_PCAP
+	tristate "Motorola EZX PCAP misc input events"
+	depends on EZX_PCAP
+	help
+	  Say Y here if you want to use Power key and Headphone button
+	  on Motorola EZX phones.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called pcap_keys.
 
 endif

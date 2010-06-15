@@ -35,6 +35,7 @@
 #include <asm/pat.h>
 #include <asm/e820.h>
 #include <asm/pci_x86.h>
+#include <asm/io_apic.h>
 
 
 static int
@@ -59,22 +60,23 @@ skip_isa_ioresource_align(struct pci_dev *dev) {
  * but we want to try to avoid allocating at 0x2900-0x2bff
  * which might have be mirrored at 0x0100-0x03ff..
  */
-void
-pcibios_align_resource(void *data, struct resource *res,
+resource_size_t
+pcibios_align_resource(void *data, const struct resource *res,
 			resource_size_t size, resource_size_t align)
 {
 	struct pci_dev *dev = data;
+	resource_size_t start = res->start;
 
 	if (res->flags & IORESOURCE_IO) {
-		resource_size_t start = res->start;
-
 		if (skip_isa_ioresource_align(dev))
-			return;
-		if (start & 0x300) {
+			return start;
+		if (start & 0x300)
 			start = (start + 0x3ff) & ~0x3ff;
-			res->start = start;
-		}
+	} else if (res->flags & IORESOURCE_MEM) {
+		if (start < BIOS_END)
+			start = BIOS_END;
 	}
+	return start;
 }
 EXPORT_SYMBOL(pcibios_align_resource);
 
@@ -116,7 +118,7 @@ static void __init pcibios_allocate_bus_resources(struct list_head *bus_list)
 	struct pci_bus *bus;
 	struct pci_dev *dev;
 	int idx;
-	struct resource *r, *pr;
+	struct resource *r;
 
 	/* Depth-First Search on bus tree */
 	list_for_each_entry(bus, bus_list, node) {
@@ -126,10 +128,8 @@ static void __init pcibios_allocate_bus_resources(struct list_head *bus_list)
 				r = &dev->resource[idx];
 				if (!r->flags)
 					continue;
-				pr = pci_find_parent_resource(dev, r);
-				if (!r->start || !pr ||
-				    request_resource(pr, r) < 0) {
-					dev_info(&dev->dev, "BAR %d: can't allocate resource\n", idx);
+				if (!r->start ||
+				    pci_claim_resource(dev, idx) < 0) {
 					/*
 					 * Something is wrong with the region.
 					 * Invalidate the resource to prevent
@@ -144,16 +144,29 @@ static void __init pcibios_allocate_bus_resources(struct list_head *bus_list)
 	}
 }
 
+struct pci_check_idx_range {
+	int start;
+	int end;
+};
+
 static void __init pcibios_allocate_resources(int pass)
 {
 	struct pci_dev *dev = NULL;
-	int idx, disabled;
+	int idx, disabled, i;
 	u16 command;
-	struct resource *r, *pr;
+	struct resource *r;
+
+	struct pci_check_idx_range idx_range[] = {
+		{ PCI_STD_RESOURCES, PCI_STD_RESOURCE_END },
+#ifdef CONFIG_PCI_IOV
+		{ PCI_IOV_RESOURCES, PCI_IOV_RESOURCE_END },
+#endif
+	};
 
 	for_each_pci_dev(dev) {
 		pci_read_config_word(dev, PCI_COMMAND, &command);
-		for (idx = 0; idx < PCI_ROM_RESOURCE; idx++) {
+		for (i = 0; i < ARRAY_SIZE(idx_range); i++)
+		for (idx = idx_range[i].start; idx <= idx_range[i].end; idx++) {
 			r = &dev->resource[idx];
 			if (r->parent)		/* Already allocated */
 				continue;
@@ -164,13 +177,10 @@ static void __init pcibios_allocate_resources(int pass)
 			else
 				disabled = !(command & PCI_COMMAND_MEMORY);
 			if (pass == disabled) {
-				dev_dbg(&dev->dev, "resource %#08llx-%#08llx (f=%lx, d=%d, p=%d)\n",
-					(unsigned long long) r->start,
-					(unsigned long long) r->end,
-					r->flags, disabled, pass);
-				pr = pci_find_parent_resource(dev, r);
-				if (!pr || request_resource(pr, r) < 0) {
-					dev_info(&dev->dev, "BAR %d: can't allocate resource\n", idx);
+				dev_dbg(&dev->dev,
+					"BAR %d: reserving %pr (d=%d, p=%d)\n",
+					idx, r, disabled, pass);
+				if (pci_claim_resource(dev, idx) < 0) {
 					/* We'll assign a new address later */
 					r->end -= r->start;
 					r->start = 0;
@@ -183,7 +193,7 @@ static void __init pcibios_allocate_resources(int pass)
 				/* Turn the ROM off, leave the resource region,
 				 * but keep it unregistered. */
 				u32 reg;
-				dev_dbg(&dev->dev, "disabling ROM\n");
+				dev_dbg(&dev->dev, "disabling ROM %pR\n", r);
 				r->flags &= ~IORESOURCE_ROM_ENABLE;
 				pci_read_config_dword(dev,
 						dev->rom_base_reg, &reg);
@@ -197,7 +207,7 @@ static void __init pcibios_allocate_resources(int pass)
 static int __init pcibios_assign_resources(void)
 {
 	struct pci_dev *dev = NULL;
-	struct resource *r, *pr;
+	struct resource *r;
 
 	if (!(pci_probe & PCI_ASSIGN_ROMS)) {
 		/*
@@ -209,8 +219,7 @@ static int __init pcibios_assign_resources(void)
 			r = &dev->resource[PCI_ROM_RESOURCE];
 			if (!r->flags || !r->start)
 				continue;
-			pr = pci_find_parent_resource(dev, r);
-			if (!pr || request_resource(pr, r) < 0) {
+			if (pci_claim_resource(dev, PCI_ROM_RESOURCE) < 0) {
 				r->end -= r->start;
 				r->start = 0;
 			}
@@ -230,6 +239,12 @@ void __init pcibios_resource_survey(void)
 	pcibios_allocate_resources(1);
 
 	e820_reserve_resources_late();
+	/*
+	 * Insert the IO APIC resources after PCI initialization has
+	 * occured to handle IO APICS that are mapped in on a BAR in
+	 * PCI space, but before trying to assign unassigned pci res.
+	 */
+	ioapic_insert_resources();
 }
 
 /**
@@ -237,10 +252,6 @@ void __init pcibios_resource_survey(void)
  * give a chance for motherboard reserve resources
  */
 fs_initcall(pcibios_assign_resources);
-
-void __weak x86_pci_root_bus_res_quirks(struct pci_bus *b)
-{
-}
 
 /*
  *  If we set up a device for bus mastering, we need to check the latency
@@ -262,7 +273,7 @@ void pcibios_set_master(struct pci_dev *dev)
 	pci_write_config_byte(dev, PCI_LATENCY_TIMER, lat);
 }
 
-static struct vm_operations_struct pci_mmap_ops = {
+static const struct vm_operations_struct pci_mmap_ops = {
 	.access = generic_access_phys,
 };
 
@@ -278,6 +289,15 @@ int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
 		return -EINVAL;
 
 	prot = pgprot_val(vma->vm_page_prot);
+
+	/*
+ 	 * Return error if pat is not enabled and write_combine is requested.
+ 	 * Caller can followup with UC MINUS request and add a WC mtrr if there
+ 	 * is a free mtrr slot.
+ 	 */
+	if (!pat_enabled && write_combine)
+		return -EINVAL;
+
 	if (pat_enabled && write_combine)
 		prot |= _PAGE_CACHE_WC;
 	else if (pat_enabled || boot_cpu_data.x86 > 3)

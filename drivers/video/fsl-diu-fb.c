@@ -750,24 +750,26 @@ static void update_lcdc(struct fb_info *info)
 static int map_video_memory(struct fb_info *info)
 {
 	phys_addr_t phys;
+	u32 smem_len = info->fix.line_length * info->var.yres_virtual;
 
 	pr_debug("info->var.xres_virtual = %d\n", info->var.xres_virtual);
 	pr_debug("info->var.yres_virtual = %d\n", info->var.yres_virtual);
 	pr_debug("info->fix.line_length  = %d\n", info->fix.line_length);
+	pr_debug("MAP_VIDEO_MEMORY: smem_len = %u\n", smem_len);
 
-	info->fix.smem_len = info->fix.line_length * info->var.yres_virtual;
-	pr_debug("MAP_VIDEO_MEMORY: smem_len = %d\n", info->fix.smem_len);
-	info->screen_base = fsl_diu_alloc(info->fix.smem_len, &phys);
+	info->screen_base = fsl_diu_alloc(smem_len, &phys);
 	if (info->screen_base == NULL) {
 		printk(KERN_ERR "Unable to allocate fb memory\n");
 		return -ENOMEM;
 	}
+	mutex_lock(&info->mm_lock);
 	info->fix.smem_start = (unsigned long) phys;
+	info->fix.smem_len = smem_len;
+	mutex_unlock(&info->mm_lock);
 	info->screen_size = info->fix.smem_len;
 
 	pr_debug("Allocated fb @ paddr=0x%08lx, size=%d.\n",
-				info->fix.smem_start,
-		info->fix.smem_len);
+		 info->fix.smem_start, info->fix.smem_len);
 	pr_debug("screen base %p\n", info->screen_base);
 
 	return 0;
@@ -776,9 +778,11 @@ static int map_video_memory(struct fb_info *info)
 static void unmap_video_memory(struct fb_info *info)
 {
 	fsl_diu_free(info->screen_base, info->fix.smem_len);
+	mutex_lock(&info->mm_lock);
 	info->screen_base = NULL;
 	info->fix.smem_start = 0;
 	info->fix.smem_len = 0;
+	mutex_unlock(&info->mm_lock);
 }
 
 /*
@@ -1219,12 +1223,6 @@ static int __devinit install_fb(struct fb_info *info)
 		return -EINVAL;
 	}
 
-	if (fsl_diu_set_par(info)) {
-		printk(KERN_ERR "fb_set_par failed");
-		fb_dealloc_cmap(&info->cmap);
-		return -EINVAL;
-	}
-
 	if (register_framebuffer(info) < 0) {
 		printk(KERN_ERR "register_framebuffer failed");
 		unmap_video_memory(info);
@@ -1538,6 +1536,7 @@ static int __devinit fsl_diu_probe(struct of_device *ofdev,
 		goto error;
 	}
 
+	sysfs_attr_init(&machine_data->dev_attr.attr);
 	machine_data->dev_attr.attr.name = "monitor";
 	machine_data->dev_attr.attr.mode = S_IRUGO|S_IWUSR;
 	machine_data->dev_attr.show = show_monitor;
@@ -1635,6 +1634,11 @@ static int __init fsl_diu_setup(char *options)
 #endif
 
 static struct of_device_id fsl_diu_match[] = {
+#ifdef CONFIG_PPC_MPC512x
+	{
+		.compatible = "fsl,mpc5121-diu",
+	},
+#endif
 	{
 		.compatible = "fsl,diu",
 	},

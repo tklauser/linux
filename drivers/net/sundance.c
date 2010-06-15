@@ -84,7 +84,6 @@ static char *media[MAX_UNITS];
 #include <linux/timer.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/netdevice.h>
@@ -206,7 +205,7 @@ IVc. Errata
 #define USE_IO_OPS 1
 #endif
 
-static const struct pci_device_id sundance_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(sundance_pci_tbl) = {
 	{ 0x1186, 0x1002, 0x1186, 0x1002, 0, 0, 0 },
 	{ 0x1186, 0x1002, 0x1186, 0x1003, 0, 0, 1 },
 	{ 0x1186, 0x1002, 0x1186, 0x1012, 0, 0, 2 },
@@ -369,7 +368,6 @@ struct netdev_private {
 	struct sk_buff* tx_skbuff[TX_RING_SIZE];
         dma_addr_t tx_ring_dma;
         dma_addr_t rx_ring_dma;
-	struct net_device_stats stats;
 	struct timer_list timer;		/* Media monitoring timer. */
 	/* Frequently used values: keep some adjacent for cache effect. */
 	spinlock_t lock;
@@ -416,7 +414,7 @@ static void check_duplex(struct net_device *dev);
 static void netdev_timer(unsigned long data);
 static void tx_timeout(struct net_device *dev);
 static void init_ring(struct net_device *dev);
-static int  start_tx(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t start_tx(struct sk_buff *skb, struct net_device *dev);
 static int reset_tx (struct net_device *dev);
 static irqreturn_t intr_handler(int irq, void *dev_instance);
 static void rx_poll(unsigned long data);
@@ -604,8 +602,8 @@ static int __devinit sundance_probe1 (struct pci_dev *pdev,
 			    strcmp (media[card_idx], "4") == 0) {
 				np->speed = 100;
 				np->mii_if.full_duplex = 1;
-			} else if (strcmp (media[card_idx], "100mbps_hd") == 0
-				   || strcmp (media[card_idx], "3") == 0) {
+			} else if (strcmp (media[card_idx], "100mbps_hd") == 0 ||
+				   strcmp (media[card_idx], "3") == 0) {
 				np->speed = 100;
 				np->mii_if.full_duplex = 0;
 			} else if (strcmp (media[card_idx], "10mbps_fd") == 0 ||
@@ -820,7 +818,7 @@ static int netdev_open(struct net_device *dev)
 
 	/* Do we need to reset the chip??? */
 
-	i = request_irq(dev->irq, &intr_handler, IRQF_SHARED, dev->name, dev);
+	i = request_irq(dev->irq, intr_handler, IRQF_SHARED, dev->name, dev);
 	if (i)
 		return i;
 
@@ -975,7 +973,7 @@ static void tx_timeout(struct net_device *dev)
 	dev->if_port = 0;
 
 	dev->trans_start = jiffies;
-	np->stats.tx_errors++;
+	dev->stats.tx_errors++;
 	if (np->cur_tx - np->dirty_tx < TX_QUEUE_LEN - 4) {
 		netif_wake_queue(dev);
 	}
@@ -1054,7 +1052,7 @@ static void tx_poll (unsigned long data)
 	return;
 }
 
-static int
+static netdev_tx_t
 start_tx (struct sk_buff *skb, struct net_device *dev)
 {
 	struct netdev_private *np = netdev_priv(dev);
@@ -1080,8 +1078,8 @@ start_tx (struct sk_buff *skb, struct net_device *dev)
 	tasklet_schedule(&np->tx_tasklet);
 
 	/* On some architectures: explicitly flush cache lines here. */
-	if (np->cur_tx - np->dirty_tx < TX_QUEUE_LEN - 1
-			&& !netif_queue_stopped(dev)) {
+	if (np->cur_tx - np->dirty_tx < TX_QUEUE_LEN - 1 &&
+	    !netif_queue_stopped(dev)) {
 		/* do nothing */
 	} else {
 		netif_stop_queue (dev);
@@ -1092,7 +1090,7 @@ start_tx (struct sk_buff *skb, struct net_device *dev)
 			"%s: Transmit frame #%d queued in slot %d.\n",
 			dev->name, np->cur_tx, entry);
 	}
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /* Reset hardware tx and free all of tx buffers */
@@ -1123,7 +1121,7 @@ reset_tx (struct net_device *dev)
 			else
 				dev_kfree_skb (skb);
 			np->tx_skbuff[i] = NULL;
-			np->stats.tx_dropped++;
+			dev->stats.tx_dropped++;
 		}
 	}
 	np->cur_tx = np->dirty_tx = 0;
@@ -1181,15 +1179,15 @@ static irqreturn_t intr_handler(int irq, void *dev_instance)
 					if (netif_msg_tx_err(np))
 						printk("%s: Transmit error status %4.4x.\n",
 							   dev->name, tx_status);
-					np->stats.tx_errors++;
+					dev->stats.tx_errors++;
 					if (tx_status & 0x10)
-						np->stats.tx_fifo_errors++;
+						dev->stats.tx_fifo_errors++;
 					if (tx_status & 0x08)
-						np->stats.collisions++;
+						dev->stats.collisions++;
 					if (tx_status & 0x04)
-						np->stats.tx_fifo_errors++;
+						dev->stats.tx_fifo_errors++;
 					if (tx_status & 0x02)
-						np->stats.tx_window_errors++;
+						dev->stats.tx_window_errors++;
 
 					/*
 					** This reset has been verified on
@@ -1313,11 +1311,15 @@ static void rx_poll(unsigned long data)
 			if (netif_msg_rx_err(np))
 				printk(KERN_DEBUG "  netdev_rx() Rx error was %8.8x.\n",
 					   frame_status);
-			np->stats.rx_errors++;
-			if (frame_status & 0x00100000) np->stats.rx_length_errors++;
-			if (frame_status & 0x00010000) np->stats.rx_fifo_errors++;
-			if (frame_status & 0x00060000) np->stats.rx_frame_errors++;
-			if (frame_status & 0x00080000) np->stats.rx_crc_errors++;
+			dev->stats.rx_errors++;
+			if (frame_status & 0x00100000)
+				dev->stats.rx_length_errors++;
+			if (frame_status & 0x00010000)
+				dev->stats.rx_fifo_errors++;
+			if (frame_status & 0x00060000)
+				dev->stats.rx_frame_errors++;
+			if (frame_status & 0x00080000)
+				dev->stats.rx_crc_errors++;
 			if (frame_status & 0x00100000) {
 				printk(KERN_WARNING "%s: Oversized Ethernet frame,"
 					   " status %8.8x.\n",
@@ -1333,8 +1335,8 @@ static void rx_poll(unsigned long data)
 #endif
 			/* Check if the packet is long enough to accept without copying
 			   to a minimally-sized skbuff. */
-			if (pkt_len < rx_copybreak
-				&& (skb = dev_alloc_skb(pkt_len + 2)) != NULL) {
+			if (pkt_len < rx_copybreak &&
+			    (skb = dev_alloc_skb(pkt_len + 2)) != NULL) {
 				skb_reserve(skb, 2);	/* 16 byte align the IP header */
 				pci_dma_sync_single_for_cpu(np->pci_dev,
 							    le32_to_cpu(desc->frag[0].addr),
@@ -1485,22 +1487,22 @@ static struct net_device_stats *get_stats(struct net_device *dev)
 	   the vulnerability window is very small and statistics are
 	   non-critical. */
 	/* The chip only need report frame silently dropped. */
-	np->stats.rx_missed_errors	+= ioread8(ioaddr + RxMissed);
-	np->stats.tx_packets += ioread16(ioaddr + TxFramesOK);
-	np->stats.rx_packets += ioread16(ioaddr + RxFramesOK);
-	np->stats.collisions += ioread8(ioaddr + StatsLateColl);
-	np->stats.collisions += ioread8(ioaddr + StatsMultiColl);
-	np->stats.collisions += ioread8(ioaddr + StatsOneColl);
-	np->stats.tx_carrier_errors += ioread8(ioaddr + StatsCarrierError);
+	dev->stats.rx_missed_errors	+= ioread8(ioaddr + RxMissed);
+	dev->stats.tx_packets += ioread16(ioaddr + TxFramesOK);
+	dev->stats.rx_packets += ioread16(ioaddr + RxFramesOK);
+	dev->stats.collisions += ioread8(ioaddr + StatsLateColl);
+	dev->stats.collisions += ioread8(ioaddr + StatsMultiColl);
+	dev->stats.collisions += ioread8(ioaddr + StatsOneColl);
+	dev->stats.tx_carrier_errors += ioread8(ioaddr + StatsCarrierError);
 	ioread8(ioaddr + StatsTxDefer);
 	for (i = StatsTxDefer; i <= StatsMcastRx; i++)
 		ioread8(ioaddr + i);
-	np->stats.tx_bytes += ioread16(ioaddr + TxOctetsLow);
-	np->stats.tx_bytes += ioread16(ioaddr + TxOctetsHigh) << 16;
-	np->stats.rx_bytes += ioread16(ioaddr + RxOctetsLow);
-	np->stats.rx_bytes += ioread16(ioaddr + RxOctetsHigh) << 16;
+	dev->stats.tx_bytes += ioread16(ioaddr + TxOctetsLow);
+	dev->stats.tx_bytes += ioread16(ioaddr + TxOctetsHigh) << 16;
+	dev->stats.rx_bytes += ioread16(ioaddr + RxOctetsLow);
+	dev->stats.rx_bytes += ioread16(ioaddr + RxOctetsHigh) << 16;
 
-	return &np->stats;
+	return &dev->stats;
 }
 
 static void set_rx_mode(struct net_device *dev)
@@ -1514,19 +1516,18 @@ static void set_rx_mode(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC) {			/* Set promiscuous. */
 		memset(mc_filter, 0xff, sizeof(mc_filter));
 		rx_mode = AcceptBroadcast | AcceptMulticast | AcceptAll | AcceptMyPhys;
-	} else if ((dev->mc_count > multicast_filter_limit)
-			   ||  (dev->flags & IFF_ALLMULTI)) {
+	} else if ((netdev_mc_count(dev) > multicast_filter_limit) ||
+		   (dev->flags & IFF_ALLMULTI)) {
 		/* Too many to match, or accept all multicasts. */
 		memset(mc_filter, 0xff, sizeof(mc_filter));
 		rx_mode = AcceptBroadcast | AcceptMulticast | AcceptMyPhys;
-	} else if (dev->mc_count) {
+	} else if (!netdev_mc_empty(dev)) {
 		struct dev_mc_list *mclist;
 		int bit;
 		int index;
 		int crc;
 		memset (mc_filter, 0, sizeof (mc_filter));
-		for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
-		     i++, mclist = mclist->next) {
+		netdev_for_each_mc_addr(mclist, dev) {
 			crc = ether_crc_le (ETH_ALEN, mclist->dmi_addr);
 			for (index=0, bit=0; bit < 6; bit++, crc <<= 1)
 				if (crc & 0x80000000) index |= 1 << bit;
@@ -1695,13 +1696,13 @@ static int netdev_close(struct net_device *dev)
 
 #ifdef __i386__
 	if (netif_msg_hw(np)) {
-		printk("\n"KERN_DEBUG"  Tx ring at %8.8x:\n",
+		printk(KERN_DEBUG "  Tx ring at %8.8x:\n",
 			   (int)(np->tx_ring_dma));
 		for (i = 0; i < TX_RING_SIZE; i++)
-			printk(" #%d desc. %4.4x %8.8x %8.8x.\n",
+			printk(KERN_DEBUG " #%d desc. %4.4x %8.8x %8.8x.\n",
 				   i, np->tx_ring[i].status, np->tx_ring[i].frag[0].addr,
 				   np->tx_ring[i].frag[0].length);
-		printk("\n"KERN_DEBUG "  Rx ring %8.8x:\n",
+		printk(KERN_DEBUG "  Rx ring %8.8x:\n",
 			   (int)(np->rx_ring_dma));
 		for (i = 0; i < /*RX_RING_SIZE*/4 ; i++) {
 			printk(KERN_DEBUG " #%d desc. %4.4x %4.4x %8.8x\n",

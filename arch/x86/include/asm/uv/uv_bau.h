@@ -37,7 +37,7 @@
 #define UV_CPUS_PER_ACT_STATUS		32
 #define UV_ACT_STATUS_MASK		0x3
 #define UV_ACT_STATUS_SIZE		2
-#define UV_ACTIVATION_DESCRIPTOR_SIZE	32
+#define UV_ADP_SIZE			32
 #define UV_DISTRIBUTION_SIZE		256
 #define UV_SW_ACK_NPENDING		8
 #define UV_NET_ENDPOINT_INTD		0x38
@@ -55,7 +55,7 @@
 #define DESC_STATUS_SOURCE_TIMEOUT	3
 
 /*
- * source side threshholds at which message retries print a warning
+ * source side thresholds at which message retries print a warning
  */
 #define SOURCE_TIMEOUT_LIMIT		20
 #define DESTINATION_TIMEOUT_LIMIT	20
@@ -133,7 +133,7 @@ struct bau_msg_payload {
  * see table 4.2.3.0.1 in broacast_assist spec.
  */
 struct bau_msg_header {
-	unsigned int dest_subnodeid:6;	/* must be zero */
+	unsigned int dest_subnodeid:6;	/* must be 0x10, for the LB */
 	/* bits 5:0 */
 	unsigned int base_dest_nodeid:15; /* nasid>>1 (pnode) of */
 	/* bits 20:6 */			  /* first bit in node_map */

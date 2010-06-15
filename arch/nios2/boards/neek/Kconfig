@@ -1,0 +1,22 @@
+if NEEK
+
+choice
+	prompt "FPGA configuration"
+
+config NIOS2_CUSTOM_FPGA
+	bool "CUSTOM_FPGA"
+	help
+	  Adapt the kernel to custom FPGA configuration. You will
+	  need to generate a header file for your desgin using the
+	  "sopc-create-header-files" scripts provided by Altera.
+	  The file "include/asm-nios2/custom_fpga.h" will be used.
+
+config NIOS2_NEEK_OCM
+	bool "neek_ocm_spi_mmu"
+	help
+	  The neek_ocm_spi_mmu example design. You may find this
+	  design from http://nioswiki.com/Linux.
+
+endchoice
+
+endif

@@ -2,6 +2,23 @@ menu "Kernel hacking"
 
 source "lib/Kconfig.debug"
 
+config PPC_DISABLE_WERROR
+	bool "Don't build arch/powerpc code with -Werror"
+	default n
+	help
+	  This option tells the compiler NOT to build the code under
+	  arch/powerpc with the -Werror flag (which means warnings
+	  are treated as errors).
+
+	  Only enable this if you are hitting a build failure in the
+	  arch/powerpc code caused by a warning, and you don't feel
+	  inclined to fix it.
+
+config PPC_WERROR
+	bool
+	depends on !PPC_DISABLE_WERROR
+	default y
+
 config PRINT_STACK_DEPTH
 	int "Stack depth to print" if DEBUG_KERNEL
 	default 64
@@ -29,7 +46,7 @@ config DEBUG_STACK_USAGE
 
 config HCALL_STATS
 	bool "Hypervisor call instrumentation"
-	depends on PPC_PSERIES && DEBUG_FS
+	depends on PPC_PSERIES && DEBUG_FS && TRACEPOINTS
 	help
 	  Adds code to keep track of the number of hypervisor calls made and
 	  the amount of time spent in hypervisor calls.  Wall time spent in
@@ -40,6 +57,19 @@ config HCALL_STATS
 
 	  This option will add a small amount of overhead to all hypervisor
 	  calls.
+
+config PPC_EMULATED_STATS
+	bool "Emulated instructions tracking"
+	depends on DEBUG_FS
+	help
+	  Adds code to keep track of the number of instructions that are
+	  emulated by the in-kernel emulator. Counters for the various classes
+	  of emulated instructions are available under
+	  powerpc/emulated_instructions/ in the root of the debugfs file
+	  system. Optionally (controlled by
+	  powerpc/emulated_instructions/do_warn in debugfs), rate-limited
+	  warnings can be printed to the console when instructions are
+	  emulated.
 
 config CODE_PATCHING_SELFTEST
 	bool "Run self-tests of the code-patching code."
@@ -223,6 +253,14 @@ config PPC_EARLY_DEBUG_CPM
 	  Select this to enable early debugging for Freescale chips
 	  using a CPM-based serial port.  This assumes that the bootwrapper
 	  has run, and set up the CPM in a particular way.
+
+config PPC_EARLY_DEBUG_USBGECKO
+	bool "Early debugging through the USB Gecko adapter"
+	depends on GAMECUBE_COMMON
+	select USBGECKO_UDBG
+	help
+	  Select this to enable early debugging for Nintendo GameCube/Wii
+	  consoles via an external USB Gecko adapter.
 
 endchoice
 

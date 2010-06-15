@@ -31,6 +31,7 @@
 #include <linux/time.h>
 #include <linux/vmalloc.h>
 #include <linux/moduleparam.h>
+#include <linux/math64.h>
 #include <linux/string.h>
 #include <sound/core.h>
 #include <sound/minors.h>
@@ -617,9 +618,7 @@ static long snd_pcm_oss_bytes(struct snd_pcm_substream *substream, long frames)
 #else
 	{
 		u64 bsize = (u64)runtime->oss.buffer_bytes * (u64)bytes;
-		u32 rem;
-		div64_32(&bsize, buffer_size, &rem);
-		return (long)bsize;
+		return div_u64(bsize, buffer_size);
 	}
 #endif
 }
@@ -631,6 +630,12 @@ static long snd_pcm_alsa_frames(struct snd_pcm_substream *substream, long bytes)
 	if (buffer_size == runtime->oss.buffer_bytes)
 		return bytes_to_frames(runtime, bytes);
 	return bytes_to_frames(runtime, (buffer_size * bytes) / runtime->oss.buffer_bytes);
+}
+
+static inline
+snd_pcm_uframes_t get_hw_ptr_period(struct snd_pcm_runtime *runtime)
+{
+	return runtime->hw_ptr_interrupt;
 }
 
 /* define extended formats in the recent OSS versions (if any) */
@@ -1044,10 +1049,15 @@ static int snd_pcm_oss_change_params(struct snd_pcm_substream *substream)
 	runtime->oss.channels = params_channels(params);
 	runtime->oss.rate = params_rate(params);
 
-	runtime->oss.params = 0;
-	runtime->oss.prepare = 1;
 	vfree(runtime->oss.buffer);
 	runtime->oss.buffer = vmalloc(runtime->oss.period_bytes);
+	if (!runtime->oss.buffer) {
+		err = -ENOMEM;
+		goto failure;
+	}
+
+	runtime->oss.params = 0;
+	runtime->oss.prepare = 1;
 	runtime->oss.buffer_used = 0;
 	if (runtime->dma_area)
 		snd_pcm_format_set_silence(runtime->format, runtime->dma_area, bytes_to_samples(runtime, runtime->dma_bytes));
@@ -1098,7 +1108,7 @@ static int snd_pcm_oss_prepare(struct snd_pcm_substream *substream)
 		return err;
 	}
 	runtime->oss.prepare = 0;
-	runtime->oss.prev_hw_ptr_interrupt = 0;
+	runtime->oss.prev_hw_ptr_period = 0;
 	runtime->oss.period_ptr = 0;
 	runtime->oss.buffer_used = 0;
 
@@ -1946,7 +1956,8 @@ static int snd_pcm_oss_get_caps(struct snd_pcm_oss_file *pcm_oss_file)
 	return result;
 }
 
-static void snd_pcm_oss_simulate_fill(struct snd_pcm_substream *substream, snd_pcm_uframes_t hw_ptr)
+static void snd_pcm_oss_simulate_fill(struct snd_pcm_substream *substream,
+				      snd_pcm_uframes_t hw_ptr)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	snd_pcm_uframes_t appl_ptr;
@@ -1982,7 +1993,8 @@ static int snd_pcm_oss_set_trigger(struct snd_pcm_oss_file *pcm_oss_file, int tr
 			if (runtime->oss.trigger)
 				goto _skip1;
 			if (atomic_read(&psubstream->mmap_count))
-				snd_pcm_oss_simulate_fill(psubstream, runtime->hw_ptr_interrupt);
+				snd_pcm_oss_simulate_fill(psubstream,
+						get_hw_ptr_period(runtime));
 			runtime->oss.trigger = 1;
 			runtime->start_threshold = 1;
 			cmd = SNDRV_PCM_IOCTL_START;
@@ -2101,11 +2113,12 @@ static int snd_pcm_oss_get_ptr(struct snd_pcm_oss_file *pcm_oss_file, int stream
 	info.ptr = snd_pcm_oss_bytes(substream, runtime->status->hw_ptr % runtime->buffer_size);
 	if (atomic_read(&substream->mmap_count)) {
 		snd_pcm_sframes_t n;
-		n = (delay = runtime->hw_ptr_interrupt) - runtime->oss.prev_hw_ptr_interrupt;
+		delay = get_hw_ptr_period(runtime);
+		n = delay - runtime->oss.prev_hw_ptr_period;
 		if (n < 0)
 			n += runtime->boundary;
 		info.blocks = n / runtime->period_size;
-		runtime->oss.prev_hw_ptr_interrupt = delay;
+		runtime->oss.prev_hw_ptr_period = delay;
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 			snd_pcm_oss_simulate_fill(substream, delay);
 		info.bytes = snd_pcm_oss_bytes(substream, runtime->status->hw_ptr) & INT_MAX;
@@ -2669,18 +2682,22 @@ static int snd_pcm_oss_playback_ready(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	if (atomic_read(&substream->mmap_count))
-		return runtime->oss.prev_hw_ptr_interrupt != runtime->hw_ptr_interrupt;
+		return runtime->oss.prev_hw_ptr_period !=
+						get_hw_ptr_period(runtime);
 	else
-		return snd_pcm_playback_avail(runtime) >= runtime->oss.period_frames;
+		return snd_pcm_playback_avail(runtime) >=
+						runtime->oss.period_frames;
 }
 
 static int snd_pcm_oss_capture_ready(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	if (atomic_read(&substream->mmap_count))
-		return runtime->oss.prev_hw_ptr_interrupt != runtime->hw_ptr_interrupt;
+		return runtime->oss.prev_hw_ptr_period !=
+						get_hw_ptr_period(runtime);
 	else
-		return snd_pcm_capture_avail(runtime) >= runtime->oss.period_frames;
+		return snd_pcm_capture_avail(runtime) >=
+						runtime->oss.period_frames;
 }
 
 static unsigned int snd_pcm_oss_poll(struct file *file, poll_table * wait)
@@ -2837,7 +2854,8 @@ static void snd_pcm_oss_proc_write(struct snd_info_entry *entry,
 				   struct snd_info_buffer *buffer)
 {
 	struct snd_pcm_str *pstr = entry->private_data;
-	char line[128], str[32], task_name[32], *ptr;
+	char line[128], str[32], task_name[32];
+	const char *ptr;
 	int idx1;
 	struct snd_pcm_oss_setup *setup, *setup1, template;
 

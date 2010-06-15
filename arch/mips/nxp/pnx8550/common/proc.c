@@ -16,7 +16,6 @@
 #include <linux/proc_fs.h>
 #include <linux/irq.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 #include <linux/random.h>
@@ -69,9 +68,9 @@ static int pnx8550_registers_read(char* page, char** start, off_t offset, int co
         return len;
 }
 
-static struct proc_dir_entry* pnx8550_dir        = NULL;
-static struct proc_dir_entry* pnx8550_timers     = NULL;
-static struct proc_dir_entry* pnx8550_registers  = NULL;
+static struct proc_dir_entry* pnx8550_dir;
+static struct proc_dir_entry* pnx8550_timers;
+static struct proc_dir_entry* pnx8550_registers;
 
 static int pnx8550_proc_init( void )
 {

@@ -43,61 +43,6 @@
 /* Video Memory Size */
 #define VIDEO_MEMORY_SIZE_16M    0x1000000
 
-/* Definition Mode Index
-*/
-#define     VIA_RES_640X480                 	0
-#define     VIA_RES_800X600                 	1
-#define     VIA_RES_1024X768                	2
-#define     VIA_RES_1152X864                	3
-#define     VIA_RES_1280X1024               	4
-#define     VIA_RES_1600X1200               	5
-#define     VIA_RES_1440X1050               	6
-#define     VIA_RES_1280X768                	7
-#define     VIA_RES_1280X960                	8
-#define     VIA_RES_1920X1440               	9
-#define     VIA_RES_848X480                 	10
-#define     VIA_RES_1400X1050               	11
-#define     VIA_RES_720X480                 	12
-#define     VIA_RES_720X576                 	13
-#define     VIA_RES_1024X512                	14
-#define     VIA_RES_856X480                 	15
-#define     VIA_RES_1024X576                	16
-#define     VIA_RES_640X400                 	17
-#define     VIA_RES_1280X720                	18
-#define     VIA_RES_1920X1080               	19
-#define     VIA_RES_800X480                 	20
-#define     VIA_RES_1368X768                	21
-#define     VIA_RES_1024X600                	22
-#define     VIA_RES_1280X800                	23
-#define     VIA_RES_1680X1050               	24
-#define     VIA_RES_960X600			25
-#define     VIA_RES_1000X600               	26
-#define     VIA_RES_1088X612               	27
-#define     VIA_RES_1152X720               	28
-#define     VIA_RES_1200X720               	29
-#define     VIA_RES_1280X600               	30
-#define     VIA_RES_1360X768               	31
-#define     VIA_RES_1366X768               	32
-#define     VIA_RES_1440X900               	33
-#define     VIA_RES_1600X900               	34
-#define     VIA_RES_1600X1024              	35
-#define     VIA_RES_1792X1344              	36
-#define     VIA_RES_1856X1392              	37
-#define     VIA_RES_1920X1200              	38
-#define     VIA_RES_2048X1536              	39
-#define     VIA_RES_480X640                  	40
-
-/*Reduce Blanking*/
-#define     VIA_RES_1360X768_RB          	131
-#define     VIA_RES_1440X900_RB          	133
-#define     VIA_RES_1400X1050_RB        	111
-#define     VIA_RES_1600X900_RB          	134
-#define     VIA_RES_1680X1050_RB        	124
-#define     VIA_RES_1920X1080_RB        	119
-#define     VIA_RES_1920X1200_RB        	138
-
-#define     VIA_RES_INVALID                 	255
-
 /* standard VGA IO port
 */
 #define VIARMisc    0x3CC
@@ -118,7 +63,6 @@
 /* Display path */
 #define IGA1        1
 #define IGA2        2
-#define IGA1_IGA2   3
 
 /* Define Color Depth  */
 #define MODE_8BPP       1
@@ -167,6 +111,10 @@
 #define SR4B    0x4B
 #define SR4C    0x4C
 #define SR52    0x52
+#define SR57	0x57
+#define SR58	0x58
+#define SR59	0x59
+#define SR5D    0x5D
 #define SR5E    0x5E
 #define SR65    0x65
 
@@ -965,6 +913,100 @@
 #define CX700_267_250M    0x00B90403
 #define CX700_297_500M    0x00CE0403
 #define CX700_122_614M    0x00870802
+
+/* PLL for VX855 */
+#define VX855_22_000M     0x007B1005
+#define VX855_25_175M     0x008D1005
+#define VX855_26_719M     0x00961005
+#define VX855_26_880M     0x00961005
+#define VX855_27_000M     0x00971005
+#define VX855_29_581M     0x00A51005
+#define VX855_29_829M     0x00641003
+#define VX855_31_490M     0x00B01005
+#define VX855_31_500M     0x00B01005
+#define VX855_31_728M     0x008E1004
+#define VX855_32_668M     0x00921004
+#define VX855_36_000M     0x00A11004
+#define VX855_40_000M     0x00700C05
+#define VX855_41_291M     0x00730C05
+#define VX855_43_163M     0x00790C05
+#define VX855_45_250M     0x007F0C05      /* 45.46MHz */
+#define VX855_46_000M     0x00670C04
+#define VX855_46_996M     0x00690C04
+#define VX855_48_000M     0x00860C05
+#define VX855_48_875M     0x00890C05
+#define VX855_49_500M     0x00530C03
+#define VX855_52_406M     0x00580C03
+#define VX855_52_977M     0x00940C05
+#define VX855_56_250M     0x009D0C05
+#define VX855_60_466M     0x00A90C05
+#define VX855_61_500M     0x00AC0C05
+#define VX855_65_000M     0x006D0C03
+#define VX855_65_178M     0x00B60C05
+#define VX855_66_750M     0x00700C03    /*67.116MHz */
+#define VX855_67_295M     0x00BC0C05
+#define VX855_68_179M     0x00BF0C05
+#define VX855_68_369M     0x00BF0C05
+#define VX855_69_924M     0x00C30C05
+#define VX855_70_159M     0x00C30C05
+#define VX855_72_000M     0x00A10C04
+#define VX855_73_023M     0x00CC0C05
+#define VX855_74_481M     0x00D10C05
+#define VX855_78_750M     0x006E0805
+#define VX855_79_466M     0x006F0805
+#define VX855_80_136M     0x00700805
+#define VX855_81_627M     0x00720805
+#define VX855_83_375M     0x00750805
+#define VX855_83_527M     0x00750805
+#define VX855_83_950M     0x00750805
+#define VX855_84_537M     0x00760805
+#define VX855_84_750M     0x00760805     /* 84.537Mhz */
+#define VX855_85_500M     0x00760805        /* 85.909080 MHz*/
+#define VX855_85_860M     0x00760805
+#define VX855_85_909M     0x00760805
+#define VX855_88_750M     0x007C0805
+#define VX855_89_489M     0x007D0805
+#define VX855_94_500M     0x00840805
+#define VX855_96_648M     0x00870805
+#define VX855_97_750M     0x00890805
+#define VX855_101_000M    0x008D0805
+#define VX855_106_500M    0x00950805
+#define VX855_108_000M    0x00970805
+#define VX855_110_125M    0x00990805
+#define VX855_112_000M    0x009D0805
+#define VX855_113_309M    0x009F0805
+#define VX855_115_000M    0x00A10805
+#define VX855_118_840M    0x00A60805
+#define VX855_119_000M    0x00A70805
+#define VX855_121_750M    0x00AA0805       /* 121.704MHz */
+#define VX855_122_614M    0x00AC0805
+#define VX855_126_266M    0x00B10805
+#define VX855_130_250M    0x00B60805      /* 130.250 */
+#define VX855_135_000M    0x00BD0805
+#define VX855_136_700M    0x00BF0805
+#define VX855_137_750M    0x00C10805
+#define VX855_138_400M    0x00C20805
+#define VX855_144_300M    0x00CA0805
+#define VX855_146_760M    0x00CE0805
+#define VX855_148_500M	  0x00D00805
+#define VX855_153_920M    0x00540402
+#define VX855_156_000M    0x006C0405
+#define VX855_156_867M    0x006E0405
+#define VX855_157_500M    0x006E0405
+#define VX855_162_000M    0x00710405
+#define VX855_172_798M    0x00790405
+#define VX855_187_000M    0x00830405
+#define VX855_193_295M    0x00870405
+#define VX855_202_500M    0x008E0405
+#define VX855_204_000M    0x008F0405
+#define VX855_218_500M    0x00990405
+#define VX855_229_500M    0x00A10405
+#define VX855_234_000M    0x00A40405
+#define VX855_267_250M    0x00BB0405
+#define VX855_297_500M    0x00D00405
+#define VX855_339_500M    0x00770005
+#define VX855_340_772M    0x00770005
+
 
 /* Definition CRTC Timing Index */
 #define H_TOTAL_INDEX               0

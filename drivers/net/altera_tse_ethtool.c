@@ -26,47 +26,12 @@
 *                                                                       
 *******************************************************************************/       
 
-#include <linux/module.h>	/* for module-version */
 #include <linux/kernel.h>	/* printk(), and other useful stuff */
-#include <linux/sched.h>	/* for jiffies, HZ, etc. */
-#include <linux/string.h>	/* inline memset(), etc. */
-#include <linux/ptrace.h>
-#include <linux/errno.h>	/* return codes */
-#include <linux/ioport.h>	/* request_region(), release_region() */
-#include <linux/interrupt.h>
-#include <linux/delay.h>
-#include <linux/inet.h>                                                        
-#include <linux/netdevice.h>	/* struct device, and other headers */
-#include <linux/etherdevice.h>	/* eth_type_trans */
-#include <linux/skbuff.h>
+#include <linux/netdevice.h>	/* struct net_device, and other headers */
 #include <linux/ethtool.h>
-#include <linux/init.h>		/* __init (when not using as a module) */
-#include <linux/mii.h>
 #include <linux/phy.h>
 
-#include <linux/pm.h>		/* pm_message_t */
-#include <linux/platform_device.h>
-
-#include <asm/irq.h>		/* For NR_IRQS only. */
-#include <asm/pgtable.h>
-#include <asm/page.h>
-#include <asm/cacheflush.h>
-
-#include <asm/processor.h>	/* Processor type for cache alignment. */
-#include <asm/bitops.h>
-#include <asm/io.h>		/* I/O functions */
-#include <asm/uaccess.h>	/* User space memory access functions */
-
-#include "altera_tse.h"    
-
-
-static void tse_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info);
-static uint32_t tse_get_msglevel(struct net_device *dev);
-static void tse_set_msglevel(struct net_device *dev, uint32_t data);
-static int tse_reglen(struct net_device *dev);
-static void tse_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *regbuf);
-static int tse_get_settings(struct net_device *dev, struct ethtool_cmd *cmd);
-static int tse_set_settings(struct net_device *dev, struct ethtool_cmd *cmd);
+#include "altera_tse.h"
 
 #define TSE_STATS_LEN 35
 
@@ -114,7 +79,7 @@ static char stat_gstrings[][ETH_GSTRING_LEN] = {
 static void tse_get_drvinfo(struct net_device *dev,
 			    struct ethtool_drvinfo *info)
 {
-	strcpy(info->driver, "Altera Triple Speed MAC IP Driver");
+	strcpy(info->driver, "Altera TSE MAC IP Driver");
 	strcpy(info->version, "v 8.0");
 	sprintf(info->bus_info, "AVALON");
 //	PRINTK1("Drvinfo :Drv=%s ,version=%s,bus=%s\n", info->driver,
@@ -182,9 +147,7 @@ static int tse_sset_count(struct net_device *dev, int sset)
 	}
 }
 
-
-
-static uint32_t tse_get_msglevel(struct net_device *dev)
+static u32 tse_get_msglevel(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	return tse_priv->msg_enable;

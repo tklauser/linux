@@ -13,7 +13,9 @@
 
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/acpi.h>
 #include <linux/mfd/core.h>
+#include <linux/slab.h>
 
 static int mfd_add_device(struct device *parent, int id,
 			  const struct mfd_cell *cell,
@@ -25,7 +27,7 @@ static int mfd_add_device(struct device *parent, int id,
 	int ret = -ENOMEM;
 	int r;
 
-	pdev = platform_device_alloc(cell->name, id);
+	pdev = platform_device_alloc(cell->name, id + cell->id);
 	if (!pdev)
 		goto fail_alloc;
 
@@ -62,6 +64,10 @@ static int mfd_add_device(struct device *parent, int id,
 			res[r].start = cell->resources[r].start;
 			res[r].end   = cell->resources[r].end;
 		}
+
+		ret = acpi_check_resource_conflict(res);
+		if (ret)
+			goto fail_res;
 	}
 
 	platform_device_add_resources(pdev, res, cell->num_resources);

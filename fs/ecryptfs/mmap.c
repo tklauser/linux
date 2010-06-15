@@ -32,6 +32,7 @@
 #include <linux/file.h>
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
+#include <linux/slab.h>
 #include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
 
@@ -82,6 +83,19 @@ out:
 	return rc;
 }
 
+static void strip_xattr_flag(char *page_virt,
+			     struct ecryptfs_crypt_stat *crypt_stat)
+{
+	if (crypt_stat->flags & ECRYPTFS_METADATA_IN_XATTR) {
+		size_t written;
+
+		crypt_stat->flags &= ~ECRYPTFS_METADATA_IN_XATTR;
+		ecryptfs_write_crypt_stat_flags(page_virt, crypt_stat,
+						&written);
+		crypt_stat->flags |= ECRYPTFS_METADATA_IN_XATTR;
+	}
+}
+
 /**
  *   Header Extent:
  *     Octets 0-7:        Unencrypted file size (big-endian)
@@ -97,19 +111,6 @@ out:
  *                        (big-endian)
  *     Octet  26:         Begin RFC 2440 authentication token packet set
  */
-static void set_header_info(char *page_virt,
-			    struct ecryptfs_crypt_stat *crypt_stat)
-{
-	size_t written;
-	size_t save_num_header_bytes_at_front =
-		crypt_stat->num_header_bytes_at_front;
-
-	crypt_stat->num_header_bytes_at_front =
-		ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE;
-	ecryptfs_write_header_metadata(page_virt + 20, crypt_stat, &written);
-	crypt_stat->num_header_bytes_at_front =
-		save_num_header_bytes_at_front;
-}
 
 /**
  * ecryptfs_copy_up_encrypted_with_header
@@ -135,8 +136,7 @@ ecryptfs_copy_up_encrypted_with_header(struct page *page,
 					   * num_extents_per_page)
 					  + extent_num_in_page);
 		size_t num_header_extents_at_front =
-			(crypt_stat->num_header_bytes_at_front
-			 / crypt_stat->extent_size);
+			(crypt_stat->metadata_size / crypt_stat->extent_size);
 
 		if (view_extent_num < num_header_extents_at_front) {
 			/* This is a header extent */
@@ -146,9 +146,14 @@ ecryptfs_copy_up_encrypted_with_header(struct page *page,
 			memset(page_virt, 0, PAGE_CACHE_SIZE);
 			/* TODO: Support more than one header extent */
 			if (view_extent_num == 0) {
+				size_t written;
+
 				rc = ecryptfs_read_xattr_region(
 					page_virt, page->mapping->host);
-				set_header_info(page_virt, crypt_stat);
+				strip_xattr_flag(page_virt + 16, crypt_stat);
+				ecryptfs_write_header_metadata(page_virt + 20,
+							       crypt_stat,
+							       &written);
 			}
 			kunmap_atomic(page_virt, KM_USER0);
 			flush_dcache_page(page);
@@ -161,7 +166,7 @@ ecryptfs_copy_up_encrypted_with_header(struct page *page,
 			/* This is an encrypted data extent */
 			loff_t lower_offset =
 				((view_extent_num * crypt_stat->extent_size)
-				 - crypt_stat->num_header_bytes_at_front);
+				 - crypt_stat->metadata_size);
 
 			rc = ecryptfs_read_lower_page_segment(
 				page, (lower_offset >> PAGE_CACHE_SHIFT),
@@ -396,9 +401,11 @@ static int ecryptfs_write_inode_size_to_header(struct inode *ecryptfs_inode)
 	rc = ecryptfs_write_lower(ecryptfs_inode, file_size_virt, 0,
 				  sizeof(u64));
 	kfree(file_size_virt);
-	if (rc)
+	if (rc < 0)
 		printk(KERN_ERR "%s: Error writing file size to header; "
 		       "rc = [%d]\n", __func__, rc);
+	else
+		rc = 0;
 out:
 	return rc;
 }
@@ -545,7 +552,7 @@ static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 	return rc;
 }
 
-struct address_space_operations ecryptfs_aops = {
+const struct address_space_operations ecryptfs_aops = {
 	.writepage = ecryptfs_writepage,
 	.readpage = ecryptfs_readpage,
 	.write_begin = ecryptfs_write_begin,

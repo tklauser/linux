@@ -66,13 +66,23 @@ static inline void default_inquire_remote_apic(int apicid)
 }
 
 /*
+ * With 82489DX we can't rely on apic feature bit
+ * retrieved via cpuid but still have to deal with
+ * such an apic chip so we assume that SMP configuration
+ * is found from MP table (64bit case uses ACPI mostly
+ * which set smp presence flag as well so we are safe
+ * to use this helper too).
+ */
+static inline bool apic_from_smp_config(void)
+{
+	return smp_found_config && !disable_apic;
+}
+
+/*
  * Basic functions accessing APICs.
  */
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
-#else
-#define setup_boot_clock setup_boot_APIC_clock
-#define setup_secondary_clock setup_secondary_APIC_clock
 #endif
 
 #ifdef CONFIG_X86_64
@@ -107,8 +117,7 @@ extern u32 native_safe_apic_wait_icr_idle(void);
 extern void native_apic_icr_write(u32 low, u32 id);
 extern u64 native_apic_icr_read(void);
 
-#define EIM_8BIT_APIC_ID	0
-#define EIM_32BIT_APIC_ID	1
+extern int x2apic_mode;
 
 #ifdef CONFIG_X86_X2APIC
 /*
@@ -166,10 +175,9 @@ static inline u64 native_x2apic_icr_read(void)
 	return val;
 }
 
-extern int x2apic, x2apic_phys;
+extern int x2apic_phys;
 extern void check_x2apic(void);
 extern void enable_x2apic(void);
-extern void enable_IR_x2apic(void);
 extern void x2apic_icr_write(u32 low, u32 id);
 static inline int x2apic_enabled(void)
 {
@@ -183,6 +191,12 @@ static inline int x2apic_enabled(void)
 		return 1;
 	return 0;
 }
+
+#define x2apic_supported()	(cpu_has_x2apic)
+static inline void x2apic_force_phys(void)
+{
+	x2apic_phys = 1;
+}
 #else
 static inline void check_x2apic(void)
 {
@@ -190,28 +204,23 @@ static inline void check_x2apic(void)
 static inline void enable_x2apic(void)
 {
 }
-static inline void enable_IR_x2apic(void)
-{
-}
 static inline int x2apic_enabled(void)
 {
 	return 0;
 }
+static inline void x2apic_force_phys(void)
+{
+}
 
-#define	x2apic	0
-
+#define	x2apic_preenabled 0
+#define	x2apic_supported()	0
 #endif
+
+extern void enable_IR_x2apic(void);
 
 extern int get_physical_broadcast(void);
 
-#ifdef CONFIG_X86_X2APIC
-static inline void ack_x2APIC_irq(void)
-{
-	/* Docs say use 0 for future compatibility */
-	native_apic_msr_write(APIC_EOI, 0);
-}
-#endif
-
+extern void apic_disable(void);
 extern int lapic_get_maxlvt(void);
 extern void clear_local_APIC(void);
 extern void connect_bsp_APIC(void);
@@ -252,7 +261,9 @@ static inline void lapic_shutdown(void) { }
 #define local_apic_timer_c2_ok		1
 static inline void init_apic_mappings(void) { }
 static inline void disable_local_APIC(void) { }
-
+static inline void apic_disable(void) { }
+# define setup_boot_APIC_clock x86_init_noop
+# define setup_secondary_APIC_clock x86_init_noop
 #endif /* !CONFIG_X86_LOCAL_APIC */
 
 #ifdef CONFIG_X86_64
@@ -286,22 +297,22 @@ struct apic {
 	int disable_esr;
 
 	int dest_logical;
-	unsigned long (*check_apicid_used)(physid_mask_t bitmap, int apicid);
+	unsigned long (*check_apicid_used)(physid_mask_t *map, int apicid);
 	unsigned long (*check_apicid_present)(int apicid);
 
 	void (*vector_allocation_domain)(int cpu, struct cpumask *retmask);
 	void (*init_apic_ldr)(void);
 
-	physid_mask_t (*ioapic_phys_id_map)(physid_mask_t map);
+	void (*ioapic_phys_id_map)(physid_mask_t *phys_map, physid_mask_t *retmap);
 
 	void (*setup_apic_routing)(void);
 	int (*multi_timer_check)(int apic, int irq);
 	int (*apicid_to_node)(int logical_apicid);
 	int (*cpu_to_logical_apicid)(int cpu);
 	int (*cpu_present_to_apicid)(int mps_cpu);
-	physid_mask_t (*apicid_to_cpu_present)(int phys_apicid);
+	void (*apicid_to_cpu_present)(int phys_apicid, physid_mask_t *retmap);
 	void (*setup_portio_remap)(void);
-	int (*check_phys_apicid_present)(int boot_cpu_physical_apicid);
+	int (*check_phys_apicid_present)(int phys_apicid);
 	void (*enable_apic_mode)(void);
 	int (*phys_pkg_id)(int cpuid_apic, int index_msb);
 
@@ -410,7 +421,7 @@ static inline unsigned default_get_apic_id(unsigned long x)
 {
 	unsigned int ver = GET_APIC_VERSION(apic_read(APIC_LVR));
 
-	if (APIC_XAPIC(ver))
+	if (APIC_XAPIC(ver) || boot_cpu_has(X86_FEATURE_EXTD_APICID))
 		return (x >> 24) & 0xFF;
 	else
 		return (x >> 24) & 0x0F;
@@ -435,7 +446,7 @@ extern struct apic apic_x2apic_uv_x;
 DECLARE_PER_CPU(int, x2apic_extra_bits);
 
 extern int default_cpu_present_to_apicid(int mps_cpu);
-extern int default_check_phys_apicid_present(int boot_cpu_physical_apicid);
+extern int default_check_phys_apicid_present(int phys_apicid);
 #endif
 
 static inline void default_wait_for_init_deassert(atomic_t *deassert)
@@ -477,7 +488,12 @@ static inline unsigned int read_apic_id(void)
 
 extern void default_setup_apic_routing(void);
 
+extern struct apic apic_noop;
+
 #ifdef CONFIG_X86_32
+
+extern struct apic apic_default;
+
 /*
  * Set up the logical destination ID.
  *
@@ -518,9 +534,9 @@ default_cpu_mask_to_apicid_and(const struct cpumask *cpumask,
 	return (unsigned int)(mask1 & mask2 & mask3);
 }
 
-static inline unsigned long default_check_apicid_used(physid_mask_t bitmap, int apicid)
+static inline unsigned long default_check_apicid_used(physid_mask_t *map, int apicid)
 {
-	return physid_isset(apicid, bitmap);
+	return physid_isset(apicid, *map);
 }
 
 static inline unsigned long default_check_apicid_present(int bit)
@@ -528,9 +544,9 @@ static inline unsigned long default_check_apicid_present(int bit)
 	return physid_isset(bit, phys_cpu_present_map);
 }
 
-static inline physid_mask_t default_ioapic_phys_id_map(physid_mask_t phys_map)
+static inline void default_ioapic_phys_id_map(physid_mask_t *phys_map, physid_mask_t *retmap)
 {
-	return phys_map;
+	*retmap = *phys_map;
 }
 
 /* Mapping from cpu number to logical apicid */
@@ -548,9 +564,9 @@ static inline int __default_cpu_present_to_apicid(int mps_cpu)
 }
 
 static inline int
-__default_check_phys_apicid_present(int boot_cpu_physical_apicid)
+__default_check_phys_apicid_present(int phys_apicid)
 {
-	return physid_isset(boot_cpu_physical_apicid, phys_cpu_present_map);
+	return physid_isset(phys_apicid, phys_cpu_present_map);
 }
 
 #ifdef CONFIG_X86_32
@@ -560,19 +576,14 @@ static inline int default_cpu_present_to_apicid(int mps_cpu)
 }
 
 static inline int
-default_check_phys_apicid_present(int boot_cpu_physical_apicid)
+default_check_phys_apicid_present(int phys_apicid)
 {
-	return __default_check_phys_apicid_present(boot_cpu_physical_apicid);
+	return __default_check_phys_apicid_present(phys_apicid);
 }
 #else
 extern int default_cpu_present_to_apicid(int mps_cpu);
-extern int default_check_phys_apicid_present(int boot_cpu_physical_apicid);
+extern int default_check_phys_apicid_present(int phys_apicid);
 #endif
-
-static inline physid_mask_t default_apicid_to_cpu_present(int phys_apicid)
-{
-	return physid_mask_of_physid(phys_apicid);
-}
 
 #endif /* CONFIG_X86_LOCAL_APIC */
 

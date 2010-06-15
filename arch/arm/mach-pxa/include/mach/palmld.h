@@ -56,7 +56,6 @@
 #define GPIO_NR_PALMLD_LED_AMBER	94
 
 /* IDE */
-#define GPIO_NR_PALMLD_IDE_IRQ		95
 #define GPIO_NR_PALMLD_IDE_RESET	98
 #define GPIO_NR_PALMLD_IDE_PWEN		115
 
@@ -92,7 +91,7 @@
 /* BATTERY */
 #define PALMLD_BAT_MAX_VOLTAGE		4000	/* 4.00V maximum voltage */
 #define PALMLD_BAT_MIN_VOLTAGE		3550	/* 3.55V critical voltage */
-#define PALMLD_BAT_MAX_CURRENT		0	/* unknokn */
+#define PALMLD_BAT_MAX_CURRENT		0	/* unknown */
 #define PALMLD_BAT_MIN_CURRENT		0	/* unknown */
 #define PALMLD_BAT_MAX_CHARGE		1	/* unknown */
 #define PALMLD_BAT_MIN_CHARGE		1	/* unknown */

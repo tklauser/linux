@@ -20,6 +20,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/version.h>
 #include "pvrusb2-context.h"
 #include "pvrusb2-hdw.h"
@@ -90,7 +91,7 @@ static struct v4l2_capability pvr_capability ={
 	.driver         = "pvrusb2",
 	.card           = "Hauppauge WinTV pvr-usb2",
 	.bus_info       = "usb",
-	.version        = KERNEL_VERSION(0,8,0),
+	.version        = KERNEL_VERSION(0, 9, 0),
 	.capabilities   = (V4L2_CAP_VIDEO_CAPTURE |
 			   V4L2_CAP_TUNER | V4L2_CAP_AUDIO | V4L2_CAP_RADIO |
 			   V4L2_CAP_READWRITE),
@@ -149,17 +150,6 @@ static struct v4l2_format pvr_format [] = {
 		}
 	}
 };
-
-
-static const char *get_v4l_name(int v4l_type)
-{
-	switch (v4l_type) {
-	case VFL_TYPE_GRABBER: return "video";
-	case VFL_TYPE_RADIO: return "radio";
-	case VFL_TYPE_VBI: return "vbi";
-	default: return "?";
-	}
-}
 
 
 /*
@@ -267,7 +257,7 @@ static long pvr2_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		memset(&tmp,0,sizeof(tmp));
 		tmp.index = vi->index;
 		ret = 0;
-		if ((vi->index < 0) || (vi->index >= fh->input_cnt)) {
+		if (vi->index >= fh->input_cnt) {
 			ret = -EINVAL;
 			break;
 		}
@@ -331,7 +321,7 @@ static long pvr2_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 	case VIDIOC_S_INPUT:
 	{
 		struct v4l2_input *vi = (struct v4l2_input *)arg;
-		if ((vi->index < 0) || (vi->index >= fh->input_cnt)) {
+		if (vi->index >= fh->input_cnt) {
 			ret = -ERANGE;
 			break;
 		}
@@ -891,10 +881,8 @@ static long pvr2_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 
 static void pvr2_v4l2_dev_destroy(struct pvr2_v4l2_dev *dip)
 {
-	int num = dip->devbase.num;
 	struct pvr2_hdw *hdw = dip->v4lp->channel.mc_head->hdw;
 	enum pvr2_config cfg = dip->config;
-	int v4l_type = dip->v4l_type;
 
 	pvr2_hdw_v4l_store_minor_number(hdw,dip->minor_type,-1);
 
@@ -906,10 +894,19 @@ static void pvr2_v4l2_dev_destroy(struct pvr2_v4l2_dev *dip)
 	   are gone. */
 	video_unregister_device(&dip->devbase);
 
-	printk(KERN_INFO "pvrusb2: unregistered device %s%u [%s]\n",
-	       get_v4l_name(v4l_type), num,
+	printk(KERN_INFO "pvrusb2: unregistered device %s [%s]\n",
+	       video_device_node_name(&dip->devbase),
 	       pvr2_config_get_name(cfg));
 
+}
+
+
+static void pvr2_v4l2_dev_disassociate_parent(struct pvr2_v4l2_dev *dip)
+{
+	if (!dip) return;
+	if (!dip->devbase.parent) return;
+	dip->devbase.parent = NULL;
+	device_move(&dip->devbase.dev, NULL, DPM_ORDER_NONE);
 }
 
 
@@ -943,6 +940,8 @@ static void pvr2_v4l2_internal_check(struct pvr2_channel *chp)
 	struct pvr2_v4l2 *vp;
 	vp = container_of(chp,struct pvr2_v4l2,channel);
 	if (!vp->channel.mc_head->disconnect_flag) return;
+	pvr2_v4l2_dev_disassociate_parent(vp->dev_video);
+	pvr2_v4l2_dev_disassociate_parent(vp->dev_radio);
 	if (vp->vfirst) return;
 	pvr2_v4l2_destroy_no_lock(vp);
 }
@@ -1250,12 +1249,13 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 			       struct pvr2_v4l2 *vp,
 			       int v4l_type)
 {
+	struct usb_device *usbdev;
 	int mindevnum;
 	int unit_number;
 	int *nr_ptr = NULL;
 	dip->v4lp = vp;
 
-
+	usbdev = pvr2_hdw_get_dev(vp->channel.mc_head->hdw);
 	dip->v4l_type = v4l_type;
 	switch (v4l_type) {
 	case VFL_TYPE_GRABBER:
@@ -1296,6 +1296,7 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 	if (nr_ptr && (unit_number >= 0) && (unit_number < PVR_NUM)) {
 		mindevnum = nr_ptr[unit_number];
 	}
+	dip->devbase.parent = &usbdev->dev;
 	if ((video_register_device(&dip->devbase,
 				   dip->v4l_type, mindevnum) < 0) &&
 	    (video_register_device(&dip->devbase,
@@ -1304,8 +1305,8 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 			": Failed to register pvrusb2 v4l device\n");
 	}
 
-	printk(KERN_INFO "pvrusb2: registered device %s%u [%s]\n",
-	       get_v4l_name(dip->v4l_type), dip->devbase.num,
+	printk(KERN_INFO "pvrusb2: registered device %s [%s]\n",
+	       video_device_node_name(&dip->devbase),
 	       pvr2_config_get_name(dip->config));
 
 	pvr2_hdw_v4l_store_minor_number(vp->channel.mc_head->hdw,

@@ -21,7 +21,7 @@
  */
 #define MESSAGE_AGE_INCR	((HZ < 256) ? 1 : (HZ/256))
 
-static const char *br_port_state_names[] = {
+static const char *const br_port_state_names[] = {
 	[BR_STATE_DISABLED] = "disabled",
 	[BR_STATE_LISTENING] = "listening",
 	[BR_STATE_LEARNING] = "learning",
@@ -385,6 +385,8 @@ static void br_make_forwarding(struct net_bridge_port *p)
 		p->state = BR_STATE_LISTENING;
 	else
 		p->state = BR_STATE_LEARNING;
+
+	br_multicast_enable_port(p);
 
 	br_log_state(p);
 

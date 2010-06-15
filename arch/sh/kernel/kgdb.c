@@ -1,7 +1,7 @@
 /*
  * SuperH KGDB support
  *
- * Copyright (C) 2008  Paul Mundt
+ * Copyright (C) 2008 - 2009  Paul Mundt
  *
  * Single stepping taken from the old stub by Henry Bell and Jeremy Siegel.
  *
@@ -14,8 +14,6 @@
 #include <linux/irq.h>
 #include <linux/io.h>
 #include <asm/cacheflush.h>
-
-char in_nmi = 0;	/* Set during NMI to prevent re-entry */
 
 /* Macros for single step instruction identification */
 #define OPCODE_BT(op)		(((op) & 0xff00) == 0x8900)
@@ -47,7 +45,7 @@ char in_nmi = 0;	/* Set during NMI to prevent re-entry */
 /* Calculate the new address for after a step */
 static short *get_step_address(struct pt_regs *linux_regs)
 {
-	opcode_t op = __raw_readw(linux_regs->pc);
+	insn_size_t op = __raw_readw(linux_regs->pc);
 	long addr;
 
 	/* BT */
@@ -134,7 +132,7 @@ static short *get_step_address(struct pt_regs *linux_regs)
  */
 
 static unsigned long stepped_address;
-static opcode_t stepped_opcode;
+static insn_size_t stepped_opcode;
 
 static void do_single_step(struct pt_regs *linux_regs)
 {
@@ -195,8 +193,6 @@ void gdb_regs_to_pt_regs(unsigned long *gdb_regs, struct pt_regs *regs)
 	regs->gbr = gdb_regs[GDB_GBR];
 	regs->mach = gdb_regs[GDB_MACH];
 	regs->macl = gdb_regs[GDB_MACL];
-
-	__asm__ __volatile__ ("ldc %0, vbr" : : "r" (gdb_regs[GDB_VBR]));
 }
 
 void sleeping_thread_to_gdb_regs(unsigned long *gdb_regs, struct task_struct *p)
@@ -255,24 +251,60 @@ BUILD_TRAP_HANDLER(singlestep)
 	local_irq_restore(flags);
 }
 
+static int __kgdb_notify(struct die_args *args, unsigned long cmd)
+{
+	int ret;
 
-BUILD_TRAP_HANDLER(breakpoint)
+	switch (cmd) {
+	case DIE_BREAKPOINT:
+		/*
+		 * This means a user thread is single stepping
+		 * a system call which should be ignored
+		 */
+		if (test_thread_flag(TIF_SINGLESTEP))
+			return NOTIFY_DONE;
+
+		ret = kgdb_handle_exception(args->trapnr & 0xff, args->signr,
+					    args->err, args->regs);
+		if (ret)
+			return NOTIFY_DONE;
+
+		break;
+	}
+
+	return NOTIFY_STOP;
+}
+
+static int
+kgdb_notify(struct notifier_block *self, unsigned long cmd, void *ptr)
 {
 	unsigned long flags;
-	TRAP_HANDLER_DECL;
+	int ret;
 
 	local_irq_save(flags);
-	kgdb_handle_exception(vec >> 2, SIGTRAP, 0, regs);
+	ret = __kgdb_notify(ptr, cmd);
 	local_irq_restore(flags);
+
+	return ret;
 }
+
+static struct notifier_block kgdb_notifier = {
+	.notifier_call	= kgdb_notify,
+
+	/*
+	 * Lowest-prio notifier priority, we want to be notified last:
+	 */
+	.priority	= -INT_MAX,
+};
 
 int kgdb_arch_init(void)
 {
-	return 0;
+	return register_die_notifier(&kgdb_notifier);
 }
 
 void kgdb_arch_exit(void)
 {
+	unregister_die_notifier(&kgdb_notifier);
 }
 
 struct kgdb_arch arch_kgdb_ops = {

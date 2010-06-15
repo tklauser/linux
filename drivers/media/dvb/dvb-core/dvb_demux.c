@@ -21,6 +21,7 @@
  *
  */
 
+#include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -29,6 +30,7 @@
 #include <linux/string.h>
 #include <linux/crc32.h>
 #include <asm/uaccess.h>
+#include <asm/div64.h>
 
 #include "dvb_demux.h"
 
@@ -37,6 +39,21 @@
 ** #define DVB_DEMUX_SECTION_LOSS_LOG to monitor payload loss in the syslog
 */
 // #define DVB_DEMUX_SECTION_LOSS_LOG
+
+static int dvb_demux_tscheck;
+module_param(dvb_demux_tscheck, int, 0644);
+MODULE_PARM_DESC(dvb_demux_tscheck,
+		"enable transport stream continuity and TEI check");
+
+static int dvb_demux_speedcheck;
+module_param(dvb_demux_speedcheck, int, 0644);
+MODULE_PARM_DESC(dvb_demux_speedcheck,
+		"enable transport stream speed check");
+
+#define dprintk_tscheck(x...) do {                              \
+		if (dvb_demux_tscheck && printk_ratelimit())    \
+			printk(x);                              \
+	} while (0)
 
 /******************************************************************************
  * static inlined helper functions
@@ -376,6 +393,59 @@ static void dvb_dmx_swfilter_packet(struct dvb_demux *demux, const u8 *buf)
 	u16 pid = ts_pid(buf);
 	int dvr_done = 0;
 
+	if (dvb_demux_speedcheck) {
+		struct timespec cur_time, delta_time;
+		u64 speed_bytes, speed_timedelta;
+
+		demux->speed_pkts_cnt++;
+
+		/* show speed every SPEED_PKTS_INTERVAL packets */
+		if (!(demux->speed_pkts_cnt % SPEED_PKTS_INTERVAL)) {
+			cur_time = current_kernel_time();
+
+			if (demux->speed_last_time.tv_sec != 0 &&
+					demux->speed_last_time.tv_nsec != 0) {
+				delta_time = timespec_sub(cur_time,
+						demux->speed_last_time);
+				speed_bytes = (u64)demux->speed_pkts_cnt
+					* 188 * 8;
+				/* convert to 1024 basis */
+				speed_bytes = 1000 * div64_u64(speed_bytes,
+						1024);
+				speed_timedelta =
+					(u64)timespec_to_ns(&delta_time);
+				speed_timedelta = div64_u64(speed_timedelta,
+						1000000); /* nsec -> usec */
+				printk(KERN_INFO "TS speed %llu Kbits/sec \n",
+						div64_u64(speed_bytes,
+							speed_timedelta));
+			};
+
+			demux->speed_last_time = cur_time;
+			demux->speed_pkts_cnt = 0;
+		};
+	};
+
+	if (demux->cnt_storage) {
+		/* check pkt counter */
+		if (pid < MAX_PID) {
+			if (buf[1] & 0x80)
+				dprintk_tscheck("TEI detected. "
+						"PID=0x%x data1=0x%x\n",
+						pid, buf[1]);
+
+			if ((buf[3] & 0xf) != demux->cnt_storage[pid])
+				dprintk_tscheck("TS packet counter mismatch. "
+						"PID=0x%x expected 0x%x "
+						"got 0x%x\n",
+						pid, demux->cnt_storage[pid],
+						buf[3] & 0xf);
+
+			demux->cnt_storage[pid] = ((buf[3] & 0xf) + 1)&0xf;
+		};
+		/* end check */
+	};
+
 	list_for_each_entry(feed, &demux->feed_list, list_head) {
 		if ((feed->pid != pid) && (feed->pid != 0x2000))
 			continue;
@@ -385,13 +455,9 @@ static void dvb_dmx_swfilter_packet(struct dvb_demux *demux, const u8 *buf)
 		if ((DVR_FEED(feed)) && (dvr_done++))
 			continue;
 
-		if (feed->pid == pid) {
+		if (feed->pid == pid)
 			dvb_dmx_swfilter_packet_type(feed, buf);
-			if (DVR_FEED(feed))
-				continue;
-		}
-
-		if (feed->pid == 0x2000)
+		else if (feed->pid == 0x2000)
 			feed->cb.ts(buf, 188, NULL, 0, &feed->feed.ts, DMX_OK);
 	}
 }
@@ -1160,6 +1226,7 @@ int dvb_dmx_init(struct dvb_demux *dvbdemux)
 	int i;
 	struct dmx_demux *dmx = &dvbdemux->dmx;
 
+	dvbdemux->cnt_storage = NULL;
 	dvbdemux->users = 0;
 	dvbdemux->filter = vmalloc(dvbdemux->filternum * sizeof(struct dvb_demux_filter));
 
@@ -1169,6 +1236,7 @@ int dvb_dmx_init(struct dvb_demux *dvbdemux)
 	dvbdemux->feed = vmalloc(dvbdemux->feednum * sizeof(struct dvb_demux_feed));
 	if (!dvbdemux->feed) {
 		vfree(dvbdemux->filter);
+		dvbdemux->filter = NULL;
 		return -ENOMEM;
 	}
 	for (i = 0; i < dvbdemux->filternum; i++) {
@@ -1178,6 +1246,13 @@ int dvb_dmx_init(struct dvb_demux *dvbdemux)
 	for (i = 0; i < dvbdemux->feednum; i++) {
 		dvbdemux->feed[i].state = DMX_STATE_FREE;
 		dvbdemux->feed[i].index = i;
+	}
+
+	if (dvb_demux_tscheck) {
+		dvbdemux->cnt_storage = vmalloc(MAX_PID + 1);
+
+		if (!dvbdemux->cnt_storage)
+			printk(KERN_WARNING "Couldn't allocate memory for TS/TEI check. Disabling it\n");
 	}
 
 	INIT_LIST_HEAD(&dvbdemux->frontend_list);
@@ -1226,6 +1301,7 @@ EXPORT_SYMBOL(dvb_dmx_init);
 
 void dvb_dmx_release(struct dvb_demux *dvbdemux)
 {
+	vfree(dvbdemux->cnt_storage);
 	vfree(dvbdemux->filter);
 	vfree(dvbdemux->feed);
 }

@@ -241,6 +241,12 @@ EXPORT_SYMBOL_GPL(usb_unanchor_urb);
  * If the USB subsystem can't allocate sufficient bandwidth to perform
  * the periodic request, submitting such a periodic request should fail.
  *
+ * For devices under xHCI, the bandwidth is reserved at configuration time, or
+ * when the alt setting is selected.  If there is not enough bus bandwidth, the
+ * configuration/alt setting request will fail.  Therefore, submissions to
+ * periodic endpoints on devices under xHCI should never fail due to bandwidth
+ * constraints.
+ *
  * Device drivers must explicitly request that repetition, by ensuring that
  * some URB is always on the endpoint's queue (except possibly for short
  * periods during completion callacks).  When there is no longer an urb
@@ -351,6 +357,7 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 	if (xfertype == USB_ENDPOINT_XFER_ISOC) {
 		int	n, len;
 
+		/* FIXME SuperSpeed isoc endpoints have up to 16 bursts */
 		/* "high bandwidth" mode, 1-3 packets/uframe? */
 		if (dev->speed == USB_SPEED_HIGH) {
 			int	mult = 1 + ((max >> 11) & 0x03);
@@ -380,6 +387,13 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 	{
 	unsigned int	orig_flags = urb->transfer_flags;
 	unsigned int	allowed;
+	static int pipetypes[4] = {
+		PIPE_CONTROL, PIPE_ISOCHRONOUS, PIPE_BULK, PIPE_INTERRUPT
+	};
+
+	/* Check that the pipe's type matches the endpoint's type */
+	if (usb_pipetype(urb->pipe) != pipetypes[xfertype])
+		return -EPIPE;		/* The most suitable error code :-) */
 
 	/* enforce simple/standard policy */
 	allowed = (URB_NO_TRANSFER_DMA_MAP | URB_NO_SETUP_DMA_MAP |
@@ -422,10 +436,28 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 	case USB_ENDPOINT_XFER_ISOC:
 	case USB_ENDPOINT_XFER_INT:
 		/* too small? */
-		if (urb->interval <= 0)
-			return -EINVAL;
+		switch (dev->speed) {
+		case USB_SPEED_WIRELESS:
+			if (urb->interval < 6)
+				return -EINVAL;
+			break;
+		default:
+			if (urb->interval <= 0)
+				return -EINVAL;
+			break;
+		}
 		/* too big? */
 		switch (dev->speed) {
+		case USB_SPEED_SUPER:	/* units are 125us */
+			/* Handle up to 2^(16-1) microframes */
+			if (urb->interval > (1 << 15))
+				return -EINVAL;
+			max = 1 << 15;
+			break;
+		case USB_SPEED_WIRELESS:
+			if (urb->interval > 16)
+				return -EINVAL;
+			break;
 		case USB_SPEED_HIGH:	/* units are microframes */
 			/* NOTE usb handles 2^15 */
 			if (urb->interval > (1024 * 8))
@@ -449,8 +481,10 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 		default:
 			return -EINVAL;
 		}
-		/* Round down to a power of 2, no more than max */
-		urb->interval = min(max, 1 << ilog2(urb->interval));
+		if (dev->speed != USB_SPEED_WIRELESS) {
+			/* Round down to a power of 2, no more than max */
+			urb->interval = min(max, 1 << ilog2(urb->interval));
+		}
 	}
 
 	return usb_hcd_submit_urb(urb, mem_flags);

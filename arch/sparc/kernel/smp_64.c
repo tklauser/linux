@@ -20,8 +20,11 @@
 #include <linux/cache.h>
 #include <linux/jiffies.h>
 #include <linux/profile.h>
-#include <linux/lmb.h>
+#include <linux/bootmem.h>
+#include <linux/vmalloc.h>
+#include <linux/ftrace.h>
 #include <linux/cpu.h>
+#include <linux/slab.h>
 
 #include <asm/head.h>
 #include <asm/ptrace.h>
@@ -46,6 +49,8 @@
 #include <asm/mdesc.h>
 #include <asm/ldc.h>
 #include <asm/hypervisor.h>
+
+#include "cpumap.h"
 
 int sparc64_multi_core __read_mostly;
 
@@ -278,7 +283,7 @@ static unsigned long kimage_addr_to_ra(void *p)
 	return kern_base + (val - KERNBASE);
 }
 
-static void __cpuinit ldom_startcpu_cpuid(unsigned int cpu, unsigned long thread_reg)
+static void __cpuinit ldom_startcpu_cpuid(unsigned int cpu, unsigned long thread_reg, void **descrp)
 {
 	extern unsigned long sparc64_ttable_tl0;
 	extern unsigned long kern_locked_tte_data;
@@ -298,12 +303,12 @@ static void __cpuinit ldom_startcpu_cpuid(unsigned int cpu, unsigned long thread
 		       "hvtramp_descr.\n");
 		return;
 	}
+	*descrp = hdesc;
 
 	hdesc->cpu = cpu;
 	hdesc->num_mappings = num_kernel_image_mappings;
 
 	tb = &trap_block[cpu];
-	tb->hdesc = hdesc;
 
 	hdesc->fault_info_va = (unsigned long) &tb->fault_info;
 	hdesc->fault_info_pa = kimage_addr_to_ra(&tb->fault_info);
@@ -341,12 +346,12 @@ static struct thread_info *cpu_new_thread = NULL;
 
 static int __cpuinit smp_boot_one_cpu(unsigned int cpu)
 {
-	struct trap_per_cpu *tb = &trap_block[cpu];
 	unsigned long entry =
 		(unsigned long)(&sparc64_cpu_startup);
 	unsigned long cookie =
 		(unsigned long)(&cpu_new_thread);
 	struct task_struct *p;
+	void *descr = NULL;
 	int timeout, ret;
 
 	p = fork_idle(cpu);
@@ -359,14 +364,15 @@ static int __cpuinit smp_boot_one_cpu(unsigned int cpu)
 #if defined(CONFIG_SUN_LDOMS) && defined(CONFIG_HOTPLUG_CPU)
 		if (ldom_domaining_enabled)
 			ldom_startcpu_cpuid(cpu,
-					    (unsigned long) cpu_new_thread);
+					    (unsigned long) cpu_new_thread,
+					    &descr);
 		else
 #endif
 			prom_startcpu_cpuid(cpu, entry, cookie);
 	} else {
 		struct device_node *dp = of_find_node_by_cpuid(cpu);
 
-		prom_startcpu(dp->node, entry, cookie);
+		prom_startcpu(dp->phandle, entry, cookie);
 	}
 
 	for (timeout = 0; timeout < 50000; timeout++) {
@@ -383,10 +389,7 @@ static int __cpuinit smp_boot_one_cpu(unsigned int cpu)
 	}
 	cpu_new_thread = NULL;
 
-	if (tb->hdesc) {
-		kfree(tb->hdesc);
-		tb->hdesc = NULL;
-	}
+	kfree(descr);
 
 	return ret;
 }
@@ -821,13 +824,13 @@ void arch_send_call_function_single_ipi(int cpu)
 		      &cpumask_of_cpu(cpu));
 }
 
-void smp_call_function_client(int irq, struct pt_regs *regs)
+void __irq_entry smp_call_function_client(int irq, struct pt_regs *regs)
 {
 	clear_softint(1 << irq);
 	generic_smp_call_function_interrupt();
 }
 
-void smp_call_function_single_client(int irq, struct pt_regs *regs)
+void __irq_entry smp_call_function_single_client(int irq, struct pt_regs *regs)
 {
 	clear_softint(1 << irq);
 	generic_smp_call_function_single_interrupt();
@@ -963,7 +966,7 @@ void flush_dcache_page_all(struct mm_struct *mm, struct page *page)
 	put_cpu();
 }
 
-void smp_new_mmu_context_version_client(int irq, struct pt_regs *regs)
+void __irq_entry smp_new_mmu_context_version_client(int irq, struct pt_regs *regs)
 {
 	struct mm_struct *mm;
 	unsigned long flags;
@@ -1147,7 +1150,7 @@ void smp_release(void)
  */
 extern void prom_world(int);
 
-void smp_penguin_jailcell(int irq, struct pt_regs *regs)
+void __irq_entry smp_penguin_jailcell(int irq, struct pt_regs *regs)
 {
 	clear_softint(1 << irq);
 
@@ -1315,6 +1318,8 @@ int __cpu_disable(void)
 	cpu_clear(cpu, cpu_online_map);
 	ipi_call_unlock();
 
+	cpu_map_rebuild();
+
 	return 0;
 }
 
@@ -1361,7 +1366,7 @@ void smp_send_reschedule(int cpu)
 		      &cpumask_of_cpu(cpu));
 }
 
-void smp_receive_signal_client(int irq, struct pt_regs *regs)
+void __irq_entry smp_receive_signal_client(int irq, struct pt_regs *regs)
 {
 	clear_softint(1 << irq);
 }
@@ -1373,36 +1378,114 @@ void smp_send_stop(void)
 {
 }
 
-unsigned long __per_cpu_base __read_mostly;
-unsigned long __per_cpu_shift __read_mostly;
-
-EXPORT_SYMBOL(__per_cpu_base);
-EXPORT_SYMBOL(__per_cpu_shift);
-
-void __init real_setup_per_cpu_areas(void)
+/**
+ * pcpu_alloc_bootmem - NUMA friendly alloc_bootmem wrapper for percpu
+ * @cpu: cpu to allocate for
+ * @size: size allocation in bytes
+ * @align: alignment
+ *
+ * Allocate @size bytes aligned at @align for cpu @cpu.  This wrapper
+ * does the right thing for NUMA regardless of the current
+ * configuration.
+ *
+ * RETURNS:
+ * Pointer to the allocated area on success, NULL on failure.
+ */
+static void * __init pcpu_alloc_bootmem(unsigned int cpu, size_t size,
+					size_t align)
 {
-	unsigned long paddr, goal, size, i;
-	char *ptr;
+	const unsigned long goal = __pa(MAX_DMA_ADDRESS);
+#ifdef CONFIG_NEED_MULTIPLE_NODES
+	int node = cpu_to_node(cpu);
+	void *ptr;
 
-	/* Copy section for each CPU (we discard the original) */
-	goal = PERCPU_ENOUGH_ROOM;
+	if (!node_online(node) || !NODE_DATA(node)) {
+		ptr = __alloc_bootmem(size, align, goal);
+		pr_info("cpu %d has no node %d or node-local memory\n",
+			cpu, node);
+		pr_debug("per cpu data for cpu%d %lu bytes at %016lx\n",
+			 cpu, size, __pa(ptr));
+	} else {
+		ptr = __alloc_bootmem_node(NODE_DATA(node),
+					   size, align, goal);
+		pr_debug("per cpu data for cpu%d %lu bytes on node%d at "
+			 "%016lx\n", cpu, size, node, __pa(ptr));
+	}
+	return ptr;
+#else
+	return __alloc_bootmem(size, align, goal);
+#endif
+}
 
-	__per_cpu_shift = PAGE_SHIFT;
-	for (size = PAGE_SIZE; size < goal; size <<= 1UL)
-		__per_cpu_shift++;
+static void __init pcpu_free_bootmem(void *ptr, size_t size)
+{
+	free_bootmem(__pa(ptr), size);
+}
 
-	paddr = lmb_alloc(size * NR_CPUS, PAGE_SIZE);
-	if (!paddr) {
-		prom_printf("Cannot allocate per-cpu memory.\n");
-		prom_halt();
+static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
+{
+	if (cpu_to_node(from) == cpu_to_node(to))
+		return LOCAL_DISTANCE;
+	else
+		return REMOTE_DISTANCE;
+}
+
+static void __init pcpu_populate_pte(unsigned long addr)
+{
+	pgd_t *pgd = pgd_offset_k(addr);
+	pud_t *pud;
+	pmd_t *pmd;
+
+	pud = pud_offset(pgd, addr);
+	if (pud_none(*pud)) {
+		pmd_t *new;
+
+		new = __alloc_bootmem(PAGE_SIZE, PAGE_SIZE, PAGE_SIZE);
+		pud_populate(&init_mm, pud, new);
 	}
 
-	ptr = __va(paddr);
-	__per_cpu_base = ptr - __per_cpu_start;
+	pmd = pmd_offset(pud, addr);
+	if (!pmd_present(*pmd)) {
+		pte_t *new;
 
-	for (i = 0; i < NR_CPUS; i++, ptr += size)
-		memcpy(ptr, __per_cpu_start, __per_cpu_end - __per_cpu_start);
+		new = __alloc_bootmem(PAGE_SIZE, PAGE_SIZE, PAGE_SIZE);
+		pmd_populate_kernel(&init_mm, pmd, new);
+	}
+}
+
+void __init setup_per_cpu_areas(void)
+{
+	unsigned long delta;
+	unsigned int cpu;
+	int rc = -EINVAL;
+
+	if (pcpu_chosen_fc != PCPU_FC_PAGE) {
+		rc = pcpu_embed_first_chunk(PERCPU_MODULE_RESERVE,
+					    PERCPU_DYNAMIC_RESERVE, 4 << 20,
+					    pcpu_cpu_distance,
+					    pcpu_alloc_bootmem,
+					    pcpu_free_bootmem);
+		if (rc)
+			pr_warning("PERCPU: %s allocator failed (%d), "
+				   "falling back to page size\n",
+				   pcpu_fc_names[pcpu_chosen_fc], rc);
+	}
+	if (rc < 0)
+		rc = pcpu_page_first_chunk(PERCPU_MODULE_RESERVE,
+					   pcpu_alloc_bootmem,
+					   pcpu_free_bootmem,
+					   pcpu_populate_pte);
+	if (rc < 0)
+		panic("cannot initialize percpu area (err=%d)", rc);
+
+	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
+	for_each_possible_cpu(cpu)
+		__per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu];
 
 	/* Setup %g5 for the boot cpu.  */
 	__local_per_cpu_offset = __per_cpu_offset(smp_processor_id());
+
+	of_fill_in_cpu_data();
+	if (tlb_type == hypervisor)
+		mdesc_fill_in_cpu_data(cpu_all_mask);
 }

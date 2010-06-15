@@ -31,13 +31,21 @@
 #include <sound/initval.h>
 #include <sound/soc.h>
 
-#include <mach/control.h>
-#include <mach/dma.h>
-#include <mach/mcbsp.h>
+#include <plat/control.h>
+#include <plat/dma.h>
+#include <plat/mcbsp.h>
 #include "omap-mcbsp.h"
 #include "omap-pcm.h"
 
 #define OMAP_MCBSP_RATES	(SNDRV_PCM_RATE_8000_96000)
+
+#define OMAP_MCBSP_SOC_SINGLE_S16_EXT(xname, xmin, xmax, \
+	xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = omap_mcbsp_st_info_volsw, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long) &(struct soc_mixer_control) \
+	{.min = xmin, .max = xmax} }
 
 struct omap_mcbsp_data {
 	unsigned int			bus_id;
@@ -49,6 +57,8 @@ struct omap_mcbsp_data {
 	 */
 	int				active;
 	int				configured;
+	unsigned int			in_freq;
+	int				clk_div;
 };
 
 #define to_mcbsp(priv)	container_of((priv), struct omap_mcbsp_data, bus_id)
@@ -80,11 +90,11 @@ static const int omap1_dma_reqs[][2] = {};
 static const unsigned long omap1_mcbsp_port[][2] = {};
 #endif
 
-#if defined(CONFIG_ARCH_OMAP24XX) || defined(CONFIG_ARCH_OMAP34XX)
+#if defined(CONFIG_ARCH_OMAP2) || defined(CONFIG_ARCH_OMAP3)
 static const int omap24xx_dma_reqs[][2] = {
 	{ OMAP24XX_DMA_MCBSP1_TX, OMAP24XX_DMA_MCBSP1_RX },
 	{ OMAP24XX_DMA_MCBSP2_TX, OMAP24XX_DMA_MCBSP2_RX },
-#if defined(CONFIG_ARCH_OMAP2430) || defined(CONFIG_ARCH_OMAP34XX)
+#if defined(CONFIG_ARCH_OMAP2430) || defined(CONFIG_ARCH_OMAP3)
 	{ OMAP24XX_DMA_MCBSP3_TX, OMAP24XX_DMA_MCBSP3_RX },
 	{ OMAP24XX_DMA_MCBSP4_TX, OMAP24XX_DMA_MCBSP4_RX },
 	{ OMAP24XX_DMA_MCBSP5_TX, OMAP24XX_DMA_MCBSP5_RX },
@@ -122,7 +132,7 @@ static const unsigned long omap2430_mcbsp_port[][2] = {
 static const unsigned long omap2430_mcbsp_port[][2] = {};
 #endif
 
-#if defined(CONFIG_ARCH_OMAP34XX)
+#if defined(CONFIG_ARCH_OMAP3)
 static const unsigned long omap34xx_mcbsp_port[][2] = {
 	{ OMAP34XX_MCBSP1_BASE + OMAP_MCBSP_REG_DXR,
 	  OMAP34XX_MCBSP1_BASE + OMAP_MCBSP_REG_DRR },
@@ -139,27 +149,67 @@ static const unsigned long omap34xx_mcbsp_port[][2] = {
 static const unsigned long omap34xx_mcbsp_port[][2] = {};
 #endif
 
+static void omap_mcbsp_set_threshold(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
+	struct omap_mcbsp_data *mcbsp_data = to_mcbsp(cpu_dai->private_data);
+	int dma_op_mode = omap_mcbsp_get_dma_op_mode(mcbsp_data->bus_id);
+	int samples;
+
+	/* TODO: Currently, MODE_ELEMENT == MODE_FRAME */
+	if (dma_op_mode == MCBSP_DMA_MODE_THRESHOLD)
+		samples = snd_pcm_lib_period_bytes(substream) >> 1;
+	else
+		samples = 1;
+
+	/* Configure McBSP internal buffer usage */
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		omap_mcbsp_set_tx_threshold(mcbsp_data->bus_id, samples - 1);
+	else
+		omap_mcbsp_set_rx_threshold(mcbsp_data->bus_id, samples - 1);
+}
+
 static int omap_mcbsp_dai_startup(struct snd_pcm_substream *substream,
 				  struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
 	struct omap_mcbsp_data *mcbsp_data = to_mcbsp(cpu_dai->private_data);
+	int bus_id = mcbsp_data->bus_id;
 	int err = 0;
 
-	if (cpu_is_omap343x() && mcbsp_data->bus_id == 1) {
+	if (!cpu_dai->active)
+		err = omap_mcbsp_request(bus_id);
+
+	if (cpu_is_omap343x()) {
+		int dma_op_mode = omap_mcbsp_get_dma_op_mode(bus_id);
+		int max_period;
+
 		/*
 		 * McBSP2 in OMAP3 has 1024 * 32-bit internal audio buffer.
 		 * Set constraint for minimum buffer size to the same than FIFO
 		 * size in order to avoid underruns in playback startup because
 		 * HW is keeping the DMA request active until FIFO is filled.
 		 */
-		snd_pcm_hw_constraint_minmax(substream->runtime,
-			SNDRV_PCM_HW_PARAM_BUFFER_BYTES, 4096, UINT_MAX);
-	}
+		if (bus_id == 1)
+			snd_pcm_hw_constraint_minmax(substream->runtime,
+					SNDRV_PCM_HW_PARAM_BUFFER_BYTES,
+					4096, UINT_MAX);
 
-	if (!cpu_dai->active)
-		err = omap_mcbsp_request(mcbsp_data->bus_id);
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			max_period = omap_mcbsp_get_max_tx_threshold(bus_id);
+		else
+			max_period = omap_mcbsp_get_max_rx_threshold(bus_id);
+
+		max_period++;
+		max_period <<= 1;
+
+		if (dma_op_mode == MCBSP_DMA_MODE_THRESHOLD)
+			snd_pcm_hw_constraint_minmax(substream->runtime,
+						SNDRV_PCM_HW_PARAM_PERIOD_BYTES,
+						32, max_period);
+	}
 
 	return err;
 }
@@ -183,21 +233,21 @@ static int omap_mcbsp_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
 	struct omap_mcbsp_data *mcbsp_data = to_mcbsp(cpu_dai->private_data);
-	int err = 0;
+	int err = 0, play = (substream->stream == SNDRV_PCM_STREAM_PLAYBACK);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		if (!mcbsp_data->active++)
-			omap_mcbsp_start(mcbsp_data->bus_id);
+		mcbsp_data->active++;
+		omap_mcbsp_start(mcbsp_data->bus_id, play, !play);
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		if (!--mcbsp_data->active)
-			omap_mcbsp_stop(mcbsp_data->bus_id);
+		omap_mcbsp_stop(mcbsp_data->bus_id, play, !play);
+		mcbsp_data->active--;
 		break;
 	default:
 		err = -EINVAL;
@@ -215,8 +265,9 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 	struct omap_mcbsp_data *mcbsp_data = to_mcbsp(cpu_dai->private_data);
 	struct omap_mcbsp_reg_cfg *regs = &mcbsp_data->regs;
 	int dma, bus_id = mcbsp_data->bus_id, id = cpu_dai->id;
-	int wlen, channels;
+	int wlen, channels, wpf, sync_mode = OMAP_DMA_SYNC_ELEMENT;
 	unsigned long port;
+	unsigned int format, div, framesize, master;
 
 	if (cpu_class_is_omap1()) {
 		dma = omap1_dma_reqs[bus_id][substream->stream];
@@ -230,6 +281,12 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 	} else if (cpu_is_omap343x()) {
 		dma = omap24xx_dma_reqs[bus_id][substream->stream];
 		port = omap34xx_mcbsp_port[bus_id][substream->stream];
+		omap_mcbsp_dai_dma_params[id][substream->stream].set_threshold =
+						omap_mcbsp_set_threshold;
+		/* TODO: Currently, MODE_ELEMENT == MODE_FRAME */
+		if (omap_mcbsp_get_dma_op_mode(bus_id) ==
+						MCBSP_DMA_MODE_THRESHOLD)
+			sync_mode = OMAP_DMA_SYNC_FRAME;
 	} else {
 		return -ENODEV;
 	}
@@ -237,30 +294,32 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 		substream->stream ? "Audio Capture" : "Audio Playback";
 	omap_mcbsp_dai_dma_params[id][substream->stream].dma_req = dma;
 	omap_mcbsp_dai_dma_params[id][substream->stream].port_addr = port;
-	cpu_dai->dma_data = &omap_mcbsp_dai_dma_params[id][substream->stream];
+	omap_mcbsp_dai_dma_params[id][substream->stream].sync_mode = sync_mode;
+	omap_mcbsp_dai_dma_params[id][substream->stream].data_type =
+							OMAP_DMA_DATA_TYPE_S16;
+
+	snd_soc_dai_set_dma_data(cpu_dai, substream,
+		&omap_mcbsp_dai_dma_params[id][substream->stream]);
 
 	if (mcbsp_data->configured) {
 		/* McBSP already configured by another stream */
 		return 0;
 	}
 
-	channels = params_channels(params);
-	switch (channels) {
-	case 2:
+	format = mcbsp_data->fmt & SND_SOC_DAIFMT_FORMAT_MASK;
+	wpf = channels = params_channels(params);
+	if (channels == 2 && format == SND_SOC_DAIFMT_I2S) {
 		/* Use dual-phase frames */
 		regs->rcr2	|= RPHASE;
 		regs->xcr2	|= XPHASE;
-	case 1:
-		/* Set 1 word per (McBSP) frame */
-		regs->rcr2	|= RFRLEN2(1 - 1);
-		regs->rcr1	|= RFRLEN1(1 - 1);
-		regs->xcr2	|= XFRLEN2(1 - 1);
-		regs->xcr1	|= XFRLEN1(1 - 1);
-		break;
-	default:
-		/* Unsupported number of channels */
-		return -EINVAL;
+		/* Set 1 word per (McBSP) frame for phase1 and phase2 */
+		wpf--;
+		regs->rcr2	|= RFRLEN2(wpf - 1);
+		regs->xcr2	|= XFRLEN2(wpf - 1);
 	}
+
+	regs->rcr1	|= RFRLEN1(wpf - 1);
+	regs->xcr1	|= XFRLEN1(wpf - 1);
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -276,14 +335,30 @@ static int omap_mcbsp_dai_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
+	/* In McBSP master modes, FRAME (i.e. sample rate) is generated
+	 * by _counting_ BCLKs. Calculate frame size in BCLKs */
+	master = mcbsp_data->fmt & SND_SOC_DAIFMT_MASTER_MASK;
+	if (master ==	SND_SOC_DAIFMT_CBS_CFS) {
+		div = mcbsp_data->clk_div ? mcbsp_data->clk_div : 1;
+		framesize = (mcbsp_data->in_freq / div) / params_rate(params);
+
+		if (framesize < wlen * channels) {
+			printk(KERN_ERR "%s: not enough bandwidth for desired rate and "
+					"channels\n", __func__);
+			return -EINVAL;
+		}
+	} else
+		framesize = wlen * channels;
+
 	/* Set FS period and length in terms of bit clock periods */
-	switch (mcbsp_data->fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	switch (format) {
 	case SND_SOC_DAIFMT_I2S:
-		regs->srgr2	|= FPER(wlen * 2 - 1);
-		regs->srgr1	|= FWID(wlen - 1);
+		regs->srgr2	|= FPER(framesize - 1);
+		regs->srgr1	|= FWID((framesize >> 1) - 1);
 		break;
+	case SND_SOC_DAIFMT_DSP_A:
 	case SND_SOC_DAIFMT_DSP_B:
-		regs->srgr2	|= FPER(wlen * channels - 1);
+		regs->srgr2	|= FPER(framesize - 1);
 		regs->srgr1	|= FWID(0);
 		break;
 	}
@@ -313,11 +388,14 @@ static int omap_mcbsp_dai_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 	/* Generic McBSP register settings */
 	regs->spcr2	|= XINTM(3) | FREE;
 	regs->spcr1	|= RINTM(3);
-	regs->rcr2	|= RFIG;
-	regs->xcr2	|= XFIG;
+	/* RFIG and XFIG are not defined in 34xx */
+	if (!cpu_is_omap34xx()) {
+		regs->rcr2	|= RFIG;
+		regs->xcr2	|= XFIG;
+	}
 	if (cpu_is_omap2430() || cpu_is_omap34xx()) {
-		regs->xccr = DXENDLY(1) | XDMAEN;
-		regs->rccr = RFULL_CYCLE | RDMAEN;
+		regs->xccr = DXENDLY(1) | XDMAEN | XDISABLE;
+		regs->rccr = RFULL_CYCLE | RDMAEN | RDISABLE;
 	}
 
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
@@ -325,6 +403,13 @@ static int omap_mcbsp_dai_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 		/* 1-bit data delay */
 		regs->rcr2	|= RDATDLY(1);
 		regs->xcr2	|= XDATDLY(1);
+		break;
+	case SND_SOC_DAIFMT_DSP_A:
+		/* 1-bit data delay */
+		regs->rcr2      |= RDATDLY(1);
+		regs->xcr2      |= XDATDLY(1);
+		/* Invert FS polarity configuration */
+		temp_fmt ^= SND_SOC_DAIFMT_NB_IF;
 		break;
 	case SND_SOC_DAIFMT_DSP_B:
 		/* 0-bit data delay */
@@ -389,6 +474,7 @@ static int omap_mcbsp_dai_set_clkdiv(struct snd_soc_dai *cpu_dai,
 	if (div_id != OMAP_MCBSP_CLKGDV)
 		return -ENODEV;
 
+	mcbsp_data->clk_div = div;
 	regs->srgr1	|= CLKGDV(div - 1);
 
 	return 0;
@@ -447,6 +533,40 @@ static int omap_mcbsp_dai_set_clks_src(struct omap_mcbsp_data *mcbsp_data,
 	return 0;
 }
 
+static int omap_mcbsp_dai_set_rcvr_src(struct omap_mcbsp_data *mcbsp_data,
+				       int clk_id)
+{
+	int sel_bit, set = 0;
+	u16 reg = OMAP2_CONTROL_DEVCONF0;
+
+	if (cpu_class_is_omap1())
+		return -EINVAL; /* TODO: Can this be implemented for OMAP1? */
+	if (mcbsp_data->bus_id != 0)
+		return -EINVAL;
+
+	switch (clk_id) {
+	case OMAP_MCBSP_CLKR_SRC_CLKX:
+		set = 1;
+	case OMAP_MCBSP_CLKR_SRC_CLKR:
+		sel_bit = 3;
+		break;
+	case OMAP_MCBSP_FSR_SRC_FSX:
+		set = 1;
+	case OMAP_MCBSP_FSR_SRC_FSR:
+		sel_bit = 4;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (set)
+		omap_ctrl_writel(omap_ctrl_readl(reg) | (1 << sel_bit), reg);
+	else
+		omap_ctrl_writel(omap_ctrl_readl(reg) & ~(1 << sel_bit), reg);
+
+	return 0;
+}
+
 static int omap_mcbsp_dai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 					 int clk_id, unsigned int freq,
 					 int dir)
@@ -454,6 +574,8 @@ static int omap_mcbsp_dai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 	struct omap_mcbsp_data *mcbsp_data = to_mcbsp(cpu_dai->private_data);
 	struct omap_mcbsp_reg_cfg *regs = &mcbsp_data->regs;
 	int err = 0;
+
+	mcbsp_data->in_freq = freq;
 
 	switch (clk_id) {
 	case OMAP_MCBSP_SYSCLK_CLK:
@@ -468,6 +590,13 @@ static int omap_mcbsp_dai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 		regs->srgr2	|= CLKSM;
 	case OMAP_MCBSP_SYSCLK_CLKR_EXT:
 		regs->pcr0	|= SCLKME;
+		break;
+
+	case OMAP_MCBSP_CLKR_SRC_CLKR:
+	case OMAP_MCBSP_CLKR_SRC_CLKX:
+	case OMAP_MCBSP_FSR_SRC_FSR:
+	case OMAP_MCBSP_FSR_SRC_FSX:
+		err = omap_mcbsp_dai_set_rcvr_src(mcbsp_data, clk_id);
 		break;
 	default:
 		err = -ENODEV;
@@ -492,13 +621,13 @@ static struct snd_soc_dai_ops omap_mcbsp_dai_ops = {
 	.id = (link_id),					\
 	.playback = {						\
 		.channels_min = 1,				\
-		.channels_max = 2,				\
+		.channels_max = 16,				\
 		.rates = OMAP_MCBSP_RATES,			\
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
 	},							\
 	.capture = {						\
 		.channels_min = 1,				\
-		.channels_max = 2,				\
+		.channels_max = 16,				\
 		.rates = OMAP_MCBSP_RATES,			\
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
 	},							\
@@ -519,6 +648,136 @@ struct snd_soc_dai omap_mcbsp_dai[] = {
 };
 
 EXPORT_SYMBOL_GPL(omap_mcbsp_dai);
+
+int omap_mcbsp_st_info_volsw(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_info *uinfo)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	int max = mc->max;
+	int min = mc->min;
+
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = min;
+	uinfo->value.integer.max = max;
+	return 0;
+}
+
+#define OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(id, channel)			\
+static int								\
+omap_mcbsp##id##_set_st_ch##channel##_volume(struct snd_kcontrol *kc,	\
+					struct snd_ctl_elem_value *uc)	\
+{									\
+	struct soc_mixer_control *mc =					\
+		(struct soc_mixer_control *)kc->private_value;		\
+	int max = mc->max;						\
+	int min = mc->min;						\
+	int val = uc->value.integer.value[0];				\
+									\
+	if (val < min || val > max)					\
+		return -EINVAL;						\
+									\
+	/* OMAP McBSP implementation uses index values 0..4 */		\
+	return omap_st_set_chgain((id)-1, channel, val);		\
+}
+
+#define OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(id, channel)			\
+static int								\
+omap_mcbsp##id##_get_st_ch##channel##_volume(struct snd_kcontrol *kc,	\
+					struct snd_ctl_elem_value *uc)	\
+{									\
+	s16 chgain;							\
+									\
+	if (omap_st_get_chgain((id)-1, channel, &chgain))		\
+		return -EAGAIN;						\
+									\
+	uc->value.integer.value[0] = chgain;				\
+	return 0;							\
+}
+
+OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(2, 0)
+OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(2, 1)
+OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(3, 0)
+OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(3, 1)
+OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(2, 0)
+OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(2, 1)
+OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(3, 0)
+OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(3, 1)
+
+static int omap_mcbsp_st_put_mode(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u8 value = ucontrol->value.integer.value[0];
+
+	if (value == omap_st_is_enabled(mc->reg))
+		return 0;
+
+	if (value)
+		omap_st_enable(mc->reg);
+	else
+		omap_st_disable(mc->reg);
+
+	return 1;
+}
+
+static int omap_mcbsp_st_get_mode(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	ucontrol->value.integer.value[0] = omap_st_is_enabled(mc->reg);
+	return 0;
+}
+
+static const struct snd_kcontrol_new omap_mcbsp2_st_controls[] = {
+	SOC_SINGLE_EXT("McBSP2 Sidetone Switch", 1, 0, 1, 0,
+			omap_mcbsp_st_get_mode, omap_mcbsp_st_put_mode),
+	OMAP_MCBSP_SOC_SINGLE_S16_EXT("McBSP2 Sidetone Channel 0 Volume",
+				      -32768, 32767,
+				      omap_mcbsp2_get_st_ch0_volume,
+				      omap_mcbsp2_set_st_ch0_volume),
+	OMAP_MCBSP_SOC_SINGLE_S16_EXT("McBSP2 Sidetone Channel 1 Volume",
+				      -32768, 32767,
+				      omap_mcbsp2_get_st_ch1_volume,
+				      omap_mcbsp2_set_st_ch1_volume),
+};
+
+static const struct snd_kcontrol_new omap_mcbsp3_st_controls[] = {
+	SOC_SINGLE_EXT("McBSP3 Sidetone Switch", 2, 0, 1, 0,
+			omap_mcbsp_st_get_mode, omap_mcbsp_st_put_mode),
+	OMAP_MCBSP_SOC_SINGLE_S16_EXT("McBSP3 Sidetone Channel 0 Volume",
+				      -32768, 32767,
+				      omap_mcbsp3_get_st_ch0_volume,
+				      omap_mcbsp3_set_st_ch0_volume),
+	OMAP_MCBSP_SOC_SINGLE_S16_EXT("McBSP3 Sidetone Channel 1 Volume",
+				      -32768, 32767,
+				      omap_mcbsp3_get_st_ch1_volume,
+				      omap_mcbsp3_set_st_ch1_volume),
+};
+
+int omap_mcbsp_st_add_controls(struct snd_soc_codec *codec, int mcbsp_id)
+{
+	if (!cpu_is_omap34xx())
+		return -ENODEV;
+
+	switch (mcbsp_id) {
+	case 1: /* McBSP 2 */
+		return snd_soc_add_controls(codec, omap_mcbsp2_st_controls,
+					ARRAY_SIZE(omap_mcbsp2_st_controls));
+	case 2: /* McBSP 3 */
+		return snd_soc_add_controls(codec, omap_mcbsp3_st_controls,
+					ARRAY_SIZE(omap_mcbsp3_st_controls));
+	default:
+		break;
+	}
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(omap_mcbsp_st_add_controls);
 
 static int __init snd_omap_mcbsp_init(void)
 {

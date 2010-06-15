@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,7 +50,7 @@ ACPI_MODULE_NAME("utmutex")
 /* Local prototypes */
 static acpi_status acpi_ut_create_mutex(acpi_mutex_handle mutex_id);
 
-static acpi_status acpi_ut_delete_mutex(acpi_mutex_handle mutex_id);
+static void acpi_ut_delete_mutex(acpi_mutex_handle mutex_id);
 
 /*******************************************************************************
  *
@@ -114,7 +114,7 @@ void acpi_ut_mutex_terminate(void)
 	/* Delete each predefined mutex object */
 
 	for (i = 0; i < ACPI_NUM_MUTEX; i++) {
-		(void)acpi_ut_delete_mutex(i);
+		acpi_ut_delete_mutex(i);
 	}
 
 	/* Delete the spinlocks */
@@ -146,10 +146,6 @@ static acpi_status acpi_ut_create_mutex(acpi_mutex_handle mutex_id)
 
 	ACPI_FUNCTION_TRACE_U32(ut_create_mutex, mutex_id);
 
-	if (mutex_id > ACPI_MAX_MUTEX) {
-		return_ACPI_STATUS(AE_BAD_PARAMETER);
-	}
-
 	if (!acpi_gbl_mutex_info[mutex_id].mutex) {
 		status =
 		    acpi_os_create_mutex(&acpi_gbl_mutex_info[mutex_id].mutex);
@@ -173,21 +169,15 @@ static acpi_status acpi_ut_create_mutex(acpi_mutex_handle mutex_id)
  *
  ******************************************************************************/
 
-static acpi_status acpi_ut_delete_mutex(acpi_mutex_handle mutex_id)
+static void acpi_ut_delete_mutex(acpi_mutex_handle mutex_id)
 {
 
 	ACPI_FUNCTION_TRACE_U32(ut_delete_mutex, mutex_id);
-
-	if (mutex_id > ACPI_MAX_MUTEX) {
-		return_ACPI_STATUS(AE_BAD_PARAMETER);
-	}
 
 	acpi_os_delete_mutex(acpi_gbl_mutex_info[mutex_id].mutex);
 
 	acpi_gbl_mutex_info[mutex_id].mutex = NULL;
 	acpi_gbl_mutex_info[mutex_id].thread_id = ACPI_MUTEX_NOT_ACQUIRED;
-
-	return_ACPI_STATUS(AE_OK);
 }
 
 /*******************************************************************************
@@ -230,17 +220,18 @@ acpi_status acpi_ut_acquire_mutex(acpi_mutex_handle mutex_id)
 			if (acpi_gbl_mutex_info[i].thread_id == this_thread_id) {
 				if (i == mutex_id) {
 					ACPI_ERROR((AE_INFO,
-						    "Mutex [%s] already acquired by this thread [%X]",
+						    "Mutex [%s] already acquired by this thread [%p]",
 						    acpi_ut_get_mutex_name
 						    (mutex_id),
-						    this_thread_id));
+						    ACPI_CAST_PTR(void,
+								  this_thread_id)));
 
 					return (AE_ALREADY_ACQUIRED);
 				}
 
 				ACPI_ERROR((AE_INFO,
-					    "Invalid acquire order: Thread %X owns [%s], wants [%s]",
-					    this_thread_id,
+					    "Invalid acquire order: Thread %p owns [%s], wants [%s]",
+					    ACPI_CAST_PTR(void, this_thread_id),
 					    acpi_ut_get_mutex_name(i),
 					    acpi_ut_get_mutex_name(mutex_id)));
 
@@ -251,24 +242,24 @@ acpi_status acpi_ut_acquire_mutex(acpi_mutex_handle mutex_id)
 #endif
 
 	ACPI_DEBUG_PRINT((ACPI_DB_MUTEX,
-			  "Thread %lX attempting to acquire Mutex [%s]\n",
-			  (unsigned long)this_thread_id,
+			  "Thread %p attempting to acquire Mutex [%s]\n",
+			  ACPI_CAST_PTR(void, this_thread_id),
 			  acpi_ut_get_mutex_name(mutex_id)));
 
 	status = acpi_os_acquire_mutex(acpi_gbl_mutex_info[mutex_id].mutex,
 				       ACPI_WAIT_FOREVER);
 	if (ACPI_SUCCESS(status)) {
 		ACPI_DEBUG_PRINT((ACPI_DB_MUTEX,
-				  "Thread %lX acquired Mutex [%s]\n",
-				  (unsigned long)this_thread_id,
+				  "Thread %p acquired Mutex [%s]\n",
+				  ACPI_CAST_PTR(void, this_thread_id),
 				  acpi_ut_get_mutex_name(mutex_id)));
 
 		acpi_gbl_mutex_info[mutex_id].use_count++;
 		acpi_gbl_mutex_info[mutex_id].thread_id = this_thread_id;
 	} else {
 		ACPI_EXCEPTION((AE_INFO, status,
-				"Thread %lX could not acquire Mutex [%X]",
-				(unsigned long)this_thread_id, mutex_id));
+				"Thread %p could not acquire Mutex [%X]",
+				ACPI_CAST_PTR(void, this_thread_id), mutex_id));
 	}
 
 	return (status);
@@ -293,9 +284,8 @@ acpi_status acpi_ut_release_mutex(acpi_mutex_handle mutex_id)
 	ACPI_FUNCTION_NAME(ut_release_mutex);
 
 	this_thread_id = acpi_os_get_thread_id();
-	ACPI_DEBUG_PRINT((ACPI_DB_MUTEX,
-			  "Thread %lX releasing Mutex [%s]\n",
-			  (unsigned long)this_thread_id,
+	ACPI_DEBUG_PRINT((ACPI_DB_MUTEX, "Thread %p releasing Mutex [%s]\n",
+			  ACPI_CAST_PTR(void, this_thread_id),
 			  acpi_ut_get_mutex_name(mutex_id)));
 
 	if (mutex_id > ACPI_MAX_MUTEX) {

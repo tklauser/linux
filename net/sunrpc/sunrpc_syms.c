@@ -24,6 +24,8 @@
 
 extern struct cache_detail ip_map_cache, unix_gid_cache;
 
+extern void cleanup_rpcb_clnt(void);
+
 static int __init
 init_sunrpc(void)
 {
@@ -53,6 +55,7 @@ out:
 static void __exit
 cleanup_sunrpc(void)
 {
+	cleanup_rpcb_clnt();
 	rpcauth_remove_module();
 	cleanup_socket_xprt();
 	svc_cleanup_xprt_sock();
@@ -66,7 +69,8 @@ cleanup_sunrpc(void)
 #ifdef CONFIG_PROC_FS
 	rpc_proc_exit();
 #endif
+	rcu_barrier(); /* Wait for completion of call_rcu()'s */
 }
 MODULE_LICENSE("GPL");
-module_init(init_sunrpc);
+fs_initcall(init_sunrpc); /* Ensure we're initialised before nfs */
 module_exit(cleanup_sunrpc);

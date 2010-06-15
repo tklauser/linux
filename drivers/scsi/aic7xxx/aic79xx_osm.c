@@ -53,6 +53,7 @@ static struct scsi_transport_template *ahd_linux_transport_template = NULL;
 #include <linux/blkdev.h>		/* For block_size() */
 #include <linux/delay.h>	/* For ssleep/msleep */
 #include <linux/device.h>
+#include <linux/slab.h>
 
 /*
  * Bucket size for counting good commands in between bad ones.
@@ -627,19 +628,15 @@ ahd_linux_target_alloc(struct scsi_target *starget)
 					    starget->id, &tstate);
 
 		if ((flags  & CFPACKETIZED) == 0) {
-			/* Do not negotiate packetized transfers */
-			spi_rd_strm(starget) = 0;
-			spi_pcomp_en(starget) = 0;
-			spi_rti(starget) = 0;
-			spi_wr_flow(starget) = 0;
-			spi_hold_mcs(starget) = 0;
+			/* don't negotiate packetized (IU) transfers */
+			spi_max_iu(starget) = 0;
 		} else {
 			if ((ahd->features & AHD_RTI) == 0)
 				spi_rti(starget) = 0;
 		}
 
 		if ((flags & CFQAS) == 0)
-			spi_qas(starget) = 0;
+			spi_max_qas(starget) = 0;
 
 		/* Transinfo values have been set to BIOS settings */
 		spi_max_width(starget) = (flags & CFWIDEB) ? 1 : 0;
@@ -2339,7 +2336,7 @@ ahd_linux_queue_abort_cmd(struct scsi_cmnd *cmd)
 			/*
 			 * The sequencer will never re-reference the
 			 * in-core SCB.  To make sure we are notified
-			 * during reslection, set the MK_MESSAGE flag in
+			 * during reselection, set the MK_MESSAGE flag in
 			 * the card's copy of the SCB.
 			 */
 			ahd_outb(ahd, SCB_CONTROL,

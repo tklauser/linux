@@ -297,8 +297,8 @@ void ocfs2_shutdown_local_alloc(struct ocfs2_super *osb)
 	}
 	memcpy(alloc_copy, alloc, bh->b_size);
 
-	status = ocfs2_journal_access_di(handle, local_alloc_inode, bh,
-					 OCFS2_JOURNAL_ACCESS_WRITE);
+	status = ocfs2_journal_access_di(handle, INODE_CACHE(local_alloc_inode),
+					 bh, OCFS2_JOURNAL_ACCESS_WRITE);
 	if (status < 0) {
 		mlog_errno(status);
 		goto out_commit;
@@ -392,7 +392,7 @@ int ocfs2_begin_local_alloc_recovery(struct ocfs2_super *osb,
 	ocfs2_clear_local_alloc(alloc);
 
 	ocfs2_compute_meta_ecc(osb->sb, alloc_bh->b_data, &alloc->i_check);
-	status = ocfs2_write_block(osb, alloc_bh, inode);
+	status = ocfs2_write_block(osb, alloc_bh, INODE_CACHE(inode));
 	if (status < 0)
 		mlog_errno(status);
 
@@ -476,7 +476,7 @@ out_mutex:
 
 out:
 	if (!status)
-		ocfs2_init_inode_steal_slot(osb);
+		ocfs2_init_steal_slots(osb);
 	mlog_exit(status);
 	return status;
 }
@@ -678,7 +678,8 @@ int ocfs2_claim_local_alloc_bits(struct ocfs2_super *osb,
 	 * delete bits from it! */
 	*num_bits = bits_wanted;
 
-	status = ocfs2_journal_access_di(handle, local_alloc_inode,
+	status = ocfs2_journal_access_di(handle,
+					 INODE_CACHE(local_alloc_inode),
 					 osb->local_alloc_bh,
 					 OCFS2_JOURNAL_ACCESS_WRITE);
 	if (status < 0) {
@@ -871,8 +872,10 @@ static int ocfs2_sync_local_to_main(struct ocfs2_super *osb,
 			     (unsigned long long)la_start_blk,
 			     (unsigned long long)blkno);
 
-			status = ocfs2_free_clusters(handle, main_bm_inode,
-						     main_bm_bh, blkno, count);
+			status = ocfs2_release_clusters(handle,
+							main_bm_inode,
+							main_bm_bh, blkno,
+							count);
 			if (status < 0) {
 				mlog_errno(status);
 				goto bail;
@@ -983,8 +986,7 @@ static int ocfs2_local_alloc_reserve_for_window(struct ocfs2_super *osb,
 	}
 
 retry_enospc:
-	(*ac)->ac_bits_wanted = osb->local_alloc_bits;
-
+	(*ac)->ac_bits_wanted = osb->local_alloc_default_bits;
 	status = ocfs2_reserve_cluster_bitmap_bits(osb, *ac);
 	if (status == -ENOSPC) {
 		if (ocfs2_recalc_la_window(osb, OCFS2_LA_EVENT_ENOSPC) ==
@@ -1060,6 +1062,7 @@ retry_enospc:
 		    OCFS2_LA_DISABLED)
 			goto bail;
 
+		ac->ac_bits_wanted = osb->local_alloc_default_bits;
 		status = ocfs2_claim_clusters(osb, handle, ac,
 					      osb->local_alloc_bits,
 					      &cluster_off,
@@ -1156,7 +1159,8 @@ static int ocfs2_local_alloc_slide_window(struct ocfs2_super *osb,
 	}
 	memcpy(alloc_copy, alloc, osb->local_alloc_bh->b_size);
 
-	status = ocfs2_journal_access_di(handle, local_alloc_inode,
+	status = ocfs2_journal_access_di(handle,
+					 INODE_CACHE(local_alloc_inode),
 					 osb->local_alloc_bh,
 					 OCFS2_JOURNAL_ACCESS_WRITE);
 	if (status < 0) {

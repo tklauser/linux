@@ -111,7 +111,8 @@ static void irda_usb_init_qos(struct irda_usb_cb *self) ;
 static struct irda_class_desc *irda_usb_find_class_desc(struct usb_interface *intf);
 static void irda_usb_disconnect(struct usb_interface *intf);
 static void irda_usb_change_speed_xbofs(struct irda_usb_cb *self);
-static int irda_usb_hard_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t irda_usb_hard_xmit(struct sk_buff *skb,
+					    struct net_device *dev);
 static int irda_usb_open(struct irda_usb_cb *self);
 static void irda_usb_close(struct irda_usb_cb *self);
 static void speed_bulk_callback(struct urb *urb);
@@ -381,7 +382,8 @@ static void speed_bulk_callback(struct urb *urb)
 /*
  * Send an IrDA frame to the USB dongle (for transmission)
  */
-static int irda_usb_hard_xmit(struct sk_buff *skb, struct net_device *netdev)
+static netdev_tx_t irda_usb_hard_xmit(struct sk_buff *skb,
+					    struct net_device *netdev)
 {
 	struct irda_usb_cb *self = netdev_priv(netdev);
 	struct urb *urb = self->tx_urb;
@@ -389,7 +391,6 @@ static int irda_usb_hard_xmit(struct sk_buff *skb, struct net_device *netdev)
 	s32 speed;
 	s16 xbofs;
 	int res, mtt;
-	int	err = 1;	/* Failed */
 
 	IRDA_DEBUG(4, "%s() on %s\n", __func__, netdev->name);
 
@@ -430,7 +431,6 @@ static int irda_usb_hard_xmit(struct sk_buff *skb, struct net_device *netdev)
 			irda_usb_change_speed_xbofs(self);
 			netdev->trans_start = jiffies;
 			/* Will netif_wake_queue() in callback */
-			err = 0;	/* No error */
 			goto drop;
 		}
 	}
@@ -536,13 +536,13 @@ static int irda_usb_hard_xmit(struct sk_buff *skb, struct net_device *netdev)
 	}
 	spin_unlock_irqrestore(&self->lock, flags);
 	
-	return 0;
+	return NETDEV_TX_OK;
 
 drop:
 	/* Drop silently the skb and exit */
 	dev_kfree_skb(skb);
 	spin_unlock_irqrestore(&self->lock, flags);
-	return err;		/* Usually 1 */
+	return NETDEV_TX_OK;
 }
 
 /*------------------------------------------------------------------*/
@@ -852,7 +852,7 @@ static void irda_usb_receive(struct urb *urb)
 		 * hot unplug of the dongle...
 		 * Lowest effective timer is 10ms...
 		 * Jean II */
-		self->rx_defer_timer.function = &irda_usb_rx_defer_expired;
+		self->rx_defer_timer.function = irda_usb_rx_defer_expired;
 		self->rx_defer_timer.data = (unsigned long) urb;
 		mod_timer(&self->rx_defer_timer, jiffies + (10 * HZ / 1000));
 		return;
@@ -1124,11 +1124,11 @@ static int stir421x_patch_device(struct irda_usb_cb *self)
                  * The actual image starts after the "STMP" keyword
                  * so forward to the firmware header tag
                  */
-                for (i = 0; (fw->data[i] != STIR421X_PATCH_END_OF_HDR_TAG)
-			     && (i < fw->size); i++) ;
+                for (i = 0; (fw->data[i] != STIR421X_PATCH_END_OF_HDR_TAG) &&
+			     (i < fw->size); i++) ;
                 /* here we check for the out of buffer case */
-                if ((STIR421X_PATCH_END_OF_HDR_TAG == fw->data[i])
-                    && (i < STIR421X_PATCH_CODE_OFFSET)) {
+                if ((STIR421X_PATCH_END_OF_HDR_TAG == fw->data[i]) &&
+                    (i < STIR421X_PATCH_CODE_OFFSET)) {
                         if (!memcmp(fw->data + i + 1, STIR421X_PATCH_STMP_TAG,
                                     sizeof(STIR421X_PATCH_STMP_TAG) - 1)) {
 
@@ -1651,6 +1651,8 @@ static int irda_usb_probe(struct usb_interface *intf,
 
 	self->rx_urb = kcalloc(self->max_rx_urb, sizeof(struct urb *),
 				GFP_KERNEL);
+	if (!self->rx_urb)
+		goto err_free_net;
 
 	for (i = 0; i < self->max_rx_urb; i++) {
 		self->rx_urb[i] = usb_alloc_urb(0, GFP_KERNEL);
@@ -1783,6 +1785,8 @@ err_out_2:
 err_out_1:
 	for (i = 0; i < self->max_rx_urb; i++)
 		usb_free_urb(self->rx_urb[i]);
+	kfree(self->rx_urb);
+err_free_net:
 	free_netdev(net);
 err_out:
 	return ret;
@@ -1859,6 +1863,42 @@ static void irda_usb_disconnect(struct usb_interface *intf)
 	IRDA_DEBUG(0, "%s(), USB IrDA Disconnected\n", __func__);
 }
 
+#ifdef CONFIG_PM
+/* USB suspend, so power off the transmitter/receiver */
+static int irda_usb_suspend(struct usb_interface *intf, pm_message_t message)
+{
+	struct irda_usb_cb *self = usb_get_intfdata(intf);
+	int i;
+
+	netif_device_detach(self->netdev);
+
+	if (self->tx_urb != NULL)
+		usb_kill_urb(self->tx_urb);
+	if (self->speed_urb != NULL)
+		usb_kill_urb(self->speed_urb);
+	for (i = 0; i < self->max_rx_urb; i++) {
+		if (self->rx_urb[i] != NULL)
+			usb_kill_urb(self->rx_urb[i]);
+	}
+	return 0;
+}
+
+/* Coming out of suspend, so reset hardware */
+static int irda_usb_resume(struct usb_interface *intf)
+{
+	struct irda_usb_cb *self = usb_get_intfdata(intf);
+	int i;
+
+	for (i = 0; i < self->max_rx_urb; i++) {
+		if (self->rx_urb[i] != NULL)
+			usb_submit_urb(self->rx_urb[i], GFP_KERNEL);
+	}
+
+	netif_device_attach(self->netdev);
+	return 0;
+}
+#endif
+
 /*------------------------------------------------------------------*/
 /*
  * USB device callbacks
@@ -1868,6 +1908,10 @@ static struct usb_driver irda_driver = {
 	.probe		= irda_usb_probe,
 	.disconnect	= irda_usb_disconnect,
 	.id_table	= dongles,
+#ifdef CONFIG_PM
+	.suspend	= irda_usb_suspend,
+	.resume		= irda_usb_resume,
+#endif
 };
 
 /************************* MODULE CALLBACKS *************************/

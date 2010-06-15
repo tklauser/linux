@@ -38,6 +38,18 @@
 
 #define PET_WDOG            0x02
 
+/*
+ * Set configuration offset shift depending on flash data width selected in
+ * kernel configuration.
+ */
+#if defined(CONFIG_ALTERA_REMOTE_UPDATE_FLASH_WIDTH_8)
+# define FPGA_IMAGE_SHIFT 2
+#elif defined(CONFIG_ALTERA_REMOTE_UPDATE_FLASH_WIDTH_16)
+# define FPGA_IMAGE_SHIFT 3
+#else
+# error "Flash type not supported"
+#endif
+
 static int altremote_wdt_pet(void);
 static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos);
 static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
@@ -205,8 +217,8 @@ static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
   unsigned long val = simple_strtoul(buf, NULL, 16);
-  dev_printk(KERN_INFO, dev, "We'll try to reboot to 0x%lX (0x%lX)\n",val,val>>3);
-  iowrite32(val>>3, altremote.base + REG_BOOT_ADDR);
+  dev_printk(KERN_INFO, dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
+  iowrite32(val >> FPGA_IMAGE_SHIFT, altremote.base + REG_BOOT_ADDR);
   return count;
 }
 

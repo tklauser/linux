@@ -343,6 +343,53 @@ static struct bar_std bars[] = {
 #define TO_U(r, g, b) \
 	(((-9714 * r - 19070 * g + 28784 * b + 32768) >> 16) + 128)
 
+/* precalculate color bar values to speed up rendering */
+static void precalculate_bars(struct vivi_fh *fh)
+{
+	struct vivi_dev *dev = fh->dev;
+	unsigned char r, g, b;
+	int k, is_yuv;
+
+	fh->input = dev->input;
+
+	for (k = 0; k < 8; k++) {
+		r = bars[fh->input].bar[k][0];
+		g = bars[fh->input].bar[k][1];
+		b = bars[fh->input].bar[k][2];
+		is_yuv = 0;
+
+		switch (fh->fmt->fourcc) {
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_UYVY:
+			is_yuv = 1;
+			break;
+		case V4L2_PIX_FMT_RGB565:
+		case V4L2_PIX_FMT_RGB565X:
+			r >>= 3;
+			g >>= 2;
+			b >>= 3;
+			break;
+		case V4L2_PIX_FMT_RGB555:
+		case V4L2_PIX_FMT_RGB555X:
+			r >>= 3;
+			g >>= 3;
+			b >>= 3;
+			break;
+		}
+
+		if (is_yuv) {
+			fh->bars[k][0] = TO_Y(r, g, b);	/* Luma */
+			fh->bars[k][1] = TO_U(r, g, b);	/* Cb */
+			fh->bars[k][2] = TO_V(r, g, b);	/* Cr */
+		} else {
+			fh->bars[k][0] = r;
+			fh->bars[k][1] = g;
+			fh->bars[k][2] = b;
+		}
+	}
+
+}
+
 #define TSTAMP_MIN_Y	24
 #define TSTAMP_MAX_Y	(TSTAMP_MIN_Y + 15)
 #define TSTAMP_INPUT_X	10
@@ -755,6 +802,8 @@ buffer_prepare(struct videobuf_queue *vq, struct videobuf_buffer *vb,
 	buf->vb.height = fh->height;
 	buf->vb.field  = field;
 
+	precalculate_bars(fh);
+
 	if (VIDEOBUF_NEEDS_INIT == buf->vb.state) {
 		rc = videobuf_iolock(vq, &buf->vb, NULL);
 		if (rc < 0)
@@ -883,68 +932,14 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 	maxh  = norm_maxh();
 
 	f->fmt.pix.field = field;
-	if (f->fmt.pix.height < 32)
-		f->fmt.pix.height = 32;
-	if (f->fmt.pix.height > maxh)
-		f->fmt.pix.height = maxh;
-	if (f->fmt.pix.width < 48)
-		f->fmt.pix.width = 48;
-	if (f->fmt.pix.width > maxw)
-		f->fmt.pix.width = maxw;
-	f->fmt.pix.width &= ~0x03;
+	v4l_bound_align_image(&f->fmt.pix.width, 48, maxw, 2,
+			      &f->fmt.pix.height, 32, maxh, 0, 0);
 	f->fmt.pix.bytesperline =
 		(f->fmt.pix.width * fmt->depth) >> 3;
 	f->fmt.pix.sizeimage =
 		f->fmt.pix.height * f->fmt.pix.bytesperline;
 
 	return 0;
-}
-
-/* precalculate color bar values to speed up rendering */
-static void precalculate_bars(struct vivi_fh *fh)
-{
-	struct vivi_dev *dev = fh->dev;
-	unsigned char r, g, b;
-	int k, is_yuv;
-
-	fh->input = dev->input;
-
-	for (k = 0; k < 8; k++) {
-		r = bars[fh->input].bar[k][0];
-		g = bars[fh->input].bar[k][1];
-		b = bars[fh->input].bar[k][2];
-		is_yuv = 0;
-
-		switch (fh->fmt->fourcc) {
-		case V4L2_PIX_FMT_YUYV:
-		case V4L2_PIX_FMT_UYVY:
-			is_yuv = 1;
-			break;
-		case V4L2_PIX_FMT_RGB565:
-		case V4L2_PIX_FMT_RGB565X:
-			r >>= 3;
-			g >>= 2;
-			b >>= 3;
-			break;
-		case V4L2_PIX_FMT_RGB555:
-		case V4L2_PIX_FMT_RGB555X:
-			r >>= 3;
-			g >>= 3;
-			b >>= 3;
-			break;
-		}
-
-		if (is_yuv) {
-			fh->bars[k][0] = TO_Y(r, g, b);	/* Luma */
-			fh->bars[k][1] = TO_U(r, g, b);	/* Cb */
-			fh->bars[k][2] = TO_V(r, g, b);	/* Cr */
-		} else {
-			fh->bars[k][0] = r;
-			fh->bars[k][1] = g;
-			fh->bars[k][2] = b;
-		}
-	}
-
 }
 
 /*FIXME: This seems to be generic enough to be at videodev2 */
@@ -971,8 +966,6 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 	fh->height        = f->fmt.pix.height;
 	fh->vb_vidq.field = f->fmt.pix.field;
 	fh->type          = f->type;
-
-	precalculate_bars(fh);
 
 	ret = 0;
 out:
@@ -1155,7 +1148,8 @@ static int vivi_open(struct file *file)
 		return -EBUSY;
 	}
 
-	dprintk(dev, 1, "open /dev/video%d type=%s users=%d\n", dev->vfd->num,
+	dprintk(dev, 1, "open %s type=%s users=%d\n",
+		video_device_node_name(dev->vfd),
 		v4l2_type_names[V4L2_BUF_TYPE_VIDEO_CAPTURE], dev->users);
 
 	/* allocate + initialize per filehandle data */
@@ -1228,8 +1222,7 @@ static int vivi_close(struct file *file)
 	struct vivi_fh         *fh = file->private_data;
 	struct vivi_dev *dev       = fh->dev;
 	struct vivi_dmaqueue *vidq = &dev->vidq;
-
-	int minor = video_devdata(file)->minor;
+	struct video_device  *vdev = video_devdata(file);
 
 	vivi_stop_thread(vidq);
 	videobuf_stop(&fh->vb_vidq);
@@ -1241,8 +1234,8 @@ static int vivi_close(struct file *file)
 	dev->users--;
 	mutex_unlock(&dev->mutex);
 
-	dprintk(dev, 1, "close called (minor=%d, users=%d)\n",
-		minor, dev->users);
+	dprintk(dev, 1, "close called (dev=%s, users=%d)\n",
+		video_device_node_name(vdev), dev->users);
 
 	return 0;
 }
@@ -1303,7 +1296,6 @@ static struct video_device vivi_template = {
 	.name		= "vivi",
 	.fops           = &vivi_fops,
 	.ioctl_ops 	= &vivi_ioctl_ops,
-	.minor		= -1,
 	.release	= video_device_release,
 
 	.tvnorms              = V4L2_STD_525_60,
@@ -1324,8 +1316,8 @@ static int vivi_release(void)
 		list_del(list);
 		dev = list_entry(list, struct vivi_dev, vivi_devlist);
 
-		v4l2_info(&dev->v4l2_dev, "unregistering /dev/video%d\n",
-			dev->vfd->num);
+		v4l2_info(&dev->v4l2_dev, "unregistering %s\n",
+			video_device_node_name(dev->vfd));
 		video_unregister_device(dev->vfd);
 		v4l2_device_unregister(&dev->v4l2_dev);
 		kfree(dev);
@@ -1364,6 +1356,7 @@ static int __init vivi_create_instance(int inst)
 		goto unreg_dev;
 
 	*vfd = vivi_template;
+	vfd->debug = debug;
 
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, video_nr);
 	if (ret < 0)
@@ -1378,15 +1371,12 @@ static int __init vivi_create_instance(int inst)
 	/* Now that everything is fine, let's add it to device list */
 	list_add_tail(&dev->vivi_devlist, &vivi_devlist);
 
-	snprintf(vfd->name, sizeof(vfd->name), "%s (%i)",
-			vivi_template.name, vfd->num);
-
-	if (video_nr >= 0)
+	if (video_nr != -1)
 		video_nr++;
 
 	dev->vfd = vfd;
-	v4l2_info(&dev->v4l2_dev, "V4L2 device registered as /dev/video%d\n",
-			vfd->num);
+	v4l2_info(&dev->v4l2_dev, "V4L2 device registered as %s\n",
+		  video_device_node_name(vfd));
 	return 0;
 
 rel_vdev:

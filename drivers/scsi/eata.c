@@ -490,6 +490,7 @@
 #include <linux/ctype.h>
 #include <linux/spinlock.h>
 #include <linux/dma-mapping.h>
+#include <linux/slab.h>
 #include <asm/byteorder.h>
 #include <asm/dma.h>
 #include <asm/io.h>
@@ -1509,7 +1510,7 @@ static int option_setup(char *str)
 	char *cur = str;
 	int i = 1;
 
-	while (cur && isdigit(*cur) && i <= MAX_INT_PARAM) {
+	while (cur && isdigit(*cur) && i < MAX_INT_PARAM) {
 		ints[i++] = simple_strtoul(cur, NULL, 0);
 
 		if ((cur = strchr(cur, ',')) != NULL)
@@ -1825,7 +1826,7 @@ static int eata2x_queuecommand(struct scsi_cmnd *SCpnt,
 	if (linked_comm && SCpnt->device->queue_depth > 2
 	    && TLDEV(SCpnt->device->type)) {
 		ha->cp_stat[i] = READY;
-		flush_dev(SCpnt->device, SCpnt->request->sector, ha, 0);
+		flush_dev(SCpnt->device, blk_rq_pos(SCpnt->request), ha, 0);
 		return 0;
 	}
 
@@ -2144,13 +2145,13 @@ static int reorder(struct hostdata *ha, unsigned long cursec,
 		if (!cpp->din)
 			input_only = 0;
 
-		if (SCpnt->request->sector < minsec)
-			minsec = SCpnt->request->sector;
-		if (SCpnt->request->sector > maxsec)
-			maxsec = SCpnt->request->sector;
+		if (blk_rq_pos(SCpnt->request) < minsec)
+			minsec = blk_rq_pos(SCpnt->request);
+		if (blk_rq_pos(SCpnt->request) > maxsec)
+			maxsec = blk_rq_pos(SCpnt->request);
 
-		sl[n] = SCpnt->request->sector;
-		ioseek += SCpnt->request->nr_sectors;
+		sl[n] = blk_rq_pos(SCpnt->request);
+		ioseek += blk_rq_sectors(SCpnt->request);
 
 		if (!n)
 			continue;
@@ -2190,7 +2191,7 @@ static int reorder(struct hostdata *ha, unsigned long cursec,
 			k = il[n];
 			cpp = &ha->cp[k];
 			SCpnt = cpp->SCpnt;
-			ll[n] = SCpnt->request->nr_sectors;
+			ll[n] = blk_rq_sectors(SCpnt->request);
 			pl[n] = SCpnt->serial_number;
 
 			if (!n)
@@ -2236,12 +2237,12 @@ static int reorder(struct hostdata *ha, unsigned long cursec,
 			cpp = &ha->cp[k];
 			SCpnt = cpp->SCpnt;
 			scmd_printk(KERN_INFO, SCpnt,
-			    "%s pid %ld mb %d fc %d nr %d sec %ld ns %ld"
+			    "%s pid %ld mb %d fc %d nr %d sec %ld ns %u"
 			     " cur %ld s:%c r:%c rev:%c in:%c ov:%c xd %d.\n",
 			     (ihdlr ? "ihdlr" : "qcomm"),
 			     SCpnt->serial_number, k, flushcount,
-			     n_ready, SCpnt->request->sector,
-			     SCpnt->request->nr_sectors, cursec, YESNO(s),
+			     n_ready, blk_rq_pos(SCpnt->request),
+			     blk_rq_sectors(SCpnt->request), cursec, YESNO(s),
 			     YESNO(r), YESNO(rev), YESNO(input_only),
 			     YESNO(overlap), cpp->din);
 		}
@@ -2408,7 +2409,7 @@ static irqreturn_t ihdlr(struct Scsi_Host *shost)
 
 	if (linked_comm && SCpnt->device->queue_depth > 2
 	    && TLDEV(SCpnt->device->type))
-		flush_dev(SCpnt->device, SCpnt->request->sector, ha, 1);
+		flush_dev(SCpnt->device, blk_rq_pos(SCpnt->request), ha, 1);
 
 	tstatus = status_byte(spp->target_status);
 

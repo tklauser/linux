@@ -19,7 +19,7 @@
  *******************************************************************/
 
 #define FC_MAX_HOLD_RSCN     32	      /* max number of deferred RSCNs */
-#define FC_MAX_NS_RSP        65536    /* max size NameServer rsp */
+#define FC_MAX_NS_RSP        64512    /* max size NameServer rsp */
 #define FC_MAXLOOP           126      /* max devices supported on a fc loop */
 #define LPFC_DISC_FLOGI_TMO  10	      /* Discovery FLOGI ratov */
 
@@ -105,8 +105,6 @@ struct lpfc_nodelist {
 	struct lpfc_vport *vport;
 	struct lpfc_work_evt els_retry_evt;
 	struct lpfc_work_evt dev_loss_evt;
-	unsigned long last_ramp_up_time;        /* jiffy of last ramp up */
-	unsigned long last_q_full_time;		/* jiffy of last queue full */
 	struct kref     kref;
 	atomic_t cmd_pending;
 	uint32_t cmd_qdepth;
@@ -135,6 +133,7 @@ struct lpfc_nodelist {
 #define NLP_NODEV_REMOVE   0x08000000	/* Defer removal till discovery ends */
 #define NLP_TARGET_REMOVE  0x10000000   /* Target remove in process */
 #define NLP_SC_REQ         0x20000000	/* Target requires authentication */
+#define NLP_RPI_VALID      0x80000000	/* nlp_rpi is valid */
 
 /* ndlp usage management macros */
 #define NLP_CHK_NODE_ACT(ndlp)		(((ndlp)->nlp_usg_map \

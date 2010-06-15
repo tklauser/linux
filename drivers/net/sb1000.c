@@ -36,12 +36,12 @@ static char version[] = "sb1000.c:v1.1.2 6/01/98 (fventuri@mediaone.net)\n";
 
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/interrupt.h>
 #include <linux/errno.h>
 #include <linux/if_cablemodem.h> /* for SIOGCM/SIOSCM stuff */
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/ioport.h>
 #include <linux/netdevice.h>
 #include <linux/if_arp.h>
@@ -51,6 +51,7 @@ static char version[] = "sb1000.c:v1.1.2 6/01/98 (fventuri@mediaone.net)\n";
 #include <linux/pnp.h>
 #include <linux/init.h>
 #include <linux/bitops.h>
+#include <linux/gfp.h>
 
 #include <asm/io.h>
 #include <asm/processor.h>
@@ -82,7 +83,8 @@ struct sb1000_private {
 extern int sb1000_probe(struct net_device *dev);
 static int sb1000_open(struct net_device *dev);
 static int sb1000_dev_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd);
-static int sb1000_start_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t sb1000_start_xmit(struct sk_buff *skb,
+				     struct net_device *dev);
 static irqreturn_t sb1000_interrupt(int irq, void *dev_id);
 static int sb1000_close(struct net_device *dev);
 
@@ -971,7 +973,7 @@ sb1000_open(struct net_device *dev)
 	lp->rx_frame_id[1] = 0;
 	lp->rx_frame_id[2] = 0;
 	lp->rx_frame_id[3] = 0;
-	if (request_irq(dev->irq, &sb1000_interrupt, 0, "sb1000", dev)) {
+	if (request_irq(dev->irq, sb1000_interrupt, 0, "sb1000", dev)) {
 		return -EAGAIN;
 	}
 
@@ -1080,13 +1082,13 @@ static int sb1000_dev_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 }
 
 /* transmit function: do nothing since SB1000 can't send anything out */
-static int
+static netdev_tx_t
 sb1000_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	printk(KERN_WARNING "%s: trying to transmit!!!\n", dev->name);
 	/* sb1000 can't xmit datagrams */
 	dev_kfree_skb(skb);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /* SB1000 interrupt handler. */

@@ -81,6 +81,23 @@ static int acpi_sleep_prepare(u32 acpi_state)
 #ifdef CONFIG_ACPI_SLEEP
 static u32 acpi_target_sleep_state = ACPI_STATE_S0;
 /*
+ * According to the ACPI specification the BIOS should make sure that ACPI is
+ * enabled and SCI_EN bit is set on wake-up from S1 - S3 sleep states.  Still,
+ * some BIOSes don't do that and therefore we use acpi_enable() to enable ACPI
+ * on such systems during resume.  Unfortunately that doesn't help in
+ * particularly pathological cases in which SCI_EN has to be set directly on
+ * resume, although the specification states very clearly that this flag is
+ * owned by the hardware.  The set_sci_en_on_resume variable will be set in such
+ * cases.
+ */
+static bool set_sci_en_on_resume;
+
+void __init acpi_set_sci_en_on_resume(void)
+{
+	set_sci_en_on_resume = true;
+}
+
+/*
  * ACPI 1.0 wants us to execute _PTS before suspending devices, so we allow the
  * user to request that behavior by using the 'acpi_old_suspend_ordering'
  * kernel command line option that causes the following variable to be set.
@@ -170,18 +187,6 @@ static void acpi_pm_end(void)
 #endif /* CONFIG_ACPI_SLEEP */
 
 #ifdef CONFIG_SUSPEND
-/*
- * According to the ACPI specification the BIOS should make sure that ACPI is
- * enabled and SCI_EN bit is set on wake-up from S1 - S3 sleep states.  Still,
- * some BIOSes don't do that and therefore we use acpi_enable() to enable ACPI
- * on such systems during resume.  Unfortunately that doesn't help in
- * particularly pathological cases in which SCI_EN has to be set directly on
- * resume, although the specification states very clearly that this flag is
- * owned by the hardware.  The set_sci_en_on_resume variable will be set in such
- * cases.
- */
-static bool set_sci_en_on_resume;
-
 extern void do_suspend_lowlevel(void);
 
 static u32 acpi_suspend_states[] = {
@@ -397,12 +402,116 @@ static struct dmi_system_id __initdata acpisleep_dmi_table[] = {
 		},
 	},
 	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard HP G7000 Notebook PC",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "HP G7000 Notebook PC"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard HP Pavilion dv3 Notebook PC",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion dv3 Notebook PC"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard Pavilion dv4",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion dv4"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard Pavilion dv7",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "HP Pavilion dv7"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard Compaq Presario C700 Notebook PC",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Compaq Presario C700 Notebook PC"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Hewlett-Packard Compaq Presario CQ40 Notebook PC",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Compaq Presario CQ40 Notebook PC"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Lenovo ThinkPad T410",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad T410"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Lenovo ThinkPad T510",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad T510"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Lenovo ThinkPad W510",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad W510"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Lenovo ThinkPad X201[s]",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad X201"),
+		},
+	},
+	{
 	.callback = init_old_suspend_ordering,
 	.ident = "Panasonic CF51-2L",
 	.matches = {
 		DMI_MATCH(DMI_BOARD_VENDOR,
 				"Matsushita Electric Industrial Co.,Ltd."),
 		DMI_MATCH(DMI_BOARD_NAME, "CF51-2L"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Dell Studio 1558",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Studio 1558"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Dell Studio 1557",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Studio 1557"),
+		},
+	},
+	{
+	.callback = init_set_sci_en_on_resume,
+	.ident = "Dell Studio 1555",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Studio 1555"),
 		},
 	},
 	{},
@@ -499,8 +608,17 @@ static void acpi_hibernation_leave(void)
 	hibernate_nvs_restore();
 }
 
-static void acpi_pm_enable_gpes(void)
+static int acpi_pm_pre_restore(void)
 {
+	acpi_disable_all_gpes();
+	acpi_os_wait_events_complete(NULL);
+	acpi_ec_suspend_transactions();
+	return 0;
+}
+
+static void acpi_pm_restore_cleanup(void)
+{
+	acpi_ec_resume_transactions();
 	acpi_enable_all_runtime_gpes();
 }
 
@@ -512,8 +630,8 @@ static struct platform_hibernation_ops acpi_hibernation_ops = {
 	.prepare = acpi_pm_prepare,
 	.enter = acpi_hibernation_enter,
 	.leave = acpi_hibernation_leave,
-	.pre_restore = acpi_pm_disable_gpes,
-	.restore_cleanup = acpi_pm_enable_gpes,
+	.pre_restore = acpi_pm_pre_restore,
+	.restore_cleanup = acpi_pm_restore_cleanup,
 };
 
 /**
@@ -565,8 +683,8 @@ static struct platform_hibernation_ops acpi_hibernation_ops_old = {
 	.prepare = acpi_pm_disable_gpes,
 	.enter = acpi_hibernation_enter,
 	.leave = acpi_hibernation_leave,
-	.pre_restore = acpi_pm_disable_gpes,
-	.restore_cleanup = acpi_pm_enable_gpes,
+	.pre_restore = acpi_pm_pre_restore,
+	.restore_cleanup = acpi_pm_restore_cleanup,
 	.recover = acpi_pm_finish,
 };
 #endif /* CONFIG_HIBERNATION */
@@ -681,19 +799,34 @@ int acpi_pm_device_sleep_wake(struct device *dev, bool enable)
 {
 	acpi_handle handle;
 	struct acpi_device *adev;
+	int error;
 
-	if (!device_may_wakeup(dev))
+	if (!device_can_wakeup(dev))
 		return -EINVAL;
 
 	handle = DEVICE_ACPI_HANDLE(dev);
 	if (!handle || ACPI_FAILURE(acpi_bus_get_device(handle, &adev))) {
-		printk(KERN_DEBUG "ACPI handle has no context!\n");
+		dev_dbg(dev, "ACPI handle has no context in %s!\n", __func__);
 		return -ENODEV;
 	}
 
-	return enable ?
-		acpi_enable_wakeup_device_power(adev, acpi_target_sleep_state) :
-		acpi_disable_wakeup_device_power(adev);
+	if (enable) {
+		error = acpi_enable_wakeup_device_power(adev,
+						acpi_target_sleep_state);
+		if (!error)
+			acpi_enable_gpe(adev->wakeup.gpe_device,
+					adev->wakeup.gpe_number,
+					ACPI_GPE_TYPE_WAKE);
+	} else {
+		acpi_disable_gpe(adev->wakeup.gpe_device, adev->wakeup.gpe_number,
+				ACPI_GPE_TYPE_WAKE);
+		error = acpi_disable_wakeup_device_power(adev);
+	}
+	if (!error)
+		dev_info(dev, "wake-up capability %s by ACPI\n",
+				enable ? "enabled" : "disabled");
+
+	return error;
 }
 #endif
 

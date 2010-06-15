@@ -187,40 +187,40 @@ union  ia64_rr {
  * state comes earlier:
  */
 struct cpuinfo_ia64 {
-	__u32 softirq_pending;
-	__u64 itm_delta;	/* # of clock cycles between clock ticks */
-	__u64 itm_next;		/* interval timer mask value to use for next clock tick */
-	__u64 nsec_per_cyc;	/* (1000000000<<IA64_NSEC_PER_CYC_SHIFT)/itc_freq */
-	__u64 unimpl_va_mask;	/* mask of unimplemented virtual address bits (from PAL) */
-	__u64 unimpl_pa_mask;	/* mask of unimplemented physical address bits (from PAL) */
-	__u64 itc_freq;		/* frequency of ITC counter */
-	__u64 proc_freq;	/* frequency of processor */
-	__u64 cyc_per_usec;	/* itc_freq/1000000 */
-	__u64 ptce_base;
-	__u32 ptce_count[2];
-	__u32 ptce_stride[2];
+	unsigned int softirq_pending;
+	unsigned long itm_delta;	/* # of clock cycles between clock ticks */
+	unsigned long itm_next;		/* interval timer mask value to use for next clock tick */
+	unsigned long nsec_per_cyc;	/* (1000000000<<IA64_NSEC_PER_CYC_SHIFT)/itc_freq */
+	unsigned long unimpl_va_mask;	/* mask of unimplemented virtual address bits (from PAL) */
+	unsigned long unimpl_pa_mask;	/* mask of unimplemented physical address bits (from PAL) */
+	unsigned long itc_freq;		/* frequency of ITC counter */
+	unsigned long proc_freq;	/* frequency of processor */
+	unsigned long cyc_per_usec;	/* itc_freq/1000000 */
+	unsigned long ptce_base;
+	unsigned int ptce_count[2];
+	unsigned int ptce_stride[2];
 	struct task_struct *ksoftirqd;	/* kernel softirq daemon for this CPU */
 
 #ifdef CONFIG_SMP
-	__u64 loops_per_jiffy;
+	unsigned long loops_per_jiffy;
 	int cpu;
-	__u32 socket_id;	/* physical processor socket id */
-	__u16 core_id;		/* core id */
-	__u16 thread_id;	/* thread id */
-	__u16 num_log;		/* Total number of logical processors on
+	unsigned int socket_id;	/* physical processor socket id */
+	unsigned short core_id;	/* core id */
+	unsigned short thread_id; /* thread id */
+	unsigned short num_log;	/* Total number of logical processors on
 				 * this socket that were successfully booted */
-	__u8  cores_per_socket;	/* Cores per processor socket */
-	__u8  threads_per_core;	/* Threads per core */
+	unsigned char cores_per_socket;	/* Cores per processor socket */
+	unsigned char threads_per_core;	/* Threads per core */
 #endif
 
 	/* CPUID-derived information: */
-	__u64 ppn;
-	__u64 features;
-	__u8 number;
-	__u8 revision;
-	__u8 model;
-	__u8 family;
-	__u8 archrev;
+	unsigned long ppn;
+	unsigned long features;
+	unsigned char number;
+	unsigned char revision;
+	unsigned char model;
+	unsigned char family;
+	unsigned char archrev;
 	char vendor[16];
 	char *model_name;
 
@@ -229,7 +229,7 @@ struct cpuinfo_ia64 {
 #endif
 };
 
-DECLARE_PER_CPU(struct cpuinfo_ia64, cpu_info);
+DECLARE_PER_CPU(struct cpuinfo_ia64, ia64_cpu_info);
 
 /*
  * The "local" data variable.  It refers to the per-CPU data of the currently executing
@@ -237,8 +237,8 @@ DECLARE_PER_CPU(struct cpuinfo_ia64, cpu_info);
  * Do not use the address of local_cpu_data, since it will be different from
  * cpu_data(smp_processor_id())!
  */
-#define local_cpu_data		(&__ia64_per_cpu_var(cpu_info))
-#define cpu_data(cpu)		(&per_cpu(cpu_info, cpu))
+#define local_cpu_data		(&__ia64_per_cpu_var(ia64_cpu_info))
+#define cpu_data(cpu)		(&per_cpu(ia64_cpu_info, cpu))
 
 extern void print_cpu_info (struct cpuinfo_ia64 *);
 
@@ -270,23 +270,6 @@ typedef struct {
 		 (int __user *) (addr));							\
 })
 
-#ifdef CONFIG_IA32_SUPPORT
-struct desc_struct {
-	unsigned int a, b;
-};
-
-#define desc_empty(desc)		(!((desc)->a | (desc)->b))
-#define desc_equal(desc1, desc2)	(((desc1)->a == (desc2)->a) && ((desc1)->b == (desc2)->b))
-
-#define GDT_ENTRY_TLS_ENTRIES	3
-#define GDT_ENTRY_TLS_MIN	6
-#define GDT_ENTRY_TLS_MAX 	(GDT_ENTRY_TLS_MIN + GDT_ENTRY_TLS_ENTRIES - 1)
-
-#define TLS_SIZE (GDT_ENTRY_TLS_ENTRIES * 8)
-
-struct ia64_partial_page_list;
-#endif
-
 struct thread_struct {
 	__u32 flags;			/* various thread flags (see IA64_THREAD_*) */
 	/* writing on_ustack is performance-critical, so it's worth spending 8 bits on it... */
@@ -298,29 +281,6 @@ struct thread_struct {
 	__u64 rbs_bot;			/* the base address for the RBS */
 	int last_fph_cpu;		/* CPU that may hold the contents of f32-f127 */
 
-#ifdef CONFIG_IA32_SUPPORT
-	__u64 eflag;			/* IA32 EFLAGS reg */
-	__u64 fsr;			/* IA32 floating pt status reg */
-	__u64 fcr;			/* IA32 floating pt control reg */
-	__u64 fir;			/* IA32 fp except. instr. reg */
-	__u64 fdr;			/* IA32 fp except. data reg */
-	__u64 old_k1;			/* old value of ar.k1 */
-	__u64 old_iob;			/* old IOBase value */
-	struct ia64_partial_page_list *ppl; /* partial page list for 4K page size issue */
-        /* cached TLS descriptors. */
-	struct desc_struct tls_array[GDT_ENTRY_TLS_ENTRIES];
-
-# define INIT_THREAD_IA32	.eflag =	0,			\
-				.fsr =		0,			\
-				.fcr =		0x17800000037fULL,	\
-				.fir =		0,			\
-				.fdr =		0,			\
-				.old_k1 =	0,			\
-				.old_iob =	0,			\
-				.ppl =		NULL,
-#else
-# define INIT_THREAD_IA32
-#endif /* CONFIG_IA32_SUPPORT */
 #ifdef CONFIG_PERFMON
 	void *pfm_context;		     /* pointer to detailed PMU context */
 	unsigned long pfm_needs_checking;    /* when >0, pending perfmon work on kernel exit */
@@ -329,8 +289,8 @@ struct thread_struct {
 #else
 # define INIT_THREAD_PM
 #endif
-	__u64 dbr[IA64_NUM_DBG_REGS];
-	__u64 ibr[IA64_NUM_DBG_REGS];
+	unsigned long dbr[IA64_NUM_DBG_REGS];
+	unsigned long ibr[IA64_NUM_DBG_REGS];
 	struct ia64_fpreg fph[96];	/* saved/loaded on demand */
 };
 
@@ -342,7 +302,6 @@ struct thread_struct {
 	.rbs_bot =	STACK_TOP - DEFAULT_USER_STACK_SIZE,	\
 	.task_size =	DEFAULT_TASK_SIZE,			\
 	.last_fph_cpu =  -1,					\
-	INIT_THREAD_IA32					\
 	INIT_THREAD_PM						\
 	.dbr =		{0, },					\
 	.ibr =		{0, },					\
@@ -484,11 +443,6 @@ extern void __ia64_save_fpu (struct ia64_fpreg *fph);
 extern void __ia64_load_fpu (struct ia64_fpreg *fph);
 extern void ia64_save_debug_regs (unsigned long *save_area);
 extern void ia64_load_debug_regs (unsigned long *save_area);
-
-#ifdef CONFIG_IA32_SUPPORT
-extern void ia32_save_state (struct task_struct *task);
-extern void ia32_load_state (struct task_struct *task);
-#endif
 
 #define ia64_fph_enable()	do { ia64_rsm(IA64_PSR_DFH); ia64_srlz_d(); } while (0)
 #define ia64_fph_disable()	do { ia64_ssm(IA64_PSR_DFH); ia64_srlz_d(); } while (0)

@@ -1,4 +1,5 @@
 #include <linux/kernel.h>
+#include <linux/gfp.h>
 #include <linux/ide.h>
 #include <linux/jiffies.h>
 #include <linux/blkdev.h>
@@ -24,11 +25,8 @@ static void issue_park_cmd(ide_drive_t *drive, unsigned long timeout)
 			start_queue = 1;
 		spin_unlock_irq(&hwif->lock);
 
-		if (start_queue) {
-			spin_lock_irq(q->queue_lock);
-			blk_start_queueing(q);
-			spin_unlock_irq(q->queue_lock);
-		}
+		if (start_queue)
+			blk_run_queue(q);
 		return;
 	}
 	spin_unlock_irq(&hwif->lock);

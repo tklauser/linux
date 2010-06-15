@@ -33,7 +33,6 @@ static int fifo=0x8;	/* don't change */
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/init.h>
@@ -191,7 +190,7 @@ static int sun3_82586_open(struct net_device *dev)
 	startrecv586(dev);
 	sun3_enaint();
 
-	ret = request_irq(dev->irq, &sun3_82586_interrupt,0,dev->name,dev);
+	ret = request_irq(dev->irq, sun3_82586_interrupt,0,dev->name,dev);
 	if (ret)
 	{
 		sun3_reset586();
@@ -413,8 +412,8 @@ static int init586(struct net_device *dev)
 	volatile struct iasetup_cmd_struct *ias_cmd;
 	volatile struct tdr_cmd_struct *tdr_cmd;
 	volatile struct mcsetup_cmd_struct *mc_cmd;
-	struct dev_mc_list *dmi=dev->mc_list;
-	int num_addrs=dev->mc_count;
+	struct dev_mc_list *dmi;
+	int num_addrs=netdev_mc_count(dev);
 
 	ptr = (void *) ((char *)p->scb + sizeof(struct scb_struct));
 
@@ -536,8 +535,10 @@ static int init586(struct net_device *dev)
 		mc_cmd->cmd_link = 0xffff;
 		mc_cmd->mc_cnt = swab16(num_addrs * 6);
 
-		for(i=0;i<num_addrs;i++,dmi=dmi->next)
-			memcpy((char *) mc_cmd->mc_list[i], dmi->dmi_addr,6);
+		i = 0;
+		netdev_for_each_mc_addr(dmi, dev)
+			memcpy((char *) mc_cmd->mc_list[i++],
+			       dmi->dmi_addr, ETH_ALEN);
 
 		p->scb->cbl_offset = make16(mc_cmd);
 		p->scb->cmd_cuc = CUC_START;
@@ -1015,7 +1016,7 @@ static int sun3_82586_send_packet(struct sk_buff *skb, struct net_device *dev)
 	if(skb->len > XMIT_BUFF_SIZE)
 	{
 		printk("%s: Sorry, max. framelength is %d bytes. The length of your frame is %d bytes.\n",dev->name,XMIT_BUFF_SIZE,skb->len);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 
 	netif_stop_queue(dev);
@@ -1023,7 +1024,7 @@ static int sun3_82586_send_packet(struct sk_buff *skb, struct net_device *dev)
 #if(NUM_XMIT_BUFFS > 1)
 	if(test_and_set_bit(0,(void *) &p->lock)) {
 		printk("%s: Queue was locked\n",dev->name);
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 	else
 #endif
@@ -1110,7 +1111,7 @@ static int sun3_82586_send_packet(struct sk_buff *skb, struct net_device *dev)
 		dev_kfree_skb(skb);
 #endif
 	}
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /*******************************************

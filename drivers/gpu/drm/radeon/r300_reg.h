@@ -1,30 +1,36 @@
-/**************************************************************************
+/*
+ * Copyright 2005 Nicolai Haehnle et al.
+ * Copyright 2008 Advanced Micro Devices, Inc.
+ * Copyright 2009 Jerome Glisse.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * Authors: Nicolai Haehnle
+ *          Jerome Glisse
+ */
+#ifndef _R300_REG_H_
+#define _R300_REG_H_
 
-Copyright (C) 2004-2005 Nicolai Haehnle et al.
+#define R300_SURF_TILE_MACRO (1<<16)
+#define R300_SURF_TILE_MICRO (2<<16)
+#define R300_SURF_TILE_BOTH (3<<16)
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-on the rights to use, copy, modify, merge, publish, distribute, sub
-license, and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice (including the next
-paragraph) shall be included in all copies or substantial portions of the
-Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
-THE AUTHOR(S) AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-**************************************************************************/
-
-#ifndef _R300_REG_H
-#define _R300_REG_H
 
 #define R300_MC_INIT_MISC_LAT_TIMER	0x180
 #	define R300_MC_MISC__MC_CPR_INIT_LAT_SHIFT	0
@@ -894,6 +900,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #	define R300_TX_FORMAT_FL_I32		    0x1B
 #	define R300_TX_FORMAT_FL_I32A32		    0x1C
 #	define R300_TX_FORMAT_FL_R32G32B32A32	    0x1D
+#	define R300_TX_FORMAT_ATI2N		    0x1F
 	/* alpha modes, convenience mostly */
 	/* if you have alpha, pick constant appropriate to the
 	   number of channels (1 for I8, 2 for I8A8, 4 for R8G8B8A8, etc */
@@ -945,6 +952,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #       define R300_TXO_ENDIAN_HALFDW_SWAP       (3 << 0)
 #       define R300_TXO_MACRO_TILE               (1 << 2)
 #       define R300_TXO_MICRO_TILE               (1 << 3)
+#       define R300_TXO_MICRO_TILE_SQUARE        (2 << 3)
 #       define R300_TXO_OFFSET_MASK              0xffffffe0
 #       define R300_TXO_OFFSET_SHIFT             5
 	/* END: Guess from R200 */
@@ -1353,6 +1361,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #       define R300_COLORPITCH_MASK              0x00001FF8 /* GUESS */
 #       define R300_COLOR_TILE_ENABLE            (1 << 16) /* GUESS */
 #       define R300_COLOR_MICROTILE_ENABLE       (1 << 17) /* GUESS */
+#       define R300_COLOR_MICROTILE_SQUARE_ENABLE (2 << 17)
 #       define R300_COLOR_ENDIAN_NO_SWAP         (0 << 18) /* GUESS */
 #       define R300_COLOR_ENDIAN_WORD_SWAP       (1 << 18) /* GUESS */
 #       define R300_COLOR_ENDIAN_DWORD_SWAP      (2 << 18) /* GUESS */

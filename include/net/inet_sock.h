@@ -17,6 +17,7 @@
 #define _INET_SOCK_H
 
 
+#include <linux/kmemcheck.h>
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/jhash.h>
@@ -66,14 +67,16 @@ struct inet_request_sock {
 	__be32			loc_addr;
 	__be32			rmt_addr;
 	__be16			rmt_port;
-	u16			snd_wscale : 4, 
-				rcv_wscale : 4, 
+	kmemcheck_bitfield_begin(flags);
+	u16			snd_wscale : 4,
+				rcv_wscale : 4,
 				tstamp_ok  : 1,
 				sack_ok	   : 1,
 				wscale_ok  : 1,
 				ecn_ok	   : 1,
 				acked	   : 1,
 				no_srccheck: 1;
+	kmemcheck_bitfield_end(flags);
 	struct ip_options	*opt;
 };
 
@@ -90,14 +93,14 @@ struct rtable;
  *
  * @sk - ancestor class
  * @pinet6 - pointer to IPv6 control block
- * @daddr - Foreign IPv4 addr
- * @rcv_saddr - Bound local IPv4 addr
- * @dport - Destination port
- * @num - Local port
- * @saddr - Sending source
+ * @inet_daddr - Foreign IPv4 addr
+ * @inet_rcv_saddr - Bound local IPv4 addr
+ * @inet_dport - Destination port
+ * @inet_num - Local port
+ * @inet_saddr - Sending source
  * @uc_ttl - Unicast TTL
- * @sport - Source port
- * @id - ID counter for DF pkts
+ * @inet_sport - Source port
+ * @inet_id - ID counter for DF pkts
  * @tos - TOS
  * @mc_ttl - Multicasting TTL
  * @is_icsk - is this an inet_connection_sock?
@@ -112,17 +115,19 @@ struct inet_sock {
 	struct ipv6_pinfo	*pinet6;
 #endif
 	/* Socket demultiplex comparisons on incoming packets. */
-	__be32			daddr;
-	__be32			rcv_saddr;
-	__be16			dport;
-	__u16			num;
-	__be32			saddr;
+	__be32			inet_daddr;
+	__be32			inet_rcv_saddr;
+	__be16			inet_dport;
+	__u16			inet_num;
+	__be32			inet_saddr;
 	__s16			uc_ttl;
 	__u16			cmsg_flags;
+	__be16			inet_sport;
+	__u16			inet_id;
+
 	struct ip_options	*opt;
-	__be16			sport;
-	__u16			id;
 	__u8			tos;
+	__u8			min_ttl;
 	__u8			mc_ttl;
 	__u8			pmtudisc;
 	__u8			recverr:1,
@@ -130,7 +135,8 @@ struct inet_sock {
 				freebind:1,
 				hdrincl:1,
 				mc_loop:1,
-				transparent:1;
+				transparent:1,
+				mc_all:1;
 	int			mc_index;
 	__be32			mc_addr;
 	struct ip_mc_socklist	*mc_list;
@@ -186,10 +192,10 @@ static inline unsigned int inet_ehashfn(struct net *net,
 static inline int inet_sk_ehashfn(const struct sock *sk)
 {
 	const struct inet_sock *inet = inet_sk(sk);
-	const __be32 laddr = inet->rcv_saddr;
-	const __u16 lport = inet->num;
-	const __be32 faddr = inet->daddr;
-	const __be16 fport = inet->dport;
+	const __be32 laddr = inet->inet_rcv_saddr;
+	const __u16 lport = inet->inet_num;
+	const __be32 faddr = inet->inet_daddr;
+	const __be16 fport = inet->inet_dport;
 	struct net *net = sock_net(sk);
 
 	return inet_ehashfn(net, laddr, lport, faddr, fport);
@@ -198,9 +204,12 @@ static inline int inet_sk_ehashfn(const struct sock *sk)
 static inline struct request_sock *inet_reqsk_alloc(struct request_sock_ops *ops)
 {
 	struct request_sock *req = reqsk_alloc(ops);
+	struct inet_request_sock *ireq = inet_rsk(req);
 
-	if (req != NULL)
-		inet_rsk(req)->opt = NULL;
+	if (req != NULL) {
+		kmemcheck_annotate_bitfield(ireq, flags);
+		ireq->opt = NULL;
+	}
 
 	return req;
 }

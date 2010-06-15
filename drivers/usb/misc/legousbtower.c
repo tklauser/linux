@@ -95,8 +95,11 @@
 
 /* Use our own dbg macro */
 #undef dbg
-#define dbg(lvl, format, arg...) do { if (debug >= lvl) printk(KERN_DEBUG  __FILE__ ": " format "\n", ## arg); } while (0)
-
+#define dbg(lvl, format, arg...)					\
+do {									\
+	if (debug >= lvl)						\
+		printk(KERN_DEBUG "%s: " format "\n", __FILE__, ##arg);	\
+} while (0)
 
 /* Version Information */
 #define DRIVER_VERSION "v0.96"
@@ -192,7 +195,7 @@ struct tower_get_version_reply {
 
 
 /* table of devices that work with this driver */
-static struct usb_device_id tower_table [] = {
+static const struct usb_device_id tower_table[] = {
 	{ USB_DEVICE(LEGO_USB_TOWER_VENDOR_ID, LEGO_USB_TOWER_PRODUCT_ID) },
 	{ }					/* Terminating entry */
 };
@@ -266,12 +269,18 @@ static const struct file_operations tower_fops = {
 	.llseek =	tower_llseek,
 };
 
+static char *legousbtower_devnode(struct device *dev, mode_t *mode)
+{
+	return kasprintf(GFP_KERNEL, "usb/%s", dev_name(dev));
+}
+
 /*
  * usb class driver info in order to get a minor number from the usb core,
  * and to have the device registered with the driver core
  */
 static struct usb_class_driver tower_class = {
 	.name =		"legousbtower%d",
+	.devnode = 	legousbtower_devnode,
 	.fops =		&tower_fops,
 	.minor_base =	LEGO_USB_TOWER_MINOR_BASE,
 };
@@ -296,7 +305,7 @@ static inline void lego_usb_tower_debug_data (int level, const char *function, i
 	if (debug < level)
 		return;
 
-	printk (KERN_DEBUG __FILE__": %s - length = %d, data = ", function, size);
+	printk (KERN_DEBUG "%s: %s - length = %d, data = ", __FILE__, function, size);
 	for (i = 0; i < size; ++i) {
 		printk ("%.2x ", data[i]);
 	}
@@ -545,6 +554,9 @@ static unsigned int tower_poll (struct file *file, poll_table *wait)
 	dbg(2, "%s: enter", __func__);
 
 	dev = file->private_data;
+
+	if (!dev->udev)
+		return POLLERR | POLLHUP;
 
 	poll_wait(file, &dev->read_wait, wait);
 	poll_wait(file, &dev->write_wait, wait);
@@ -1019,6 +1031,9 @@ static void tower_disconnect (struct usb_interface *interface)
 		tower_delete (dev);
 	} else {
 		dev->udev = NULL;
+		/* wake up pollers */
+		wake_up_interruptible_all(&dev->read_wait);
+		wake_up_interruptible_all(&dev->write_wait);
 		mutex_unlock(&dev->lock);
 	}
 
@@ -1043,7 +1058,7 @@ static int __init lego_usb_tower_init(void)
 	/* register this driver with the USB subsystem */
 	result = usb_register(&tower_driver);
 	if (result < 0) {
-		err("usb_register failed for the "__FILE__" driver. Error number %d", result);
+		err("usb_register failed for the %s driver. Error number %d", __FILE__, result);
 		retval = -1;
 		goto exit;
 	}

@@ -1,30 +1,7 @@
 /*
- * File:         arch/blackfin/kernel/bfin_gpio.h
- * Based on:
- * Author:	 Michael Hennerich (hennerich@blackfin.uclinux.org)
+ * Copyright 2006-2009 Analog Devices Inc.
  *
- * Created:
- * Description:
- *
- * Modified:
- *               Copyright 2004-2008 Analog Devices Inc.
- *
- * Bugs:         Enter bugs at http://blackfin.uclinux.org/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see the file COPYING, or write
- * to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Licensed under the GPL-2 or later.
  */
 
 #ifndef __ARCH_BLACKFIN_GPIO_H__
@@ -92,6 +69,8 @@
 #define GPIO_USAGE 0
 
 #ifndef __ASSEMBLY__
+
+#include <linux/compiler.h>
 
 /***********************************************************
 *
@@ -182,6 +161,11 @@ struct gpio_port_t {
 };
 #endif
 
+#ifdef BFIN_SPECIAL_GPIO_BANKS
+void bfin_special_gpio_free(unsigned gpio);
+int bfin_special_gpio_request(unsigned gpio, const char *label);
+#endif
+
 #ifdef CONFIG_PM
 
 unsigned int bfin_pm_standby_setup(void);
@@ -241,6 +225,9 @@ int bfin_gpio_direction_output(unsigned gpio, int value);
 int bfin_gpio_get_value(unsigned gpio);
 void bfin_gpio_set_value(unsigned gpio, int value);
 
+#include <asm/irq.h>
+#include <asm/errno.h>
+
 #ifdef CONFIG_GPIOLIB
 #include <asm-generic/gpio.h>		/* cansleep wrappers */
 
@@ -263,6 +250,11 @@ static inline void gpio_set_value(unsigned int gpio, int value)
 static inline int gpio_cansleep(unsigned int gpio)
 {
 	return __gpio_cansleep(gpio);
+}
+
+static inline int gpio_to_irq(unsigned gpio)
+{
+	return __gpio_to_irq(gpio);
 }
 
 #else /* !CONFIG_GPIOLIB */
@@ -297,10 +289,6 @@ static inline void gpio_set_value(unsigned gpio, int value)
 	return bfin_gpio_set_value(gpio, value);
 }
 
-#include <asm-generic/gpio.h>		/* cansleep wrappers */
-#endif	/* !CONFIG_GPIOLIB */
-#include <asm/irq.h>
-
 static inline int gpio_to_irq(unsigned gpio)
 {
 	if (likely(gpio < MAX_BLACKFIN_GPIOS))
@@ -308,6 +296,9 @@ static inline int gpio_to_irq(unsigned gpio)
 
 	return -EINVAL;
 }
+
+#include <asm-generic/gpio.h>		/* cansleep wrappers */
+#endif	/* !CONFIG_GPIOLIB */
 
 static inline int irq_to_gpio(unsigned irq)
 {

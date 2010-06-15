@@ -32,6 +32,7 @@
 #include <linux/string.h>
 #include <linux/kernel.h>
 #include <asm/unaligned.h>
+#include <asm/dwarf.h>
 
 void *module_alloc(unsigned long size)
 {
@@ -46,8 +47,6 @@ void *module_alloc(unsigned long size)
 void module_free(struct module *mod, void *module_region)
 {
 	vfree(module_region);
-	/* FIXME: If module_region == mod->init_region, trim exception
-           table entries. */
 }
 
 /* We don't need anything special. */
@@ -90,7 +89,7 @@ int apply_relocate_add(Elf32_Shdr *sechdrs,
 		 * SHmedia, the LSB of the symbol needs to be asserted
 		 * for the CPU to be in SHmedia mode when it starts executing
 		 * the branch target. */
-		relocation |= (sym->st_other & 4);
+		relocation |= !!(sym->st_other & 4);
 #endif
 
 		switch (ELF32_R_TYPE(rel[i].r_info)) {
@@ -147,10 +146,16 @@ int module_finalize(const Elf_Ehdr *hdr,
 		    const Elf_Shdr *sechdrs,
 		    struct module *me)
 {
-	return module_bug_finalize(hdr, sechdrs, me);
+	int ret = 0;
+
+	ret |= module_dwarf_finalize(hdr, sechdrs, me);
+	ret |= module_bug_finalize(hdr, sechdrs, me);
+
+	return ret;
 }
 
 void module_arch_cleanup(struct module *mod)
 {
 	module_bug_cleanup(mod);
+	module_dwarf_cleanup(mod);
 }

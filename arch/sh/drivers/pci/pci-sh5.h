@@ -86,14 +86,14 @@ extern unsigned long pcicr_virt;
 /* #define PCISH5_VCR_REG(x)                ( SH5PCI_VCR_BASE (PCISH5_VCR_##x)) */
 
 /* Write I/O functions */
-#define SH5PCI_WRITE(reg,val)        ctrl_outl((u32)(val),PCISH5_ICR_REG(reg))
-#define SH5PCI_WRITE_SHORT(reg,val)  ctrl_outw((u16)(val),PCISH5_ICR_REG(reg))
-#define SH5PCI_WRITE_BYTE(reg,val)   ctrl_outb((u8)(val),PCISH5_ICR_REG(reg))
+#define SH5PCI_WRITE(reg,val)        __raw_writel((u32)(val),PCISH5_ICR_REG(reg))
+#define SH5PCI_WRITE_SHORT(reg,val)  __raw_writew((u16)(val),PCISH5_ICR_REG(reg))
+#define SH5PCI_WRITE_BYTE(reg,val)   __raw_writeb((u8)(val),PCISH5_ICR_REG(reg))
 
 /* Read I/O functions */
-#define SH5PCI_READ(reg)             ctrl_inl(PCISH5_ICR_REG(reg))
-#define SH5PCI_READ_SHORT(reg)       ctrl_inw(PCISH5_ICR_REG(reg))
-#define SH5PCI_READ_BYTE(reg)        ctrl_inb(PCISH5_ICR_REG(reg))
+#define SH5PCI_READ(reg)             __raw_readl(PCISH5_ICR_REG(reg))
+#define SH5PCI_READ_SHORT(reg)       __raw_readw(PCISH5_ICR_REG(reg))
+#define SH5PCI_READ_BYTE(reg)        __raw_readb(PCISH5_ICR_REG(reg))
 
 /* Set PCI config bits */
 #define SET_CONFIG_BITS(bus,devfn,where)  ((((bus) << 16) | ((devfn) << 8) | ((where) & ~3)) | 0x80000000)
@@ -106,8 +106,5 @@ extern unsigned long pcicr_virt;
 #define PCISH5_IO_SIZCONV(x)		  (((x / 0x40000) - 1) << 18)
 
 extern struct pci_ops sh5_pci_ops;
-
-/* arch/sh/drivers/pci/pci-sh5.c */
-int sh5pci_init(unsigned long memStart, unsigned long memSize);
 
 #endif /* __PCI_SH5_H */

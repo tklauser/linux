@@ -21,8 +21,8 @@
 
 /* #define VERBOSE_DEBUG */
 
+#include <linux/slab.h>
 #include <linux/kernel.h>
-#include <linux/utsname.h>
 #include <linux/device.h>
 
 #include "g_zero.h"

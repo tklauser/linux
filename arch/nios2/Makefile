@@ -33,9 +33,13 @@ KBUILD_CFLAGS += -G 0
 LDFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
 LDFLAGS += -mnios2elf
 
-head-y		:= arch/nios2/kernel/head.o arch/nios2/kernel/init_task.o 
+head-y		:= arch/nios2/kernel/head.o
 libs-y		+= arch/nios2/lib/
 core-y		+= arch/nios2/kernel/ arch/nios2/mm/
+
+drivers-y	+= arch/nios2/drivers/
+
+include $(srctree)/arch/$(ARCH)/boards/Makefile
 
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)

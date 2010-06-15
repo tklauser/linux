@@ -2,14 +2,22 @@ Kernel driver f71882fg
 ======================
 
 Supported chips:
-  * Fintek F71882FG and F71883FG
-    Prefix: 'f71882fg'
+  * Fintek F71858FG
+    Prefix: 'f71858fg'
     Addresses scanned: none, address read from Super I/O config space
     Datasheet: Available from the Fintek website
   * Fintek F71862FG and F71863FG
     Prefix: 'f71862fg'
     Addresses scanned: none, address read from Super I/O config space
     Datasheet: Available from the Fintek website
+  * Fintek F71882FG and F71883FG
+    Prefix: 'f71882fg'
+    Addresses scanned: none, address read from Super I/O config space
+    Datasheet: Available from the Fintek website
+  * Fintek F71889FG
+    Prefix: 'f71889fg'
+    Addresses scanned: none, address read from Super I/O config space
+    Datasheet: Should become available on the Fintek website soon
   * Fintek F8000
     Prefix: 'f8000'
     Addresses scanned: none, address read from Super I/O config space
@@ -47,6 +55,12 @@ supported. The right one to use depends on external circuitry on the
 motherboard, so the driver assumes that the BIOS set the method
 properly.
 
+Note that the lowest numbered temperature zone trip point corresponds to
+to the border between the highest and one but highest temperature zones, and
+vica versa. So the temperature zone trip points 1-4 (or 1-2) go from high temp
+to low temp! This is how things are implemented in the IC, and the driver
+mimicks this.
+
 There are 2 modes to specify the speed of the fan, PWM duty cycle (or DC
 voltage) mode, where 0-100% duty cycle (0-100% of 12V) is specified. And RPM
 mode where the actual RPM of the fan (as measured) is controlled and the speed
@@ -66,13 +80,13 @@ printed when loading the driver.
 
 Three different fan control modes are supported; the mode number is written
 to the pwm#_enable file. Note that not all modes are supported on all
-chips, and some modes may only be available in RPM / PWM mode on the F8000.
+chips, and some modes may only be available in RPM / PWM mode.
 Writing an unsupported mode will result in an invalid parameter error.
 
 * 1: Manual mode
   You ask for a specific PWM duty cycle / DC voltage or a specific % of
   fan#_full_speed by writing to the pwm# file. This mode is only
-  available on the F8000 if the fan channel is in RPM mode.
+  available on the F71858FG / F8000 if the fan channel is in RPM mode.
 
 * 2: Normal auto mode
   You can define a number of temperature/fan speed trip points, which % the

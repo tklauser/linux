@@ -15,6 +15,7 @@
 
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/slab.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -101,7 +102,7 @@ static int uda134x_write(struct snd_soc_codec *codec, unsigned int reg,
 	pr_debug("%s reg: %02X, value:%02X\n", __func__, reg, value);
 
 	if (reg >= UDA134X_REGS_NUM) {
-		printk(KERN_ERR "%s unkown register: reg: %d",
+		printk(KERN_ERR "%s unknown register: reg: %u",
 		       __func__, reg);
 		return -EINVAL;
 	}
@@ -163,7 +164,7 @@ static int uda134x_mute(struct snd_soc_dai *dai, int mute)
 	else
 		mute_reg &= ~(1<<2);
 
-	uda134x_write(codec, UDA134X_DATA010, mute_reg & ~(1<<2));
+	uda134x_write(codec, UDA134X_DATA010, mute_reg);
 
 	return 0;
 }
@@ -296,7 +297,7 @@ static int uda134x_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	struct snd_soc_codec *codec = codec_dai->codec;
 	struct uda134x_priv *uda134x = codec->private_data;
 
-	pr_debug("%s clk_id: %d, freq: %d, dir: %d\n", __func__,
+	pr_debug("%s clk_id: %d, freq: %u, dir: %d\n", __func__,
 		 clk_id, freq, dir);
 
 	/* Anything between 256fs*8Khz and 512fs*48Khz should be acceptable
@@ -552,7 +553,7 @@ static int uda134x_soc_probe(struct platform_device *pdev)
 					ARRAY_SIZE(uda1341_snd_controls));
 	break;
 	default:
-		printk(KERN_ERR "%s unkown codec type: %d",
+		printk(KERN_ERR "%s unknown codec type: %d",
 			__func__, pd->model);
 	return -EINVAL;
 	}
@@ -562,17 +563,8 @@ static int uda134x_soc_probe(struct platform_device *pdev)
 		goto pcm_err;
 	}
 
-	ret = snd_soc_init_card(socdev);
-	if (ret < 0) {
-		printk(KERN_ERR "UDA134X: failed to register card\n");
-		goto card_err;
-	}
-
 	return 0;
 
-card_err:
-	snd_soc_free_pcms(socdev);
-	snd_soc_dapm_free(socdev);
 pcm_err:
 	kfree(codec->reg_cache);
 reg_err:

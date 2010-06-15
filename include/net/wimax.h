@@ -79,7 +79,7 @@
  * drivers have to only report state changes due to external
  * conditions.
  *
- * All API operations are 'atomic', serialized thorough a mutex in the
+ * All API operations are 'atomic', serialized through a mutex in the
  * `struct wimax_dev`.
  *
  * EXPORTING TO USER SPACE THROUGH GENERIC NETLINK
@@ -195,6 +195,12 @@
  *    defining the `struct nla_policy` for each message, it has to have
  *    an array size of WIMAX_GNL_ATTR_MAX+1.
  *
+ * The op_*() function pointers will not be called if the wimax_dev is
+ * in a state <= %WIMAX_ST_UNINITIALIZED. The exception is:
+ *
+ * - op_reset: can be called at any time after wimax_dev_add() has
+ *   been called.
+ *
  * THE PIPE INTERFACE:
  *
  * This interface is kept intentionally simple. The driver can send
@@ -253,7 +259,6 @@
 struct net_device;
 struct genl_info;
 struct wimax_dev;
-struct input_dev;
 
 /**
  * struct wimax_dev - Generic WiMAX device
@@ -293,8 +298,8 @@ struct input_dev;
  *     See wimax_reset()'s documentation.
  *
  * @name: [fill] A way to identify this device. We need to register a
- *     name with many subsystems (input for RFKILL, workqueue
- *     creation, etc). We can't use the network device name as that
+ *     name with many subsystems (rfkill, workqueue creation, etc).
+ *     We can't use the network device name as that
  *     might change and in some instances we don't know it yet (until
  *     we don't call register_netdev()). So we generate an unique one
  *     using the driver name and device bus id, place it here and use
@@ -315,9 +320,6 @@ struct input_dev;
  * @state: [private] Current state of the WiMAX device.
  *
  * @rfkill: [private] integration into the RF-Kill infrastructure.
- *
- * @rfkill_input: [private] virtual input device to process the
- *     hardware RF Kill switches.
  *
  * @rf_sw: [private] State of the software radio switch (OFF/ON)
  *

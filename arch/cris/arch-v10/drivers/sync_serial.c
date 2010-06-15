@@ -17,7 +17,6 @@
 #include <linux/errno.h>
 #include <linux/major.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/poll.h>
 #include <linux/init.h>
@@ -244,7 +243,7 @@ static unsigned sync_serial_prescale_shadow;
 
 #define NUMBER_OF_PORTS 2
 
-static struct file_operations sync_serial_fops = {
+static const struct file_operations sync_serial_fops = {
 	.owner   = THIS_MODULE,
 	.write   = sync_serial_write,
 	.read    = sync_serial_read,

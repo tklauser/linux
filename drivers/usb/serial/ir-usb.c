@@ -86,10 +86,8 @@ static int buffer_size;
 static int xbof = -1;
 
 static int  ir_startup (struct usb_serial *serial);
-static int  ir_open(struct tty_struct *tty, struct usb_serial_port *port,
-					struct file *filep);
-static void ir_close(struct tty_struct *tty, struct usb_serial_port *port,
-					struct file *filep);
+static int  ir_open(struct tty_struct *tty, struct usb_serial_port *port);
+static void ir_close(struct usb_serial_port *port);
 static int  ir_write(struct tty_struct *tty, struct usb_serial_port *port,
 					const unsigned char *buf, int count);
 static void ir_write_bulk_callback (struct urb *urb);
@@ -102,7 +100,7 @@ static u8 ir_baud;
 static u8 ir_xbof;
 static u8 ir_add_bof;
 
-static struct usb_device_id ir_id_table[] = {
+static const struct usb_device_id ir_id_table[] = {
 	{ USB_DEVICE(0x050f, 0x0180) },		/* KC Technology, KC-180 */
 	{ USB_DEVICE(0x08e9, 0x0100) },		/* XTNDAccess */
 	{ USB_DEVICE(0x09c4, 0x0011) },		/* ACTiSys ACT-IR2000U */
@@ -297,8 +295,7 @@ static int ir_startup(struct usb_serial *serial)
 	return 0;
 }
 
-static int ir_open(struct tty_struct *tty,
-			struct usb_serial_port *port, struct file *filp)
+static int ir_open(struct tty_struct *tty, struct usb_serial_port *port)
 {
 	char *buffer;
 	int result = 0;
@@ -346,8 +343,7 @@ static int ir_open(struct tty_struct *tty,
 	return result;
 }
 
-static void ir_close(struct tty_struct *tty,
-			struct usb_serial_port *port, struct file * filp)
+static void ir_close(struct usb_serial_port *port)
 {
 	dbg("%s - port %d", __func__, port->number);
 
@@ -449,11 +445,6 @@ static void ir_read_bulk_callback(struct urb *urb)
 
 	dbg("%s - port %d", __func__, port->number);
 
-	if (!port->port.count) {
-		dbg("%s - port closed.", __func__);
-		return;
-	}
-
 	switch (status) {
 	case 0: /* Successful */
 		/*
@@ -466,10 +457,8 @@ static void ir_read_bulk_callback(struct urb *urb)
 		usb_serial_debug_data(debug, &port->dev, __func__,
 						urb->actual_length, data);
 		tty = tty_port_tty_get(&port->port);
-		if (tty_buffer_request_room(tty, urb->actual_length - 1)) {
-			tty_insert_flip_string(tty, data+1, urb->actual_length - 1);
-			tty_flip_buffer_push(tty);
-		}
+		tty_insert_flip_string(tty, data+1, urb->actual_length - 1);
+		tty_flip_buffer_push(tty);
 		tty_kref_put(tty);
 
 		/*

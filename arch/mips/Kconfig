@@ -1,12 +1,16 @@
 config MIPS
 	bool
 	default y
+	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_IDE
 	select HAVE_OPROFILE
 	select HAVE_ARCH_KGDB
-	# Horrible source of confusion.  Die, die, die ...
-	select EMBEDDED
-	select RTC_LIB
+	select HAVE_FUNCTION_TRACER
+	select HAVE_FUNCTION_TRACE_MCOUNT_TEST
+	select HAVE_DYNAMIC_FTRACE
+	select HAVE_FTRACE_MCOUNT_RECORD
+	select HAVE_FUNCTION_GRAPH_TRACER
+	select RTC_LIB if !MACH_LOONGSON
 
 mainmenu "Linux/MIPS Kernel Configuration"
 
@@ -21,26 +25,31 @@ choice
 
 config MACH_ALCHEMY
 	bool "Alchemy processor based machines"
+	select SYS_SUPPORTS_ZBOOT
 
-config BASLER_EXCITE
-	bool "Basler eXcite smart camera"
+config AR7
+	bool "Texas Instruments AR7"
+	select BOOT_ELF32
+	select DMA_NONCOHERENT
 	select CEVT_R4K
 	select CSRC_R4K
-	select DMA_COHERENT
-	select HW_HAS_PCI
 	select IRQ_CPU
-	select IRQ_CPU_RM7K
-	select IRQ_CPU_RM9K
-	select MIPS_RM9122
-	select SYS_HAS_CPU_RM9000
+	select NO_EXCEPT_FILL
+	select SWAP_IO_SPACE
+	select SYS_HAS_CPU_MIPS32_R1
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
-	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_LITTLE_ENDIAN
+	select SYS_SUPPORTS_ZBOOT_UART16550
+	select ARCH_REQUIRE_GPIOLIB
+	select GCD
+	select VLYNQ
 	help
-	  The eXcite is a smart camera platform manufactured by
-	  Basler Vision Technologies AG.
+	  Support for the Texas Instruments AR7 System-on-a-Chip
+	  family: TNETD7100, 7200 and 7300.
 
 config BCM47XX
-	bool "BCM47XX based boards"
+	bool "Broadcom BCM47XX based boards"
 	select CEVT_R4K
 	select CSRC_R4K
 	select DMA_NONCOHERENT
@@ -59,6 +68,21 @@ config BCM47XX
 	select CFE
 	help
 	 Support for BCM47XX based boards
+
+config BCM63XX
+	bool "Broadcom BCM63XX based boards"
+	select CEVT_R4K
+	select CSRC_R4K
+	select DMA_NONCOHERENT
+	select IRQ_CPU
+	select SYS_HAS_CPU_MIPS32_R1
+	select SYS_SUPPORTS_32BIT_KERNEL
+	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_HAS_EARLY_PRINTK
+	select SWAP_IO_SPACE
+	select ARCH_REQUIRE_GPIOLIB
+	help
+	 Support for BCM63XX based boards
 
 config MIPS_COBALT
 	bool "Cobalt Server"
@@ -154,30 +178,16 @@ config LASAT
 	select SYS_SUPPORTS_64BIT_KERNEL if BROKEN
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 
-config LEMOTE_FULONG
-	bool "Lemote Fulong mini-PC"
-	select ARCH_SPARSEMEM_ENABLE
-	select CEVT_R4K
-	select CSRC_R4K
-	select SYS_HAS_CPU_LOONGSON2
-	select DMA_NONCOHERENT
-	select BOOT_ELF32
-	select BOARD_SCACHE
-	select HAVE_STD_PC_SERIAL_PORT
-	select HW_HAS_PCI
-	select I8259
-	select ISA
-	select IRQ_CPU
-	select SYS_SUPPORTS_32BIT_KERNEL
-	select SYS_SUPPORTS_64BIT_KERNEL
-	select SYS_SUPPORTS_LITTLE_ENDIAN
-	select SYS_SUPPORTS_HIGHMEM
-	select SYS_HAS_EARLY_PRINTK
-	select GENERIC_ISA_DMA_SUPPORT_BROKEN
-	select CPU_HAS_WB
+config MACH_LOONGSON
+	bool "Loongson family of machines"
+	select SYS_SUPPORTS_ZBOOT
 	help
-	  Lemote Fulong mini-PC board based on the Chinese Loongson-2E CPU and
-	  an FPGA northbridge
+	  This enables the support of Loongson family of machines.
+
+	  Loongson is a family of general-purpose MIPS-compatible CPUs.
+	  developed at Institute of Computing Technology (ICT),
+	  Chinese Academy of Sciences (CAS) in the People's Republic
+	  of China. The chief architect is Professor Weiwu Hu.
 
 config MIPS_MALTA
 	bool "MIPS Malta board"
@@ -209,9 +219,10 @@ config MIPS_MALTA
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_LITTLE_ENDIAN
-	select SYS_SUPPORTS_MIPS_CMP if BROKEN	# because SYNC_R4K is broken
+	select SYS_SUPPORTS_MIPS_CMP
 	select SYS_SUPPORTS_MULTITHREADING
 	select SYS_SUPPORTS_SMARTMIPS
+	select SYS_SUPPORTS_ZBOOT
 	help
 	  This enables support for the MIPS Technologies Malta evaluation
 	  board.
@@ -247,6 +258,7 @@ config MACH_VR41XX
 	select CEVT_R4K
 	select CSRC_R4K
 	select SYS_HAS_CPU_VR41XX
+	select ARCH_REQUIRE_GPIOLIB
 
 config NXP_STB220
 	bool "NXP STB220 board"
@@ -312,6 +324,24 @@ config PMC_YOSEMITE
 	  Yosemite is an evaluation board for the RM9000x2 processor
 	  manufactured by PMC-Sierra.
 
+config POWERTV
+	bool "Cisco PowerTV"
+	select BOOT_ELF32
+	select CEVT_R4K
+	select CPU_MIPSR2_IRQ_VI
+	select CPU_MIPSR2_IRQ_EI
+	select CSRC_POWERTV
+	select DMA_NONCOHERENT
+	select HW_HAS_PCI
+	select SYS_HAS_EARLY_PRINTK
+	select SYS_HAS_CPU_MIPS32_R2
+	select SYS_SUPPORTS_32BIT_KERNEL
+	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_HIGHMEM
+	select USB_OHCI_LITTLE_ENDIAN
+	help
+	  This enables support for the Cisco PowerTV Platform.
+
 config SGI_IP22
 	bool "SGI IP22 (Indy/Indigo2)"
 	select ARC
@@ -336,7 +366,14 @@ config SGI_IP22
 	select SWAP_IO_SPACE
 	select SYS_HAS_CPU_R4X00
 	select SYS_HAS_CPU_R5000
-	select SYS_HAS_EARLY_PRINTK
+	#
+	# Disable EARLY_PRINTK for now since it leads to overwritten prom
+	# memory during early boot on some machines.
+	#
+	# See http://www.linux-mips.org/cgi-bin/mesg.cgi?a=linux-mips&i=20091119164009.GA15038%40deprecation.cyrius.com
+	# for a more details discussion
+	#
+	# select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -388,7 +425,14 @@ config SGI_IP28
 	select SGI_HAS_ZILOG
 	select SWAP_IO_SPACE
 	select SYS_HAS_CPU_R10000
-	select SYS_HAS_EARLY_PRINTK
+	#
+	# Disable EARLY_PRINTK for now since it leads to overwritten prom
+	# memory during early boot on some machines.
+	#
+	# See http://www.linux-mips.org/cgi-bin/mesg.cgi?a=linux-mips&i=20091119164009.GA15038%40deprecation.cyrius.com
+	# for a more details discussion
+	#
+	# select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
       help
@@ -465,6 +509,7 @@ config SIBYTE_SWARM
 	bool "Sibyte BCM91250A-SWARM"
 	select BOOT_ELF32
 	select DMA_COHERENT
+	select HAVE_PATA_PLATFORM
 	select NR_CPUS_DEFAULT_2
 	select SIBYTE_SB1250
 	select SWAP_IO_SPACE
@@ -479,6 +524,7 @@ config SIBYTE_LITTLESUR
 	depends on EXPERIMENTAL
 	select BOOT_ELF32
 	select DMA_COHERENT
+	select HAVE_PATA_PLATFORM
 	select NR_CPUS_DEFAULT_2
 	select SIBYTE_SB1250
 	select SWAP_IO_SPACE
@@ -601,6 +647,7 @@ config CAVIUM_OCTEON_SIMULATOR
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_HIGHMEM
+	select SYS_SUPPORTS_HOTPLUG_CPU
 	select SYS_HAS_CPU_CAVIUM_OCTEON
 	help
 	  The Octeon simulator is software performance model of the Cavium
@@ -615,9 +662,12 @@ config CAVIUM_OCTEON_REFERENCE_BOARD
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_HIGHMEM
+	select SYS_SUPPORTS_HOTPLUG_CPU
 	select SYS_HAS_EARLY_PRINTK
 	select SYS_HAS_CPU_CAVIUM_OCTEON
 	select SWAP_IO_SPACE
+	select HW_HAS_PCI
+	select ARCH_SUPPORTS_MSI
 	help
 	  This option supports all of the Octeon reference boards from Cavium
 	  Networks. It builds a kernel that dynamically determines the Octeon
@@ -634,15 +684,17 @@ config CAVIUM_OCTEON_REFERENCE_BOARD
 endchoice
 
 source "arch/mips/alchemy/Kconfig"
-source "arch/mips/basler/excite/Kconfig"
+source "arch/mips/bcm63xx/Kconfig"
 source "arch/mips/jazz/Kconfig"
 source "arch/mips/lasat/Kconfig"
 source "arch/mips/pmc-sierra/Kconfig"
+source "arch/mips/powertv/Kconfig"
 source "arch/mips/sgi-ip27/Kconfig"
 source "arch/mips/sibyte/Kconfig"
 source "arch/mips/txx9/Kconfig"
 source "arch/mips/vr41xx/Kconfig"
 source "arch/mips/cavium-octeon/Kconfig"
+source "arch/mips/loongson/Kconfig"
 
 endmenu
 
@@ -736,6 +788,9 @@ config CSRC_BCM1480
 config CSRC_IOASIC
 	bool
 
+config CSRC_POWERTV
+	bool
+
 config CSRC_R4K_LIB
 	bool
 
@@ -759,31 +814,26 @@ config DMA_COHERENT
 
 config DMA_NONCOHERENT
 	bool
-	select DMA_NEED_PCI_MAP_STATE
+	select NEED_DMA_MAP_STATE
 
-config DMA_NEED_PCI_MAP_STATE
+config NEED_DMA_MAP_STATE
 	bool
-
-config EARLY_PRINTK
-	bool "Early printk" if EMBEDDED && DEBUG_KERNEL
-	depends on SYS_HAS_EARLY_PRINTK
-	default y
-	help
-	  This option enables special console drivers which allow the kernel
-	  to print messages very early in the bootup process.
-
-	  This is useful for kernel debugging when your machine crashes very
-	  early before the console code is initialized. For normal operation,
-	  it is not recommended because it looks ugly on some machines and
-	  doesn't cooperate with an X server. You should normally say N here,
-	  unless you want to debug such a crash.
 
 config SYS_HAS_EARLY_PRINTK
 	bool
 
 config HOTPLUG_CPU
+	bool "Support for hot-pluggable CPUs"
+	depends on SMP && HOTPLUG && SYS_SUPPORTS_HOTPLUG_CPU
+	help
+	  Say Y here to allow turning CPUs off and on. CPUs can be
+	  controlled through /sys/devices/system/cpu.
+	  (Note: power management support will enable this option
+	    automatically on SMP systems. )
+	  Say N if you want to disable CPU hotplug.
+
+config SYS_SUPPORTS_HOTPLUG_CPU
 	bool
-	default n
 
 config I8259
 	bool
@@ -850,6 +900,11 @@ config SYS_SUPPORTS_BIG_ENDIAN
 
 config SYS_SUPPORTS_LITTLE_ENDIAN
 	bool
+
+config SYS_SUPPORTS_HUGETLBFS
+	bool
+	depends on CPU_SUPPORTS_HUGEPAGES && 64BIT
+	default y
 
 config IRQ_CPU
 	bool
@@ -971,9 +1026,9 @@ config BOOT_ELF32
 
 config MIPS_L1_CACHE_SHIFT
 	int
-	default "4" if MACH_DECSTATION || MIKROTIK_RB532
+	default "4" if MACH_DECSTATION || MIKROTIK_RB532 || PMC_MSP4200_EVAL
+	default "6" if MIPS_CPU_SCACHE
 	default "7" if SGI_IP22 || SGI_IP27 || SGI_IP28 || SNI_RM || CPU_CAVIUM_OCTEON
-	default "4" if PMC_MSP4200_EVAL
 	default "5"
 
 config HAVE_STD_PC_SERIAL_PORT
@@ -1005,20 +1060,32 @@ choice
 	prompt "CPU type"
 	default CPU_R4X00
 
-config CPU_LOONGSON2
-	bool "Loongson 2"
-	depends on SYS_HAS_CPU_LOONGSON2
-	select CPU_SUPPORTS_32BIT_KERNEL
-	select CPU_SUPPORTS_64BIT_KERNEL
-	select CPU_SUPPORTS_HIGHMEM
+config CPU_LOONGSON2E
+	bool "Loongson 2E"
+	depends on SYS_HAS_CPU_LOONGSON2E
+	select CPU_LOONGSON2
 	help
 	  The Loongson 2E processor implements the MIPS III instruction set
 	  with many extensions.
 
+	  It has an internal FPGA northbridge, which is compatiable to
+	  bonito64.
+
+config CPU_LOONGSON2F
+	bool "Loongson 2F"
+	depends on SYS_HAS_CPU_LOONGSON2F
+	select CPU_LOONGSON2
+	help
+	  The Loongson 2F processor implements the MIPS III instruction set
+	  with many extensions.
+
+	  Loongson2F have built-in DDR2 and PCIX controller. The PCIX controller
+	  have a similar programming interface with FPGA northbridge used in
+	  Loongson2E.
+
 config CPU_MIPS32_R1
 	bool "MIPS32 Release 1"
 	depends on SYS_HAS_CPU_MIPS32_R1
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
@@ -1036,7 +1103,6 @@ config CPU_MIPS32_R1
 config CPU_MIPS32_R2
 	bool "MIPS32 Release 2"
 	depends on SYS_HAS_CPU_MIPS32_R2
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
@@ -1050,11 +1116,11 @@ config CPU_MIPS32_R2
 config CPU_MIPS64_R1
 	bool "MIPS64 Release 1"
 	depends on SYS_HAS_CPU_MIPS64_R1
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
+	select CPU_SUPPORTS_HUGEPAGES
 	help
 	  Choose this option to build a kernel for release 1 or later of the
 	  MIPS64 architecture.  Many modern embedded systems with a 64-bit
@@ -1069,11 +1135,11 @@ config CPU_MIPS64_R1
 config CPU_MIPS64_R2
 	bool "MIPS64 Release 2"
 	depends on SYS_HAS_CPU_MIPS64_R2
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
+	select CPU_SUPPORTS_HUGEPAGES
 	help
 	  Choose this option to build a kernel for release 2 or later of the
 	  MIPS64 architecture.  Many modern embedded systems with a 64-bit
@@ -1114,7 +1180,6 @@ config CPU_VR41XX
 config CPU_R4300
 	bool "R4300"
 	depends on SYS_HAS_CPU_R4300
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	help
@@ -1123,7 +1188,6 @@ config CPU_R4300
 config CPU_R4X00
 	bool "R4x00"
 	depends on SYS_HAS_CPU_R4X00
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	help
@@ -1133,7 +1197,6 @@ config CPU_R4X00
 config CPU_TX49XX
 	bool "R49XX"
 	depends on SYS_HAS_CPU_TX49XX
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
@@ -1141,7 +1204,6 @@ config CPU_TX49XX
 config CPU_R5000
 	bool "R5000"
 	depends on SYS_HAS_CPU_R5000
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	help
@@ -1150,16 +1212,15 @@ config CPU_R5000
 config CPU_R5432
 	bool "R5432"
 	depends on SYS_HAS_CPU_R5432
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 
 config CPU_R5500
 	bool "R5500"
 	depends on SYS_HAS_CPU_R5500
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
+	select CPU_SUPPORTS_HUGEPAGES
 	help
 	  NEC VR5500 and VR5500A series processors implement 64-bit MIPS IV
 	  instruction set.
@@ -1167,7 +1228,6 @@ config CPU_R5500
 config CPU_R6000
 	bool "R6000"
 	depends on EXPERIMENTAL
-	select CPU_HAS_LLSC
 	depends on SYS_HAS_CPU_R6000
 	select CPU_SUPPORTS_32BIT_KERNEL
 	help
@@ -1177,7 +1237,6 @@ config CPU_R6000
 config CPU_NEVADA
 	bool "RM52xx"
 	depends on SYS_HAS_CPU_NEVADA
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	help
@@ -1187,7 +1246,6 @@ config CPU_R8000
 	bool "R8000"
 	depends on EXPERIMENTAL
 	depends on SYS_HAS_CPU_R8000
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_64BIT_KERNEL
 	help
@@ -1197,7 +1255,6 @@ config CPU_R8000
 config CPU_R10000
 	bool "R10000"
 	depends on SYS_HAS_CPU_R10000
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
@@ -1208,7 +1265,6 @@ config CPU_R10000
 config CPU_RM7000
 	bool "RM7000"
 	depends on SYS_HAS_CPU_RM7000
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
@@ -1217,7 +1273,6 @@ config CPU_RM7000
 config CPU_RM9000
 	bool "RM9000"
 	depends on SYS_HAS_CPU_RM9000
-	select CPU_HAS_LLSC
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
@@ -1227,7 +1282,6 @@ config CPU_RM9000
 config CPU_SB1
 	bool "SB1"
 	depends on SYS_HAS_CPU_SB1
-	select CPU_HAS_LLSC
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
@@ -1243,8 +1297,8 @@ config CPU_CAVIUM_OCTEON
 	select SYS_SUPPORTS_SMP
 	select NR_CPUS_DEFAULT_16
 	select WEAK_ORDERING
-	select WEAK_REORDERING_BEYOND_LLSC
 	select CPU_SUPPORTS_HIGHMEM
+	select CPU_SUPPORTS_HUGEPAGES
 	help
 	  The Cavium Octeon processor is a highly integrated chip containing
 	  many ethernet hardware widgets for networking tasks. The processor
@@ -1253,8 +1307,58 @@ config CPU_CAVIUM_OCTEON
 
 endchoice
 
-config SYS_HAS_CPU_LOONGSON2
+if CPU_LOONGSON2F
+config CPU_NOP_WORKAROUNDS
 	bool
+
+config CPU_JUMP_WORKAROUNDS
+	bool
+
+config CPU_LOONGSON2F_WORKAROUNDS
+	bool "Loongson 2F Workarounds"
+	default y
+	select CPU_NOP_WORKAROUNDS
+	select CPU_JUMP_WORKAROUNDS
+	help
+	  Loongson 2F01 / 2F02 processors have the NOP & JUMP issues which
+	  require workarounds.  Without workarounds the system may hang
+	  unexpectedly.  For more information please refer to the gas
+	  -mfix-loongson2f-nop and -mfix-loongson2f-jump options.
+
+	  Loongson 2F03 and later have fixed these issues and no workarounds
+	  are needed.  The workarounds have no significant side effect on them
+	  but may decrease the performance of the system so this option should
+	  be disabled unless the kernel is intended to be run on 2F01 or 2F02
+	  systems.
+
+	  If unsure, please say Y.
+endif # CPU_LOONGSON2F
+
+config SYS_SUPPORTS_ZBOOT
+	bool
+	select HAVE_KERNEL_GZIP
+	select HAVE_KERNEL_BZIP2
+	select HAVE_KERNEL_LZMA
+	select HAVE_KERNEL_LZO
+
+config SYS_SUPPORTS_ZBOOT_UART16550
+	bool
+	select SYS_SUPPORTS_ZBOOT
+
+config CPU_LOONGSON2
+	bool
+	select CPU_SUPPORTS_32BIT_KERNEL
+	select CPU_SUPPORTS_64BIT_KERNEL
+	select CPU_SUPPORTS_HIGHMEM
+
+config SYS_HAS_CPU_LOONGSON2E
+	bool
+
+config SYS_HAS_CPU_LOONGSON2F
+	bool
+	select CPU_SUPPORTS_CPUFREQ
+	select CPU_SUPPORTS_ADDRWINCFG if 64BIT
+	select CPU_SUPPORTS_UNCACHED_ACCELERATED
 
 config SYS_HAS_CPU_MIPS32_R1
 	bool
@@ -1364,6 +1468,17 @@ config CPU_SUPPORTS_32BIT_KERNEL
 	bool
 config CPU_SUPPORTS_64BIT_KERNEL
 	bool
+config CPU_SUPPORTS_CPUFREQ
+	bool
+config CPU_SUPPORTS_ADDRWINCFG
+	bool
+config CPU_SUPPORTS_HUGEPAGES
+	bool
+config CPU_SUPPORTS_UNCACHED_ACCELERATED
+	bool
+config MIPS_PGD_C0_CONTEXT
+	bool
+	default y if 64BIT && CPU_MIPSR2
 
 #
 # Set to y for ptrace access to watch registers.
@@ -1404,6 +1519,7 @@ choice
 
 config PAGE_SIZE_4KB
 	bool "4kB"
+	depends on !CPU_LOONGSON2
 	help
 	 This option select the standard 4kB Linux page size.  On some
 	 R3000-family processors this is the only available page size.  Using
@@ -1611,7 +1727,7 @@ config MIPS_APSP_KSPD
 config MIPS_CMP
 	bool "MIPS CMP framework support"
 	depends on SYS_SUPPORTS_MIPS_CMP
-	select SYNC_R4K if BROKEN
+	select SYNC_R4K
 	select SYS_SUPPORTS_SMP
 	select SYS_SUPPORTS_SCHED_SMT if SMP
 	select WEAK_ORDERING
@@ -1638,8 +1754,8 @@ config SB1_PASS_2_1_WORKAROUNDS
 config 64BIT_PHYS_ADDR
 	bool
 
-config CPU_HAS_LLSC
-	bool
+config ARCH_PHYS_ADDR_T_64BIT
+       def_bool 64BIT_PHYS_ADDR
 
 config CPU_HAS_SMARTMIPS
 	depends on SYS_SUPPORTS_SMARTMIPS
@@ -1731,7 +1847,7 @@ config SYS_SUPPORTS_SMARTMIPS
 
 config ARCH_FLATMEM_ENABLE
 	def_bool y
-	depends on !NUMA
+	depends on !NUMA && !CPU_LOONGSON2
 
 config ARCH_DISCONTIGMEM_ENABLE
 	bool
@@ -1977,15 +2093,6 @@ config STACKTRACE_SUPPORT
 
 source "init/Kconfig"
 
-config PROBE_INITRD_HEADER
-	bool "Probe initrd header created by addinitrd"
-	depends on BLK_DEV_INITRD
-	help
-	  Probe initrd header at the last page of kernel image.
-	  Say Y here if you are using arch/mips/boot/addinitrd.c to
-	  add initrd or initramfs image to the kernel image.
-	  Otherwise, say N.
-
 source "kernel/Kconfig.freezer"
 
 menu "Bus options (PCI, PCMCIA, EISA, ISA, TC)"
@@ -2057,6 +2164,7 @@ config MMU
 
 config I8253
 	bool
+	select MIPS_EXTERNAL_TIMER
 
 config ZONE_DMA32
 	bool
@@ -2121,13 +2229,19 @@ endmenu
 
 menu "Power management options"
 
+config ARCH_HIBERNATION_POSSIBLE
+	def_bool y
+	depends on SYS_SUPPORTS_HOTPLUG_CPU || !SMP
+
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
-	depends on !SMP
+	depends on SYS_SUPPORTS_HOTPLUG_CPU || !SMP
 
 source "kernel/power/Kconfig"
 
 endmenu
+
+source "arch/mips/kernel/cpufreq/Kconfig"
 
 source "net/Kconfig"
 

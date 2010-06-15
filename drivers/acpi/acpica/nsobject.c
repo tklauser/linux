@@ -6,7 +6,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -211,6 +211,15 @@ void acpi_ns_detach_object(struct acpi_namespace_node *node)
 
 	if (!obj_desc || (obj_desc->common.type == ACPI_TYPE_LOCAL_DATA)) {
 		return_VOID;
+	}
+
+	if (node->flags & ANOBJ_ALLOCATED_BUFFER) {
+
+		/* Free the dynamic aml buffer */
+
+		if (obj_desc->common.type == ACPI_TYPE_METHOD) {
+			ACPI_FREE(obj_desc->method.aml_start);
+		}
 	}
 
 	/* Clear the entry in all cases */

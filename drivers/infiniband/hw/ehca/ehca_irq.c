@@ -41,6 +41,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <linux/slab.h>
+
 #include "ehca_classes.h"
 #include "ehca_irq.h"
 #include "ehca_iverbs.h"
@@ -479,13 +481,13 @@ void ehca_tasklet_neq(unsigned long data)
 	struct ehca_eqe *eqe;
 	u64 ret;
 
-	eqe = (struct ehca_eqe *)ehca_poll_eq(shca, &shca->neq);
+	eqe = ehca_poll_eq(shca, &shca->neq);
 
 	while (eqe) {
 		if (!EHCA_BMASK_GET(NEQE_COMPLETION_EVENT, eqe->entry))
 			parse_ec(shca, eqe->entry);
 
-		eqe = (struct ehca_eqe *)ehca_poll_eq(shca, &shca->neq);
+		eqe = ehca_poll_eq(shca, &shca->neq);
 	}
 
 	ret = hipz_h_reset_event(shca->ipz_hca_handle,
@@ -548,11 +550,10 @@ void ehca_process_eq(struct ehca_shca *shca, int is_irq)
 	struct ehca_eq *eq = &shca->eq;
 	struct ehca_eqe_cache_entry *eqe_cache = eq->eqe_cache;
 	u64 eqe_value, ret;
-	unsigned long flags;
 	int eqe_cnt, i;
 	int eq_empty = 0;
 
-	spin_lock_irqsave(&eq->irq_spinlock, flags);
+	spin_lock(&eq->irq_spinlock);
 	if (is_irq) {
 		const int max_query_cnt = 100;
 		int query_cnt = 0;
@@ -572,8 +573,7 @@ void ehca_process_eq(struct ehca_shca *shca, int is_irq)
 	eqe_cnt = 0;
 	do {
 		u32 token;
-		eqe_cache[eqe_cnt].eqe =
-			(struct ehca_eqe *)ehca_poll_eq(shca, eq);
+		eqe_cache[eqe_cnt].eqe = ehca_poll_eq(shca, eq);
 		if (!eqe_cache[eqe_cnt].eqe)
 			break;
 		eqe_value = eqe_cache[eqe_cnt].eqe->entry;
@@ -637,14 +637,14 @@ void ehca_process_eq(struct ehca_shca *shca, int is_irq)
 		goto unlock_irq_spinlock;
 	do {
 		struct ehca_eqe *eqe;
-		eqe = (struct ehca_eqe *)ehca_poll_eq(shca, &shca->eq);
+		eqe = ehca_poll_eq(shca, &shca->eq);
 		if (!eqe)
 			break;
 		process_eqe(shca, eqe);
 	} while (1);
 
 unlock_irq_spinlock:
-	spin_unlock_irqrestore(&eq->irq_spinlock, flags);
+	spin_unlock(&eq->irq_spinlock);
 }
 
 void ehca_tasklet_eq(unsigned long data)
@@ -827,8 +827,7 @@ static void __cpuinit take_over_work(struct ehca_comp_pool *pool, int cpu)
 		cq = list_entry(cct->cq_list.next, struct ehca_cq, entry);
 
 		list_del(&cq->entry);
-		__queue_comp_task(cq, per_cpu_ptr(pool->cpu_comp_tasks,
-						  smp_processor_id()));
+		__queue_comp_task(cq, this_cpu_ptr(pool->cpu_comp_tasks));
 	}
 
 	spin_unlock_irqrestore(&cct->task_lock, flags_cct);

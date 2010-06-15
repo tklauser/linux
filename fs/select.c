@@ -15,6 +15,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -41,22 +42,28 @@
  * better solutions..
  */
 
+#define MAX_SLACK	(100 * NSEC_PER_MSEC)
+
 static long __estimate_accuracy(struct timespec *tv)
 {
 	long slack;
 	int divfactor = 1000;
 
+	if (tv->tv_sec < 0)
+		return 0;
+
 	if (task_nice(current) > 0)
 		divfactor = divfactor / 5;
+
+	if (tv->tv_sec > MAX_SLACK / (NSEC_PER_SEC/divfactor))
+		return MAX_SLACK;
 
 	slack = tv->tv_nsec / divfactor;
 	slack += tv->tv_sec * (NSEC_PER_SEC/divfactor);
 
-	if (slack > 100 * NSEC_PER_MSEC)
-		slack =  100 * NSEC_PER_MSEC;
+	if (slack > MAX_SLACK)
+		return MAX_SLACK;
 
-	if (slack < 0)
-		slack = 0;
 	return slack;
 }
 
@@ -110,6 +117,7 @@ void poll_initwait(struct poll_wqueues *pwq)
 {
 	init_poll_funcptr(&pwq->pt, __pollwait);
 	pwq->polling_task = current;
+	pwq->triggered = 0;
 	pwq->error = 0;
 	pwq->table = NULL;
 	pwq->inline_index = 0;
@@ -168,7 +176,7 @@ static struct poll_table_entry *poll_get_entry(struct poll_wqueues *p)
 	return table->entry++;
 }
 
-static int pollwake(wait_queue_t *wait, unsigned mode, int sync, void *key)
+static int __pollwake(wait_queue_t *wait, unsigned mode, int sync, void *key)
 {
 	struct poll_wqueues *pwq = wait->private;
 	DECLARE_WAITQUEUE(dummy_wait, pwq->polling_task);
@@ -194,6 +202,16 @@ static int pollwake(wait_queue_t *wait, unsigned mode, int sync, void *key)
 	return default_wake_function(&dummy_wait, mode, sync, key);
 }
 
+static int pollwake(wait_queue_t *wait, unsigned mode, int sync, void *key)
+{
+	struct poll_table_entry *entry;
+
+	entry = container_of(wait, struct poll_table_entry, wait);
+	if (key && !((unsigned long)key & entry->key))
+		return 0;
+	return __pollwake(wait, mode, sync, key);
+}
+
 /* Add a new entry */
 static void __pollwait(struct file *filp, wait_queue_head_t *wait_address,
 				poll_table *p)
@@ -205,6 +223,7 @@ static void __pollwait(struct file *filp, wait_queue_head_t *wait_address,
 	get_file(filp);
 	entry->filp = filp;
 	entry->wait_address = wait_address;
+	entry->key = p->key;
 	init_waitqueue_func_entry(&entry->wait, pollwake);
 	entry->wait.private = pwq;
 	add_wait_queue(wait_address, &entry->wait);
@@ -362,6 +381,18 @@ get_max:
 #define POLLOUT_SET (POLLWRBAND | POLLWRNORM | POLLOUT | POLLERR)
 #define POLLEX_SET (POLLPRI)
 
+static inline void wait_key_set(poll_table *wait, unsigned long in,
+				unsigned long out, unsigned long bit)
+{
+	if (wait) {
+		wait->key = POLLEX_SET;
+		if (in & bit)
+			wait->key |= POLLIN_SET;
+		if (out & bit)
+			wait->key |= POLLOUT_SET;
+	}
+}
+
 int do_select(int n, fd_set_bits *fds, struct timespec *end_time)
 {
 	ktime_t expire, *to = NULL;
@@ -418,20 +449,25 @@ int do_select(int n, fd_set_bits *fds, struct timespec *end_time)
 				if (file) {
 					f_op = file->f_op;
 					mask = DEFAULT_POLLMASK;
-					if (f_op && f_op->poll)
-						mask = (*f_op->poll)(file, retval ? NULL : wait);
+					if (f_op && f_op->poll) {
+						wait_key_set(wait, in, out, bit);
+						mask = (*f_op->poll)(file, wait);
+					}
 					fput_light(file, fput_needed);
 					if ((mask & POLLIN_SET) && (in & bit)) {
 						res_in |= bit;
 						retval++;
+						wait = NULL;
 					}
 					if ((mask & POLLOUT_SET) && (out & bit)) {
 						res_out |= bit;
 						retval++;
+						wait = NULL;
 					}
 					if ((mask & POLLEX_SET) && (ex & bit)) {
 						res_ex |= bit;
 						retval++;
+						wait = NULL;
 					}
 				}
 			}
@@ -655,6 +691,23 @@ SYSCALL_DEFINE6(pselect6, int, n, fd_set __user *, inp, fd_set __user *, outp,
 }
 #endif /* HAVE_SET_RESTORE_SIGMASK */
 
+#ifdef __ARCH_WANT_SYS_OLD_SELECT
+struct sel_arg_struct {
+	unsigned long n;
+	fd_set __user *inp, *outp, *exp;
+	struct timeval __user *tvp;
+};
+
+SYSCALL_DEFINE1(old_select, struct sel_arg_struct __user *, arg)
+{
+	struct sel_arg_struct a;
+
+	if (copy_from_user(&a, arg, sizeof(a)))
+		return -EFAULT;
+	return sys_select(a.n, a.inp, a.outp, a.exp, a.tvp);
+}
+#endif
+
 struct poll_list {
 	struct poll_list *next;
 	int len;
@@ -685,8 +738,12 @@ static inline unsigned int do_pollfd(struct pollfd *pollfd, poll_table *pwait)
 		mask = POLLNVAL;
 		if (file != NULL) {
 			mask = DEFAULT_POLLMASK;
-			if (file->f_op && file->f_op->poll)
+			if (file->f_op && file->f_op->poll) {
+				if (pwait)
+					pwait->key = pollfd->events |
+							POLLERR | POLLHUP;
 				mask = file->f_op->poll(file, pwait);
+			}
 			/* Mask out unneeded events. */
 			mask &= pollfd->events | POLLERR | POLLHUP;
 			fput_light(file, fput_needed);
@@ -781,7 +838,7 @@ int do_sys_poll(struct pollfd __user *ufds, unsigned int nfds,
  	struct poll_list *walk = head;
  	unsigned long todo = nfds;
 
-	if (nfds > current->signal->rlim[RLIMIT_NOFILE].rlim_cur)
+	if (nfds > rlimit(RLIMIT_NOFILE))
 		return -EINVAL;
 
 	len = min_t(unsigned int, nfds, N_STACK_PPS);

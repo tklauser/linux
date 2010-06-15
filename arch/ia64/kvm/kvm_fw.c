@@ -21,6 +21,9 @@
 
 #include <linux/kvm_host.h>
 #include <linux/smp.h>
+#include <asm/sn/addrs.h>
+#include <asm/sn/clksupport.h>
+#include <asm/sn/shub_mmr.h>
 
 #include "vti.h"
 #include "misc.h"
@@ -72,7 +75,7 @@ static void set_pal_result(struct kvm_vcpu *vcpu,
 	struct exit_ctl_data *p;
 
 	p = kvm_get_exit_data(vcpu);
-	if (p && p->exit_reason == EXIT_REASON_PAL_CALL) {
+	if (p->exit_reason == EXIT_REASON_PAL_CALL) {
 		p->u.pal_data.ret = result;
 		return ;
 	}
@@ -84,7 +87,7 @@ static void set_sal_result(struct kvm_vcpu *vcpu,
 	struct exit_ctl_data *p;
 
 	p = kvm_get_exit_data(vcpu);
-	if (p && p->exit_reason == EXIT_REASON_SAL_CALL) {
+	if (p->exit_reason == EXIT_REASON_SAL_CALL) {
 		p->u.sal_data.ret = result;
 		return ;
 	}
@@ -188,12 +191,35 @@ static struct ia64_pal_retval pal_freq_base(struct kvm_vcpu *vcpu)
 	return result;
 }
 
+/*
+ * On the SGI SN2, the ITC isn't stable. Emulation backed by the SN2
+ * RTC is used instead. This function patches the ratios from SAL
+ * to match the RTC before providing them to the guest.
+ */
+static void sn2_patch_itc_freq_ratios(struct ia64_pal_retval *result)
+{
+	struct pal_freq_ratio *ratio;
+	unsigned long sal_freq, sal_drift, factor;
+
+	result->status = ia64_sal_freq_base(SAL_FREQ_BASE_PLATFORM,
+					    &sal_freq, &sal_drift);
+	ratio = (struct pal_freq_ratio *)&result->v2;
+	factor = ((sal_freq * 3) + (sn_rtc_cycles_per_second / 2)) /
+		sn_rtc_cycles_per_second;
+
+	ratio->num = 3;
+	ratio->den = factor;
+}
+
 static struct ia64_pal_retval pal_freq_ratios(struct kvm_vcpu *vcpu)
 {
-
 	struct ia64_pal_retval result;
 
 	PAL_CALL(result, PAL_FREQ_RATIOS, 0, 0, 0);
+
+	if (vcpu->kvm->arch.is_sn2)
+		sn2_patch_itc_freq_ratios(&result);
+
 	return result;
 }
 
@@ -296,7 +322,7 @@ static  u64 kvm_get_pal_call_index(struct kvm_vcpu *vcpu)
 	struct exit_ctl_data *p;
 
 	p = kvm_get_exit_data(vcpu);
-	if (p && (p->exit_reason == EXIT_REASON_PAL_CALL))
+	if (p->exit_reason == EXIT_REASON_PAL_CALL)
 		index = p->u.pal_data.gr28;
 
 	return index;
@@ -620,18 +646,16 @@ static void kvm_get_sal_call_data(struct kvm_vcpu *vcpu, u64 *in0, u64 *in1,
 
 	p = kvm_get_exit_data(vcpu);
 
-	if (p) {
-		if (p->exit_reason == EXIT_REASON_SAL_CALL) {
-			*in0 = p->u.sal_data.in0;
-			*in1 = p->u.sal_data.in1;
-			*in2 = p->u.sal_data.in2;
-			*in3 = p->u.sal_data.in3;
-			*in4 = p->u.sal_data.in4;
-			*in5 = p->u.sal_data.in5;
-			*in6 = p->u.sal_data.in6;
-			*in7 = p->u.sal_data.in7;
-			return ;
-		}
+	if (p->exit_reason == EXIT_REASON_SAL_CALL) {
+		*in0 = p->u.sal_data.in0;
+		*in1 = p->u.sal_data.in1;
+		*in2 = p->u.sal_data.in2;
+		*in3 = p->u.sal_data.in3;
+		*in4 = p->u.sal_data.in4;
+		*in5 = p->u.sal_data.in5;
+		*in6 = p->u.sal_data.in6;
+		*in7 = p->u.sal_data.in7;
+		return ;
 	}
 	*in0 = 0;
 }

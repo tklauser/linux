@@ -11,8 +11,8 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/irq.h>
 #include <linux/serial.h>
+#include <linux/smp.h>
 #include <linux/types.h>
 #include <linux/string.h>	/* for memset */
 #include <linux/tty.h>
@@ -45,9 +45,6 @@ extern struct plat_smp_ops octeon_smp_ops;
 extern void pci_console_init(const char *arg);
 #endif
 
-#ifdef CONFIG_CAVIUM_RESERVE32
-extern uint64_t octeon_reserve32_memory;
-#endif
 static unsigned long long MAX_MEMORY = 512ull << 20;
 
 struct octeon_boot_descriptor *octeon_boot_desc_ptr;
@@ -186,54 +183,6 @@ void octeon_check_cpu_bist(void)
 	write_octeon_c0_dcacheerr(0);
 }
 
-#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
-/**
- * Called on every core to setup the wired tlb entry needed
- * if CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB is set.
- *
- */
-static void octeon_hal_setup_per_cpu_reserved32(void *unused)
-{
-	/*
-	 * The config has selected to wire the reserve32 memory for all
-	 * userspace applications. We need to put a wired TLB entry in for each
-	 * 512MB of reserve32 memory. We only handle double 256MB pages here,
-	 * so reserve32 must be multiple of 512MB.
-	 */
-	uint32_t size = CONFIG_CAVIUM_RESERVE32;
-	uint32_t entrylo0 =
-		0x7 | ((octeon_reserve32_memory & ((1ul << 40) - 1)) >> 6);
-	uint32_t entrylo1 = entrylo0 + (256 << 14);
-	uint32_t entryhi = (0x80000000UL - (CONFIG_CAVIUM_RESERVE32 << 20));
-	while (size >= 512) {
-#if 0
-		pr_info("CPU%d: Adding double wired TLB entry for 0x%lx\n",
-			smp_processor_id(), entryhi);
-#endif
-		add_wired_entry(entrylo0, entrylo1, entryhi, PM_256M);
-		entrylo0 += 512 << 14;
-		entrylo1 += 512 << 14;
-		entryhi += 512 << 20;
-		size -= 512;
-	}
-}
-#endif /* CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB */
-
-/**
- * Called to release the named block which was used to made sure
- * that nobody used the memory for something else during
- * init. Now we'll free it so userspace apps can use this
- * memory region with bootmem_alloc.
- *
- * This function is called only once from prom_free_prom_memory().
- */
-void octeon_hal_setup_reserved32(void)
-{
-#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
-	on_each_cpu(octeon_hal_setup_per_cpu_reserved32, NULL, 0, 1);
-#endif
-}
-
 /**
  * Reboot Octeon
  *
@@ -293,18 +242,6 @@ static void octeon_halt(void)
 
 	octeon_kill_core(NULL);
 }
-
-#if 0
-/**
- * Platform time init specifics.
- * Returns
- */
-void __init plat_time_init(void)
-{
-	/* Nothing special here, but we are required to have one */
-}
-
-#endif
 
 /**
  * Handle all the error condition interrupts that might occur.
@@ -502,25 +439,13 @@ void __init prom_init(void)
 	 * memory when it is getting memory from the
 	 * bootloader. Later, after the memory allocations are
 	 * complete, the reserve32 will be freed.
-	 */
-#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
-	if (CONFIG_CAVIUM_RESERVE32 & 0x1ff)
-		pr_err("CAVIUM_RESERVE32 isn't a multiple of 512MB. "
-		       "This is required if CAVIUM_RESERVE32_USE_WIRED_TLB "
-		       "is set\n");
-	else
-		addr = cvmx_bootmem_phy_named_block_alloc(CONFIG_CAVIUM_RESERVE32 << 20,
-							0, 0, 512 << 20,
-							"CAVIUM_RESERVE32", 0);
-#else
-	/*
+	 *
 	 * Allocate memory for RESERVED32 aligned on 2MB boundary. This
 	 * is in case we later use hugetlb entries with it.
 	 */
 	addr = cvmx_bootmem_phy_named_block_alloc(CONFIG_CAVIUM_RESERVE32 << 20,
 						0, 0, 2 << 20,
 						"CAVIUM_RESERVE32", 0);
-#endif
 	if (addr < 0)
 		pr_err("Failed to allocate CAVIUM_RESERVE32 memory area\n");
 	else
@@ -817,111 +742,4 @@ void prom_free_prom_memory(void)
 		panic("Unable to request_irq(OCTEON_IRQ_RML)\n");
 	}
 #endif
-
-	/* This call is here so that it is performed after any TLB
-	   initializations. It needs to be after these in case the
-	   CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB option is set */
-	octeon_hal_setup_reserved32();
 }
-
-static struct octeon_cf_data octeon_cf_data;
-
-static int __init octeon_cf_device_init(void)
-{
-	union cvmx_mio_boot_reg_cfgx mio_boot_reg_cfg;
-	unsigned long base_ptr, region_base, region_size;
-	struct platform_device *pd;
-	struct resource cf_resources[3];
-	unsigned int num_resources;
-	int i;
-	int ret = 0;
-
-	/* Setup octeon-cf platform device if present. */
-	base_ptr = 0;
-	if (octeon_bootinfo->major_version == 1
-		&& octeon_bootinfo->minor_version >= 1) {
-		if (octeon_bootinfo->compact_flash_common_base_addr)
-			base_ptr =
-				octeon_bootinfo->compact_flash_common_base_addr;
-	} else {
-		base_ptr = 0x1d000800;
-	}
-
-	if (!base_ptr)
-		return ret;
-
-	/* Find CS0 region. */
-	for (i = 0; i < 8; i++) {
-		mio_boot_reg_cfg.u64 = cvmx_read_csr(CVMX_MIO_BOOT_REG_CFGX(i));
-		region_base = mio_boot_reg_cfg.s.base << 16;
-		region_size = (mio_boot_reg_cfg.s.size + 1) << 16;
-		if (mio_boot_reg_cfg.s.en && base_ptr >= region_base
-		    && base_ptr < region_base + region_size)
-			break;
-	}
-	if (i >= 7) {
-		/* i and i + 1 are CS0 and CS1, both must be less than 8. */
-		goto out;
-	}
-	octeon_cf_data.base_region = i;
-	octeon_cf_data.is16bit = mio_boot_reg_cfg.s.width;
-	octeon_cf_data.base_region_bias = base_ptr - region_base;
-	memset(cf_resources, 0, sizeof(cf_resources));
-	num_resources = 0;
-	cf_resources[num_resources].flags	= IORESOURCE_MEM;
-	cf_resources[num_resources].start	= region_base;
-	cf_resources[num_resources].end	= region_base + region_size - 1;
-	num_resources++;
-
-
-	if (!(base_ptr & 0xfffful)) {
-		/*
-		 * Boot loader signals availability of DMA (true_ide
-		 * mode) by setting low order bits of base_ptr to
-		 * zero.
-		 */
-
-		/* Asume that CS1 immediately follows. */
-		mio_boot_reg_cfg.u64 =
-			cvmx_read_csr(CVMX_MIO_BOOT_REG_CFGX(i + 1));
-		region_base = mio_boot_reg_cfg.s.base << 16;
-		region_size = (mio_boot_reg_cfg.s.size + 1) << 16;
-		if (!mio_boot_reg_cfg.s.en)
-			goto out;
-
-		cf_resources[num_resources].flags	= IORESOURCE_MEM;
-		cf_resources[num_resources].start	= region_base;
-		cf_resources[num_resources].end	= region_base + region_size - 1;
-		num_resources++;
-
-		octeon_cf_data.dma_engine = 0;
-		cf_resources[num_resources].flags	= IORESOURCE_IRQ;
-		cf_resources[num_resources].start	= OCTEON_IRQ_BOOTDMA;
-		cf_resources[num_resources].end	= OCTEON_IRQ_BOOTDMA;
-		num_resources++;
-	} else {
-		octeon_cf_data.dma_engine = -1;
-	}
-
-	pd = platform_device_alloc("pata_octeon_cf", -1);
-	if (!pd) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	pd->dev.platform_data = &octeon_cf_data;
-
-	ret = platform_device_add_resources(pd, cf_resources, num_resources);
-	if (ret)
-		goto fail;
-
-	ret = platform_device_add(pd);
-	if (ret)
-		goto fail;
-
-	return ret;
-fail:
-	platform_device_put(pd);
-out:
-	return ret;
-}
-device_initcall(octeon_cf_device_init);

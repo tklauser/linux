@@ -39,19 +39,20 @@ MODULE_DESCRIPTION("PHY library");
 MODULE_AUTHOR("Andy Fleming");
 MODULE_LICENSE("GPL");
 
-static struct phy_driver genphy_driver;
-extern int mdio_bus_init(void);
-extern void mdio_bus_exit(void);
-
 void phy_device_free(struct phy_device *phydev)
 {
 	kfree(phydev);
 }
+EXPORT_SYMBOL(phy_device_free);
 
 static void phy_device_release(struct device *dev)
 {
 	phy_device_free(to_phy_device(dev));
 }
+
+static struct phy_driver genphy_driver;
+extern int mdio_bus_init(void);
+extern void mdio_bus_exit(void);
 
 static LIST_HEAD(phy_fixup_list);
 static DEFINE_MUTEX(phy_fixup_lock);
@@ -133,8 +134,10 @@ int phy_scan_fixups(struct phy_device *phydev)
 
 			err = fixup->run(phydev);
 
-			if (err < 0)
+			if (err < 0) {
+				mutex_unlock(&phy_fixup_lock);
 				return err;
+			}
 		}
 	}
 	mutex_unlock(&phy_fixup_lock);
@@ -166,10 +169,15 @@ struct phy_device* phy_device_create(struct mii_bus *bus, int addr, int phy_id)
 	dev->addr = addr;
 	dev->phy_id = phy_id;
 	dev->bus = bus;
+	dev->dev.parent = bus->parent;
+	dev->dev.bus = &mdio_bus_type;
+	dev->irq = bus->irq != NULL ? bus->irq[addr] : PHY_POLL;
+	dev_set_name(&dev->dev, PHY_ID_FMT, bus->id, addr);
 
 	dev->state = PHY_DOWN;
 
 	mutex_init(&dev->lock);
+	INIT_DELAYED_WORK(&dev->state_queue, phy_state_machine);
 
 	return dev;
 }
@@ -235,6 +243,54 @@ struct phy_device * get_phy_device(struct mii_bus *bus, int addr)
 
 	return dev;
 }
+EXPORT_SYMBOL(get_phy_device);
+
+/**
+ * phy_device_register - Register the phy device on the MDIO bus
+ * @phydev: phy_device structure to be added to the MDIO bus
+ */
+int phy_device_register(struct phy_device *phydev)
+{
+	int err;
+
+	/* Don't register a phy if one is already registered at this
+	 * address */
+	if (phydev->bus->phy_map[phydev->addr])
+		return -EINVAL;
+	phydev->bus->phy_map[phydev->addr] = phydev;
+
+	/* Run all of the fixups for this PHY */
+	phy_scan_fixups(phydev);
+
+	err = device_register(&phydev->dev);
+	if (err) {
+		pr_err("phy %d failed to register\n", phydev->addr);
+		goto out;
+	}
+
+	return 0;
+
+ out:
+	phydev->bus->phy_map[phydev->addr] = NULL;
+	return err;
+}
+EXPORT_SYMBOL(phy_device_register);
+
+/**
+ * phy_find_first - finds the first PHY device on the bus
+ * @bus: the target MII bus
+ */
+struct phy_device *phy_find_first(struct mii_bus *bus)
+{
+	int addr;
+
+	for (addr = 0; addr < PHY_MAX_ADDR; addr++) {
+		if (bus->phy_map[addr])
+			return bus->phy_map[addr];
+	}
+	return NULL;
+}
+EXPORT_SYMBOL(phy_find_first);
 
 /**
  * phy_prepare_link - prepares the PHY layer to monitor link status
@@ -253,6 +309,33 @@ void phy_prepare_link(struct phy_device *phydev,
 {
 	phydev->adjust_link = handler;
 }
+
+/**
+ * phy_connect_direct - connect an ethernet device to a specific phy_device
+ * @dev: the network device to connect
+ * @phydev: the pointer to the phy device
+ * @handler: callback function for state change notifications
+ * @flags: PHY device's dev_flags
+ * @interface: PHY device's interface
+ */
+int phy_connect_direct(struct net_device *dev, struct phy_device *phydev,
+		       void (*handler)(struct net_device *), u32 flags,
+		       phy_interface_t interface)
+{
+	int rc;
+
+	rc = phy_attach_direct(dev, phydev, flags, interface);
+	if (rc)
+		return rc;
+
+	phy_prepare_link(phydev, handler);
+	phy_start_machine(phydev, NULL);
+	if (phydev->irq > 0)
+		phy_start_interrupts(phydev);
+
+	return 0;
+}
+EXPORT_SYMBOL(phy_connect_direct);
 
 /**
  * phy_connect - connect an ethernet device to a PHY device
@@ -275,18 +358,21 @@ struct phy_device * phy_connect(struct net_device *dev, const char *bus_id,
 		phy_interface_t interface)
 {
 	struct phy_device *phydev;
+	struct device *d;
+	int rc;
 
-	phydev = phy_attach(dev, bus_id, flags, interface);
+	/* Search the list of PHY devices on the mdio bus for the
+	 * PHY with the requested name */
+	d = bus_find_device_by_name(&mdio_bus_type, NULL, bus_id);
+	if (!d) {
+		pr_err("PHY %s not found\n", bus_id);
+		return ERR_PTR(-ENODEV);
+	}
+	phydev = to_phy_device(d);
 
-	if (IS_ERR(phydev))
-		return phydev;
-
-	phy_prepare_link(phydev, handler);
-
-	phy_start_machine(phydev, NULL);
-
-	if (phydev->irq > 0)
-		phy_start_interrupts(phydev);
+	rc = phy_connect_direct(dev, phydev, handler, flags, interface);
+	if (rc)
+		return ERR_PTR(rc);
 
 	return phydev;
 }
@@ -309,10 +395,24 @@ void phy_disconnect(struct phy_device *phydev)
 }
 EXPORT_SYMBOL(phy_disconnect);
 
+int phy_init_hw(struct phy_device *phydev)
+{
+	int ret;
+
+	if (!phydev->drv || !phydev->drv->config_init)
+		return 0;
+
+	ret = phy_scan_fixups(phydev);
+	if (ret < 0)
+		return ret;
+
+	return phydev->drv->config_init(phydev);
+}
+
 /**
- * phy_attach - attach a network device to a particular PHY device
+ * phy_attach_direct - attach a network device to a given PHY device pointer
  * @dev: network device to attach
- * @bus_id: PHY device to attach
+ * @phydev: Pointer to phy_device to attach
  * @flags: PHY device's dev_flags
  * @interface: PHY device's interface
  *
@@ -323,22 +423,10 @@ EXPORT_SYMBOL(phy_disconnect);
  *     the attaching device, and given a callback for link status
  *     change.  The phy_device is returned to the attaching driver.
  */
-struct phy_device *phy_attach(struct net_device *dev,
-		const char *bus_id, u32 flags, phy_interface_t interface)
+int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
+		      u32 flags, phy_interface_t interface)
 {
-	struct bus_type *bus = &mdio_bus_type;
-	struct phy_device *phydev;
-	struct device *d;
-
-	/* Search the list of PHY devices on the mdio bus for the
-	 * PHY with the requested name */
-	d = bus_find_device_by_name(bus, NULL, bus_id);
-	if (d) {
-		phydev = to_phy_device(d);
-	} else {
-		printk(KERN_ERR "%s not found\n", bus_id);
-		return ERR_PTR(-ENODEV);
-	}
+	struct device *d = &phydev->dev;
 
 	/* Assume that if there is no driver, that it doesn't
 	 * exist, and we should use the genphy driver. */
@@ -351,13 +439,12 @@ struct phy_device *phy_attach(struct net_device *dev,
 			err = device_bind_driver(d);
 
 		if (err)
-			return ERR_PTR(err);
+			return err;
 	}
 
 	if (phydev->attached_dev) {
-		printk(KERN_ERR "%s: %s already attached\n",
-				dev->name, bus_id);
-		return ERR_PTR(-EBUSY);
+		dev_err(&dev->dev, "PHY already attached\n");
+		return -EBUSY;
 	}
 
 	phydev->attached_dev = dev;
@@ -369,19 +456,40 @@ struct phy_device *phy_attach(struct net_device *dev,
 	/* Do initial configuration here, now that
 	 * we have certain key parameters
 	 * (dev_flags and interface) */
-	if (phydev->drv->config_init) {
-		int err;
+	return phy_init_hw(phydev);
+}
+EXPORT_SYMBOL(phy_attach_direct);
 
-		err = phy_scan_fixups(phydev);
+/**
+ * phy_attach - attach a network device to a particular PHY device
+ * @dev: network device to attach
+ * @bus_id: Bus ID of PHY device to attach
+ * @flags: PHY device's dev_flags
+ * @interface: PHY device's interface
+ *
+ * Description: Same as phy_attach_direct() except that a PHY bus_id
+ *     string is passed instead of a pointer to a struct phy_device.
+ */
+struct phy_device *phy_attach(struct net_device *dev,
+		const char *bus_id, u32 flags, phy_interface_t interface)
+{
+	struct bus_type *bus = &mdio_bus_type;
+	struct phy_device *phydev;
+	struct device *d;
+	int rc;
 
-		if (err < 0)
-			return ERR_PTR(err);
-
-		err = phydev->drv->config_init(phydev);
-
-		if (err < 0)
-			return ERR_PTR(err);
+	/* Search the list of PHY devices on the mdio bus for the
+	 * PHY with the requested name */
+	d = bus_find_device_by_name(bus, NULL, bus_id);
+	if (!d) {
+		pr_err("PHY %s not found\n", bus_id);
+		return ERR_PTR(-ENODEV);
 	}
+	phydev = to_phy_device(d);
+
+	rc = phy_attach_direct(dev, phydev, flags, interface);
+	if (rc)
+		return ERR_PTR(rc);
 
 	return phydev;
 }

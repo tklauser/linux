@@ -21,7 +21,6 @@
 #include <linux/stddef.h>
 #include <linux/unistd.h>
 #include <linux/ptrace.h>
-#include <linux/slab.h>
 #include <linux/user.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
@@ -33,7 +32,9 @@
 #include <linux/backlight.h>
 #include <linux/bug.h>
 #include <linux/kdebug.h>
+#include <linux/debugfs.h>
 
+#include <asm/emulated_ops.h>
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -58,13 +59,13 @@
 #endif
 
 #if defined(CONFIG_DEBUGGER) || defined(CONFIG_KEXEC)
-int (*__debugger)(struct pt_regs *regs);
-int (*__debugger_ipi)(struct pt_regs *regs);
-int (*__debugger_bpt)(struct pt_regs *regs);
-int (*__debugger_sstep)(struct pt_regs *regs);
-int (*__debugger_iabr_match)(struct pt_regs *regs);
-int (*__debugger_dabr_match)(struct pt_regs *regs);
-int (*__debugger_fault_handler)(struct pt_regs *regs);
+int (*__debugger)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_ipi)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_bpt)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_sstep)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_iabr_match)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_dabr_match)(struct pt_regs *regs) __read_mostly;
+int (*__debugger_fault_handler)(struct pt_regs *regs) __read_mostly;
 
 EXPORT_SYMBOL(__debugger);
 EXPORT_SYMBOL(__debugger_ipi);
@@ -100,11 +101,11 @@ static inline void pmac_backlight_unblank(void) { }
 int die(const char *str, struct pt_regs *regs, long err)
 {
 	static struct {
-		spinlock_t lock;
+		raw_spinlock_t lock;
 		u32 lock_owner;
 		int lock_owner_depth;
 	} die = {
-		.lock =			__SPIN_LOCK_UNLOCKED(die.lock),
+		.lock =			__RAW_SPIN_LOCK_UNLOCKED(die.lock),
 		.lock_owner =		-1,
 		.lock_owner_depth =	0
 	};
@@ -118,7 +119,7 @@ int die(const char *str, struct pt_regs *regs, long err)
 
 	if (die.lock_owner != raw_smp_processor_id()) {
 		console_verbose();
-		spin_lock_irqsave(&die.lock, flags);
+		raw_spin_lock_irqsave(&die.lock, flags);
 		die.lock_owner = smp_processor_id();
 		die.lock_owner_depth = 0;
 		bust_spinlocks(1);
@@ -144,6 +145,11 @@ int die(const char *str, struct pt_regs *regs, long err)
 #endif
 		printk("%s\n", ppc_md.name ? ppc_md.name : "");
 
+		sysfs_printk_last_file();
+		if (notify_die(DIE_OOPS, str, regs, err, 255,
+			       SIGSEGV) == NOTIFY_STOP)
+			return 1;
+
 		print_modules();
 		show_regs(regs);
 	} else {
@@ -153,7 +159,7 @@ int die(const char *str, struct pt_regs *regs, long err)
 	bust_spinlocks(0);
 	die.lock_owner = -1;
 	add_taint(TAINT_DIE);
-	spin_unlock_irqrestore(&die.lock, flags);
+	raw_spin_unlock_irqrestore(&die.lock, flags);
 
 	if (kexec_should_crash(current) ||
 		kexec_sr_activated(smp_processor_id()))
@@ -170,6 +176,15 @@ int die(const char *str, struct pt_regs *regs, long err)
 	do_exit(err);
 
 	return 0;
+}
+
+void user_single_step_siginfo(struct task_struct *tsk,
+				struct pt_regs *regs, siginfo_t *info)
+{
+	memset(info, 0, sizeof(*info));
+	info->si_signo = SIGTRAP;
+	info->si_code = TRAP_TRACE;
+	info->si_addr = (void __user *)regs->nip;
 }
 
 void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
@@ -196,28 +211,6 @@ void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
 	info.si_code = code;
 	info.si_addr = (void __user *) addr;
 	force_sig_info(signr, &info, current);
-
-	/*
-	 * Init gets no signals that it doesn't have a handler for.
-	 * That's all very well, but if it has caused a synchronous
-	 * exception and we ignore the resulting signal, it will just
-	 * generate the same exception over and over again and we get
-	 * nowhere.  Better to kill it and let the kernel panic.
-	 */
-	if (is_global_init(current)) {
-		__sighandler_t handler;
-
-		spin_lock_irq(&current->sighand->siglock);
-		handler = current->sighand->action[signr-1].sa.sa_handler;
-		spin_unlock_irq(&current->sighand->siglock);
-		if (handler == SIG_DFL) {
-			/* init has generated a synchronous exception
-			   and it doesn't have a handler for the signal */
-			printk(KERN_CRIT "init has generated signal %d "
-			       "but has no handler for it\n", signr);
-			do_exit(signr);
-		}
-	}
 }
 
 #ifdef CONFIG_PPC64
@@ -305,7 +298,7 @@ static inline int check_io_access(struct pt_regs *regs)
 	return 0;
 }
 
-#if defined(CONFIG_4xx) || defined(CONFIG_BOOKE)
+#ifdef CONFIG_PPC_ADV_DEBUG_REGS
 /* On 4xx, the reason for the machine check or program exception
    is in the ESR. */
 #define get_reason(regs)	((regs)->dsisr)
@@ -488,6 +481,8 @@ int machine_check_generic(struct pt_regs *regs)
 void machine_check_exception(struct pt_regs *regs)
 {
 	int recover = 0;
+
+	__get_cpu_var(irq_stat).mce_exceptions++;
 
 	/* See if any machine dependent calls. In theory, we would want
 	 * to call the CPU first, and call the ppc_md. one if the CPU
@@ -757,36 +752,44 @@ static int emulate_instruction(struct pt_regs *regs)
 
 	/* Emulate the mfspr rD, PVR. */
 	if ((instword & PPC_INST_MFSPR_PVR_MASK) == PPC_INST_MFSPR_PVR) {
+		PPC_WARN_EMULATED(mfpvr, regs);
 		rd = (instword >> 21) & 0x1f;
 		regs->gpr[rd] = mfspr(SPRN_PVR);
 		return 0;
 	}
 
 	/* Emulating the dcba insn is just a no-op.  */
-	if ((instword & PPC_INST_DCBA_MASK) == PPC_INST_DCBA)
+	if ((instword & PPC_INST_DCBA_MASK) == PPC_INST_DCBA) {
+		PPC_WARN_EMULATED(dcba, regs);
 		return 0;
+	}
 
 	/* Emulate the mcrxr insn.  */
 	if ((instword & PPC_INST_MCRXR_MASK) == PPC_INST_MCRXR) {
 		int shift = (instword >> 21) & 0x1c;
 		unsigned long msk = 0xf0000000UL >> shift;
 
+		PPC_WARN_EMULATED(mcrxr, regs);
 		regs->ccr = (regs->ccr & ~msk) | ((regs->xer >> shift) & msk);
 		regs->xer &= ~0xf0000000UL;
 		return 0;
 	}
 
 	/* Emulate load/store string insn. */
-	if ((instword & PPC_INST_STRING_GEN_MASK) == PPC_INST_STRING)
+	if ((instword & PPC_INST_STRING_GEN_MASK) == PPC_INST_STRING) {
+		PPC_WARN_EMULATED(string, regs);
 		return emulate_string_inst(regs, instword);
+	}
 
 	/* Emulate the popcntb (Population Count Bytes) instruction. */
 	if ((instword & PPC_INST_POPCNTB_MASK) == PPC_INST_POPCNTB) {
+		PPC_WARN_EMULATED(popcntb, regs);
 		return emulate_popcntb_inst(regs, instword);
 	}
 
 	/* Emulate isel (Integer Select) instruction */
 	if ((instword & PPC_INST_ISEL_MASK) == PPC_INST_ISEL) {
+		PPC_WARN_EMULATED(isel, regs);
 		return emulate_isel(regs, instword);
 	}
 
@@ -963,6 +966,8 @@ void vsx_unavailable_exception(struct pt_regs *regs)
 
 void performance_monitor_exception(struct pt_regs *regs)
 {
+	__get_cpu_var(irq_stat).pmu_irqs++;
+
 	perf_irq(regs);
 }
 
@@ -984,6 +989,8 @@ void SoftwareEmulation(struct pt_regs *regs)
 
 #ifdef CONFIG_MATH_EMULATION
 	errcode = do_mathemu(regs);
+	if (errcode >= 0)
+		PPC_WARN_EMULATED(math, regs);
 
 	switch (errcode) {
 	case 0:
@@ -1005,6 +1012,9 @@ void SoftwareEmulation(struct pt_regs *regs)
 
 #elif defined(CONFIG_8XX_MINIMAL_FPEMU)
 	errcode = Soft_emulate_8xx(regs);
+	if (errcode >= 0)
+		PPC_WARN_EMULATED(8xx, regs);
+
 	switch (errcode) {
 	case 0:
 		emulate_single_step(regs);
@@ -1022,11 +1032,97 @@ void SoftwareEmulation(struct pt_regs *regs)
 }
 #endif /* CONFIG_8xx */
 
-#if defined(CONFIG_40x) || defined(CONFIG_BOOKE)
+#ifdef CONFIG_PPC_ADV_DEBUG_REGS
+static void handle_debug(struct pt_regs *regs, unsigned long debug_status)
+{
+	int changed = 0;
+	/*
+	 * Determine the cause of the debug event, clear the
+	 * event flags and send a trap to the handler. Torez
+	 */
+	if (debug_status & (DBSR_DAC1R | DBSR_DAC1W)) {
+		dbcr_dac(current) &= ~(DBCR_DAC1R | DBCR_DAC1W);
+#ifdef CONFIG_PPC_ADV_DEBUG_DAC_RANGE
+		current->thread.dbcr2 &= ~DBCR2_DAC12MODE;
+#endif
+		do_send_trap(regs, mfspr(SPRN_DAC1), debug_status, TRAP_HWBKPT,
+			     5);
+		changed |= 0x01;
+	}  else if (debug_status & (DBSR_DAC2R | DBSR_DAC2W)) {
+		dbcr_dac(current) &= ~(DBCR_DAC2R | DBCR_DAC2W);
+		do_send_trap(regs, mfspr(SPRN_DAC2), debug_status, TRAP_HWBKPT,
+			     6);
+		changed |= 0x01;
+	}  else if (debug_status & DBSR_IAC1) {
+		current->thread.dbcr0 &= ~DBCR0_IAC1;
+		dbcr_iac_range(current) &= ~DBCR_IAC12MODE;
+		do_send_trap(regs, mfspr(SPRN_IAC1), debug_status, TRAP_HWBKPT,
+			     1);
+		changed |= 0x01;
+	}  else if (debug_status & DBSR_IAC2) {
+		current->thread.dbcr0 &= ~DBCR0_IAC2;
+		do_send_trap(regs, mfspr(SPRN_IAC2), debug_status, TRAP_HWBKPT,
+			     2);
+		changed |= 0x01;
+	}  else if (debug_status & DBSR_IAC3) {
+		current->thread.dbcr0 &= ~DBCR0_IAC3;
+		dbcr_iac_range(current) &= ~DBCR_IAC34MODE;
+		do_send_trap(regs, mfspr(SPRN_IAC3), debug_status, TRAP_HWBKPT,
+			     3);
+		changed |= 0x01;
+	}  else if (debug_status & DBSR_IAC4) {
+		current->thread.dbcr0 &= ~DBCR0_IAC4;
+		do_send_trap(regs, mfspr(SPRN_IAC4), debug_status, TRAP_HWBKPT,
+			     4);
+		changed |= 0x01;
+	}
+	/*
+	 * At the point this routine was called, the MSR(DE) was turned off.
+	 * Check all other debug flags and see if that bit needs to be turned
+	 * back on or not.
+	 */
+	if (DBCR_ACTIVE_EVENTS(current->thread.dbcr0, current->thread.dbcr1))
+		regs->msr |= MSR_DE;
+	else
+		/* Make sure the IDM flag is off */
+		current->thread.dbcr0 &= ~DBCR0_IDM;
+
+	if (changed & 0x01)
+		mtspr(SPRN_DBCR0, current->thread.dbcr0);
+}
 
 void __kprobes DebugException(struct pt_regs *regs, unsigned long debug_status)
 {
-	if (debug_status & DBSR_IC) {	/* instruction completion */
+	current->thread.dbsr = debug_status;
+
+	/* Hack alert: On BookE, Branch Taken stops on the branch itself, while
+	 * on server, it stops on the target of the branch. In order to simulate
+	 * the server behaviour, we thus restart right away with a single step
+	 * instead of stopping here when hitting a BT
+	 */
+	if (debug_status & DBSR_BT) {
+		regs->msr &= ~MSR_DE;
+
+		/* Disable BT */
+		mtspr(SPRN_DBCR0, mfspr(SPRN_DBCR0) & ~DBCR0_BT);
+		/* Clear the BT event */
+		mtspr(SPRN_DBSR, DBSR_BT);
+
+		/* Do the single step trick only when coming from userspace */
+		if (user_mode(regs)) {
+			current->thread.dbcr0 &= ~DBCR0_BT;
+			current->thread.dbcr0 |= DBCR0_IDM | DBCR0_IC;
+			regs->msr |= MSR_DE;
+			return;
+		}
+
+		if (notify_die(DIE_SSTEP, "block_step", regs, 5,
+			       5, SIGTRAP) == NOTIFY_STOP) {
+			return;
+		}
+		if (debugger_sstep(regs))
+			return;
+	} else if (debug_status & DBSR_IC) { 	/* Instruction complete */
 		regs->msr &= ~MSR_DE;
 
 		/* Disable instruction completion */
@@ -1044,28 +1140,21 @@ void __kprobes DebugException(struct pt_regs *regs, unsigned long debug_status)
 
 		if (user_mode(regs)) {
 			current->thread.dbcr0 &= ~DBCR0_IC;
+#ifdef CONFIG_PPC_ADV_DEBUG_REGS
+			if (DBCR_ACTIVE_EVENTS(current->thread.dbcr0,
+					       current->thread.dbcr1))
+				regs->msr |= MSR_DE;
+			else
+				/* Make sure the IDM bit is off */
+				current->thread.dbcr0 &= ~DBCR0_IDM;
+#endif
 		}
 
 		_exception(SIGTRAP, regs, TRAP_TRACE, regs->nip);
-	} else if (debug_status & (DBSR_DAC1R | DBSR_DAC1W)) {
-		regs->msr &= ~MSR_DE;
-
-		if (user_mode(regs)) {
-			current->thread.dbcr0 &= ~(DBSR_DAC1R | DBSR_DAC1W |
-								DBCR0_IDM);
-		} else {
-			/* Disable DAC interupts */
-			mtspr(SPRN_DBCR0, mfspr(SPRN_DBCR0) & ~(DBSR_DAC1R |
-						DBSR_DAC1W | DBCR0_IDM));
-
-			/* Clear the DAC event */
-			mtspr(SPRN_DBSR, (DBSR_DAC1R | DBSR_DAC1W));
-		}
-		/* Setup and send the trap to the handler */
-		do_dabr(regs, mfspr(SPRN_DAC1), debug_status);
-	}
+	} else
+		handle_debug(regs, debug_status);
 }
-#endif /* CONFIG_4xx || CONFIG_BOOKE */
+#endif /* CONFIG_PPC_ADV_DEBUG_REGS */
 
 #if !defined(CONFIG_TAU_INT)
 void TAUException(struct pt_regs *regs)
@@ -1088,6 +1177,7 @@ void altivec_assist_exception(struct pt_regs *regs)
 
 	flush_altivec_to_thread(current);
 
+	PPC_WARN_EMULATED(altivec, regs);
 	err = emulate_altivec(regs);
 	if (err == 0) {
 		regs->nip += 4;		/* skip emulated instruction */
@@ -1286,3 +1376,79 @@ void kernel_bad_stack(struct pt_regs *regs)
 void __init trap_init(void)
 {
 }
+
+
+#ifdef CONFIG_PPC_EMULATED_STATS
+
+#define WARN_EMULATED_SETUP(type)	.type = { .name = #type }
+
+struct ppc_emulated ppc_emulated = {
+#ifdef CONFIG_ALTIVEC
+	WARN_EMULATED_SETUP(altivec),
+#endif
+	WARN_EMULATED_SETUP(dcba),
+	WARN_EMULATED_SETUP(dcbz),
+	WARN_EMULATED_SETUP(fp_pair),
+	WARN_EMULATED_SETUP(isel),
+	WARN_EMULATED_SETUP(mcrxr),
+	WARN_EMULATED_SETUP(mfpvr),
+	WARN_EMULATED_SETUP(multiple),
+	WARN_EMULATED_SETUP(popcntb),
+	WARN_EMULATED_SETUP(spe),
+	WARN_EMULATED_SETUP(string),
+	WARN_EMULATED_SETUP(unaligned),
+#ifdef CONFIG_MATH_EMULATION
+	WARN_EMULATED_SETUP(math),
+#elif defined(CONFIG_8XX_MINIMAL_FPEMU)
+	WARN_EMULATED_SETUP(8xx),
+#endif
+#ifdef CONFIG_VSX
+	WARN_EMULATED_SETUP(vsx),
+#endif
+};
+
+u32 ppc_warn_emulated;
+
+void ppc_warn_emulated_print(const char *type)
+{
+	if (printk_ratelimit())
+		pr_warning("%s used emulated %s instruction\n", current->comm,
+			   type);
+}
+
+static int __init ppc_warn_emulated_init(void)
+{
+	struct dentry *dir, *d;
+	unsigned int i;
+	struct ppc_emulated_entry *entries = (void *)&ppc_emulated;
+
+	if (!powerpc_debugfs_root)
+		return -ENODEV;
+
+	dir = debugfs_create_dir("emulated_instructions",
+				 powerpc_debugfs_root);
+	if (!dir)
+		return -ENOMEM;
+
+	d = debugfs_create_u32("do_warn", S_IRUGO | S_IWUSR, dir,
+			       &ppc_warn_emulated);
+	if (!d)
+		goto fail;
+
+	for (i = 0; i < sizeof(ppc_emulated)/sizeof(*entries); i++) {
+		d = debugfs_create_u32(entries[i].name, S_IRUGO | S_IWUSR, dir,
+				       (u32 *)&entries[i].val.counter);
+		if (!d)
+			goto fail;
+	}
+
+	return 0;
+
+fail:
+	debugfs_remove_recursive(dir);
+	return -ENOMEM;
+}
+
+device_initcall(ppc_warn_emulated_init);
+
+#endif /* CONFIG_PPC_EMULATED_STATS */

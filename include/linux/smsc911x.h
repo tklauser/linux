@@ -30,6 +30,7 @@ struct smsc911x_platform_config {
 	unsigned int irq_type;
 	unsigned int flags;
 	phy_interface_t phy_interface;
+	unsigned char mac[6];
 };
 
 /* Constants for platform_device irq polarity configuration */
@@ -46,5 +47,15 @@ struct smsc911x_platform_config {
 #define SMSC911X_FORCE_INTERNAL_PHY		(BIT(2))
 #define SMSC911X_FORCE_EXTERNAL_PHY 		(BIT(3))
 #define SMSC911X_SAVE_MAC_ADDRESS		(BIT(4))
+
+/*
+ * SMSC911X_SWAP_FIFO:
+ * Enables software byte swap for fifo data. Should only be used as a
+ * "last resort" in the case of big endian mode on boards with incorrectly
+ * routed data bus to older devices such as LAN9118. Newer devices such as
+ * LAN9221 can handle this in hardware, there are registers to control
+ * this swapping but the driver doesn't currently use them.
+ */
+#define SMSC911X_SWAP_FIFO			(BIT(5))
 
 #endif /* __LINUX_SMSC911X_H__ */

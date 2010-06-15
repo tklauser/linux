@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -547,7 +547,7 @@ acpi_rs_get_pci_routing_table_length(union acpi_operand_object *package_object,
 
 		if (!package_element ||
 		    (package_element->common.type != ACPI_TYPE_PACKAGE)) {
-			return_ACPI_STATUS (AE_AML_OPERAND_TYPE);
+			return_ACPI_STATUS(AE_AML_OPERAND_TYPE);
 		}
 
 		/*
@@ -593,9 +593,6 @@ acpi_rs_get_pci_routing_table_length(union acpi_operand_object *package_object,
 			} else {
 				temp_size_needed +=
 				    acpi_ns_get_pathname_length((*sub_object_list)->reference.node);
-				if (!temp_size_needed) {
-					return_ACPI_STATUS(AE_BAD_PARAMETER);
-				}
 			}
 		} else {
 			/*

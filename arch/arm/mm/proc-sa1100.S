@@ -45,7 +45,7 @@ ENTRY(cpu_sa1100_proc_init)
 	mcr	p15, 0, r0, c9, c0, 5		@ Allow read-buffer operations from userland
 	mov	pc, lr
 
-	.previous
+	.section .text
 
 /*
  * cpu_sa1100_proc_fin()
@@ -214,7 +214,7 @@ sa1100_crval:
 	.type	sa1100_processor_functions, #object
 ENTRY(sa1100_processor_functions)
 	.word	v4_early_abort
-	.word	pabort_noifar
+	.word	legacy_pabort
 	.word	cpu_sa1100_proc_init
 	.word	cpu_sa1100_proc_fin
 	.word	cpu_sa1100_reset

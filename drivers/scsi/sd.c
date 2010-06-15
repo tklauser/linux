@@ -49,6 +49,7 @@
 #include <linux/mutex.h>
 #include <linux/string_helpers.h>
 #include <linux/async.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
 
@@ -115,6 +116,9 @@ static DEFINE_IDA(sd_index_ida);
  * face of object destruction (i.e. we can't allow a get on an
  * object after last put) */
 static DEFINE_MUTEX(sd_ref_mutex);
+
+struct kmem_cache *sd_cdb_cache;
+mempool_t *sd_cdb_pool;
 
 static const char *sd_cache_types[] = {
 	"write through", "none", "write back",
@@ -261,6 +265,15 @@ sd_show_app_tag_own(struct device *dev, struct device_attribute *attr,
 	return snprintf(buf, 20, "%u\n", sdkp->ATO);
 }
 
+static ssize_t
+sd_show_thin_provisioning(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	struct scsi_disk *sdkp = to_scsi_disk(dev);
+
+	return snprintf(buf, 20, "%u\n", sdkp->thin_provisioning);
+}
+
 static struct device_attribute sd_disk_attrs[] = {
 	__ATTR(cache_type, S_IRUGO|S_IWUSR, sd_show_cache_type,
 	       sd_store_cache_type),
@@ -271,6 +284,7 @@ static struct device_attribute sd_disk_attrs[] = {
 	       sd_store_manage_start_stop),
 	__ATTR(protection_type, S_IRUGO, sd_show_protection_type, NULL),
 	__ATTR(app_tag_own, S_IRUGO, sd_show_app_tag_own, NULL),
+	__ATTR(thin_provisioning, S_IRUGO, sd_show_thin_provisioning, NULL),
 	__ATTR_NULL,
 };
 
@@ -370,6 +384,82 @@ static void scsi_disk_put(struct scsi_disk *sdkp)
 	mutex_unlock(&sd_ref_mutex);
 }
 
+static void sd_prot_op(struct scsi_cmnd *scmd, unsigned int dif)
+{
+	unsigned int prot_op = SCSI_PROT_NORMAL;
+	unsigned int dix = scsi_prot_sg_count(scmd);
+
+	if (scmd->sc_data_direction == DMA_FROM_DEVICE) {
+		if (dif && dix)
+			prot_op = SCSI_PROT_READ_PASS;
+		else if (dif && !dix)
+			prot_op = SCSI_PROT_READ_STRIP;
+		else if (!dif && dix)
+			prot_op = SCSI_PROT_READ_INSERT;
+	} else {
+		if (dif && dix)
+			prot_op = SCSI_PROT_WRITE_PASS;
+		else if (dif && !dix)
+			prot_op = SCSI_PROT_WRITE_INSERT;
+		else if (!dif && dix)
+			prot_op = SCSI_PROT_WRITE_STRIP;
+	}
+
+	scsi_set_prot_op(scmd, prot_op);
+	scsi_set_prot_type(scmd, dif);
+}
+
+/**
+ * sd_prepare_discard - unmap blocks on thinly provisioned device
+ * @rq: Request to prepare
+ *
+ * Will issue either UNMAP or WRITE SAME(16) depending on preference
+ * indicated by target device.
+ **/
+static int sd_prepare_discard(struct request *rq)
+{
+	struct scsi_disk *sdkp = scsi_disk(rq->rq_disk);
+	struct bio *bio = rq->bio;
+	sector_t sector = bio->bi_sector;
+	unsigned int num = bio_sectors(bio);
+
+	if (sdkp->device->sector_size == 4096) {
+		sector >>= 3;
+		num >>= 3;
+	}
+
+	rq->cmd_type = REQ_TYPE_BLOCK_PC;
+	rq->timeout = SD_TIMEOUT;
+
+	memset(rq->cmd, 0, rq->cmd_len);
+
+	if (sdkp->unmap) {
+		char *buf = kmap_atomic(bio_page(bio), KM_USER0);
+
+		rq->cmd[0] = UNMAP;
+		rq->cmd[8] = 24;
+		rq->cmd_len = 10;
+
+		/* Ensure that data length matches payload */
+		rq->__data_len = bio->bi_size = bio->bi_io_vec->bv_len = 24;
+
+		put_unaligned_be16(6 + 16, &buf[0]);
+		put_unaligned_be16(16, &buf[2]);
+		put_unaligned_be64(sector, &buf[8]);
+		put_unaligned_be32(num, &buf[16]);
+
+		kunmap_atomic(buf, KM_USER0);
+	} else {
+		rq->cmd[0] = WRITE_SAME_16;
+		rq->cmd[1] = 0x8; /* UNMAP */
+		put_unaligned_be64(sector, &rq->cmd[2]);
+		put_unaligned_be32(num, &rq->cmd[10]);
+		rq->cmd_len = 16;
+	}
+
+	return BLKPREP_OK;
+}
+
 /**
  *	sd_init_command - build a scsi (read or write) command from
  *	information in the request structure.
@@ -384,10 +474,18 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 	struct scsi_device *sdp = q->queuedata;
 	struct gendisk *disk = rq->rq_disk;
 	struct scsi_disk *sdkp;
-	sector_t block = rq->sector;
+	sector_t block = blk_rq_pos(rq);
 	sector_t threshold;
-	unsigned int this_count = rq->nr_sectors;
+	unsigned int this_count = blk_rq_sectors(rq);
 	int ret, host_dif;
+	unsigned char protect;
+
+	/*
+	 * Discard request come in as REQ_TYPE_FS but we turn them into
+	 * block PC requests to make life easier.
+	 */
+	if (blk_discard_rq(rq))
+		ret = sd_prepare_discard(rq);
 
 	if (rq->cmd_type == REQ_TYPE_BLOCK_PC) {
 		ret = scsi_setup_blk_pc_cmnd(sdp, rq);
@@ -413,10 +511,10 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 					this_count));
 
 	if (!sdp || !scsi_device_online(sdp) ||
- 	    block + rq->nr_sectors > get_capacity(disk)) {
+	    block + blk_rq_sectors(rq) > get_capacity(disk)) {
 		SCSI_LOG_HLQUEUE(2, scmd_printk(KERN_INFO, SCpnt,
-						"Finishing %ld sectors\n",
-						rq->nr_sectors));
+						"Finishing %u sectors\n",
+						blk_rq_sectors(rq)));
 		SCSI_LOG_HLQUEUE(2, scmd_printk(KERN_INFO, SCpnt,
 						"Retry with 0x%p\n", SCpnt));
 		goto out;
@@ -463,7 +561,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 	 * for this.
 	 */
 	if (sdp->sector_size == 1024) {
-		if ((block & 1) || (rq->nr_sectors & 1)) {
+		if ((block & 1) || (blk_rq_sectors(rq) & 1)) {
 			scmd_printk(KERN_ERR, SCpnt,
 				    "Bad block number requested\n");
 			goto out;
@@ -473,7 +571,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 		}
 	}
 	if (sdp->sector_size == 2048) {
-		if ((block & 3) || (rq->nr_sectors & 3)) {
+		if ((block & 3) || (blk_rq_sectors(rq) & 3)) {
 			scmd_printk(KERN_ERR, SCpnt,
 				    "Bad block number requested\n");
 			goto out;
@@ -483,7 +581,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 		}
 	}
 	if (sdp->sector_size == 4096) {
-		if ((block & 7) || (rq->nr_sectors & 7)) {
+		if ((block & 7) || (blk_rq_sectors(rq) & 7)) {
 			scmd_printk(KERN_ERR, SCpnt,
 				    "Bad block number requested\n");
 			goto out;
@@ -512,21 +610,57 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 	}
 
 	SCSI_LOG_HLQUEUE(2, scmd_printk(KERN_INFO, SCpnt,
-					"%s %d/%ld 512 byte blocks.\n",
+					"%s %d/%u 512 byte blocks.\n",
 					(rq_data_dir(rq) == WRITE) ?
 					"writing" : "reading", this_count,
-					rq->nr_sectors));
+					blk_rq_sectors(rq)));
 
 	/* Set RDPROTECT/WRPROTECT if disk is formatted with DIF */
 	host_dif = scsi_host_dif_capable(sdp->host, sdkp->protection_type);
 	if (host_dif)
-		SCpnt->cmnd[1] = 1 << 5;
+		protect = 1 << 5;
 	else
-		SCpnt->cmnd[1] = 0;
+		protect = 0;
 
-	if (block > 0xffffffff) {
+	if (host_dif == SD_DIF_TYPE2_PROTECTION) {
+		SCpnt->cmnd = mempool_alloc(sd_cdb_pool, GFP_ATOMIC);
+
+		if (unlikely(SCpnt->cmnd == NULL)) {
+			ret = BLKPREP_DEFER;
+			goto out;
+		}
+
+		SCpnt->cmd_len = SD_EXT_CDB_SIZE;
+		memset(SCpnt->cmnd, 0, SCpnt->cmd_len);
+		SCpnt->cmnd[0] = VARIABLE_LENGTH_CMD;
+		SCpnt->cmnd[7] = 0x18;
+		SCpnt->cmnd[9] = (rq_data_dir(rq) == READ) ? READ_32 : WRITE_32;
+		SCpnt->cmnd[10] = protect | (blk_fua_rq(rq) ? 0x8 : 0);
+
+		/* LBA */
+		SCpnt->cmnd[12] = sizeof(block) > 4 ? (unsigned char) (block >> 56) & 0xff : 0;
+		SCpnt->cmnd[13] = sizeof(block) > 4 ? (unsigned char) (block >> 48) & 0xff : 0;
+		SCpnt->cmnd[14] = sizeof(block) > 4 ? (unsigned char) (block >> 40) & 0xff : 0;
+		SCpnt->cmnd[15] = sizeof(block) > 4 ? (unsigned char) (block >> 32) & 0xff : 0;
+		SCpnt->cmnd[16] = (unsigned char) (block >> 24) & 0xff;
+		SCpnt->cmnd[17] = (unsigned char) (block >> 16) & 0xff;
+		SCpnt->cmnd[18] = (unsigned char) (block >> 8) & 0xff;
+		SCpnt->cmnd[19] = (unsigned char) block & 0xff;
+
+		/* Expected Indirect LBA */
+		SCpnt->cmnd[20] = (unsigned char) (block >> 24) & 0xff;
+		SCpnt->cmnd[21] = (unsigned char) (block >> 16) & 0xff;
+		SCpnt->cmnd[22] = (unsigned char) (block >> 8) & 0xff;
+		SCpnt->cmnd[23] = (unsigned char) block & 0xff;
+
+		/* Transfer length */
+		SCpnt->cmnd[28] = (unsigned char) (this_count >> 24) & 0xff;
+		SCpnt->cmnd[29] = (unsigned char) (this_count >> 16) & 0xff;
+		SCpnt->cmnd[30] = (unsigned char) (this_count >> 8) & 0xff;
+		SCpnt->cmnd[31] = (unsigned char) this_count & 0xff;
+	} else if (block > 0xffffffff) {
 		SCpnt->cmnd[0] += READ_16 - READ_6;
-		SCpnt->cmnd[1] |= blk_fua_rq(rq) ? 0x8 : 0;
+		SCpnt->cmnd[1] = protect | (blk_fua_rq(rq) ? 0x8 : 0);
 		SCpnt->cmnd[2] = sizeof(block) > 4 ? (unsigned char) (block >> 56) & 0xff : 0;
 		SCpnt->cmnd[3] = sizeof(block) > 4 ? (unsigned char) (block >> 48) & 0xff : 0;
 		SCpnt->cmnd[4] = sizeof(block) > 4 ? (unsigned char) (block >> 40) & 0xff : 0;
@@ -547,7 +681,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 			this_count = 0xffff;
 
 		SCpnt->cmnd[0] += READ_10 - READ_6;
-		SCpnt->cmnd[1] |= blk_fua_rq(rq) ? 0x8 : 0;
+		SCpnt->cmnd[1] = protect | (blk_fua_rq(rq) ? 0x8 : 0);
 		SCpnt->cmnd[2] = (unsigned char) (block >> 24) & 0xff;
 		SCpnt->cmnd[3] = (unsigned char) (block >> 16) & 0xff;
 		SCpnt->cmnd[4] = (unsigned char) (block >> 8) & 0xff;
@@ -578,8 +712,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 
 	/* If DIF or DIX is enabled, tell HBA how to handle request */
 	if (host_dif || scsi_prot_sg_count(SCpnt))
-		sd_dif_op(SCpnt, host_dif, scsi_prot_sg_count(SCpnt),
-			  sdkp->protection_type);
+		sd_prot_op(SCpnt, host_dif);
 
 	/*
 	 * We shouldn't disconnect in the middle of a sector, so with a dumb
@@ -907,6 +1040,7 @@ static void sd_prepare_flush(struct request_queue *q, struct request *rq)
 {
 	rq->cmd_type = REQ_TYPE_BLOCK_PC;
 	rq->timeout = SD_TIMEOUT;
+	rq->retries = SD_MAX_RETRIES;
 	rq->cmd[0] = SYNCHRONIZE_CACHE;
 	rq->cmd_len = 10;
 }
@@ -956,7 +1090,7 @@ static int sd_compat_ioctl(struct block_device *bdev, fmode_t mode,
 }
 #endif
 
-static struct block_device_operations sd_fops = {
+static const struct block_device_operations sd_fops = {
 	.owner			= THIS_MODULE,
 	.open			= sd_open,
 	.release		= sd_release,
@@ -971,8 +1105,8 @@ static struct block_device_operations sd_fops = {
 
 static unsigned int sd_completed_bytes(struct scsi_cmnd *scmd)
 {
-	u64 start_lba = scmd->request->sector;
-	u64 end_lba = scmd->request->sector + (scsi_bufflen(scmd) / 512);
+	u64 start_lba = blk_rq_pos(scmd->request);
+	u64 end_lba = blk_rq_pos(scmd->request) + (scsi_bufflen(scmd) / 512);
 	u64 bad_lba;
 	int info_valid;
 
@@ -1023,6 +1157,7 @@ static int sd_done(struct scsi_cmnd *SCpnt)
 	int result = SCpnt->result;
 	unsigned int good_bytes = result ? 0 : scsi_bufflen(SCpnt);
 	struct scsi_sense_hdr sshdr;
+	struct scsi_disk *sdkp = scsi_disk(SCpnt->request->rq_disk);
 	int sense_valid = 0;
 	int sense_deferred = 0;
 
@@ -1063,19 +1198,10 @@ static int sd_done(struct scsi_cmnd *SCpnt)
 		SCpnt->result = 0;
 		memset(SCpnt->sense_buffer, 0, SCSI_SENSE_BUFFERSIZE);
 		break;
-	case ABORTED_COMMAND:
-		if (sshdr.asc == 0x10) { /* DIF: Disk detected corruption */
-			scsi_print_result(SCpnt);
-			scsi_print_sense("sd", SCpnt);
+	case ABORTED_COMMAND: /* DIF: Target detected corruption */
+	case ILLEGAL_REQUEST: /* DIX: Host detected corruption */
+		if (sshdr.asc == 0x10)
 			good_bytes = sd_completed_bytes(SCpnt);
-		}
-		break;
-	case ILLEGAL_REQUEST:
-		if (sshdr.asc == 0x10) { /* DIX: HBA detected corruption */
-			scsi_print_result(SCpnt);
-			scsi_print_sense("sd", SCpnt);
-			good_bytes = sd_completed_bytes(SCpnt);
-		}
 		break;
 	default:
 		break;
@@ -1083,6 +1209,21 @@ static int sd_done(struct scsi_cmnd *SCpnt)
  out:
 	if (rq_data_dir(SCpnt->request) == READ && scsi_prot_sg_count(SCpnt))
 		sd_dif_complete(SCpnt, good_bytes);
+
+	if (scsi_host_dif_capable(sdkp->device->host, sdkp->protection_type)
+	    == SD_DIF_TYPE2_PROTECTION && SCpnt->cmnd != SCpnt->request->cmd) {
+
+		/* We have to print a failed command here as the
+		 * extended CDB gets freed before scsi_io_completion()
+		 * is called.
+		 */
+		if (result)
+			scsi_print_command(SCpnt);
+
+		mempool_free(SCpnt->cmnd, sd_cdb_pool);
+		SCpnt->cmnd = NULL;
+		SCpnt->cmd_len = 0;
+	}
 
 	return good_bytes;
 }
@@ -1238,34 +1379,28 @@ void sd_read_protection_type(struct scsi_disk *sdkp, unsigned char *buffer)
 	u8 type;
 
 	if (scsi_device_protection(sdp) == 0 || (buffer[12] & 1) == 0)
-		type = 0;
-	else
-		type = ((buffer[12] >> 1) & 7) + 1; /* P_TYPE 0 = Type 1 */
+		return;
+
+	type = ((buffer[12] >> 1) & 7) + 1; /* P_TYPE 0 = Type 1 */
+
+	if (type == sdkp->protection_type || !sdkp->first_scan)
+		return;
 
 	sdkp->protection_type = type;
 
-	switch (type) {
-	case SD_DIF_TYPE0_PROTECTION:
-	case SD_DIF_TYPE1_PROTECTION:
-	case SD_DIF_TYPE3_PROTECTION:
-		break;
-
-	case SD_DIF_TYPE2_PROTECTION:
-		sd_printk(KERN_ERR, sdkp, "formatted with DIF Type 2 "	\
-			  "protection which is currently unsupported. "	\
-			  "Disabling disk!\n");
-		goto disable;
-
-	default:
-		sd_printk(KERN_ERR, sdkp, "formatted with unknown "	\
-			  "protection type %d. Disabling disk!\n", type);
-		goto disable;
+	if (type > SD_DIF_TYPE3_PROTECTION) {
+		sd_printk(KERN_ERR, sdkp, "formatted with unsupported "	\
+			  "protection type %u. Disabling disk!\n", type);
+		sdkp->capacity = 0;
+		return;
 	}
 
-	return;
-
-disable:
-	sdkp->capacity = 0;
+	if (scsi_host_dif_capable(sdp->host, type))
+		sd_printk(KERN_NOTICE, sdkp,
+			  "Enabling DIF Type %u protection\n", type);
+	else
+		sd_printk(KERN_NOTICE, sdkp,
+			  "Disabling DIF Type %u protection\n", type);
 }
 
 static void read_capacity_error(struct scsi_disk *sdkp, struct scsi_device *sdp,
@@ -1307,6 +1442,7 @@ static int read_capacity_16(struct scsi_disk *sdkp, struct scsi_device *sdp,
 	int sense_valid = 0;
 	int the_result;
 	int retries = 3;
+	unsigned int alignment;
 	unsigned long long lba;
 	unsigned sector_size;
 
@@ -1356,6 +1492,29 @@ static int read_capacity_16(struct scsi_disk *sdkp, struct scsi_device *sdp,
 			"devices.\n");
 		sdkp->capacity = 0;
 		return -EOVERFLOW;
+	}
+
+	/* Logical blocks per physical block exponent */
+	sdkp->hw_sector_size = (1 << (buffer[13] & 0xf)) * sector_size;
+
+	/* Lowest aligned logical block */
+	alignment = ((buffer[14] & 0x3f) << 8 | buffer[15]) * sector_size;
+	blk_queue_alignment_offset(sdp->request_queue, alignment);
+	if (alignment && sdkp->first_scan)
+		sd_printk(KERN_NOTICE, sdkp,
+			  "physical block alignment offset: %u\n", alignment);
+
+	if (buffer[14] & 0x80) { /* TPE */
+		struct request_queue *q = sdp->request_queue;
+
+		sdkp->thin_provisioning = 1;
+		q->limits.discard_granularity = sdkp->hw_sector_size;
+		q->limits.max_discard_sectors = 0xffffffff;
+
+		if (buffer[14] & 0x40) /* TPRZ */
+			q->limits.discard_zeroes_data = 1;
+
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 	}
 
 	sdkp->capacity = lba + 1;
@@ -1409,6 +1568,7 @@ static int read_capacity_10(struct scsi_disk *sdkp, struct scsi_device *sdp,
 	}
 
 	sdkp->capacity = lba + 1;
+	sdkp->hw_sector_size = sector_size;
 	return sector_size;
 }
 
@@ -1510,7 +1670,7 @@ got_data:
 		 */
 		sector_size = 512;
 	}
-	blk_queue_hardsect_size(sdp->request_queue, sector_size);
+	blk_queue_logical_block_size(sdp->request_queue, sector_size);
 
 	{
 		char cap_str_2[10], cap_str_10[10];
@@ -1521,11 +1681,17 @@ got_data:
 		string_get_size(sz, STRING_UNITS_10, cap_str_10,
 				sizeof(cap_str_10));
 
-		if (sdkp->first_scan || old_capacity != sdkp->capacity)
+		if (sdkp->first_scan || old_capacity != sdkp->capacity) {
 			sd_printk(KERN_NOTICE, sdkp,
-				  "%llu %d-byte hardware sectors: (%s/%s)\n",
+				  "%llu %d-byte logical blocks: (%s/%s)\n",
 				  (unsigned long long)sdkp->capacity,
 				  sector_size, cap_str_10, cap_str_2);
+
+			if (sdkp->hw_sector_size != sector_size)
+				sd_printk(KERN_NOTICE, sdkp,
+					  "%u-byte physical blocks\n",
+					  sdkp->hw_sector_size);
+		}
 	}
 
 	/* Rescale capacity to 512-byte units */
@@ -1538,6 +1704,7 @@ got_data:
 	else if (sector_size == 256)
 		sdkp->capacity >>= 1;
 
+	blk_queue_physical_block_size(sdp->request_queue, sdkp->hw_sector_size);
 	sdkp->device->sector_size = sector_size;
 }
 
@@ -1776,6 +1943,94 @@ void sd_read_app_tag_own(struct scsi_disk *sdkp, unsigned char *buffer)
 }
 
 /**
+ * sd_read_block_limits - Query disk device for preferred I/O sizes.
+ * @disk: disk to query
+ */
+static void sd_read_block_limits(struct scsi_disk *sdkp)
+{
+	struct request_queue *q = sdkp->disk->queue;
+	unsigned int sector_sz = sdkp->device->sector_size;
+	const int vpd_len = 64;
+	unsigned char *buffer = kmalloc(vpd_len, GFP_KERNEL);
+
+	if (!buffer ||
+	    /* Block Limits VPD */
+	    scsi_get_vpd_page(sdkp->device, 0xb0, buffer, vpd_len))
+		goto out;
+
+	blk_queue_io_min(sdkp->disk->queue,
+			 get_unaligned_be16(&buffer[6]) * sector_sz);
+	blk_queue_io_opt(sdkp->disk->queue,
+			 get_unaligned_be32(&buffer[12]) * sector_sz);
+
+	/* Thin provisioning enabled and page length indicates TP support */
+	if (sdkp->thin_provisioning && buffer[3] == 0x3c) {
+		unsigned int lba_count, desc_count, granularity;
+
+		lba_count = get_unaligned_be32(&buffer[20]);
+		desc_count = get_unaligned_be32(&buffer[24]);
+
+		if (lba_count) {
+			q->limits.max_discard_sectors =
+				lba_count * sector_sz >> 9;
+
+			if (desc_count)
+				sdkp->unmap = 1;
+		}
+
+		granularity = get_unaligned_be32(&buffer[28]);
+
+		if (granularity)
+			q->limits.discard_granularity = granularity * sector_sz;
+
+		if (buffer[32] & 0x80)
+			q->limits.discard_alignment =
+				get_unaligned_be32(&buffer[32]) & ~(1 << 31);
+	}
+
+ out:
+	kfree(buffer);
+}
+
+/**
+ * sd_read_block_characteristics - Query block dev. characteristics
+ * @disk: disk to query
+ */
+static void sd_read_block_characteristics(struct scsi_disk *sdkp)
+{
+	unsigned char *buffer;
+	u16 rot;
+	const int vpd_len = 64;
+
+	buffer = kmalloc(vpd_len, GFP_KERNEL);
+
+	if (!buffer ||
+	    /* Block Device Characteristics VPD */
+	    scsi_get_vpd_page(sdkp->device, 0xb1, buffer, vpd_len))
+		goto out;
+
+	rot = get_unaligned_be16(&buffer[4]);
+
+	if (rot == 1)
+		queue_flag_set_unlocked(QUEUE_FLAG_NONROT, sdkp->disk->queue);
+
+ out:
+	kfree(buffer);
+}
+
+static int sd_try_extended_inquiry(struct scsi_device *sdp)
+{
+	/*
+	 * Although VPD inquiries can go to SCSI-2 type devices,
+	 * some USB ones crash on receiving them, and the pages
+	 * we currently ask for are for SPC-3 and beyond
+	 */
+	if (sdp->scsi_level > SCSI_SPC_2)
+		return 1;
+	return 0;
+}
+
+/**
  *	sd_revalidate_disk - called the first time a new disk is seen,
  *	performs disk spin up, read_capacity, etc.
  *	@disk: struct gendisk we care about
@@ -1812,6 +2067,12 @@ static int sd_revalidate_disk(struct gendisk *disk)
 	 */
 	if (sdkp->media_present) {
 		sd_read_capacity(sdkp, buffer);
+
+		if (sd_try_extended_inquiry(sdp)) {
+			sd_read_block_limits(sdkp);
+			sd_read_block_characteristics(sdkp);
+		}
+
 		sd_read_write_protect_flag(sdkp, buffer);
 		sd_read_cache_type(sdkp, buffer);
 		sd_read_app_tag_own(sdkp, buffer);
@@ -1852,7 +2113,7 @@ static int sd_revalidate_disk(struct gendisk *disk)
  *	which is followed by sdaaa.
  *
  *	This is basically 26 base counting with one extra 'nil' entry
- *	at the beggining from the second digit on and can be
+ *	at the beginning from the second digit on and can be
  *	determined using similar method as 26 base conversion with the
  *	index shifted -1 after each digit is computed.
  *
@@ -1902,24 +2163,6 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	index = sdkp->index;
 	dev = &sdp->sdev_gendev;
 
-	if (!sdp->request_queue->rq_timeout) {
-		if (sdp->type != TYPE_MOD)
-			blk_queue_rq_timeout(sdp->request_queue, SD_TIMEOUT);
-		else
-			blk_queue_rq_timeout(sdp->request_queue,
-					     SD_MOD_TIMEOUT);
-	}
-
-	device_initialize(&sdkp->dev);
-	sdkp->dev.parent = &sdp->sdev_gendev;
-	sdkp->dev.class = &sd_disk_class;
-	dev_set_name(&sdkp->dev, dev_name(&sdp->sdev_gendev));
-
-	if (device_add(&sdkp->dev))
-		goto out_free_index;
-
-	get_device(&sdp->sdev_gendev);
-
 	if (index < SD_MAX_DISKS) {
 		gd->major = sd_major((index & 0xf0) >> 4);
 		gd->first_minor = ((index & 0xf) << 4) | (index & 0xfff00);
@@ -1944,7 +2187,7 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	blk_queue_prep_rq(sdp->request_queue, sd_prep_fn);
 
 	gd->driverfs_dev = &sdp->sdev_gendev;
-	gd->flags = GENHD_FL_EXT_DEVT | GENHD_FL_DRIVERFS;
+	gd->flags = GENHD_FL_EXT_DEVT;
 	if (sdp->removable)
 		gd->flags |= GENHD_FL_REMOVABLE;
 
@@ -1952,13 +2195,11 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	add_disk(gd);
 	sd_dif_config_host(sdkp);
 
+	sd_revalidate_disk(gd);
+
 	sd_printk(KERN_NOTICE, sdkp, "Attached SCSI %sdisk\n",
 		  sdp->removable ? "removable " : "");
-
-	return;
-
- out_free_index:
-	ida_remove(&sd_index_ida, index);
+	put_device(&sdkp->dev);
 }
 
 /**
@@ -2026,6 +2267,25 @@ static int sd_probe(struct device *dev)
 	sdkp->openers = 0;
 	sdkp->previous_state = 1;
 
+	if (!sdp->request_queue->rq_timeout) {
+		if (sdp->type != TYPE_MOD)
+			blk_queue_rq_timeout(sdp->request_queue, SD_TIMEOUT);
+		else
+			blk_queue_rq_timeout(sdp->request_queue,
+					     SD_MOD_TIMEOUT);
+	}
+
+	device_initialize(&sdkp->dev);
+	sdkp->dev.parent = &sdp->sdev_gendev;
+	sdkp->dev.class = &sd_disk_class;
+	dev_set_name(&sdkp->dev, dev_name(&sdp->sdev_gendev));
+
+	if (device_add(&sdkp->dev))
+		goto out_free_index;
+
+	get_device(&sdp->sdev_gendev);
+
+	get_device(&sdkp->dev);	/* prevent release before async_schedule */
 	async_schedule(sd_probe_async, sdkp);
 
 	return 0;
@@ -2055,8 +2315,11 @@ static int sd_probe(struct device *dev)
  **/
 static int sd_remove(struct device *dev)
 {
-	struct scsi_disk *sdkp = dev_get_drvdata(dev);
+	struct scsi_disk *sdkp;
 
+	async_synchronize_full();
+	sdkp = dev_get_drvdata(dev);
+	blk_queue_prep_rq(sdkp->device->request_queue, scsi_prep_fn);
 	device_del(&sdkp->dev);
 	del_gendisk(sdkp->disk);
 	sd_shutdown(dev);
@@ -2215,7 +2478,23 @@ static int __init init_sd(void)
 	if (err)
 		goto err_out_class;
 
+	sd_cdb_cache = kmem_cache_create("sd_ext_cdb", SD_EXT_CDB_SIZE,
+					 0, 0, NULL);
+	if (!sd_cdb_cache) {
+		printk(KERN_ERR "sd: can't init extended cdb cache\n");
+		goto err_out_class;
+	}
+
+	sd_cdb_pool = mempool_create_slab_pool(SD_MEMPOOL_SIZE, sd_cdb_cache);
+	if (!sd_cdb_pool) {
+		printk(KERN_ERR "sd: can't init extended cdb pool\n");
+		goto err_out_cache;
+	}
+
 	return 0;
+
+err_out_cache:
+	kmem_cache_destroy(sd_cdb_cache);
 
 err_out_class:
 	class_unregister(&sd_disk_class);
@@ -2235,6 +2514,9 @@ static void __exit exit_sd(void)
 	int i;
 
 	SCSI_LOG_HLQUEUE(3, printk("exit_sd: exiting sd driver\n"));
+
+	mempool_destroy(sd_cdb_pool);
+	kmem_cache_destroy(sd_cdb_cache);
 
 	scsi_unregister_driver(&sd_template.gendrv);
 	class_unregister(&sd_disk_class);

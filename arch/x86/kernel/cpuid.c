@@ -40,6 +40,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/uaccess.h>
+#include <linux/gfp.h>
 
 #include <asm/processor.h>
 #include <asm/msr.h>
@@ -116,21 +117,16 @@ static int cpuid_open(struct inode *inode, struct file *file)
 {
 	unsigned int cpu;
 	struct cpuinfo_x86 *c;
-	int ret = 0;
-
-	lock_kernel();
 
 	cpu = iminor(file->f_path.dentry->d_inode);
-	if (cpu >= nr_cpu_ids || !cpu_online(cpu)) {
-		ret = -ENXIO;	/* No such CPU */
-		goto out;
-	}
+	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
+		return -ENXIO;	/* No such CPU */
+
 	c = &cpu_data(cpu);
 	if (c->cpuid_level < 0)
-		ret = -EIO;	/* CPUID not supported */
-out:
-	unlock_kernel();
-	return ret;
+		return -EIO;	/* CPUID not supported */
+
+	return 0;
 }
 
 /*
@@ -182,12 +178,18 @@ static struct notifier_block __refdata cpuid_class_cpu_notifier =
 	.notifier_call = cpuid_class_cpu_callback,
 };
 
+static char *cpuid_devnode(struct device *dev, mode_t *mode)
+{
+	return kasprintf(GFP_KERNEL, "cpu/%u/cpuid", MINOR(dev->devt));
+}
+
 static int __init cpuid_init(void)
 {
 	int i, err = 0;
 	i = 0;
 
-	if (register_chrdev(CPUID_MAJOR, "cpu/cpuid", &cpuid_fops)) {
+	if (__register_chrdev(CPUID_MAJOR, 0, NR_CPUS,
+			      "cpu/cpuid", &cpuid_fops)) {
 		printk(KERN_ERR "cpuid: unable to get major %d for cpuid\n",
 		       CPUID_MAJOR);
 		err = -EBUSY;
@@ -198,6 +200,7 @@ static int __init cpuid_init(void)
 		err = PTR_ERR(cpuid_class);
 		goto out_chrdev;
 	}
+	cpuid_class->devnode = cpuid_devnode;
 	for_each_online_cpu(i) {
 		err = cpuid_device_create(i);
 		if (err != 0)
@@ -215,7 +218,7 @@ out_class:
 	}
 	class_destroy(cpuid_class);
 out_chrdev:
-	unregister_chrdev(CPUID_MAJOR, "cpu/cpuid");
+	__unregister_chrdev(CPUID_MAJOR, 0, NR_CPUS, "cpu/cpuid");
 out:
 	return err;
 }
@@ -227,7 +230,7 @@ static void __exit cpuid_exit(void)
 	for_each_online_cpu(cpu)
 		cpuid_device_destroy(cpu);
 	class_destroy(cpuid_class);
-	unregister_chrdev(CPUID_MAJOR, "cpu/cpuid");
+	__unregister_chrdev(CPUID_MAJOR, 0, NR_CPUS, "cpu/cpuid");
 	unregister_hotcpu_notifier(&cpuid_class_cpu_notifier);
 }
 

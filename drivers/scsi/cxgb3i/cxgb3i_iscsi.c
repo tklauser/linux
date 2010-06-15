@@ -12,7 +12,10 @@
  */
 
 #include <linux/inet.h>
+#include <linux/slab.h>
 #include <linux/crypto.h>
+#include <linux/if_vlan.h>
+#include <net/dst.h>
 #include <net/tcp.h>
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_device.h>
@@ -178,10 +181,13 @@ void cxgb3i_adapter_close(struct t3cdev *t3dev)
  * cxgb3i_hba_find_by_netdev - find the cxgb3i_hba structure via net_device
  * @t3dev: t3cdev adapter
  */
-struct cxgb3i_hba *cxgb3i_hba_find_by_netdev(struct net_device *ndev)
+static struct cxgb3i_hba *cxgb3i_hba_find_by_netdev(struct net_device *ndev)
 {
 	struct cxgb3i_adapter *snic;
 	int i;
+
+	if (ndev->priv_flags & IFF_802_1Q_VLAN)
+		ndev = vlan_dev_real_dev(ndev);
 
 	read_lock(&cxgb3i_snic_rwlock);
 	list_for_each_entry(snic, &cxgb3i_snic_list, list_head) {
@@ -261,19 +267,26 @@ void cxgb3i_hba_host_remove(struct cxgb3i_hba *hba)
 
 /**
  * cxgb3i_ep_connect - establish TCP connection to target portal
+ * @shost:		scsi host to use
  * @dst_addr:		target IP address
  * @non_blocking:	blocking or non-blocking call
  *
  * Initiates a TCP/IP connection to the dst_addr
  */
-static struct iscsi_endpoint *cxgb3i_ep_connect(struct sockaddr *dst_addr,
+static struct iscsi_endpoint *cxgb3i_ep_connect(struct Scsi_Host *shost,
+						struct sockaddr *dst_addr,
 						int non_blocking)
 {
 	struct iscsi_endpoint *ep;
 	struct cxgb3i_endpoint *cep;
-	struct cxgb3i_hba *hba;
+	struct cxgb3i_hba *hba = NULL;
 	struct s3_conn *c3cn = NULL;
 	int err = 0;
+
+	if (shost)
+		hba = iscsi_host_priv(shost);
+
+	cxgb3i_api_debug("shost 0x%p, hba 0x%p.\n", shost, hba);
 
 	c3cn = cxgb3i_c3cn_create();
 	if (!c3cn) {
@@ -282,17 +295,27 @@ static struct iscsi_endpoint *cxgb3i_ep_connect(struct sockaddr *dst_addr,
 		goto release_conn;
 	}
 
-	err = cxgb3i_c3cn_connect(c3cn, (struct sockaddr_in *)dst_addr);
+	err = cxgb3i_c3cn_connect(hba ? hba->ndev : NULL, c3cn,
+				 (struct sockaddr_in *)dst_addr);
 	if (err < 0) {
 		cxgb3i_log_info("ep connect failed.\n");
 		goto release_conn;
 	}
+
 	hba = cxgb3i_hba_find_by_netdev(c3cn->dst_cache->dev);
 	if (!hba) {
 		err = -ENOSPC;
 		cxgb3i_log_info("NOT going through cxgbi device.\n");
 		goto release_conn;
 	}
+
+	if (shost && hba != iscsi_host_priv(shost)) {
+		err = -ENOSPC;
+		cxgb3i_log_info("Could not connect through request host%u\n",
+				shost->host_no);
+		goto release_conn;
+	}
+
 	if (c3cn_is_closing(c3cn)) {
 		err = -ENOSPC;
 		cxgb3i_log_info("ep connect unable to connect.\n");
@@ -400,7 +423,7 @@ cxgb3i_session_create(struct iscsi_endpoint *ep, u16 cmds_max, u16 qdepth,
 	BUG_ON(hba != iscsi_host_priv(shost));
 
 	cls_session = iscsi_session_setup(&cxgb3i_iscsi_transport, shost,
-					  cmds_max,
+					  cmds_max, 0,
 					  sizeof(struct iscsi_tcp_task) +
 					  sizeof(struct cxgb3i_task_data),
 					  initial_cmdsn, ISCSI_MAX_TARGET);
@@ -569,8 +592,7 @@ static int cxgb3i_conn_bind(struct iscsi_cls_session *cls_session,
 	cxgb3i_conn_max_recv_dlength(conn);
 
 	spin_lock_bh(&conn->session->lock);
-	sprintf(conn->portal_address, NIPQUAD_FMT,
-		NIPQUAD(c3cn->daddr.sin_addr.s_addr));
+	sprintf(conn->portal_address, "%pI4", &c3cn->daddr.sin_addr.s_addr);
 	conn->portal_port = ntohs(c3cn->daddr.sin_port);
 	spin_unlock_bh(&conn->session->lock);
 
@@ -687,6 +709,12 @@ static int cxgb3i_host_set_param(struct Scsi_Host *shost,
 {
 	struct cxgb3i_hba *hba = iscsi_host_priv(shost);
 
+	if (!hba->ndev) {
+		shost_printk(KERN_ERR, shost, "Could not set host param. "
+			     "Netdev for host not set.\n");
+		return -ENODEV;
+	}
+
 	cxgb3i_api_debug("param %d, buf %s.\n", param, buf);
 
 	switch (param) {
@@ -717,6 +745,12 @@ static int cxgb3i_host_get_param(struct Scsi_Host *shost,
 	struct cxgb3i_hba *hba = iscsi_host_priv(shost);
 	int len = 0;
 
+	if (!hba->ndev) {
+		shost_printk(KERN_ERR, shost, "Could not set host param. "
+			     "Netdev for host not set.\n");
+		return -ENODEV;
+	}
+
 	cxgb3i_api_debug("hba %s, param %d.\n", hba->ndev->name, param);
 
 	switch (param) {
@@ -731,7 +765,7 @@ static int cxgb3i_host_get_param(struct Scsi_Host *shost,
 		__be32 addr;
 
 		addr = cxgb3i_get_private_ipv4addr(hba->ndev);
-		len = sprintf(buf, NIPQUAD_FMT, NIPQUAD(addr));
+		len = sprintf(buf, "%pI4", &addr);
 		break;
 	}
 	default:
@@ -882,7 +916,7 @@ static struct scsi_host_template cxgb3i_host_template = {
 	.cmd_per_lun		= ISCSI_DEF_CMD_PER_LUN,
 	.eh_abort_handler	= iscsi_eh_abort,
 	.eh_device_reset_handler = iscsi_eh_device_reset,
-	.eh_target_reset_handler = iscsi_eh_target_reset,
+	.eh_target_reset_handler = iscsi_eh_recover_target,
 	.target_alloc		= iscsi_target_alloc,
 	.use_clustering		= DISABLE_CLUSTERING,
 	.this_id		= -1,
@@ -915,7 +949,7 @@ static struct iscsi_transport cxgb3i_iscsi_transport = {
 				ISCSI_USERNAME | ISCSI_PASSWORD |
 				ISCSI_USERNAME_IN | ISCSI_PASSWORD_IN |
 				ISCSI_FAST_ABORT | ISCSI_ABORT_TMO |
-				ISCSI_LU_RESET_TMO |
+				ISCSI_LU_RESET_TMO | ISCSI_TGT_RESET_TMO |
 				ISCSI_PING_TMO | ISCSI_RECV_TMO |
 				ISCSI_IFACE_NAME | ISCSI_INITIATOR_NAME,
 	.host_param_mask	= ISCSI_HOST_HWADDRESS | ISCSI_HOST_IPADDRESS |

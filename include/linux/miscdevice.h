@@ -30,6 +30,7 @@
 #define HPET_MINOR		228
 #define FUSE_MINOR		229
 #define KVM_MINOR		232
+#define VHOST_NET_MINOR		233
 #define MISC_DYNAMIC_MINOR	255
 
 struct device;
@@ -41,6 +42,8 @@ struct miscdevice  {
 	struct list_head list;
 	struct device *parent;
 	struct device *this_device;
+	const char *nodename;
+	mode_t mode;
 };
 
 extern int misc_register(struct miscdevice * misc);

@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/sysdev.h>
 #include <linux/sysctl.h>
 #include <linux/percpu.h>
@@ -39,7 +40,8 @@
 int unknown_nmi_panic;
 int nmi_watchdog_enabled;
 
-static cpumask_var_t backtrace_mask;
+/* For reliability, we're prepared to waste bits here. */
+static DECLARE_BITMAP(backtrace_mask, NR_CPUS) __read_mostly;
 
 /* nmi_active:
  * >0: the lapic NMI watchdog is active, but can be disabled
@@ -66,7 +68,7 @@ static inline unsigned int get_nmi_count(int cpu)
 
 static inline int mce_in_progress(void)
 {
-#if defined(CONFIG_X86_64) && defined(CONFIG_X86_MCE)
+#if defined(CONFIG_X86_MCE)
 	return atomic_read(&mce_entry) > 0;
 #endif
 	return 0;
@@ -104,7 +106,7 @@ static __init void nmi_cpu_busy(void *data)
 }
 #endif
 
-static void report_broken_nmi(int cpu, int *prev_nmi_count)
+static void report_broken_nmi(int cpu, unsigned int *prev_nmi_count)
 {
 	printk(KERN_CONT "\n");
 
@@ -138,7 +140,6 @@ int __init check_nmi_watchdog(void)
 	if (!prev_nmi_count)
 		goto error;
 
-	alloc_cpumask_var(&backtrace_mask, GFP_KERNEL|__GFP_ZERO);
 	printk(KERN_INFO "Testing NMI watchdog ... ");
 
 #ifdef CONFIG_SMP
@@ -177,7 +178,7 @@ int __init check_nmi_watchdog(void)
 error:
 	if (nmi_watchdog == NMI_IO_APIC) {
 		if (!timer_through_8259)
-			disable_8259A_irq(0);
+			legacy_pic->chip->mask(0);
 		on_each_cpu(__acpi_nmi_disable, NULL, 1);
 	}
 
@@ -361,7 +362,7 @@ void stop_apic_nmi_watchdog(void *unused)
  */
 
 static DEFINE_PER_CPU(unsigned, last_irq_sum);
-static DEFINE_PER_CPU(local_t, alert_counter);
+static DEFINE_PER_CPU(long, alert_counter);
 static DEFINE_PER_CPU(int, nmi_touch);
 
 void touch_nmi_watchdog(void)
@@ -415,14 +416,17 @@ nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
 	}
 
 	/* We can be called before check_nmi_watchdog, hence NULL check. */
-	if (backtrace_mask != NULL && cpumask_test_cpu(cpu, backtrace_mask)) {
-		static DEFINE_SPINLOCK(lock);	/* Serialise the printks */
+	if (cpumask_test_cpu(cpu, to_cpumask(backtrace_mask))) {
+		static DEFINE_RAW_SPINLOCK(lock); /* Serialise the printks */
 
-		spin_lock(&lock);
+		raw_spin_lock(&lock);
 		printk(KERN_WARNING "NMI backtrace for cpu %d\n", cpu);
+		show_regs(regs);
 		dump_stack();
-		spin_unlock(&lock);
-		cpumask_clear_cpu(cpu, backtrace_mask);
+		raw_spin_unlock(&lock);
+		cpumask_clear_cpu(cpu, to_cpumask(backtrace_mask));
+
+		rc = 1;
 	}
 
 	/* Could check oops_in_progress here too, but it's safer not to */
@@ -435,8 +439,8 @@ nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
 		 * Ayiee, looks like this CPU is stuck ...
 		 * wait a few IRQs (5 seconds) before doing the oops ...
 		 */
-		local_inc(&__get_cpu_var(alert_counter));
-		if (local_read(&__get_cpu_var(alert_counter)) == 5 * nmi_hz)
+		__this_cpu_inc(alert_counter);
+		if (__this_cpu_read(alert_counter) == 5 * nmi_hz)
 			/*
 			 * die_nmi will return ONLY if NOTIFY_STOP happens..
 			 */
@@ -444,7 +448,7 @@ nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
 				regs, panic_on_timeout);
 	} else {
 		__get_cpu_var(last_irq_sum) = sum;
-		local_set(&__get_cpu_var(alert_counter), 0);
+		__this_cpu_write(alert_counter, 0);
 	}
 
 	/* see if the nmi watchdog went off */
@@ -506,14 +510,14 @@ static int unknown_nmi_panic_callback(struct pt_regs *regs, int cpu)
 /*
  * proc handler for /proc/sys/kernel/nmi
  */
-int proc_nmi_enabled(struct ctl_table *table, int write, struct file *file,
+int proc_nmi_enabled(struct ctl_table *table, int write,
 			void __user *buffer, size_t *length, loff_t *ppos)
 {
 	int old_state;
 
 	nmi_watchdog_enabled = (atomic_read(&nmi_active) > 0) ? 1 : 0;
 	old_state = nmi_watchdog_enabled;
-	proc_dointvec(table, write, file, buffer, length, ppos);
+	proc_dointvec(table, write, buffer, length, ppos);
 	if (!!old_state == !!nmi_watchdog_enabled)
 		return 0;
 
@@ -552,14 +556,18 @@ int do_nmi_callback(struct pt_regs *regs, int cpu)
 	return 0;
 }
 
-void __trigger_all_cpu_backtrace(void)
+void arch_trigger_all_cpu_backtrace(void)
 {
 	int i;
 
-	cpumask_copy(backtrace_mask, cpu_online_mask);
+	cpumask_copy(to_cpumask(backtrace_mask), cpu_online_mask);
+
+	printk(KERN_INFO "sending NMI to all CPUs:\n");
+	apic->send_IPI_all(NMI_VECTOR);
+
 	/* Wait for up to 10 seconds for all CPUs to do the backtrace */
 	for (i = 0; i < 10 * 1000; i++) {
-		if (cpumask_empty(backtrace_mask))
+		if (cpumask_empty(to_cpumask(backtrace_mask)))
 			break;
 		mdelay(1);
 	}

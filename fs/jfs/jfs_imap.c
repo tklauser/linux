@@ -45,6 +45,7 @@
 #include <linux/buffer_head.h>
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
+#include <linux/slab.h>
 
 #include "jfs_incore.h"
 #include "jfs_inode.h"
@@ -2571,6 +2572,7 @@ diNewIAG(struct inomap * imap, int *iagnop, int agno, struct metapage ** mpp)
 
 			txAbort(tid, 0);
 			txEnd(tid);
+			mutex_unlock(&JFS_IP(ipimap)->commit_mutex);
 
 			/* release the inode map lock */
 			IWRITE_UNLOCK(ipimap);

@@ -1,7 +1,7 @@
 /*
  * Watchdog driver for SiByte SB1 SoCs
  *
- * Copyright (C) 2007 OnStor, Inc. * Andrew Sharp <andy.sharp@onstor.com>
+ * Copyright (C) 2007 OnStor, Inc. * Andrew Sharp <andy.sharp@lsi.com>
  *
  * This driver is intended to make the second of two hardware watchdogs
  * on the Sibyte 12XX and 11XX SoCs available to the user.  There are two
@@ -67,8 +67,8 @@ static DEFINE_SPINLOCK(sbwd_lock);
 void sbwdog_set(char __iomem *wdog, unsigned long t)
 {
 	spin_lock(&sbwd_lock);
-	__raw_writeb(0, wdog - 0x10);
-	__raw_writeq(t & 0x7fffffUL, wdog);
+	__raw_writeb(0, wdog);
+	__raw_writeq(t & 0x7fffffUL, wdog - 0x10);
 	spin_unlock(&sbwd_lock);
 }
 
@@ -93,7 +93,7 @@ static int expect_close;
 
 static const struct watchdog_info ident = {
 	.options	= WDIOF_CARDRESET | WDIOF_SETTIMEOUT |
-						WDIOF_KEEPALIVEPING,
+					WDIOF_KEEPALIVEPING | WDIOF_MAGICCLOSE,
 	.identity	= "SiByte Watchdog",
 };
 
@@ -269,9 +269,10 @@ irqreturn_t sbwdog_interrupt(int irq, void *addr)
 	 * if it's the second watchdog timer, it's for those users
 	 */
 	if (wd_cfg_reg == user_dog)
-		printk(KERN_CRIT
-			"%s in danger of initiating system reset in %ld.%01ld seconds\n",
-			ident.identity, wd_init / 1000000, (wd_init / 100000) % 10);
+		printk(KERN_CRIT "%s in danger of initiating system reset "
+			"in %ld.%01ld seconds\n",
+			ident.identity,
+			wd_init / 1000000, (wd_init / 100000) % 10);
 	else
 		cfg |= 1;
 
@@ -325,7 +326,7 @@ static void __exit sbwdog_exit(void)
 module_init(sbwdog_init);
 module_exit(sbwdog_exit);
 
-MODULE_AUTHOR("Andrew Sharp <andy.sharp@onstor.com>");
+MODULE_AUTHOR("Andrew Sharp <andy.sharp@lsi.com>");
 MODULE_DESCRIPTION("SiByte Watchdog");
 
 module_param(timeout, ulong, 0);

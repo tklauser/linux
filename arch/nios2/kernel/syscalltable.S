@@ -122,7 +122,7 @@ ENTRY(sys_call_table)
 	.long sys_settimeofday
 	.long sys_getgroups	/* 80 */
 	.long sys_setgroups
-	.long sys_select
+	.long sys_old_select
 	.long sys_symlink
 	.long sys_ni_syscall
 	.long sys_readlink	/* 85 */
@@ -232,7 +232,7 @@ ENTRY(sys_call_table)
 	.long sys_ni_syscall	/* streams2 */
 	.long sys_vfork		/* 190 */
 	.long sys_getrlimit
-	.long sys_ni_syscall
+	.long sys_mmap_pgoff
 	.long sys_truncate64
 	.long sys_ftruncate64
 	.long sys_stat64	/* 195 */
@@ -373,8 +373,11 @@ ENTRY(sys_call_table)
 	.long sys_inotify_init1		/* 330 */
 	.long sys_preadv
 	.long sys_pwritev
+	.long sys_rt_sigqueueinfo
+	.long sys_perf_event_open
+	.long sys_recvmmsg		/* 335 */
 
-	.rept NR_syscalls - 333
+	.rept NR_syscalls - 336
 		.long sys_ni_syscall
 	.endr
 

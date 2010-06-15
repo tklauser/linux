@@ -30,6 +30,7 @@
  */
 
 #define DEBUG
+#include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
@@ -67,10 +68,6 @@ static int post_interrupt_delay = 1000;
 module_param(post_interrupt_delay, int, 0644);
 MODULE_PARM_DESC(post_interrupt_delay,
 	"delay (ms) before recal after recal interrupt detected");
-
-static int autorecal = 1;
-module_param(autorecal, int, 0644);
-MODULE_PARM_DESC(autorecal, "enable recalibration in the driver");
 
 /*
  * When the touchpad gets ultra-sensitive, one can keep their finger 1/2"
@@ -367,7 +364,36 @@ static ssize_t hgpk_set_powered(struct psmouse *psmouse, void *data,
 }
 
 __PSMOUSE_DEFINE_ATTR(powered, S_IWUSR | S_IRUGO, NULL,
-		      hgpk_show_powered, hgpk_set_powered, 0);
+		      hgpk_show_powered, hgpk_set_powered, false);
+
+static ssize_t hgpk_trigger_recal_show(struct psmouse *psmouse,
+		void *data, char *buf)
+{
+	return -EINVAL;
+}
+
+static ssize_t hgpk_trigger_recal(struct psmouse *psmouse, void *data,
+				const char *buf, size_t count)
+{
+	struct hgpk_data *priv = psmouse->private;
+	unsigned long value;
+	int err;
+
+	err = strict_strtoul(buf, 10, &value);
+	if (err || value != 1)
+		return -EINVAL;
+
+	/*
+	 * We queue work instead of doing recalibration right here
+	 * to avoid adding locking to to hgpk_force_recalibrate()
+	 * since workqueue provides serialization.
+	 */
+	psmouse_queue_work(psmouse, &priv->recalib_wq, 0);
+	return count;
+}
+
+__PSMOUSE_DEFINE_ATTR(recalibrate, S_IWUSR | S_IRUGO, NULL,
+		      hgpk_trigger_recal_show, hgpk_trigger_recal, false);
 
 static void hgpk_disconnect(struct psmouse *psmouse)
 {
@@ -375,6 +401,11 @@ static void hgpk_disconnect(struct psmouse *psmouse)
 
 	device_remove_file(&psmouse->ps2dev.serio->dev,
 			   &psmouse_attr_powered.dattr);
+
+	if (psmouse->model >= HGPK_MODEL_C)
+		device_remove_file(&psmouse->ps2dev.serio->dev,
+				   &psmouse_attr_recalibrate.dattr);
+
 	psmouse_reset(psmouse);
 	kfree(priv);
 }
@@ -393,21 +424,7 @@ static void hgpk_recalib_work(struct work_struct *work)
 
 static int hgpk_register(struct psmouse *psmouse)
 {
-	struct input_dev *dev = psmouse->dev;
 	int err;
-
-	/* unset the things that psmouse-base sets which we don't have */
-	__clear_bit(BTN_MIDDLE, dev->keybit);
-
-	/* set the things we do have */
-	__set_bit(EV_KEY, dev->evbit);
-	__set_bit(EV_REL, dev->evbit);
-
-	__set_bit(REL_X, dev->relbit);
-	__set_bit(REL_Y, dev->relbit);
-
-	__set_bit(BTN_LEFT, dev->keybit);
-	__set_bit(BTN_RIGHT, dev->keybit);
 
 	/* register handlers */
 	psmouse->protocol_handler = hgpk_process_byte;
@@ -423,10 +440,25 @@ static int hgpk_register(struct psmouse *psmouse)
 
 	err = device_create_file(&psmouse->ps2dev.serio->dev,
 				 &psmouse_attr_powered.dattr);
-	if (err)
-		hgpk_err(psmouse, "Failed to create sysfs attribute\n");
+	if (err) {
+		hgpk_err(psmouse, "Failed creating 'powered' sysfs node\n");
+		return err;
+	}
 
-	return err;
+	/* C-series touchpads added the recalibrate command */
+	if (psmouse->model >= HGPK_MODEL_C) {
+		err = device_create_file(&psmouse->ps2dev.serio->dev,
+					 &psmouse_attr_recalibrate.dattr);
+		if (err) {
+			hgpk_err(psmouse,
+				"Failed creating 'recalibrate' sysfs node\n");
+			device_remove_file(&psmouse->ps2dev.serio->dev,
+					&psmouse_attr_powered.dattr);
+			return err;
+		}
+	}
+
+	return 0;
 }
 
 int hgpk_init(struct psmouse *psmouse)
@@ -440,7 +472,7 @@ int hgpk_init(struct psmouse *psmouse)
 
 	psmouse->private = priv;
 	priv->psmouse = psmouse;
-	priv->powered = 1;
+	priv->powered = true;
 	INIT_DELAYED_WORK(&priv->recalib_wq, hgpk_recalib_work);
 
 	err = psmouse_reset(psmouse);
@@ -483,7 +515,7 @@ static enum hgpk_model_t hgpk_get_model(struct psmouse *psmouse)
 	return param[2];
 }
 
-int hgpk_detect(struct psmouse *psmouse, int set_properties)
+int hgpk_detect(struct psmouse *psmouse, bool set_properties)
 {
 	int version;
 

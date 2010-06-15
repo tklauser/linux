@@ -5,6 +5,8 @@
  *     2008 Pekka Paalanen <pq@iki.fi>
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/list.h>
 #include <linux/rculist.h>
 #include <linux/spinlock.h>
@@ -19,6 +21,7 @@
 #include <linux/kdebug.h>
 #include <linux/mutex.h>
 #include <linux/io.h>
+#include <linux/slab.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 #include <linux/errno.h>
@@ -32,7 +35,7 @@ struct kmmio_fault_page {
 	struct list_head list;
 	struct kmmio_fault_page *release_next;
 	unsigned long page; /* location of the fault page */
-	bool old_presence; /* page presence prior to arming */
+	pteval_t old_presence; /* page presence prior to arming */
 	bool armed;
 
 	/*
@@ -97,60 +100,62 @@ static struct kmmio_probe *get_kmmio_probe(unsigned long addr)
 static struct kmmio_fault_page *get_kmmio_fault_page(unsigned long page)
 {
 	struct list_head *head;
-	struct kmmio_fault_page *p;
+	struct kmmio_fault_page *f;
 
 	page &= PAGE_MASK;
 	head = kmmio_page_list(page);
-	list_for_each_entry_rcu(p, head, list) {
-		if (p->page == page)
-			return p;
+	list_for_each_entry_rcu(f, head, list) {
+		if (f->page == page)
+			return f;
 	}
 	return NULL;
 }
 
-static void set_pmd_presence(pmd_t *pmd, bool present, bool *old)
+static void clear_pmd_presence(pmd_t *pmd, bool clear, pmdval_t *old)
 {
 	pmdval_t v = pmd_val(*pmd);
-	*old = !!(v & _PAGE_PRESENT);
-	v &= ~_PAGE_PRESENT;
-	if (present)
-		v |= _PAGE_PRESENT;
+	if (clear) {
+		*old = v & _PAGE_PRESENT;
+		v &= ~_PAGE_PRESENT;
+	} else	/* presume this has been called with clear==true previously */
+		v |= *old;
 	set_pmd(pmd, __pmd(v));
 }
 
-static void set_pte_presence(pte_t *pte, bool present, bool *old)
+static void clear_pte_presence(pte_t *pte, bool clear, pteval_t *old)
 {
 	pteval_t v = pte_val(*pte);
-	*old = !!(v & _PAGE_PRESENT);
-	v &= ~_PAGE_PRESENT;
-	if (present)
-		v |= _PAGE_PRESENT;
+	if (clear) {
+		*old = v & _PAGE_PRESENT;
+		v &= ~_PAGE_PRESENT;
+	} else	/* presume this has been called with clear==true previously */
+		v |= *old;
 	set_pte_atomic(pte, __pte(v));
 }
 
-static int set_page_presence(unsigned long addr, bool present, bool *old)
+static int clear_page_presence(struct kmmio_fault_page *f, bool clear)
 {
 	unsigned int level;
-	pte_t *pte = lookup_address(addr, &level);
+	pte_t *pte = lookup_address(f->page, &level);
 
 	if (!pte) {
-		pr_err("kmmio: no pte for page 0x%08lx\n", addr);
+		pr_err("no pte for page 0x%08lx\n", f->page);
 		return -1;
 	}
 
 	switch (level) {
 	case PG_LEVEL_2M:
-		set_pmd_presence((pmd_t *)pte, present, old);
+		clear_pmd_presence((pmd_t *)pte, clear, &f->old_presence);
 		break;
 	case PG_LEVEL_4K:
-		set_pte_presence(pte, present, old);
+		clear_pte_presence(pte, clear, &f->old_presence);
 		break;
 	default:
-		pr_err("kmmio: unexpected page level 0x%x.\n", level);
+		pr_err("unexpected page level 0x%x.\n", level);
 		return -1;
 	}
 
-	__flush_tlb_one(addr);
+	__flush_tlb_one(f->page);
 	return 0;
 }
 
@@ -168,13 +173,14 @@ static int set_page_presence(unsigned long addr, bool present, bool *old)
 static int arm_kmmio_fault_page(struct kmmio_fault_page *f)
 {
 	int ret;
-	WARN_ONCE(f->armed, KERN_ERR "kmmio page already armed.\n");
+	WARN_ONCE(f->armed, KERN_ERR pr_fmt("kmmio page already armed.\n"));
 	if (f->armed) {
-		pr_warning("kmmio double-arm: page 0x%08lx, ref %d, old %d\n",
-					f->page, f->count, f->old_presence);
+		pr_warning("double-arm: page 0x%08lx, ref %d, old %d\n",
+			   f->page, f->count, !!f->old_presence);
 	}
-	ret = set_page_presence(f->page, false, &f->old_presence);
-	WARN_ONCE(ret < 0, KERN_ERR "kmmio arming 0x%08lx failed.\n", f->page);
+	ret = clear_page_presence(f, true);
+	WARN_ONCE(ret < 0, KERN_ERR pr_fmt("arming 0x%08lx failed.\n"),
+		  f->page);
 	f->armed = true;
 	return ret;
 }
@@ -182,8 +188,7 @@ static int arm_kmmio_fault_page(struct kmmio_fault_page *f)
 /** Restore the given page to saved presence state. */
 static void disarm_kmmio_fault_page(struct kmmio_fault_page *f)
 {
-	bool tmp;
-	int ret = set_page_presence(f->page, f->old_presence, &tmp);
+	int ret = clear_page_presence(f, false);
 	WARN_ONCE(ret < 0,
 			KERN_ERR "kmmio disarming 0x%08lx failed.\n", f->page);
 	f->armed = false;
@@ -202,7 +207,7 @@ static void disarm_kmmio_fault_page(struct kmmio_fault_page *f)
  */
 /*
  * Interrupts are disabled on entry as trap3 is an interrupt gate
- * and they remain disabled thorough out this function.
+ * and they remain disabled throughout this function.
  */
 int kmmio_handler(struct pt_regs *regs, unsigned long addr)
 {
@@ -239,24 +244,21 @@ int kmmio_handler(struct pt_regs *regs, unsigned long addr)
 			 * condition needs handling by do_page_fault(), the
 			 * page really not being present is the most common.
 			 */
-			pr_debug("kmmio: secondary hit for 0x%08lx CPU %d.\n",
-					addr, smp_processor_id());
+			pr_debug("secondary hit for 0x%08lx CPU %d.\n",
+				 addr, smp_processor_id());
 
 			if (!faultpage->old_presence)
-				pr_info("kmmio: unexpected secondary hit for "
-					"address 0x%08lx on CPU %d.\n", addr,
-					smp_processor_id());
+				pr_info("unexpected secondary hit for address 0x%08lx on CPU %d.\n",
+					addr, smp_processor_id());
 		} else {
 			/*
 			 * Prevent overwriting already in-flight context.
 			 * This should not happen, let's hope disarming at
 			 * least prevents a panic.
 			 */
-			pr_emerg("kmmio: recursive probe hit on CPU %d, "
-					"for address 0x%08lx. Ignoring.\n",
-					smp_processor_id(), addr);
-			pr_emerg("kmmio: previous hit was at 0x%08lx.\n",
-						ctx->addr);
+			pr_emerg("recursive probe hit on CPU %d, for address 0x%08lx. Ignoring.\n",
+				 smp_processor_id(), addr);
+			pr_emerg("previous hit was at 0x%08lx.\n", ctx->addr);
 			disarm_kmmio_fault_page(faultpage);
 		}
 		goto no_kmmio_ctx;
@@ -301,7 +303,7 @@ no_kmmio:
 
 /*
  * Interrupts are disabled on entry as trap1 is an interrupt gate
- * and they remain disabled thorough out this function.
+ * and they remain disabled throughout this function.
  * This must always get called as the pair to kmmio_handler().
  */
 static int post_kmmio_handler(unsigned long condition, struct pt_regs *regs)
@@ -310,8 +312,13 @@ static int post_kmmio_handler(unsigned long condition, struct pt_regs *regs)
 	struct kmmio_context *ctx = &get_cpu_var(kmmio_ctx);
 
 	if (!ctx->active) {
-		pr_debug("kmmio: spurious debug trap on CPU %d.\n",
-							smp_processor_id());
+		/*
+		 * debug traps without an active context are due to either
+		 * something external causing them (f.e. using a debugger while
+		 * mmio tracing enabled), or erroneous behaviour
+		 */
+		pr_warning("unexpected debug trap on CPU %d.\n",
+			   smp_processor_id());
 		goto out;
 	}
 
@@ -419,7 +426,7 @@ int register_kmmio_probe(struct kmmio_probe *p)
 	list_add_rcu(&p->list, &kmmio_probes);
 	while (size < size_lim) {
 		if (add_kmmio_fault_page(p->addr + size))
-			pr_err("kmmio: Unable to set page fault.\n");
+			pr_err("Unable to set page fault.\n");
 		size += PAGE_SIZE;
 	}
 out:
@@ -439,12 +446,12 @@ static void rcu_free_kmmio_fault_pages(struct rcu_head *head)
 						head,
 						struct kmmio_delayed_release,
 						rcu);
-	struct kmmio_fault_page *p = dr->release_list;
-	while (p) {
-		struct kmmio_fault_page *next = p->release_next;
-		BUG_ON(p->count);
-		kfree(p);
-		p = next;
+	struct kmmio_fault_page *f = dr->release_list;
+	while (f) {
+		struct kmmio_fault_page *next = f->release_next;
+		BUG_ON(f->count);
+		kfree(f);
+		f = next;
 	}
 	kfree(dr);
 }
@@ -453,19 +460,19 @@ static void remove_kmmio_fault_pages(struct rcu_head *head)
 {
 	struct kmmio_delayed_release *dr =
 		container_of(head, struct kmmio_delayed_release, rcu);
-	struct kmmio_fault_page *p = dr->release_list;
+	struct kmmio_fault_page *f = dr->release_list;
 	struct kmmio_fault_page **prevp = &dr->release_list;
 	unsigned long flags;
 
 	spin_lock_irqsave(&kmmio_lock, flags);
-	while (p) {
-		if (!p->count) {
-			list_del_rcu(&p->list);
-			prevp = &p->release_next;
+	while (f) {
+		if (!f->count) {
+			list_del_rcu(&f->list);
+			prevp = &f->release_next;
 		} else {
-			*prevp = p->release_next;
+			*prevp = f->release_next;
 		}
-		p = p->release_next;
+		f = f->release_next;
 	}
 	spin_unlock_irqrestore(&kmmio_lock, flags);
 
@@ -484,7 +491,7 @@ static void remove_kmmio_fault_pages(struct rcu_head *head)
  * 2. remove_kmmio_fault_pages()
  *    Remove the pages from kmmio_page_table.
  * 3. rcu_free_kmmio_fault_pages()
- *    Actally free the kmmio_fault_page structs as with RCU.
+ *    Actually free the kmmio_fault_page structs as with RCU.
  */
 void unregister_kmmio_probe(struct kmmio_probe *p)
 {
@@ -505,7 +512,7 @@ void unregister_kmmio_probe(struct kmmio_probe *p)
 
 	drelease = kmalloc(sizeof(*drelease), GFP_ATOMIC);
 	if (!drelease) {
-		pr_crit("kmmio: leaking kmmio_fault_page objects.\n");
+		pr_crit("leaking kmmio_fault_page objects.\n");
 		return;
 	}
 	drelease->release_list = release_list;
@@ -528,14 +535,21 @@ void unregister_kmmio_probe(struct kmmio_probe *p)
 }
 EXPORT_SYMBOL(unregister_kmmio_probe);
 
-static int kmmio_die_notifier(struct notifier_block *nb, unsigned long val,
-								void *args)
+static int
+kmmio_die_notifier(struct notifier_block *nb, unsigned long val, void *args)
 {
 	struct die_args *arg = args;
+	unsigned long* dr6_p = (unsigned long *)ERR_PTR(arg->err);
 
-	if (val == DIE_DEBUG && (arg->err & DR_STEP))
-		if (post_kmmio_handler(arg->err, arg->regs) == 1)
+	if (val == DIE_DEBUG && (*dr6_p & DR_STEP))
+		if (post_kmmio_handler(*dr6_p, arg->regs) == 1) {
+			/*
+			 * Reset the BS bit in dr6 (pointed by args->err) to
+			 * denote completion of processing
+			 */
+			*dr6_p &= ~DR_STEP;
 			return NOTIFY_STOP;
+		}
 
 	return NOTIFY_DONE;
 }
@@ -544,11 +558,23 @@ static struct notifier_block nb_die = {
 	.notifier_call = kmmio_die_notifier
 };
 
-static int __init init_kmmio(void)
+int kmmio_init(void)
 {
 	int i;
+
 	for (i = 0; i < KMMIO_PAGE_TABLE_SIZE; i++)
 		INIT_LIST_HEAD(&kmmio_page_table[i]);
+
 	return register_die_notifier(&nb_die);
 }
-fs_initcall(init_kmmio); /* should be before device_initcall() */
+
+void kmmio_cleanup(void)
+{
+	int i;
+
+	unregister_die_notifier(&nb_die);
+	for (i = 0; i < KMMIO_PAGE_TABLE_SIZE; i++) {
+		WARN_ONCE(!list_empty(&kmmio_page_table[i]),
+			KERN_ERR "kmmio_page_table not empty at cleanup, any further tracing will leak memory.\n");
+	}
+}

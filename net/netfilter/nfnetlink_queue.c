@@ -1,6 +1,6 @@
 /*
  * This is a module which is used for queueing packets and communicating with
- * userspace via nfetlink.
+ * userspace via nfnetlink.
  *
  * (C) 2005 by Harald Welte <laforge@netfilter.org>
  * (C) 2007 by Patrick McHardy <kaber@trash.net>
@@ -18,6 +18,7 @@
 #include <linux/skbuff.h>
 #include <linux/init.h>
 #include <linux/spinlock.h>
+#include <linux/slab.h>
 #include <linux/notifier.h>
 #include <linux/netdevice.h>
 #include <linux/netfilter.h>
@@ -112,7 +113,6 @@ instance_create(u_int16_t queue_num, int pid)
 	inst->copy_mode = NFQNL_COPY_NONE;
 	spin_lock_init(&inst->lock);
 	INIT_LIST_HEAD(&inst->queue_list);
-	INIT_RCU_HEAD(&inst->rcu);
 
 	if (!try_module_get(THIS_MODULE)) {
 		err = -EAGAIN;
@@ -414,13 +414,13 @@ nfqnl_enqueue_packet(struct nf_queue_entry *entry, unsigned int queuenum)
 		queue->queue_dropped++;
 		if (net_ratelimit())
 			  printk(KERN_WARNING "nf_queue: full at %d entries, "
-				 "dropping packets(s). Dropped: %d\n",
-				 queue->queue_total, queue->queue_dropped);
+				 "dropping packets(s).\n",
+				 queue->queue_total);
 		goto err_out_free_nskb;
 	}
 
 	/* nfnetlink_unicast will either free the nskb or add it to a socket */
-	err = nfnetlink_unicast(nskb, queue->peer_pid, MSG_DONTWAIT);
+	err = nfnetlink_unicast(nskb, &init_net, queue->peer_pid, MSG_DONTWAIT);
 	if (err < 0) {
 		queue->queue_user_dropped++;
 		goto err_out_unlock;
@@ -574,8 +574,7 @@ nfqnl_rcv_nl_event(struct notifier_block *this,
 {
 	struct netlink_notify *n = ptr;
 
-	if (event == NETLINK_URELEASE &&
-	    n->protocol == NETLINK_NETFILTER && n->pid) {
+	if (event == NETLINK_URELEASE && n->protocol == NETLINK_NETFILTER) {
 		int i;
 
 		/* destroy all instances for this pid */
@@ -608,7 +607,8 @@ static const struct nla_policy nfqa_verdict_policy[NFQA_MAX+1] = {
 
 static int
 nfqnl_recv_verdict(struct sock *ctnl, struct sk_buff *skb,
-		   struct nlmsghdr *nlh, struct nlattr *nfqa[])
+		   const struct nlmsghdr *nlh,
+		   const struct nlattr * const nfqa[])
 {
 	struct nfgenmsg *nfmsg = NLMSG_DATA(nlh);
 	u_int16_t queue_num = ntohs(nfmsg->res_id);
@@ -670,7 +670,8 @@ err_out_unlock:
 
 static int
 nfqnl_recv_unsupp(struct sock *ctnl, struct sk_buff *skb,
-		  struct nlmsghdr *nlh, struct nlattr *nfqa[])
+		  const struct nlmsghdr *nlh,
+		  const struct nlattr * const nfqa[])
 {
 	return -ENOTSUPP;
 }
@@ -687,7 +688,8 @@ static const struct nf_queue_handler nfqh = {
 
 static int
 nfqnl_recv_config(struct sock *ctnl, struct sk_buff *skb,
-		  struct nlmsghdr *nlh, struct nlattr *nfqa[])
+		  const struct nlmsghdr *nlh,
+		  const struct nlattr * const nfqa[])
 {
 	struct nfgenmsg *nfmsg = NLMSG_DATA(nlh);
 	u_int16_t queue_num = ntohs(nfmsg->res_id);
@@ -932,6 +934,8 @@ static void __exit nfnetlink_queue_fini(void)
 #endif
 	nfnetlink_subsys_unregister(&nfqnl_subsys);
 	netlink_unregister_notifier(&nfqnl_rtnl_notifier);
+
+	rcu_barrier(); /* Wait for completion of call_rcu()'s */
 }
 
 MODULE_DESCRIPTION("netfilter packet queue handler");

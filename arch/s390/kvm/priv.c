@@ -12,6 +12,7 @@
  */
 
 #include <linux/kvm.h>
+#include <linux/gfp.h>
 #include <linux/errno.h>
 #include <asm/current.h>
 #include <asm/debug.h>
@@ -158,7 +159,7 @@ static int handle_stfl(struct kvm_vcpu *vcpu)
 
 	vcpu->stat.instruction_stfl++;
 	/* only pass the facility bits, which we can handle */
-	facility_list &= 0xfe00fff3;
+	facility_list &= 0xff00fff3;
 
 	rc = copy_to_guest(vcpu, offsetof(struct _lowcore, stfl_fac_list),
 			   &facility_list, sizeof(facility_list));
@@ -204,11 +205,11 @@ static void handle_stsi_3_2_2(struct kvm_vcpu *vcpu, struct sysinfo_3_2_2 *mem)
 	int cpus = 0;
 	int n;
 
-	spin_lock_bh(&fi->lock);
+	spin_lock(&fi->lock);
 	for (n = 0; n < KVM_MAX_VCPUS; n++)
 		if (fi->local_int[n])
 			cpus++;
-	spin_unlock_bh(&fi->lock);
+	spin_unlock(&fi->lock);
 
 	/* deal with other level 3 hypervisors */
 	if (stsi(mem, 3, 2, 2) == -ENOSYS)
@@ -323,5 +324,5 @@ int kvm_s390_handle_b2(struct kvm_vcpu *vcpu)
 		else
 			return handler(vcpu);
 	}
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }

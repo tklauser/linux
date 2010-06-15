@@ -152,7 +152,6 @@ static char *version =
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/init.h>
@@ -405,7 +404,7 @@ static int     eth16i_read_eeprom_word(int ioaddr);
 static void    eth16i_eeprom_cmd(int ioaddr, unsigned char command);
 static int     eth16i_open(struct net_device *dev);
 static int     eth16i_close(struct net_device *dev);
-static int     eth16i_tx(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t eth16i_tx(struct sk_buff *skb, struct net_device *dev);
 static void    eth16i_rx(struct net_device *dev);
 static void    eth16i_timeout(struct net_device *dev);
 static irqreturn_t eth16i_interrupt(int irq, void *dev_id);
@@ -1053,7 +1052,7 @@ static void eth16i_timeout(struct net_device *dev)
 	netif_wake_queue(dev);
 }
 
-static int eth16i_tx(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t eth16i_tx(struct sk_buff *skb, struct net_device *dev)
 {
 	struct eth16i_local *lp = netdev_priv(dev);
 	int ioaddr = dev->base_addr;
@@ -1064,7 +1063,7 @@ static int eth16i_tx(struct sk_buff *skb, struct net_device *dev)
 
 	if (length < ETH_ZLEN) {
 		if (skb_padto(skb, ETH_ZLEN))
-			return 0;
+			return NETDEV_TX_OK;
 		length = ETH_ZLEN;
 	}
 	buf = skb->data;
@@ -1126,7 +1125,7 @@ static int eth16i_tx(struct sk_buff *skb, struct net_device *dev)
 	/* outb(TX_INTR_DONE | TX_INTR_16_COL, ioaddr + TX_INTR_REG); */
 	status = 0;
 	dev_kfree_skb(skb);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void eth16i_rx(struct net_device *dev)
@@ -1359,7 +1358,7 @@ static void eth16i_multicast(struct net_device *dev)
 {
 	int ioaddr = dev->base_addr;
 
-	if(dev->mc_count || dev->flags&(IFF_ALLMULTI|IFF_PROMISC))
+	if (!netdev_mc_empty(dev) || dev->flags&(IFF_ALLMULTI|IFF_PROMISC))
 	{
 		outb(3, ioaddr + RECEIVE_MODE_REG);
 	} else {

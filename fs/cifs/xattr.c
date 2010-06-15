@@ -21,6 +21,7 @@
 
 #include <linux/fs.h>
 #include <linux/posix_acl_xattr.h>
+#include <linux/slab.h>
 #include "cifsfs.h"
 #include "cifspdu.h"
 #include "cifsglob.h"
@@ -64,8 +65,9 @@ int cifs_removexattr(struct dentry *direntry, const char *ea_name)
 
 	full_path = build_path_from_dentry(direntry);
 	if (full_path == NULL) {
+		rc = -ENOMEM;
 		FreeXid(xid);
-		return -ENOMEM;
+		return rc;
 	}
 	if (ea_name == NULL) {
 		cFYI(1, ("Null xattr names not supported"));
@@ -118,8 +120,9 @@ int cifs_setxattr(struct dentry *direntry, const char *ea_name,
 
 	full_path = build_path_from_dentry(direntry);
 	if (full_path == NULL) {
+		rc = -ENOMEM;
 		FreeXid(xid);
-		return -ENOMEM;
+		return rc;
 	}
 	/* return dos attributes as pseudo xattr */
 	/* return alt name if available as pseudo attr */
@@ -225,8 +228,9 @@ ssize_t cifs_getxattr(struct dentry *direntry, const char *ea_name,
 
 	full_path = build_path_from_dentry(direntry);
 	if (full_path == NULL) {
+		rc = -ENOMEM;
 		FreeXid(xid);
-		return -ENOMEM;
+		return rc;
 	}
 	/* return dos attributes as pseudo xattr */
 	/* return alt name if available as pseudo attr */
@@ -241,7 +245,7 @@ ssize_t cifs_getxattr(struct dentry *direntry, const char *ea_name,
 			/* revalidate/getattr then populate from inode */
 		} /* BB add else when above is implemented */
 		ea_name += 5; /* skip past user. prefix */
-		rc = CIFSSMBQueryEA(xid, pTcon, full_path, ea_name, ea_value,
+		rc = CIFSSMBQAllEAs(xid, pTcon, full_path, ea_name, ea_value,
 			buf_size, cifs_sb->local_nls,
 			cifs_sb->mnt_cifs_flags & CIFS_MOUNT_MAP_SPECIAL_CHR);
 	} else if (strncmp(ea_name, CIFS_XATTR_OS2_PREFIX, 4) == 0) {
@@ -249,7 +253,7 @@ ssize_t cifs_getxattr(struct dentry *direntry, const char *ea_name,
 			goto get_ea_exit;
 
 		ea_name += 4; /* skip past os2. prefix */
-		rc = CIFSSMBQueryEA(xid, pTcon, full_path, ea_name, ea_value,
+		rc = CIFSSMBQAllEAs(xid, pTcon, full_path, ea_name, ea_value,
 			buf_size, cifs_sb->local_nls,
 			cifs_sb->mnt_cifs_flags & CIFS_MOUNT_MAP_SPECIAL_CHR);
 	} else if (strncmp(ea_name, POSIX_ACL_XATTR_ACCESS,
@@ -351,8 +355,9 @@ ssize_t cifs_listxattr(struct dentry *direntry, char *data, size_t buf_size)
 
 	full_path = build_path_from_dentry(direntry);
 	if (full_path == NULL) {
+		rc = -ENOMEM;
 		FreeXid(xid);
-		return -ENOMEM;
+		return rc;
 	}
 	/* return dos attributes as pseudo xattr */
 	/* return alt name if available as pseudo attr */
@@ -360,8 +365,8 @@ ssize_t cifs_listxattr(struct dentry *direntry, char *data, size_t buf_size)
 	/* if proc/fs/cifs/streamstoxattr is set then
 		search server for EAs or streams to
 		returns as xattrs */
-	rc = CIFSSMBQAllEAs(xid, pTcon, full_path, data, buf_size,
-				cifs_sb->local_nls,
+	rc = CIFSSMBQAllEAs(xid, pTcon, full_path, NULL, data,
+				buf_size, cifs_sb->local_nls,
 				cifs_sb->mnt_cifs_flags &
 					CIFS_MOUNT_MAP_SPECIAL_CHR);
 

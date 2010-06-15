@@ -19,6 +19,7 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/ds1wm.h>
 #include <linux/mfd/htc-pasic3.h>
+#include <linux/slab.h>
 
 struct pasic3_data {
 	void __iomem *mapping;
@@ -35,7 +36,7 @@ struct pasic3_data {
  */
 void pasic3_write_register(struct device *dev, u32 reg, u8 val)
 {
-	struct pasic3_data *asic = dev->driver_data;
+	struct pasic3_data *asic = dev_get_drvdata(dev);
 	int bus_shift = asic->bus_shift;
 	void __iomem *addr = asic->mapping + (REG_ADDR << bus_shift);
 	void __iomem *data = asic->mapping + (REG_DATA << bus_shift);
@@ -50,7 +51,7 @@ EXPORT_SYMBOL(pasic3_write_register); /* for leds-pasic3 */
  */
 u8 pasic3_read_register(struct device *dev, u32 reg)
 {
-	struct pasic3_data *asic = dev->driver_data;
+	struct pasic3_data *asic = dev_get_drvdata(dev);
 	int bus_shift = asic->bus_shift;
 	void __iomem *addr = asic->mapping + (REG_ADDR << bus_shift);
 	void __iomem *data = asic->mapping + (REG_DATA << bus_shift);

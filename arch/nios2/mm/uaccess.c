@@ -7,11 +7,9 @@
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
-#include <linux/module.h>
-
 #include <asm/uaccess.h>
 
-extern long __copy_from_user(void* to, const void __user *from, int n);
+extern long __copy_from_user(void *to, const void __user *from, unsigned long n);
 asm("   .global	__copy_from_user              \n"
     "   .type __copy_from_user, @function       \n"
     "__copy_from_user:                          \n"
@@ -68,9 +66,7 @@ asm("   .global	__copy_from_user              \n"
     ".previous                                  \n"
    );
 
-
-extern long __copy_to_user(void __user *to, const void *from, long n);
-
+extern long __copy_to_user(void __user *to, const void *from, unsigned long n);
 asm(
    "   .global	__copy_to_user           \n"
    "   .type __copy_to_user, @function  \n"
@@ -132,104 +128,45 @@ asm(
    ".word 12b,13b	                        \n"
    ".previous                                \n");
 
-extern long __copy_from_user_inatomic(void* to, const void __user *from, int n)
+long strncpy_from_user(char *__to, const char __user *__from, long __len)
 {
-  return __copy_from_user(to, from, n);
+	int l = strnlen_user(__from, __len);
+	int is_zt = 1;
+
+	if (l > __len) {
+		is_zt = 0;
+		l = __len;
+	}
+
+	if (l == 0 || copy_from_user(__to, __from, l))
+		return -EFAULT;
+
+	if (is_zt)
+		l--;
+	return l;
 }
 
-extern long copy_from_user(void* to, const void __user *from, int n)
+long strnlen_user(const char __user *s, long n)
 {
-  if(!access_ok(VERIFY_READ, from, n)) {
-    return n;
-  }
-  return __copy_from_user(to, from, n);
+	long i;
+
+	for (i = 0; i < n; i++) {
+		char c;
+		if (get_user(c, s + i) == -EFAULT)
+			return 0;
+		if (c == 0)
+			return i + 1;
+	}
+	return n + 1;
 }
 
-
-extern long __copy_to_user_inatomic(void __user *to, const void *from, long n) {
-  return __copy_to_user(to, from, n);
-}
-
-extern long copy_to_user(void __user *to, const void *from, long n)
+__kernel_size_t __clear_user(void __user *addr, __kernel_size_t size)
 {
-  if(!access_ok(VERIFY_WRITE, to, n)) {
-    return n;
-  }
-  return __copy_to_user(to, from, n);
+	while (size > 0) {
+		if (__put_user(0, (char *)addr) == -EFAULT)
+			break;
+		addr++;
+		size--;
+	}
+	return size;
 }
-
-extern long strncpy_from_user(char *__to, const char __user *__from, long __len) {
-  int l = strnlen_user(__from, __len);
-  int is_zt = 1;
-  
-  if(l > __len) {
-    is_zt = 0;
-    l = __len;
-  }
-  
-  if(l == 0 || copy_from_user(__to, __from, l)) {
-    return -EFAULT;
-  }
-  if(is_zt) {
-    l--;
-  }
-  return l;
-}
-
-extern long strnlen_user(const char __user *s, long n) {
-  int i;
-  char c;
-  for (i = 0; i < n; i++) {
-     if (get_user(c, s+i) == -EFAULT){
-      return 0;
-    }
-    if (c == 0) {
-      return i+1;
-    }
-  }
-  return n + 1;
-}
-
-__kernel_size_t __clear_user(void __user *addr, __kernel_size_t size) {
-  while(size > 0)
-  {
-     if(__put_user(0, (char*)addr) == -EFAULT) {
-        break;
-     }
-     addr++;
-     size--;
-  }
-  return size;
-}
-
-size_t clear_user(void __user *addr, __kernel_size_t size) {
-   if(!access_ok(VERIFY_WRITE, addr, size)) {
-      return size;
-   }
-   return __clear_user(addr, size);
-}
-
-extern int segment_eq(mm_segment_t a, mm_segment_t b) {
-  return a.seg == b.seg;
-}
-
-extern mm_segment_t get_ds(void) {
-  return KERNEL_DS;
-}
-
-extern void set_fs(mm_segment_t seg) {
-   current_thread_info()->addr_limit = seg;
-}
-
-extern mm_segment_t get_fs(void) {
-  return current_thread_info()->addr_limit;
-}
-
-
-EXPORT_SYMBOL(__copy_from_user);
-EXPORT_SYMBOL(copy_from_user);
-EXPORT_SYMBOL(__copy_to_user);
-EXPORT_SYMBOL(copy_to_user);
-EXPORT_SYMBOL(get_ds);
-EXPORT_SYMBOL(get_fs);
-EXPORT_SYMBOL(set_fs);

@@ -73,8 +73,8 @@ __setup("ether=", netdev_boot_setup);
  * @len:   packet length (<= skb->len)
  *
  *
- * Set the protocol type. For a packet of type ETH_P_802_3 we put the length
- * in here instead. It is up to the 802.2 layer to carry protocol information.
+ * Set the protocol type. For a packet of type ETH_P_802_3/2 we put the length
+ * in here instead.
  */
 int eth_header(struct sk_buff *skb, struct net_device *dev,
 	       unsigned short type,
@@ -82,7 +82,7 @@ int eth_header(struct sk_buff *skb, struct net_device *dev,
 {
 	struct ethhdr *eth = (struct ethhdr *)skb_push(skb, ETH_HLEN);
 
-	if (type != ETH_P_802_3)
+	if (type != ETH_P_802_3 && type != ETH_P_802_2)
 		eth->h_proto = htons(type);
 	else
 		eth->h_proto = htons(len);
@@ -337,11 +337,6 @@ const struct header_ops eth_header_ops ____cacheline_aligned = {
 void ether_setup(struct net_device *dev)
 {
 	dev->header_ops		= &eth_header_ops;
-#ifdef CONFIG_COMPAT_NET_DEV_OPS
-	dev->change_mtu		= eth_change_mtu;
-	dev->set_mac_address 	= eth_mac_addr;
-	dev->validate_addr	= eth_validate_addr;
-#endif
 	dev->type		= ARPHRD_ETHER;
 	dev->hard_header_len 	= ETH_HLEN;
 	dev->mtu		= ETH_DATA_LEN;
@@ -398,10 +393,3 @@ ssize_t sysfs_format_mac(char *buf, const unsigned char *addr, int len)
 	return ((ssize_t) l);
 }
 EXPORT_SYMBOL(sysfs_format_mac);
-
-char *print_mac(char *buf, const unsigned char *addr)
-{
-	_format_mac_addr(buf, MAC_BUF_SIZE, addr, ETH_ALEN);
-	return buf;
-}
-EXPORT_SYMBOL(print_mac);

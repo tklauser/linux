@@ -35,8 +35,8 @@
 
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
+#include <linux/slab.h>
 
-#include <rdma/ib_cache.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
 
@@ -277,7 +277,6 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	skb_reset_mac_header(skb);
 	skb_pull(skb, IPOIB_ENCAP_LEN);
 
-	dev->last_rx = jiffies;
 	++dev->stats.rx_packets;
 	dev->stats.rx_bytes += skb->len;
 
@@ -531,7 +530,7 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_tx_buf *tx_req;
-	int hlen;
+	int hlen, rc;
 	void *phead;
 
 	if (skb_is_gso(skb)) {
@@ -587,9 +586,10 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		netif_stop_queue(dev);
 	}
 
-	if (unlikely(post_send(priv, priv->tx_head & (ipoib_sendq_size - 1),
-			       address->ah, qpn, tx_req, phead, hlen))) {
-		ipoib_warn(priv, "post_send failed\n");
+	rc = post_send(priv, priv->tx_head & (ipoib_sendq_size - 1),
+		       address->ah, qpn, tx_req, phead, hlen);
+	if (unlikely(rc)) {
+		ipoib_warn(priv, "post_send failed, error %d\n", rc);
 		++dev->stats.tx_errors;
 		--priv->tx_outstanding;
 		ipoib_dma_unmap_tx(priv->ca, tx_req);

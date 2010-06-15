@@ -30,6 +30,7 @@
 #include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/vfs.h>
+#include <linux/slab.h>
 #include <linux/posix_acl_xattr.h>
 #include <asm/uaccess.h>
 #include "cifspdu.h"
@@ -94,10 +95,133 @@ static void mark_open_files_invalid(struct cifsTconInfo *pTcon)
 	list_for_each_safe(tmp, tmp1, &pTcon->openFileList) {
 		open_file = list_entry(tmp, struct cifsFileInfo, tlist);
 		open_file->invalidHandle = true;
+		open_file->oplock_break_cancelled = true;
 	}
 	write_unlock(&GlobalSMBSeslock);
 	/* BB Add call to invalidate_inodes(sb) for all superblocks mounted
 	   to this tcon */
+}
+
+/* reconnect the socket, tcon, and smb session if needed */
+static int
+cifs_reconnect_tcon(struct cifsTconInfo *tcon, int smb_command)
+{
+	int rc = 0;
+	struct cifsSesInfo *ses;
+	struct TCP_Server_Info *server;
+	struct nls_table *nls_codepage;
+
+	/*
+	 * SMBs NegProt, SessSetup, uLogoff do not have tcon yet so check for
+	 * tcp and smb session status done differently for those three - in the
+	 * calling routine
+	 */
+	if (!tcon)
+		return 0;
+
+	ses = tcon->ses;
+	server = ses->server;
+
+	/*
+	 * only tree disconnect, open, and write, (and ulogoff which does not
+	 * have tcon) are allowed as we start force umount
+	 */
+	if (tcon->tidStatus == CifsExiting) {
+		if (smb_command != SMB_COM_WRITE_ANDX &&
+		    smb_command != SMB_COM_OPEN_ANDX &&
+		    smb_command != SMB_COM_TREE_DISCONNECT) {
+			cFYI(1, ("can not send cmd %d while umounting",
+				smb_command));
+			return -ENODEV;
+		}
+	}
+
+	if (ses->status == CifsExiting)
+		return -EIO;
+
+	/*
+	 * Give demultiplex thread up to 10 seconds to reconnect, should be
+	 * greater than cifs socket timeout which is 7 seconds
+	 */
+	while (server->tcpStatus == CifsNeedReconnect) {
+		wait_event_interruptible_timeout(server->response_q,
+			(server->tcpStatus == CifsGood), 10 * HZ);
+
+		/* is TCP session is reestablished now ?*/
+		if (server->tcpStatus != CifsNeedReconnect)
+			break;
+
+		/*
+		 * on "soft" mounts we wait once. Hard mounts keep
+		 * retrying until process is killed or server comes
+		 * back on-line
+		 */
+		if (!tcon->retry || ses->status == CifsExiting) {
+			cFYI(1, ("gave up waiting on reconnect in smb_init"));
+			return -EHOSTDOWN;
+		}
+	}
+
+	if (!ses->need_reconnect && !tcon->need_reconnect)
+		return 0;
+
+	nls_codepage = load_nls_default();
+
+	/*
+	 * need to prevent multiple threads trying to simultaneously
+	 * reconnect the same SMB session
+	 */
+	mutex_lock(&ses->session_mutex);
+	if (ses->need_reconnect)
+		rc = cifs_setup_session(0, ses, nls_codepage);
+
+	/* do we need to reconnect tcon? */
+	if (rc || !tcon->need_reconnect) {
+		mutex_unlock(&ses->session_mutex);
+		goto out;
+	}
+
+	mark_open_files_invalid(tcon);
+	rc = CIFSTCon(0, ses, tcon->treeName, tcon, nls_codepage);
+	mutex_unlock(&ses->session_mutex);
+	cFYI(1, ("reconnect tcon rc = %d", rc));
+
+	if (rc)
+		goto out;
+
+	/*
+	 * FIXME: check if wsize needs updated due to negotiated smb buffer
+	 * 	  size shrinking
+	 */
+	atomic_inc(&tconInfoReconnectCount);
+
+	/* tell server Unix caps we support */
+	if (ses->capabilities & CAP_UNIX)
+		reset_cifs_unix_caps(0, tcon, NULL, NULL);
+
+	/*
+	 * Removed call to reopen open files here. It is safer (and faster) to
+	 * reopen files one at a time as needed in read and write.
+	 *
+	 * FIXME: what about file locks? don't we need to reclaim them ASAP?
+	 */
+
+out:
+	/*
+	 * Check if handle based operation so we know whether we can continue
+	 * or not without returning to caller to reset file handle
+	 */
+	switch (smb_command) {
+	case SMB_COM_READ_ANDX:
+	case SMB_COM_WRITE_ANDX:
+	case SMB_COM_CLOSE:
+	case SMB_COM_FIND_CLOSE2:
+	case SMB_COM_LOCKING_ANDX:
+		rc = -EAGAIN;
+	}
+
+	unload_nls(nls_codepage);
+	return rc;
 }
 
 /* Allocate and return pointer to an SMB request buffer, and set basic
@@ -109,101 +233,7 @@ small_smb_init(int smb_command, int wct, struct cifsTconInfo *tcon,
 {
 	int rc = 0;
 
-	/* SMBs NegProt, SessSetup, uLogoff do not have tcon yet so
-	   check for tcp and smb session status done differently
-	   for those three - in the calling routine */
-	if (tcon) {
-		if (tcon->tidStatus == CifsExiting) {
-			/* only tree disconnect, open, and write,
-			(and ulogoff which does not have tcon)
-			are allowed as we start force umount */
-			if ((smb_command != SMB_COM_WRITE_ANDX) &&
-			   (smb_command != SMB_COM_OPEN_ANDX) &&
-			   (smb_command != SMB_COM_TREE_DISCONNECT)) {
-				cFYI(1, ("can not send cmd %d while umounting",
-					smb_command));
-				return -ENODEV;
-			}
-		}
-		if ((tcon->ses) && (tcon->ses->status != CifsExiting) &&
-				  (tcon->ses->server)) {
-			struct nls_table *nls_codepage;
-				/* Give Demultiplex thread up to 10 seconds to
-				   reconnect, should be greater than cifs socket
-				   timeout which is 7 seconds */
-			while (tcon->ses->server->tcpStatus ==
-							 CifsNeedReconnect) {
-				wait_event_interruptible_timeout(tcon->ses->server->response_q,
-					(tcon->ses->server->tcpStatus ==
-							CifsGood), 10 * HZ);
-				if (tcon->ses->server->tcpStatus ==
-							CifsNeedReconnect) {
-					/* on "soft" mounts we wait once */
-					if (!tcon->retry ||
-					   (tcon->ses->status == CifsExiting)) {
-						cFYI(1, ("gave up waiting on "
-						      "reconnect in smb_init"));
-						return -EHOSTDOWN;
-					} /* else "hard" mount - keep retrying
-					     until process is killed or server
-					     comes back on-line */
-				} else /* TCP session is reestablished now */
-					break;
-			}
-
-			nls_codepage = load_nls_default();
-		/* need to prevent multiple threads trying to
-		simultaneously reconnect the same SMB session */
-			down(&tcon->ses->sesSem);
-			if (tcon->ses->need_reconnect)
-				rc = cifs_setup_session(0, tcon->ses,
-							nls_codepage);
-			if (!rc && (tcon->need_reconnect)) {
-				mark_open_files_invalid(tcon);
-				rc = CIFSTCon(0, tcon->ses, tcon->treeName,
-					      tcon, nls_codepage);
-				up(&tcon->ses->sesSem);
-				/* BB FIXME add code to check if wsize needs
-				   update due to negotiated smb buffer size
-				   shrinking */
-				if (rc == 0) {
-					atomic_inc(&tconInfoReconnectCount);
-					/* tell server Unix caps we support */
-					if (tcon->ses->capabilities & CAP_UNIX)
-						reset_cifs_unix_caps(
-						0 /* no xid */,
-						tcon,
-						NULL /* we do not know sb */,
-						NULL /* no vol info */);
-				}
-
-				cFYI(1, ("reconnect tcon rc = %d", rc));
-				/* Removed call to reopen open files here.
-				   It is safer (and faster) to reopen files
-				   one at a time as needed in read and write */
-
-				/* Check if handle based operation so we
-				   know whether we can continue or not without
-				   returning to caller to reset file handle */
-				switch (smb_command) {
-					case SMB_COM_READ_ANDX:
-					case SMB_COM_WRITE_ANDX:
-					case SMB_COM_CLOSE:
-					case SMB_COM_FIND_CLOSE2:
-					case SMB_COM_LOCKING_ANDX: {
-						unload_nls(nls_codepage);
-						return -EAGAIN;
-					}
-				}
-			} else {
-				up(&tcon->ses->sesSem);
-			}
-			unload_nls(nls_codepage);
-
-		} else {
-			return -EIO;
-		}
-	}
+	rc = cifs_reconnect_tcon(tcon, smb_command);
 	if (rc)
 		return rc;
 
@@ -256,101 +286,7 @@ smb_init(int smb_command, int wct, struct cifsTconInfo *tcon,
 {
 	int rc = 0;
 
-	/* SMBs NegProt, SessSetup, uLogoff do not have tcon yet so
-	   check for tcp and smb session status done differently
-	   for those three - in the calling routine */
-	if (tcon) {
-		if (tcon->tidStatus == CifsExiting) {
-			/* only tree disconnect, open, and write,
-			  (and ulogoff which does not have tcon)
-			  are allowed as we start force umount */
-			if ((smb_command != SMB_COM_WRITE_ANDX) &&
-			   (smb_command != SMB_COM_OPEN_ANDX) &&
-			   (smb_command != SMB_COM_TREE_DISCONNECT)) {
-				cFYI(1, ("can not send cmd %d while umounting",
-					smb_command));
-				return -ENODEV;
-			}
-		}
-
-		if ((tcon->ses) && (tcon->ses->status != CifsExiting) &&
-				  (tcon->ses->server)) {
-			struct nls_table *nls_codepage;
-				/* Give Demultiplex thread up to 10 seconds to
-				   reconnect, should be greater than cifs socket
-				   timeout which is 7 seconds */
-			while (tcon->ses->server->tcpStatus ==
-							CifsNeedReconnect) {
-				wait_event_interruptible_timeout(tcon->ses->server->response_q,
-					(tcon->ses->server->tcpStatus ==
-							CifsGood), 10 * HZ);
-				if (tcon->ses->server->tcpStatus ==
-						CifsNeedReconnect) {
-					/* on "soft" mounts we wait once */
-					if (!tcon->retry ||
-					   (tcon->ses->status == CifsExiting)) {
-						cFYI(1, ("gave up waiting on "
-						      "reconnect in smb_init"));
-						return -EHOSTDOWN;
-					} /* else "hard" mount - keep retrying
-					     until process is killed or server
-					     comes on-line */
-				} else /* TCP session is reestablished now */
-					break;
-			}
-			nls_codepage = load_nls_default();
-		/* need to prevent multiple threads trying to
-		simultaneously reconnect the same SMB session */
-			down(&tcon->ses->sesSem);
-			if (tcon->ses->need_reconnect)
-				rc = cifs_setup_session(0, tcon->ses,
-							nls_codepage);
-			if (!rc && (tcon->need_reconnect)) {
-				mark_open_files_invalid(tcon);
-				rc = CIFSTCon(0, tcon->ses, tcon->treeName,
-					      tcon, nls_codepage);
-				up(&tcon->ses->sesSem);
-				/* BB FIXME add code to check if wsize needs
-				update due to negotiated smb buffer size
-				shrinking */
-				if (rc == 0) {
-					atomic_inc(&tconInfoReconnectCount);
-					/* tell server Unix caps we support */
-					if (tcon->ses->capabilities & CAP_UNIX)
-						reset_cifs_unix_caps(
-						0 /* no xid */,
-						tcon,
-						NULL /* do not know sb */,
-						NULL /* no vol info */);
-				}
-
-				cFYI(1, ("reconnect tcon rc = %d", rc));
-				/* Removed call to reopen open files here.
-				   It is safer (and faster) to reopen files
-				   one at a time as needed in read and write */
-
-				/* Check if handle based operation so we
-				   know whether we can continue or not without
-				   returning to caller to reset file handle */
-				switch (smb_command) {
-					case SMB_COM_READ_ANDX:
-					case SMB_COM_WRITE_ANDX:
-					case SMB_COM_CLOSE:
-					case SMB_COM_FIND_CLOSE2:
-					case SMB_COM_LOCKING_ANDX: {
-						unload_nls(nls_codepage);
-						return -EAGAIN;
-					}
-				}
-			} else {
-				up(&tcon->ses->sesSem);
-			}
-			unload_nls(nls_codepage);
-
-		} else {
-			return -EIO;
-		}
-	}
+	rc = cifs_reconnect_tcon(tcon, smb_command);
 	if (rc)
 		return rc;
 
@@ -524,8 +460,8 @@ CIFSSMBNegotiate(unsigned int xid, struct cifsSesInfo *ses)
 			int val, seconds, remain, result;
 			struct timespec ts, utc;
 			utc = CURRENT_TIME;
-			ts = cnvrtDosUnixTm(le16_to_cpu(rsp->SrvTime.Date),
-						le16_to_cpu(rsp->SrvTime.Time));
+			ts = cnvrtDosUnixTm(rsp->SrvTime.Date,
+					    rsp->SrvTime.Time, 0);
 			cFYI(1, ("SrvTime %d sec since 1970 (utc: %d) diff: %d",
 				(int)ts.tv_sec, (int)utc.tv_sec,
 				(int)(utc.tv_sec - ts.tv_sec)));
@@ -565,7 +501,7 @@ CIFSSMBNegotiate(unsigned int xid, struct cifsSesInfo *ses)
 	} else if (pSMBr->hdr.WordCount == 13) {
 		cERROR(1, ("mount failed, cifs module not built "
 			  "with CIFS_WEAK_PW_HASH support"));
-			rc = -EOPNOTSUPP;
+		rc = -EOPNOTSUPP;
 #endif /* WEAK_PW_HASH */
 		goto neg_err_exit;
 	} else if (pSMBr->hdr.WordCount != 17) {
@@ -594,7 +530,7 @@ CIFSSMBNegotiate(unsigned int xid, struct cifsSesInfo *ses)
 	else if (secFlags & CIFSSEC_MAY_KRB5)
 		server->secType = Kerberos;
 	else if (secFlags & CIFSSEC_MAY_NTLMSSP)
-		server->secType = NTLMSSP;
+		server->secType = RawNTLMSSP;
 	else if (secFlags & CIFSSEC_MAY_LANMAN)
 		server->secType = LANMAN;
 /* #ifdef CONFIG_CIFS_EXPERIMENTAL
@@ -729,7 +665,7 @@ CIFSSMBTDis(const int xid, struct cifsTconInfo *tcon)
 	 * the tcon is no longer on the list, so no need to take lock before
 	 * checking this.
 	 */
-	if (tcon->need_reconnect)
+	if ((tcon->need_reconnect) || (tcon->ses->need_reconnect))
 		return 0;
 
 	rc = small_smb_init(SMB_COM_TREE_DISCONNECT, 0, tcon,
@@ -765,13 +701,13 @@ CIFSSMBLogoff(const int xid, struct cifsSesInfo *ses)
 	if (!ses || !ses->server)
 		return -EIO;
 
-	down(&ses->sesSem);
+	mutex_lock(&ses->session_mutex);
 	if (ses->need_reconnect)
 		goto session_already_dead; /* no need to send SMBlogoff if uid
 					      already closed due to reconnect */
 	rc = small_smb_init(SMB_COM_LOGOFF_ANDX, 2, NULL, (void **)&pSMB);
 	if (rc) {
-		up(&ses->sesSem);
+		mutex_unlock(&ses->session_mutex);
 		return rc;
 	}
 
@@ -786,7 +722,7 @@ CIFSSMBLogoff(const int xid, struct cifsSesInfo *ses)
 	pSMB->AndXCommand = 0xFF;
 	rc = SendReceiveNoRsp(xid, ses, (struct smb_hdr *) pSMB, 0);
 session_already_dead:
-	up(&ses->sesSem);
+	mutex_unlock(&ses->session_mutex);
 
 	/* if session dead then we do not need to do ulogoff,
 		since server closed smb session, no sense reporting
@@ -1113,7 +1049,10 @@ PsxCreat:
 psx_create_err:
 	cifs_buf_release(pSMB);
 
-	cifs_stats_inc(&tcon->num_mkdirs);
+	if (posix_flags & SMB_O_DIRECTORY)
+		cifs_stats_inc(&tcon->num_posixmkdirs);
+	else
+		cifs_stats_inc(&tcon->num_posixopens);
 
 	if (rc == -EAGAIN)
 		goto PsxCreat;
@@ -1492,6 +1431,8 @@ CIFSSMBWrite(const int xid, struct cifsTconInfo *tcon,
 	__u32 bytes_sent;
 	__u16 byte_count;
 
+	*nbytes = 0;
+
 	/* cFYI(1, ("write at %lld %d bytes", offset, count));*/
 	if (tcon->ses == NULL)
 		return -ECONNABORTED;
@@ -1574,11 +1515,18 @@ CIFSSMBWrite(const int xid, struct cifsTconInfo *tcon,
 	cifs_stats_inc(&tcon->num_writes);
 	if (rc) {
 		cFYI(1, ("Send error in write = %d", rc));
-		*nbytes = 0;
 	} else {
 		*nbytes = le16_to_cpu(pSMBr->CountHigh);
 		*nbytes = (*nbytes) << 16;
 		*nbytes += le16_to_cpu(pSMBr->Count);
+
+		/*
+		 * Mask off high 16 bits when bytes written as returned by the
+		 * server is greater than bytes requested by the client. Some
+		 * OS/2 servers are known to set incorrect CountHigh values.
+		 */
+		if (*nbytes > count)
+			*nbytes &= 0xFFFF;
 	}
 
 	cifs_buf_release(pSMB);
@@ -1667,6 +1615,14 @@ CIFSSMBWrite2(const int xid, struct cifsTconInfo *tcon,
 		*nbytes = le16_to_cpu(pSMBr->CountHigh);
 		*nbytes = (*nbytes) << 16;
 		*nbytes += le16_to_cpu(pSMBr->Count);
+
+		/*
+		 * Mask off high 16 bits when bytes written as returned by the
+		 * server is greater than bytes requested by the client. OS/2
+		 * servers are known to set incorrect CountHigh values.
+		 */
+		if (*nbytes > count)
+			*nbytes &= 0xFFFF;
 	}
 
 /*	cifs_small_buf_release(pSMB); */ /* Freed earlier now in SendReceive2 */
@@ -1855,8 +1811,21 @@ CIFSSMBPosixLock(const int xid, struct cifsTconInfo *tcon,
 		}
 		parm_data = (struct cifs_posix_lock *)
 			((char *)&pSMBr->hdr.Protocol + data_offset);
-		if (parm_data->lock_type == cpu_to_le16(CIFS_UNLCK))
+		if (parm_data->lock_type == __constant_cpu_to_le16(CIFS_UNLCK))
 			pLockData->fl_type = F_UNLCK;
+		else {
+			if (parm_data->lock_type ==
+					__constant_cpu_to_le16(CIFS_RDLCK))
+				pLockData->fl_type = F_RDLCK;
+			else if (parm_data->lock_type ==
+					__constant_cpu_to_le16(CIFS_WRLCK))
+				pLockData->fl_type = F_WRLCK;
+
+			pLockData->fl_start = parm_data->start;
+			pLockData->fl_end = parm_data->start +
+						parm_data->length - 1;
+			pLockData->fl_pid = parm_data->pid;
+		}
 	}
 
 plk_err_exit:
@@ -2427,8 +2396,7 @@ querySymLinkRetry:
 	params = 2 /* level */  + 4 /* rsrvd */  + name_len /* incl null */ ;
 	pSMB->TotalDataCount = 0;
 	pSMB->MaxParameterCount = cpu_to_le16(2);
-	/* BB find exact max data count below from sess structure BB */
-	pSMB->MaxDataCount = cpu_to_le16(4000);
+	pSMB->MaxDataCount = cpu_to_le16(CIFSMaxBufSize);
 	pSMB->MaxSetupCount = 0;
 	pSMB->Reserved = 0;
 	pSMB->Flags = 0;
@@ -3293,8 +3261,72 @@ QInfRetry:
 	return rc;
 }
 
+int
+CIFSSMBQFileInfo(const int xid, struct cifsTconInfo *tcon,
+		 u16 netfid, FILE_ALL_INFO *pFindData)
+{
+	struct smb_t2_qfi_req *pSMB = NULL;
+	struct smb_t2_qfi_rsp *pSMBr = NULL;
+	int rc = 0;
+	int bytes_returned;
+	__u16 params, byte_count;
 
+QFileInfoRetry:
+	rc = smb_init(SMB_COM_TRANSACTION2, 15, tcon, (void **) &pSMB,
+		      (void **) &pSMBr);
+	if (rc)
+		return rc;
 
+	params = 2 /* level */ + 2 /* fid */;
+	pSMB->t2.TotalDataCount = 0;
+	pSMB->t2.MaxParameterCount = cpu_to_le16(4);
+	/* BB find exact max data count below from sess structure BB */
+	pSMB->t2.MaxDataCount = cpu_to_le16(CIFSMaxBufSize);
+	pSMB->t2.MaxSetupCount = 0;
+	pSMB->t2.Reserved = 0;
+	pSMB->t2.Flags = 0;
+	pSMB->t2.Timeout = 0;
+	pSMB->t2.Reserved2 = 0;
+	pSMB->t2.ParameterOffset = cpu_to_le16(offsetof(struct smb_t2_qfi_req,
+					       Fid) - 4);
+	pSMB->t2.DataCount = 0;
+	pSMB->t2.DataOffset = 0;
+	pSMB->t2.SetupCount = 1;
+	pSMB->t2.Reserved3 = 0;
+	pSMB->t2.SubCommand = cpu_to_le16(TRANS2_QUERY_FILE_INFORMATION);
+	byte_count = params + 1 /* pad */ ;
+	pSMB->t2.TotalParameterCount = cpu_to_le16(params);
+	pSMB->t2.ParameterCount = pSMB->t2.TotalParameterCount;
+	pSMB->InformationLevel = cpu_to_le16(SMB_QUERY_FILE_ALL_INFO);
+	pSMB->Pad = 0;
+	pSMB->Fid = netfid;
+	pSMB->hdr.smb_buf_length += byte_count;
+
+	rc = SendReceive(xid, tcon->ses, (struct smb_hdr *) pSMB,
+			 (struct smb_hdr *) pSMBr, &bytes_returned, 0);
+	if (rc) {
+		cFYI(1, ("Send error in QPathInfo = %d", rc));
+	} else {		/* decode response */
+		rc = validate_t2((struct smb_t2_rsp *)pSMBr);
+
+		if (rc) /* BB add auto retry on EOPNOTSUPP? */
+			rc = -EIO;
+		else if (pSMBr->ByteCount < 40)
+			rc = -EIO;	/* bad smb */
+		else if (pFindData) {
+			__u16 data_offset = le16_to_cpu(pSMBr->t2.DataOffset);
+			memcpy((char *) pFindData,
+			       (char *) &pSMBr->hdr.Protocol +
+			       data_offset, sizeof(FILE_ALL_INFO));
+		} else
+		    rc = -ENOMEM;
+	}
+	cifs_buf_release(pSMB);
+	if (rc == -EAGAIN)
+		goto QFileInfoRetry;
+
+	return rc;
+}
 
 int
 CIFSSMBQPathInfo(const int xid, struct cifsTconInfo *tcon,
@@ -3393,6 +3425,75 @@ QPathInfoRetry:
 	cifs_buf_release(pSMB);
 	if (rc == -EAGAIN)
 		goto QPathInfoRetry;
+
+	return rc;
+}
+
+int
+CIFSSMBUnixQFileInfo(const int xid, struct cifsTconInfo *tcon,
+		 u16 netfid, FILE_UNIX_BASIC_INFO *pFindData)
+{
+	struct smb_t2_qfi_req *pSMB = NULL;
+	struct smb_t2_qfi_rsp *pSMBr = NULL;
+	int rc = 0;
+	int bytes_returned;
+	__u16 params, byte_count;
+
+UnixQFileInfoRetry:
+	rc = smb_init(SMB_COM_TRANSACTION2, 15, tcon, (void **) &pSMB,
+		      (void **) &pSMBr);
+	if (rc)
+		return rc;
+
+	params = 2 /* level */ + 2 /* fid */;
+	pSMB->t2.TotalDataCount = 0;
+	pSMB->t2.MaxParameterCount = cpu_to_le16(4);
+	/* BB find exact max data count below from sess structure BB */
+	pSMB->t2.MaxDataCount = cpu_to_le16(CIFSMaxBufSize);
+	pSMB->t2.MaxSetupCount = 0;
+	pSMB->t2.Reserved = 0;
+	pSMB->t2.Flags = 0;
+	pSMB->t2.Timeout = 0;
+	pSMB->t2.Reserved2 = 0;
+	pSMB->t2.ParameterOffset = cpu_to_le16(offsetof(struct smb_t2_qfi_req,
+					       Fid) - 4);
+	pSMB->t2.DataCount = 0;
+	pSMB->t2.DataOffset = 0;
+	pSMB->t2.SetupCount = 1;
+	pSMB->t2.Reserved3 = 0;
+	pSMB->t2.SubCommand = cpu_to_le16(TRANS2_QUERY_FILE_INFORMATION);
+	byte_count = params + 1 /* pad */ ;
+	pSMB->t2.TotalParameterCount = cpu_to_le16(params);
+	pSMB->t2.ParameterCount = pSMB->t2.TotalParameterCount;
+	pSMB->InformationLevel = cpu_to_le16(SMB_QUERY_FILE_UNIX_BASIC);
+	pSMB->Pad = 0;
+	pSMB->Fid = netfid;
+	pSMB->hdr.smb_buf_length += byte_count;
+
+	rc = SendReceive(xid, tcon->ses, (struct smb_hdr *) pSMB,
+			 (struct smb_hdr *) pSMBr, &bytes_returned, 0);
+	if (rc) {
+		cFYI(1, ("Send error in QPathInfo = %d", rc));
+	} else {		/* decode response */
+		rc = validate_t2((struct smb_t2_rsp *)pSMBr);
+
+		if (rc || (pSMBr->ByteCount < sizeof(FILE_UNIX_BASIC_INFO))) {
+			cERROR(1, ("Malformed FILE_UNIX_BASIC_INFO response.\n"
+				   "Unix Extensions can be disabled on mount "
+				   "by specifying the nosfu mount option."));
+			rc = -EIO;	/* bad smb */
+		} else {
+			__u16 data_offset = le16_to_cpu(pSMBr->t2.DataOffset);
+			memcpy((char *) pFindData,
+			       (char *) &pSMBr->hdr.Protocol +
+			       data_offset,
+			       sizeof(FILE_UNIX_BASIC_INFO));
+		}
+	}
+
+	cifs_buf_release(pSMB);
+	if (rc == -EAGAIN)
+		goto UnixQFileInfoRetry;
 
 	return rc;
 }
@@ -3949,7 +4050,7 @@ parse_DFS_referrals(TRANSACTION2_GET_DFS_REFER_RSP *pSMBr,
 		goto parse_DFS_referrals_exit;
 	}
 
-	/* collect neccessary data from referrals */
+	/* collect necessary data from referrals */
 	for (i = 0; i < *num_of_nodes; i++) {
 		char *temp;
 		int max_len;
@@ -3959,6 +4060,10 @@ parse_DFS_referrals(TRANSACTION2_GET_DFS_REFER_RSP *pSMBr,
 		if (is_unicode) {
 			__le16 *tmp = kmalloc(strlen(searchName)*2 + 2,
 						GFP_KERNEL);
+			if (tmp == NULL) {
+				rc = -ENOMEM;
+				goto parse_DFS_referrals_exit;
+			}
 			cifsConvertToUCS((__le16 *) tmp, searchName,
 					PATH_MAX, nls_codepage, remap);
 			node->path_consumed = cifs_ucs2_bytes(tmp,
@@ -5075,10 +5180,114 @@ SetAttrLgcyRetry:
 }
 #endif /* temporarily unneeded SetAttr legacy function */
 
+static void
+cifs_fill_unix_set_info(FILE_UNIX_BASIC_INFO *data_offset,
+			const struct cifs_unix_set_info_args *args)
+{
+	u64 mode = args->mode;
+
+	/*
+	 * Samba server ignores set of file size to zero due to bugs in some
+	 * older clients, but we should be precise - we use SetFileSize to
+	 * set file size and do not want to truncate file size to zero
+	 * accidently as happened on one Samba server beta by putting
+	 * zero instead of -1 here
+	 */
+	data_offset->EndOfFile = cpu_to_le64(NO_CHANGE_64);
+	data_offset->NumOfBytes = cpu_to_le64(NO_CHANGE_64);
+	data_offset->LastStatusChange = cpu_to_le64(args->ctime);
+	data_offset->LastAccessTime = cpu_to_le64(args->atime);
+	data_offset->LastModificationTime = cpu_to_le64(args->mtime);
+	data_offset->Uid = cpu_to_le64(args->uid);
+	data_offset->Gid = cpu_to_le64(args->gid);
+	/* better to leave device as zero when it is  */
+	data_offset->DevMajor = cpu_to_le64(MAJOR(args->device));
+	data_offset->DevMinor = cpu_to_le64(MINOR(args->device));
+	data_offset->Permissions = cpu_to_le64(mode);
+
+	if (S_ISREG(mode))
+		data_offset->Type = cpu_to_le32(UNIX_FILE);
+	else if (S_ISDIR(mode))
+		data_offset->Type = cpu_to_le32(UNIX_DIR);
+	else if (S_ISLNK(mode))
+		data_offset->Type = cpu_to_le32(UNIX_SYMLINK);
+	else if (S_ISCHR(mode))
+		data_offset->Type = cpu_to_le32(UNIX_CHARDEV);
+	else if (S_ISBLK(mode))
+		data_offset->Type = cpu_to_le32(UNIX_BLOCKDEV);
+	else if (S_ISFIFO(mode))
+		data_offset->Type = cpu_to_le32(UNIX_FIFO);
+	else if (S_ISSOCK(mode))
+		data_offset->Type = cpu_to_le32(UNIX_SOCKET);
+}
+
 int
-CIFSSMBUnixSetInfo(const int xid, struct cifsTconInfo *tcon, char *fileName,
-		   const struct cifs_unix_set_info_args *args,
-		   const struct nls_table *nls_codepage, int remap)
+CIFSSMBUnixSetFileInfo(const int xid, struct cifsTconInfo *tcon,
+		       const struct cifs_unix_set_info_args *args,
+		       u16 fid, u32 pid_of_opener)
+{
+	struct smb_com_transaction2_sfi_req *pSMB  = NULL;
+	FILE_UNIX_BASIC_INFO *data_offset;
+	int rc = 0;
+	u16 params, param_offset, offset, byte_count, count;
+
+	cFYI(1, ("Set Unix Info (via SetFileInfo)"));
+	rc = small_smb_init(SMB_COM_TRANSACTION2, 15, tcon, (void **) &pSMB);
+
+	if (rc)
+		return rc;
+
+	pSMB->hdr.Pid = cpu_to_le16((__u16)pid_of_opener);
+	pSMB->hdr.PidHigh = cpu_to_le16((__u16)(pid_of_opener >> 16));
+
+	params = 6;
+	pSMB->MaxSetupCount = 0;
+	pSMB->Reserved = 0;
+	pSMB->Flags = 0;
+	pSMB->Timeout = 0;
+	pSMB->Reserved2 = 0;
+	param_offset = offsetof(struct smb_com_transaction2_sfi_req, Fid) - 4;
+	offset = param_offset + params;
+
+	data_offset = (FILE_UNIX_BASIC_INFO *)
+				((char *)(&pSMB->hdr.Protocol) + offset);
+	count = sizeof(FILE_UNIX_BASIC_INFO);
+
+	pSMB->MaxParameterCount = cpu_to_le16(2);
+	/* BB find max SMB PDU from sess */
+	pSMB->MaxDataCount = cpu_to_le16(1000);
+	pSMB->SetupCount = 1;
+	pSMB->Reserved3 = 0;
+	pSMB->SubCommand = cpu_to_le16(TRANS2_SET_FILE_INFORMATION);
+	byte_count = 3 /* pad */  + params + count;
+	pSMB->DataCount = cpu_to_le16(count);
+	pSMB->ParameterCount = cpu_to_le16(params);
+	pSMB->TotalDataCount = pSMB->DataCount;
+	pSMB->TotalParameterCount = pSMB->ParameterCount;
+	pSMB->ParameterOffset = cpu_to_le16(param_offset);
+	pSMB->DataOffset = cpu_to_le16(offset);
+	pSMB->Fid = fid;
+	pSMB->InformationLevel = cpu_to_le16(SMB_SET_FILE_UNIX_BASIC);
+	pSMB->Reserved4 = 0;
+	pSMB->hdr.smb_buf_length += byte_count;
+	pSMB->ByteCount = cpu_to_le16(byte_count);
+
+	cifs_fill_unix_set_info(data_offset, args);
+
+	rc = SendReceiveNoRsp(xid, tcon->ses, (struct smb_hdr *) pSMB, 0);
+	if (rc)
+		cFYI(1, ("Send error in Set Time (SetFileInfo) = %d", rc));
+
+	/* Note: On -EAGAIN error only caller can retry on handle based calls
+		since file handle passed in no longer valid */
+
+	return rc;
+}
+
+int
+CIFSSMBUnixSetPathInfo(const int xid, struct cifsTconInfo *tcon, char *fileName,
+		       const struct cifs_unix_set_info_args *args,
+		       const struct nls_table *nls_codepage, int remap)
 {
 	TRANSACTION2_SPI_REQ *pSMB = NULL;
 	TRANSACTION2_SPI_RSP *pSMBr = NULL;
@@ -5087,7 +5296,6 @@ CIFSSMBUnixSetInfo(const int xid, struct cifsTconInfo *tcon, char *fileName,
 	int bytes_returned = 0;
 	FILE_UNIX_BASIC_INFO *data_offset;
 	__u16 params, param_offset, offset, count, byte_count;
-	__u64 mode = args->mode;
 
 	cFYI(1, ("In SetUID/GID/Mode"));
 setPermsRetry:
@@ -5138,38 +5346,8 @@ setPermsRetry:
 	pSMB->InformationLevel = cpu_to_le16(SMB_SET_FILE_UNIX_BASIC);
 	pSMB->Reserved4 = 0;
 	pSMB->hdr.smb_buf_length += byte_count;
-	/* Samba server ignores set of file size to zero due to bugs in some
-	older clients, but we should be precise - we use SetFileSize to
-	set file size and do not want to truncate file size to zero
-	accidently as happened on one Samba server beta by putting
-	zero instead of -1 here */
-	data_offset->EndOfFile = cpu_to_le64(NO_CHANGE_64);
-	data_offset->NumOfBytes = cpu_to_le64(NO_CHANGE_64);
-	data_offset->LastStatusChange = cpu_to_le64(args->ctime);
-	data_offset->LastAccessTime = cpu_to_le64(args->atime);
-	data_offset->LastModificationTime = cpu_to_le64(args->mtime);
-	data_offset->Uid = cpu_to_le64(args->uid);
-	data_offset->Gid = cpu_to_le64(args->gid);
-	/* better to leave device as zero when it is  */
-	data_offset->DevMajor = cpu_to_le64(MAJOR(args->device));
-	data_offset->DevMinor = cpu_to_le64(MINOR(args->device));
-	data_offset->Permissions = cpu_to_le64(mode);
 
-	if (S_ISREG(mode))
-		data_offset->Type = cpu_to_le32(UNIX_FILE);
-	else if (S_ISDIR(mode))
-		data_offset->Type = cpu_to_le32(UNIX_DIR);
-	else if (S_ISLNK(mode))
-		data_offset->Type = cpu_to_le32(UNIX_SYMLINK);
-	else if (S_ISCHR(mode))
-		data_offset->Type = cpu_to_le32(UNIX_CHARDEV);
-	else if (S_ISBLK(mode))
-		data_offset->Type = cpu_to_le32(UNIX_BLOCKDEV);
-	else if (S_ISFIFO(mode))
-		data_offset->Type = cpu_to_le32(UNIX_FIFO);
-	else if (S_ISSOCK(mode))
-		data_offset->Type = cpu_to_le32(UNIX_SOCKET);
-
+	cifs_fill_unix_set_info(data_offset, args);
 
 	pSMB->ByteCount = cpu_to_le16(byte_count);
 	rc = SendReceive(xid, tcon->ses, (struct smb_hdr *) pSMB,
@@ -5255,22 +5433,34 @@ int CIFSSMBNotify(const int xid, struct cifsTconInfo *tcon,
 	cifs_buf_release(pSMB);
 	return rc;
 }
+
 #ifdef CONFIG_CIFS_XATTR
+/*
+ * Do a path-based QUERY_ALL_EAS call and parse the result. This is a common
+ * function used by listxattr and getxattr type calls. When ea_name is set,
+ * it looks for that attribute name and stuffs that value into the EAData
+ * buffer. When ea_name is NULL, it stuffs a list of attribute names into the
+ * buffer. In both cases, the return value is either the length of the
+ * resulting data or a negative error code. If EAData is a NULL pointer then
+ * the data isn't copied to it, but the length is returned.
+ */
 ssize_t
 CIFSSMBQAllEAs(const int xid, struct cifsTconInfo *tcon,
-		 const unsigned char *searchName,
-		 char *EAData, size_t buf_size,
-		 const struct nls_table *nls_codepage, int remap)
+		const unsigned char *searchName, const unsigned char *ea_name,
+		char *EAData, size_t buf_size,
+		const struct nls_table *nls_codepage, int remap)
 {
 		/* BB assumes one setup word */
 	TRANSACTION2_QPI_REQ *pSMB = NULL;
 	TRANSACTION2_QPI_RSP *pSMBr = NULL;
 	int rc = 0;
 	int bytes_returned;
-	int name_len;
+	int list_len;
+	struct fealist *ea_response_data;
 	struct fea *temp_fea;
 	char *temp_ptr;
-	__u16 params, byte_count;
+	char *end_of_smb;
+	__u16 params, byte_count, data_offset;
 
 	cFYI(1, ("In Query All EAs path %s", searchName));
 QAllEAsRetry:
@@ -5280,22 +5470,22 @@ QAllEAsRetry:
 		return rc;
 
 	if (pSMB->hdr.Flags2 & SMBFLG2_UNICODE) {
-		name_len =
+		list_len =
 		    cifsConvertToUCS((__le16 *) pSMB->FileName, searchName,
 				     PATH_MAX, nls_codepage, remap);
-		name_len++;	/* trailing null */
-		name_len *= 2;
+		list_len++;	/* trailing null */
+		list_len *= 2;
 	} else {	/* BB improve the check for buffer overruns BB */
-		name_len = strnlen(searchName, PATH_MAX);
-		name_len++;	/* trailing null */
-		strncpy(pSMB->FileName, searchName, name_len);
+		list_len = strnlen(searchName, PATH_MAX);
+		list_len++;	/* trailing null */
+		strncpy(pSMB->FileName, searchName, list_len);
 	}
 
-	params = 2 /* level */ + 4 /* reserved */ + name_len /* includes NUL */;
+	params = 2 /* level */ + 4 /* reserved */ + list_len /* includes NUL */;
 	pSMB->TotalDataCount = 0;
 	pSMB->MaxParameterCount = cpu_to_le16(2);
 	/* BB find exact max SMB PDU from sess structure BB */
-	pSMB->MaxDataCount = cpu_to_le16(4000);
+	pSMB->MaxDataCount = cpu_to_le16(CIFSMaxBufSize);
 	pSMB->MaxSetupCount = 0;
 	pSMB->Reserved = 0;
 	pSMB->Flags = 0;
@@ -5320,237 +5510,117 @@ QAllEAsRetry:
 			 (struct smb_hdr *) pSMBr, &bytes_returned, 0);
 	if (rc) {
 		cFYI(1, ("Send error in QueryAllEAs = %d", rc));
-	} else {		/* decode response */
-		rc = validate_t2((struct smb_t2_rsp *)pSMBr);
+		goto QAllEAsOut;
+	}
 
-		/* BB also check enough total bytes returned */
-		/* BB we need to improve the validity checking
-		of these trans2 responses */
-		if (rc || (pSMBr->ByteCount < 4))
-			rc = -EIO;	/* bad smb */
-	   /* else if (pFindData){
-			memcpy((char *) pFindData,
-			       (char *) &pSMBr->hdr.Protocol +
-			       data_offset, kl);
-		}*/ else {
-			/* check that length of list is not more than bcc */
-			/* check that each entry does not go beyond length
-			   of list */
-			/* check that each element of each entry does not
-			   go beyond end of list */
-			__u16 data_offset = le16_to_cpu(pSMBr->t2.DataOffset);
-			struct fealist *ea_response_data;
-			rc = 0;
-			/* validate_trans2_offsets() */
-			/* BB check if start of smb + data_offset > &bcc+ bcc */
-			ea_response_data = (struct fealist *)
-				(((char *) &pSMBr->hdr.Protocol) +
-				data_offset);
-			name_len = le32_to_cpu(ea_response_data->list_len);
-			cFYI(1, ("ea length %d", name_len));
-			if (name_len <= 8) {
-			/* returned EA size zeroed at top of function */
-				cFYI(1, ("empty EA list returned from server"));
-			} else {
-				/* account for ea list len */
-				name_len -= 4;
-				temp_fea = ea_response_data->list;
-				temp_ptr = (char *)temp_fea;
-				while (name_len > 0) {
-					__u16 value_len;
-					name_len -= 4;
-					temp_ptr += 4;
-					rc += temp_fea->name_len;
-				/* account for prefix user. and trailing null */
-					rc = rc + 5 + 1;
-					if (rc < (int)buf_size) {
-						memcpy(EAData, "user.", 5);
-						EAData += 5;
-						memcpy(EAData, temp_ptr,
-						       temp_fea->name_len);
-						EAData += temp_fea->name_len;
-						/* null terminate name */
-						*EAData = 0;
-						EAData = EAData + 1;
-					} else if (buf_size == 0) {
-						/* skip copy - calc size only */
-					} else {
-						/* stop before overrun buffer */
-						rc = -ERANGE;
-						break;
-					}
-					name_len -= temp_fea->name_len;
-					temp_ptr += temp_fea->name_len;
-					/* account for trailing null */
-					name_len--;
-					temp_ptr++;
-					value_len =
-					      le16_to_cpu(temp_fea->value_len);
-					name_len -= value_len;
-					temp_ptr += value_len;
-					/* BB check that temp_ptr is still
-					      within the SMB BB*/
 
-					/* no trailing null to account for
-					   in value len */
-					/* go on to next EA */
-					temp_fea = (struct fea *)temp_ptr;
+	/* BB also check enough total bytes returned */
+	/* BB we need to improve the validity checking
+	of these trans2 responses */
+
+	rc = validate_t2((struct smb_t2_rsp *)pSMBr);
+	if (rc || (pSMBr->ByteCount < 4)) {
+		rc = -EIO;	/* bad smb */
+		goto QAllEAsOut;
+	}
+
+	/* check that length of list is not more than bcc */
+	/* check that each entry does not go beyond length
+	   of list */
+	/* check that each element of each entry does not
+	   go beyond end of list */
+	/* validate_trans2_offsets() */
+	/* BB check if start of smb + data_offset > &bcc+ bcc */
+
+	data_offset = le16_to_cpu(pSMBr->t2.DataOffset);
+	ea_response_data = (struct fealist *)
+				(((char *) &pSMBr->hdr.Protocol) + data_offset);
+
+	list_len = le32_to_cpu(ea_response_data->list_len);
+	cFYI(1, ("ea length %d", list_len));
+	if (list_len <= 8) {
+		cFYI(1, ("empty EA list returned from server"));
+		goto QAllEAsOut;
+	}
+
+	/* make sure list_len doesn't go past end of SMB */
+	end_of_smb = (char *)pByteArea(&pSMBr->hdr) + BCC(&pSMBr->hdr);
+	if ((char *)ea_response_data + list_len > end_of_smb) {
+		cFYI(1, ("EA list appears to go beyond SMB"));
+		rc = -EIO;
+		goto QAllEAsOut;
+	}
+
+	/* account for ea list len */
+	list_len -= 4;
+	temp_fea = ea_response_data->list;
+	temp_ptr = (char *)temp_fea;
+	while (list_len > 0) {
+		unsigned int name_len;
+		__u16 value_len;
+
+		list_len -= 4;
+		temp_ptr += 4;
+		/* make sure we can read name_len and value_len */
+		if (list_len < 0) {
+			cFYI(1, ("EA entry goes beyond length of list"));
+			rc = -EIO;
+			goto QAllEAsOut;
+		}
+
+		name_len = temp_fea->name_len;
+		value_len = le16_to_cpu(temp_fea->value_len);
+		list_len -= name_len + 1 + value_len;
+		if (list_len < 0) {
+			cFYI(1, ("EA entry goes beyond length of list"));
+			rc = -EIO;
+			goto QAllEAsOut;
+		}
+
+		if (ea_name) {
+			if (strncmp(ea_name, temp_ptr, name_len) == 0) {
+				temp_ptr += name_len + 1;
+				rc = value_len;
+				if (buf_size == 0)
+					goto QAllEAsOut;
+				if ((size_t)value_len > buf_size) {
+					rc = -ERANGE;
+					goto QAllEAsOut;
 				}
+				memcpy(EAData, temp_ptr, value_len);
+				goto QAllEAsOut;
+			}
+		} else {
+			/* account for prefix user. and trailing null */
+			rc += (5 + 1 + name_len);
+			if (rc < (int) buf_size) {
+				memcpy(EAData, "user.", 5);
+				EAData += 5;
+				memcpy(EAData, temp_ptr, name_len);
+				EAData += name_len;
+				/* null terminate name */
+				*EAData = 0;
+				++EAData;
+			} else if (buf_size == 0) {
+				/* skip copy - calc size only */
+			} else {
+				/* stop before overrun buffer */
+				rc = -ERANGE;
+				break;
 			}
 		}
+		temp_ptr += name_len + 1 + value_len;
+		temp_fea = (struct fea *)temp_ptr;
 	}
+
+	/* didn't find the named attribute */
+	if (ea_name)
+		rc = -ENODATA;
+
+QAllEAsOut:
 	cifs_buf_release(pSMB);
 	if (rc == -EAGAIN)
 		goto QAllEAsRetry;
-
-	return (ssize_t)rc;
-}
-
-ssize_t CIFSSMBQueryEA(const int xid, struct cifsTconInfo *tcon,
-		const unsigned char *searchName, const unsigned char *ea_name,
-		unsigned char *ea_value, size_t buf_size,
-		const struct nls_table *nls_codepage, int remap)
-{
-	TRANSACTION2_QPI_REQ *pSMB = NULL;
-	TRANSACTION2_QPI_RSP *pSMBr = NULL;
-	int rc = 0;
-	int bytes_returned;
-	int name_len;
-	struct fea *temp_fea;
-	char *temp_ptr;
-	__u16 params, byte_count;
-
-	cFYI(1, ("In Query EA path %s", searchName));
-QEARetry:
-	rc = smb_init(SMB_COM_TRANSACTION2, 15, tcon, (void **) &pSMB,
-		      (void **) &pSMBr);
-	if (rc)
-		return rc;
-
-	if (pSMB->hdr.Flags2 & SMBFLG2_UNICODE) {
-		name_len =
-		    cifsConvertToUCS((__le16 *) pSMB->FileName, searchName,
-				     PATH_MAX, nls_codepage, remap);
-		name_len++;	/* trailing null */
-		name_len *= 2;
-	} else {	/* BB improve the check for buffer overruns BB */
-		name_len = strnlen(searchName, PATH_MAX);
-		name_len++;	/* trailing null */
-		strncpy(pSMB->FileName, searchName, name_len);
-	}
-
-	params = 2 /* level */ + 4 /* reserved */ + name_len /* includes NUL */;
-	pSMB->TotalDataCount = 0;
-	pSMB->MaxParameterCount = cpu_to_le16(2);
-	/* BB find exact max SMB PDU from sess structure BB */
-	pSMB->MaxDataCount = cpu_to_le16(4000);
-	pSMB->MaxSetupCount = 0;
-	pSMB->Reserved = 0;
-	pSMB->Flags = 0;
-	pSMB->Timeout = 0;
-	pSMB->Reserved2 = 0;
-	pSMB->ParameterOffset = cpu_to_le16(offsetof(
-		struct smb_com_transaction2_qpi_req, InformationLevel) - 4);
-	pSMB->DataCount = 0;
-	pSMB->DataOffset = 0;
-	pSMB->SetupCount = 1;
-	pSMB->Reserved3 = 0;
-	pSMB->SubCommand = cpu_to_le16(TRANS2_QUERY_PATH_INFORMATION);
-	byte_count = params + 1 /* pad */ ;
-	pSMB->TotalParameterCount = cpu_to_le16(params);
-	pSMB->ParameterCount = pSMB->TotalParameterCount;
-	pSMB->InformationLevel = cpu_to_le16(SMB_INFO_QUERY_ALL_EAS);
-	pSMB->Reserved4 = 0;
-	pSMB->hdr.smb_buf_length += byte_count;
-	pSMB->ByteCount = cpu_to_le16(byte_count);
-
-	rc = SendReceive(xid, tcon->ses, (struct smb_hdr *) pSMB,
-			 (struct smb_hdr *) pSMBr, &bytes_returned, 0);
-	if (rc) {
-		cFYI(1, ("Send error in Query EA = %d", rc));
-	} else {		/* decode response */
-		rc = validate_t2((struct smb_t2_rsp *)pSMBr);
-
-		/* BB also check enough total bytes returned */
-		/* BB we need to improve the validity checking
-		of these trans2 responses */
-		if (rc || (pSMBr->ByteCount < 4))
-			rc = -EIO;	/* bad smb */
-	   /* else if (pFindData){
-			memcpy((char *) pFindData,
-			       (char *) &pSMBr->hdr.Protocol +
-			       data_offset, kl);
-		}*/ else {
-			/* check that length of list is not more than bcc */
-			/* check that each entry does not go beyond length
-			   of list */
-			/* check that each element of each entry does not
-			   go beyond end of list */
-			__u16 data_offset = le16_to_cpu(pSMBr->t2.DataOffset);
-			struct fealist *ea_response_data;
-			rc = -ENODATA;
-			/* validate_trans2_offsets() */
-			/* BB check if start of smb + data_offset > &bcc+ bcc*/
-			ea_response_data = (struct fealist *)
-				(((char *) &pSMBr->hdr.Protocol) +
-				data_offset);
-			name_len = le32_to_cpu(ea_response_data->list_len);
-			cFYI(1, ("ea length %d", name_len));
-			if (name_len <= 8) {
-			/* returned EA size zeroed at top of function */
-				cFYI(1, ("empty EA list returned from server"));
-			} else {
-				/* account for ea list len */
-				name_len -= 4;
-				temp_fea = ea_response_data->list;
-				temp_ptr = (char *)temp_fea;
-				/* loop through checking if we have a matching
-				name and then return the associated value */
-				while (name_len > 0) {
-					__u16 value_len;
-					name_len -= 4;
-					temp_ptr += 4;
-					value_len =
-					      le16_to_cpu(temp_fea->value_len);
-				/* BB validate that value_len falls within SMB,
-				even though maximum for name_len is 255 */
-					if (memcmp(temp_fea->name, ea_name,
-						  temp_fea->name_len) == 0) {
-						/* found a match */
-						rc = value_len;
-				/* account for prefix user. and trailing null */
-						if (rc <= (int)buf_size) {
-							memcpy(ea_value,
-								temp_fea->name+temp_fea->name_len+1,
-								rc);
-							/* ea values, unlike ea
-							   names, are not null
-							   terminated */
-						} else if (buf_size == 0) {
-						/* skip copy - calc size only */
-						} else {
-						/* stop before overrun buffer */
-							rc = -ERANGE;
-						}
-						break;
-					}
-					name_len -= temp_fea->name_len;
-					temp_ptr += temp_fea->name_len;
-					/* account for trailing null */
-					name_len--;
-					temp_ptr++;
-					name_len -= value_len;
-					temp_ptr += value_len;
-					/* No trailing null to account for in
-					   value_len.  Go on to next EA */
-					temp_fea = (struct fea *)temp_ptr;
-				}
-			}
-		}
-	}
-	cifs_buf_release(pSMB);
-	if (rc == -EAGAIN)
-		goto QEARetry;
 
 	return (ssize_t)rc;
 }

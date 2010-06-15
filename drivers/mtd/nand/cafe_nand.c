@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/slab.h>
 #include <asm/io.h>
 
 #define CAFE_NAND_CTRL1		0x00
@@ -381,7 +382,7 @@ static int cafe_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * we need a special oob layout and handling.
  */
 static int cafe_nand_read_page(struct mtd_info *mtd, struct nand_chip *chip,
-			       uint8_t *buf)
+			       uint8_t *buf, int page)
 {
 	struct cafe_priv *cafe = mtd->priv;
 
@@ -903,12 +904,12 @@ static struct pci_driver cafe_nand_pci_driver = {
 	.resume = cafe_nand_resume,
 };
 
-static int cafe_nand_init(void)
+static int __init cafe_nand_init(void)
 {
 	return pci_register_driver(&cafe_nand_pci_driver);
 }
 
-static void cafe_nand_exit(void)
+static void __exit cafe_nand_exit(void)
 {
 	pci_unregister_driver(&cafe_nand_pci_driver);
 }

@@ -69,8 +69,6 @@ PF_PTRACED_BIT = 4
 PF_DTRACE_OFF = 1
 PF_DTRACE_BIT = 5
 
-LENOSYS = 38
-
 /*
  * This defines the normal kernel pt-regs layout.
  *

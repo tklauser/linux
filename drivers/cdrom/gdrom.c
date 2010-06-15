@@ -214,7 +214,7 @@ static void gdrom_spicommand(void *spi_string, int buflen)
 		gdrom_getsense(NULL);
 		return;
 	}
-	outsw(PHYSADDR(GDROM_DATA_REG), cmd, 6);
+	outsw(GDROM_DATA_REG, cmd, 6);
 }
 
 
@@ -298,7 +298,7 @@ static int gdrom_readtoc_cmd(struct gdromtoc *toc, int session)
 		err = -EINVAL;
 		goto cleanup_readtoc;
 	}
-	insw(PHYSADDR(GDROM_DATA_REG), toc, tocsize/2);
+	insw(GDROM_DATA_REG, toc, tocsize/2);
 	if (gd.status & 0x01)
 		err = -EINVAL;
 
@@ -449,7 +449,7 @@ static int gdrom_getsense(short *bufstring)
 		GDROM_DEFAULT_TIMEOUT);
 	if (gd.pending)
 		goto cleanup_sense;
-	insw(PHYSADDR(GDROM_DATA_REG), &sense, sense_command->buflen/2);
+	insw(GDROM_DATA_REG, &sense, sense_command->buflen/2);
 	if (sense[1] & 40) {
 		printk(KERN_INFO "GDROM: Drive not ready - command aborted\n");
 		goto cleanup_sense;
@@ -512,7 +512,7 @@ static int gdrom_bdops_ioctl(struct block_device *bdev, fmode_t mode,
 	return cdrom_ioctl(gd.cd_info, bdev, mode, cmd, arg);
 }
 
-static struct block_device_operations gdrom_bdops = {
+static const struct block_device_operations gdrom_bdops = {
 	.owner			= THIS_MODULE,
 	.open			= gdrom_bdops_open,
 	.release		= gdrom_bdops_release,
@@ -584,9 +584,9 @@ static void gdrom_readdisk_dma(struct work_struct *work)
 	list_for_each_safe(elem, next, &gdrom_deferred) {
 		req = list_entry(elem, struct request, queuelist);
 		spin_unlock(&gdrom_lock);
-		block = req->sector/GD_TO_BLK + GD_SESSION_OFFSET;
-		block_cnt = req->nr_sectors/GD_TO_BLK;
-		ctrl_outl(PHYSADDR(req->buffer), GDROM_DMA_STARTADDR_REG);
+		block = blk_rq_pos(req)/GD_TO_BLK + GD_SESSION_OFFSET;
+		block_cnt = blk_rq_sectors(req)/GD_TO_BLK;
+		ctrl_outl(virt_to_phys(req->buffer), GDROM_DMA_STARTADDR_REG);
 		ctrl_outl(block_cnt * GDROM_HARD_SECTOR, GDROM_DMA_LENGTH_REG);
 		ctrl_outl(1, GDROM_DMA_DIRECTION_REG);
 		ctrl_outl(1, GDROM_DMA_ENABLE_REG);
@@ -615,7 +615,7 @@ static void gdrom_readdisk_dma(struct work_struct *work)
 			cpu_relax();
 		gd.pending = 1;
 		gd.transfer = 1;
-		outsw(PHYSADDR(GDROM_DATA_REG), &read_command->cmd, 6);
+		outsw(GDROM_DATA_REG, &read_command->cmd, 6);
 		timeout = jiffies + HZ / 2;
 		/* Wait for any pending DMA to finish */
 		while (ctrl_inb(GDROM_DMA_STATUS_REG) &&
@@ -632,39 +632,35 @@ static void gdrom_readdisk_dma(struct work_struct *work)
 		* before handling ending the request */
 		spin_lock(&gdrom_lock);
 		list_del_init(&req->queuelist);
-		__blk_end_request(req, err, blk_rq_bytes(req));
+		__blk_end_request_all(req, err);
 	}
 	spin_unlock(&gdrom_lock);
 	kfree(read_command);
-}
-
-static void gdrom_request_handler_dma(struct request *req)
-{
-	/* dequeue, add to list of deferred work
-	* and then schedule workqueue */
-	blkdev_dequeue_request(req);
-	list_add_tail(&req->queuelist, &gdrom_deferred);
-	schedule_work(&work);
 }
 
 static void gdrom_request(struct request_queue *rq)
 {
 	struct request *req;
 
-	while ((req = elv_next_request(rq)) != NULL) {
+	while ((req = blk_fetch_request(rq)) != NULL) {
 		if (!blk_fs_request(req)) {
 			printk(KERN_DEBUG "GDROM: Non-fs request ignored\n");
-			end_request(req, 0);
+			__blk_end_request_all(req, -EIO);
+			continue;
 		}
 		if (rq_data_dir(req) != READ) {
 			printk(KERN_NOTICE "GDROM: Read only device -");
 			printk(" write request ignored\n");
-			end_request(req, 0);
+			__blk_end_request_all(req, -EIO);
+			continue;
 		}
-		if (req->nr_sectors)
-			gdrom_request_handler_dma(req);
-		else
-			end_request(req, 0);
+
+		/*
+		 * Add to list of deferred work and then schedule
+		 * workqueue.
+		 */
+		list_add_tail(&req->queuelist, &gdrom_deferred);
+		schedule_work(&work);
 	}
 }
 
@@ -743,9 +739,9 @@ static void __devinit probe_gdrom_setupdisk(void)
 
 static int __devinit probe_gdrom_setupqueue(void)
 {
-	blk_queue_hardsect_size(gd.gdrom_rq, GDROM_HARD_SECTOR);
+	blk_queue_logical_block_size(gd.gdrom_rq, GDROM_HARD_SECTOR);
 	/* using DMA so memory will need to be contiguous */
-	blk_queue_max_hw_segments(gd.gdrom_rq, 1);
+	blk_queue_max_segments(gd.gdrom_rq, 1);
 	/* set a large max size to get most from DMA */
 	blk_queue_max_segment_size(gd.gdrom_rq, 0x40000);
 	gd.disk->queue = gd.gdrom_rq;

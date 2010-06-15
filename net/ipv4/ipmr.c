@@ -47,6 +47,7 @@
 #include <linux/mroute.h>
 #include <linux/init.h>
 #include <linux/if_ether.h>
+#include <linux/slab.h>
 #include <net/net_namespace.h>
 #include <net/ip.h>
 #include <net/protocol.h>
@@ -98,10 +99,6 @@ static int ip_mr_forward(struct sk_buff *skb, struct mfc_cache *cache, int local
 static int ipmr_cache_report(struct net *net,
 			     struct sk_buff *pkt, vifi_t vifi, int assert);
 static int ipmr_fill_mroute(struct sk_buff *skb, struct mfc_cache *c, struct rtmsg *rtm);
-
-#ifdef CONFIG_IP_PIMSM_V2
-static struct net_protocol pim_protocol;
-#endif
 
 static struct timer_list ipmr_expire_timer;
 
@@ -201,7 +198,7 @@ failure:
 
 #ifdef CONFIG_IP_PIMSM
 
-static int reg_vif_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t reg_vif_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
 
@@ -212,7 +209,7 @@ static int reg_vif_xmit(struct sk_buff *skb, struct net_device *dev)
 			  IGMPMSG_WHOLEPKT);
 	read_unlock(&mrt_lock);
 	kfree_skb(skb);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static const struct net_device_ops reg_vif_netdev_ops = {
@@ -226,9 +223,10 @@ static void reg_vif_setup(struct net_device *dev)
 	dev->flags		= IFF_NOARP;
 	dev->netdev_ops		= &reg_vif_netdev_ops,
 	dev->destructor		= free_netdev;
+	dev->features		|= NETIF_F_NETNS_LOCAL;
 }
 
-static struct net_device *ipmr_reg_vif(void)
+static struct net_device *ipmr_reg_vif(struct net *net)
 {
 	struct net_device *dev;
 	struct in_device *in_dev;
@@ -237,6 +235,8 @@ static struct net_device *ipmr_reg_vif(void)
 
 	if (dev == NULL)
 		return NULL;
+
+	dev_net_set(dev, net);
 
 	if (register_netdevice(dev)) {
 		free_netdev(dev);
@@ -276,7 +276,8 @@ failure:
  *	@notify: Set to 1, if the caller is a notifier_call
  */
 
-static int vif_delete(struct net *net, int vifi, int notify)
+static int vif_delete(struct net *net, int vifi, int notify,
+		      struct list_head *head)
 {
 	struct vif_device *v;
 	struct net_device *dev;
@@ -320,7 +321,7 @@ static int vif_delete(struct net *net, int vifi, int notify)
 	}
 
 	if (v->flags&(VIFF_TUNNEL|VIFF_REGISTER) && !notify)
-		unregister_netdevice(dev);
+		unregister_netdevice_queue(dev, head);
 
 	dev_put(dev);
 	return 0;
@@ -448,7 +449,7 @@ static int vif_add(struct net *net, struct vifctl *vifc, int mrtsock)
 		 */
 		if (net->ipv4.mroute_reg_vif_num >= 0)
 			return -EADDRINUSE;
-		dev = ipmr_reg_vif();
+		dev = ipmr_reg_vif(net);
 		if (!dev)
 			return -ENOBUFS;
 		err = dev_set_allmulti(dev, 1);
@@ -470,8 +471,18 @@ static int vif_add(struct net *net, struct vifctl *vifc, int mrtsock)
 			return err;
 		}
 		break;
+
+	case VIFF_USE_IFINDEX:
 	case 0:
-		dev = ip_dev_find(net, vifc->vifc_lcl_addr.s_addr);
+		if (vifc->vifc_flags == VIFF_USE_IFINDEX) {
+			dev = dev_get_by_index(net, vifc->vifc_lcl_ifindex);
+			if (dev && dev->ip_ptr == NULL) {
+				dev_put(dev);
+				return -EADDRNOTAVAIL;
+			}
+		} else
+			dev = ip_dev_find(net, vifc->vifc_lcl_addr.s_addr);
+
 		if (!dev)
 			return -EADDRNOTAVAIL;
 		err = dev_set_allmulti(dev, 1);
@@ -484,8 +495,10 @@ static int vif_add(struct net *net, struct vifctl *vifc, int mrtsock)
 		return -EINVAL;
 	}
 
-	if ((in_dev = __in_dev_get_rtnl(dev)) == NULL)
+	if ((in_dev = __in_dev_get_rtnl(dev)) == NULL) {
+		dev_put(dev);
 		return -EADDRNOTAVAIL;
+	}
 	IPV4_DEVCONF(in_dev->cnf, MC_FORWARDING)++;
 	ip_rt_multicast_event(in_dev);
 
@@ -651,7 +664,7 @@ static int ipmr_cache_report(struct net *net,
 	ip_hdr(skb)->protocol = 0;			/* Flag to the kernel this is a route add */
 	msg = (struct igmpmsg *)skb_network_header(skb);
 	msg->im_vif = vifi;
-	skb->dst = dst_clone(pkt->dst);
+	skb_dst_set(skb, dst_clone(skb_dst(pkt)));
 
 	/*
 	 *	Add our header
@@ -741,7 +754,8 @@ ipmr_cache_unresolved(struct net *net, vifi_t vifi, struct sk_buff *skb)
 		c->next = mfc_unres_queue;
 		mfc_unres_queue = c;
 
-		mod_timer(&ipmr_expire_timer, c->mfc_un.unres.expires);
+		if (atomic_read(&net->ipv4.cache_resolve_queue_len) == 1)
+			mod_timer(&ipmr_expire_timer, c->mfc_un.unres.expires);
 	}
 
 	/*
@@ -789,6 +803,9 @@ static int ipmr_mfc_add(struct net *net, struct mfcctl *mfc, int mrtsock)
 {
 	int line;
 	struct mfc_cache *uc, *c, **cp;
+
+	if (mfc->mfcc_parent >= MAXVIFS)
+		return -ENFILE;
 
 	line = MFC_HASH(mfc->mfcc_mcastgrp.s_addr, mfc->mfcc_origin.s_addr);
 
@@ -861,14 +878,16 @@ static int ipmr_mfc_add(struct net *net, struct mfcctl *mfc, int mrtsock)
 static void mroute_clean_tables(struct net *net)
 {
 	int i;
+	LIST_HEAD(list);
 
 	/*
 	 *	Shut down all active vif entries
 	 */
 	for (i = 0; i < net->ipv4.maxvif; i++) {
 		if (!(net->ipv4.vif_table[i].flags&VIFF_STATIC))
-			vif_delete(net, i, 0);
+			vif_delete(net, i, 0, &list);
 	}
+	unregister_netdevice_many(&list);
 
 	/*
 	 *	Wipe the cache
@@ -932,7 +951,7 @@ static void mrtsock_destruct(struct sock *sk)
  *	MOSPF/PIM router set up we can clean this up.
  */
 
-int ip_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, int optlen)
+int ip_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, unsigned int optlen)
 {
 	int ret;
 	struct vifctl vif;
@@ -947,7 +966,7 @@ int ip_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, int 
 	switch (optname) {
 	case MRT_INIT:
 		if (sk->sk_type != SOCK_RAW ||
-		    inet_sk(sk)->num != IPPROTO_IGMP)
+		    inet_sk(sk)->inet_num != IPPROTO_IGMP)
 			return -EOPNOTSUPP;
 		if (optlen != sizeof(int))
 			return -ENOPROTOOPT;
@@ -984,7 +1003,7 @@ int ip_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, int 
 		if (optname == MRT_ADD_VIF) {
 			ret = vif_add(net, &vif, sk == net->ipv4.mroute_sk);
 		} else {
-			ret = vif_delete(net, vif.vifc_vifi, 0);
+			ret = vif_delete(net, vif.vifc_vifi, 0, NULL);
 		}
 		rtnl_unlock();
 		return ret;
@@ -1031,16 +1050,6 @@ int ip_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, int 
 		if (v != net->ipv4.mroute_do_pim) {
 			net->ipv4.mroute_do_pim = v;
 			net->ipv4.mroute_do_assert = v;
-#ifdef CONFIG_IP_PIMSM_V2
-			if (net->ipv4.mroute_do_pim)
-				ret = inet_add_protocol(&pim_protocol,
-							IPPROTO_PIM);
-			else
-				ret = inet_del_protocol(&pim_protocol,
-							IPPROTO_PIM);
-			if (ret < 0)
-				ret = -EAGAIN;
-#endif
 		}
 		rtnl_unlock();
 		return ret;
@@ -1157,17 +1166,16 @@ static int ipmr_device_event(struct notifier_block *this, unsigned long event, v
 	struct net *net = dev_net(dev);
 	struct vif_device *v;
 	int ct;
-
-	if (!net_eq(dev_net(dev), net))
-		return NOTIFY_DONE;
+	LIST_HEAD(list);
 
 	if (event != NETDEV_UNREGISTER)
 		return NOTIFY_DONE;
 	v = &net->ipv4.vif_table[0];
 	for (ct = 0; ct < net->ipv4.maxvif; ct++, v++) {
 		if (v->dev == dev)
-			vif_delete(net, ct, 1);
+			vif_delete(net, ct, 1, &list);
 	}
+	unregister_netdevice_many(&list);
 	return NOTIFY_DONE;
 }
 
@@ -1201,7 +1209,7 @@ static void ip_encap(struct sk_buff *skb, __be32 saddr, __be32 daddr)
 	iph->protocol	=	IPPROTO_IPIP;
 	iph->ihl	=	5;
 	iph->tot_len	=	htons(skb->len);
-	ip_select_ident(iph, skb->dst, NULL);
+	ip_select_ident(iph, skb_dst(skb), NULL);
 	ip_send_check(iph);
 
 	memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
@@ -1212,7 +1220,7 @@ static inline int ipmr_forward_finish(struct sk_buff *skb)
 {
 	struct ip_options * opt	= &(IPCB(skb)->opt);
 
-	IP_INC_STATS_BH(dev_net(skb->dst->dev), IPSTATS_MIB_OUTFORWDATAGRAMS);
+	IP_INC_STATS_BH(dev_net(skb_dst(skb)->dev), IPSTATS_MIB_OUTFORWDATAGRAMS);
 
 	if (unlikely(opt->optlen))
 		ip_forward_options(skb);
@@ -1290,8 +1298,8 @@ static void ipmr_queue_xmit(struct sk_buff *skb, struct mfc_cache *c, int vifi)
 	vif->pkt_out++;
 	vif->bytes_out += skb->len;
 
-	dst_release(skb->dst);
-	skb->dst = &rt->u.dst;
+	skb_dst_drop(skb);
+	skb_dst_set(skb, &rt->u.dst);
 	ip_decrease_ttl(ip_hdr(skb));
 
 	/* FIXME: forward and output firewalls used to be called here.
@@ -1354,7 +1362,7 @@ static int ip_mr_forward(struct sk_buff *skb, struct mfc_cache *cache, int local
 	if (net->ipv4.vif_table[vif].dev != skb->dev) {
 		int true_vifi;
 
-		if (skb->rtable->fl.iif == 0) {
+		if (skb_rtable(skb)->fl.iif == 0) {
 			/* It is our own packet, looped back.
 			   Very complicated situation...
 
@@ -1430,7 +1438,7 @@ int ip_mr_input(struct sk_buff *skb)
 {
 	struct mfc_cache *cache;
 	struct net *net = dev_net(skb->dev);
-	int local = skb->rtable->rt_flags&RTCF_LOCAL;
+	int local = skb_rtable(skb)->rt_flags & RTCF_LOCAL;
 
 	/* Packet is looped back after forward, it should not be
 	   forwarded second time, but still can be delivered locally.
@@ -1543,8 +1551,7 @@ static int __pim_rcv(struct sk_buff *skb, unsigned int pimlen)
 	skb->protocol = htons(ETH_P_IP);
 	skb->ip_summed = 0;
 	skb->pkt_type = PACKET_HOST;
-	dst_release(skb->dst);
-	skb->dst = NULL;
+	skb_dst_drop(skb);
 	reg_dev->stats.rx_bytes += skb->len;
 	reg_dev->stats.rx_packets++;
 	nf_reset(skb);
@@ -1611,17 +1618,20 @@ ipmr_fill_mroute(struct sk_buff *skb, struct mfc_cache *c, struct rtmsg *rtm)
 	int ct;
 	struct rtnexthop *nhp;
 	struct net *net = mfc_net(c);
-	struct net_device *dev = net->ipv4.vif_table[c->mfc_parent].dev;
 	u8 *b = skb_tail_pointer(skb);
 	struct rtattr *mp_head;
 
-	if (dev)
-		RTA_PUT(skb, RTA_IIF, 4, &dev->ifindex);
+	/* If cache is unresolved, don't try to parse IIF and OIF */
+	if (c->mfc_parent > MAXVIFS)
+		return -ENOENT;
+
+	if (VIF_EXISTS(net, c->mfc_parent))
+		RTA_PUT(skb, RTA_IIF, 4, &net->ipv4.vif_table[c->mfc_parent].dev->ifindex);
 
 	mp_head = (struct rtattr *)skb_put(skb, RTA_LENGTH(0));
 
 	for (ct = c->mfc_un.res.minvif; ct < c->mfc_un.res.maxvif; ct++) {
-		if (c->mfc_un.res.ttls[ct] < 255) {
+		if (VIF_EXISTS(net, ct) && c->mfc_un.res.ttls[ct] < 255) {
 			if (skb_tailroom(skb) < RTA_ALIGN(RTA_ALIGN(sizeof(*nhp)) + 4))
 				goto rtattr_failure;
 			nhp = (struct rtnexthop *)skb_put(skb, RTA_ALIGN(sizeof(*nhp)));
@@ -1646,7 +1656,7 @@ int ipmr_get_route(struct net *net,
 {
 	int err;
 	struct mfc_cache *cache;
-	struct rtable *rt = skb->rtable;
+	struct rtable *rt = skb_rtable(skb);
 
 	read_lock(&mrt_lock);
 	cache = ipmr_cache_find(net, rt->rt_src, rt->rt_dst);
@@ -1953,8 +1963,9 @@ static const struct file_operations ipmr_mfc_fops = {
 #endif
 
 #ifdef CONFIG_IP_PIMSM_V2
-static struct net_protocol pim_protocol = {
+static const struct net_protocol pim_protocol = {
 	.handler	=	pim_rcv,
+	.netns_ok	=	1,
 };
 #endif
 
@@ -2041,8 +2052,19 @@ int __init ip_mr_init(void)
 	err = register_netdevice_notifier(&ip_mr_notifier);
 	if (err)
 		goto reg_notif_fail;
+#ifdef CONFIG_IP_PIMSM_V2
+	if (inet_add_protocol(&pim_protocol, IPPROTO_PIM) < 0) {
+		printk(KERN_ERR "ip_mr_init: can't add PIM protocol\n");
+		err = -EAGAIN;
+		goto add_proto_fail;
+	}
+#endif
 	return 0;
 
+#ifdef CONFIG_IP_PIMSM_V2
+add_proto_fail:
+	unregister_netdevice_notifier(&ip_mr_notifier);
+#endif
 reg_notif_fail:
 	del_timer(&ipmr_expire_timer);
 	unregister_pernet_subsys(&ipmr_net_ops);

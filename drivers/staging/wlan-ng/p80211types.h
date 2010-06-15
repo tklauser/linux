@@ -57,11 +57,6 @@
 #ifndef _P80211TYPES_H
 #define _P80211TYPES_H
 
-/*================================================================*/
-/* Project Includes */
-/*================================================================*/
-
-
 /*----------------------------------------------------------------*/
 /* The following constants are indexes into the Mib Category List */
 /* and the Message Category List */
@@ -173,12 +168,12 @@
 					P80211DID_MASK_ISTABLE, \
 					P80211DID_LSB_ISTABLE)
 
-#define P80211DID_MKID(s,g,i,n,t,a)	(P80211DID_MKSECTION(s) | \
-						P80211DID_MKGROUP(g) | \
-				 		P80211DID_MKITEM(i) | \
-				 		P80211DID_MKINDEX(n) | \
-						P80211DID_MKISTABLE(t) | \
-						(a))
+#define P80211DID_MKID(s, g, i, n, t, a)	(P80211DID_MKSECTION(s) | \
+					P80211DID_MKGROUP(g) | \
+					P80211DID_MKITEM(i) | \
+					P80211DID_MKINDEX(n) | \
+					P80211DID_MKISTABLE(t) | \
+					(a))
 
 #define P80211DID_GET(a, m, l)	((((u32)(a)) >> (l)) & (m))
 

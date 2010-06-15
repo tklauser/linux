@@ -42,6 +42,8 @@
 #include <linux/sunrpc/svc_xprt.h>
 #include <linux/sunrpc/debug.h>
 #include <linux/sunrpc/rpc_rdma.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
@@ -677,7 +679,10 @@ static struct svc_xprt *svc_rdma_create(struct svc_serv *serv,
 	int ret;
 
 	dprintk("svcrdma: Creating RDMA socket\n");
-
+	if (sa->sa_family != AF_INET) {
+		dprintk("svcrdma: Address family %d is not supported.\n", sa->sa_family);
+		return ERR_PTR(-EAFNOSUPPORT);
+	}
 	cma_xprt = rdma_create_xprt(serv, 1);
 	if (!cma_xprt)
 		return ERR_PTR(-ENOMEM);
@@ -730,12 +735,12 @@ static struct svc_rdma_fastreg_mr *rdma_alloc_frmr(struct svcxprt_rdma *xprt)
 		goto err;
 
 	mr = ib_alloc_fast_reg_mr(xprt->sc_pd, RPCSVC_MAXPAGES);
-	if (!mr)
+	if (IS_ERR(mr))
 		goto err_free_frmr;
 
 	pl = ib_alloc_fast_reg_page_list(xprt->sc_cm_id->device,
 					 RPCSVC_MAXPAGES);
-	if (!pl)
+	if (IS_ERR(pl))
 		goto err_free_mr;
 
 	frmr->mr = mr;

@@ -12,7 +12,6 @@ struct clk {
 	unsigned int		cken;
 	unsigned int		delay;
 	unsigned int		enabled;
-	struct clk		*other;
 };
 
 #define INIT_CLKREG(_clk,_devname,_conname)		\
@@ -67,8 +66,4 @@ extern const struct clkops clk_pxa3xx_cken_ops;
 extern void clk_pxa3xx_cken_enable(struct clk *);
 extern void clk_pxa3xx_cken_disable(struct clk *);
 #endif
-
-void clks_register(struct clk_lookup *clks, size_t num);
-int clk_add_alias(const char *alias, const char *alias_name, char *id,
-	struct device *dev);
 

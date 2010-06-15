@@ -320,10 +320,10 @@ static int ipw_chars_in_buffer(struct tty_struct *linux_tty)
 	struct ipw_tty *tty = linux_tty->driver_data;
 
 	if (!tty)
-		return -ENODEV;
+		return 0;
 
 	if (!tty->open_count)
-		return -EINVAL;
+		return 0;
 
 	return tty->tx_bytes_queued;
 }
@@ -603,7 +603,7 @@ void ipwireless_tty_free(struct ipw_tty *tty)
 	}
 }
 
-static struct tty_operations tty_ops = {
+static const struct tty_operations tty_ops = {
 	.open = ipw_open,
 	.close = ipw_close,
 	.hangup = ipw_hangup,

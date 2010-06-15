@@ -60,6 +60,12 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
     slots	- Reserve the slot index for the given driver.
 		  This option takes multiple strings.		
 		  See "Module Autoloading Support" section for details.
+    debug	- Specifies the debug message level
+		  (0 = disable debug prints, 1 = normal debug messages,
+		   2 = verbose debug messages)
+		  This option appears only when CONFIG_SND_DEBUG=y.
+		  This option can be dynamically changed via sysfs
+		  /sys/modules/snd/parameters/debug file.
   
   Module snd-pcm-oss
   ------------------
@@ -460,6 +466,28 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 
     The power-management is supported.
 
+  Module snd-ctxfi
+  ----------------
+
+    Module for Creative Sound Blaster X-Fi boards (20k1 / 20k2 chips)
+	* Creative Sound Blaster X-Fi Titanium Fatal1ty Champion Series
+	* Creative Sound Blaster X-Fi Titanium Fatal1ty Professional Series
+	* Creative Sound Blaster X-Fi Titanium Professional Audio
+	* Creative Sound Blaster X-Fi Titanium
+	* Creative Sound Blaster X-Fi Elite Pro
+	* Creative Sound Blaster X-Fi Platinum
+	* Creative Sound Blaster X-Fi Fatal1ty
+	* Creative Sound Blaster X-Fi XtremeGamer
+	* Creative Sound Blaster X-Fi XtremeMusic
+
+    reference_rate	- reference sample rate, 44100 or 48000 (default)
+    multiple		- multiple to ref. sample rate, 1 or 2 (default)
+    subsystem		- override the PCI SSID for probing; the value
+			  consists of SSVID << 16 | SSDID.  The default is
+			  zero, which means no override.
+
+    This module supports multiple cards.
+
   Module snd-darla20
   ------------------
 
@@ -493,6 +521,26 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
     Module for the dummy sound card. This "card" doesn't do any output
     or input, but you may use this module for any application which
     requires a sound card (like RealPlayer).
+
+    pcm_devs       - Number of PCM devices assigned to each card
+                     (default = 1, up to 4)
+    pcm_substreams - Number of PCM substreams assigned to each PCM
+                     (default = 8, up to 128)
+    hrtimer        - Use hrtimer (=1, default) or system timer (=0)
+    fake_buffer    - Fake buffer allocations (default = 1)
+
+    When multiple PCM devices are created, snd-dummy gives different
+    behavior to each PCM device:
+      0 = interleaved with mmap support
+      1 = non-interleaved with mmap support
+      2 = interleaved without mmap 
+      3 = non-interleaved without mmap
+
+    As default, snd-dummy drivers doesn't allocate the real buffers
+    but either ignores read/write or mmap a single dummy page to all
+    buffer pages, in order to save the resouces.  If your apps need
+    the read/ written buffer data to be consistent, pass fake_buffer=0
+    option.
 
     The power-management is supported.
 
@@ -749,12 +797,19 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
     bdl_pos_adj	- Specifies the DMA IRQ timing delay in samples.
 		Passing -1 will make the driver to choose the appropriate
 		value based on the controller chip.
+    patch	- Specifies the early "patch" files to modify the HD-audio
+    		setup before initializing the codecs.  This option is
+		available only when CONFIG_SND_HDA_PATCH_LOADER=y is set.
+		See HD-Audio.txt for details.
+    beep_mode	- Selects the beep registration mode (0=off, 1=on, 2=
+		dynamic registration via mute switch on/off); the default
+		value is set via CONFIG_SND_HDA_INPUT_BEEP_MODE kconfig.
     
     [Single (global) options]
     single_cmd  - Use single immediate commands to communicate with
 		codecs (for debugging only)
     enable_msi	- Enable Message Signaled Interrupt (MSI) (default = off)
-    power_save	- Automatic power-saving timtout (in second, 0 =
+    power_save	- Automatic power-saving timeout (in second, 0 =
 		disable)
     power_save_controller - Reset HD-audio controller in power-saving mode
 		(default = on)
@@ -925,6 +980,7 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 			* Onkyo SE-90PCI
 			* Onkyo SE-200PCI
 			* ESI Juli@
+			* ESI Maya44
 			* Hercules Fortissimo IV
 			* EGO-SYS WaveTerminal 192M
 
@@ -933,7 +989,7 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 		  prodigy71xt, prodigy71hifi, prodigyhd2, prodigy192,
 		  juli, aureon51, aureon71, universe, ap192, k8x800,
 		  phase22, phase28, ms300, av710, se200pci, se90pci,
-		  fortissimo4, sn25p, WT192M
+		  fortissimo4, sn25p, WT192M, maya44
 
     This module supports multiple cards and autoprobe.
 
@@ -1070,6 +1126,21 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 
     This module supports multiple cards, autoprobe and ISA PnP.
 
+  Module snd-jazz16
+  -------------------
+
+    Module for Media Vision Jazz16 chipset. The chipset consists of 3 chips:
+    MVD1216 + MVA416 + MVA514.
+
+    port	- port # for SB DSP chip (0x210,0x220,0x230,0x240,0x250,0x260)
+    irq		- IRQ # for SB DSP chip (3,5,7,9,10,15)
+    dma8	- DMA # for SB DSP chip (1,3)
+    dma16	- DMA # for SB DSP chip (5,7)
+    mpu_port	- MPU-401 port # (0x300,0x310,0x320,0x330)
+    mpu_irq	- MPU-401 irq # (2,3,5,7)
+
+    This module supports multiple cards.
+
   Module snd-korg1212
   -------------------
 
@@ -1092,6 +1163,13 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 
     This module supports multiple cards.
     The driver requires the firmware loader support on kernel.
+
+  Module snd-lx6464es
+  -------------------
+
+    Module for Digigram LX6464ES boards
+
+    This module supports multiple cards.
 
   Module snd-maestro3
   -------------------
@@ -1397,6 +1475,7 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 
     Module for internal PC-Speaker.
 
+    nopcm	- Disable PC-Speaker PCM sound. Only beeps remain.
     nforce_wa	- enable NForce chipset workaround. Expect bad sound.
 
     This module supports system beeps, some kind of PCM playback and
@@ -1543,13 +1622,15 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
   Module snd-sc6000
   -----------------
 
-    Module for Gallant SC-6000 soundcard.
+    Module for Gallant SC-6000 soundcard and later models: SC-6600
+    and SC-7000.
 
     port	- Port # (0x220 or 0x240)
     mss_port	- MSS Port # (0x530 or 0xe80)
     irq		- IRQ # (5,7,9,10,11)
     mpu_irq	- MPU-401 IRQ # (5,7,9,10) ,0 - no MPU-401 irq
     dma		- DMA # (1,3,0)
+    joystick	- Enable gameport - 0 = disable (default), 1 = enable
 
     This module supports multiple cards.
 
@@ -1572,7 +1653,7 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
   Module snd-sscape
   -----------------
 
-    Module for ENSONIQ SoundScape PnP cards.
+    Module for ENSONIQ SoundScape cards.
 
     port	- Port # (PnP setup)
     wss_port	- WSS Port # (PnP setup)
@@ -1580,10 +1661,11 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
     mpu_irq	- MPU-401 IRQ # (PnP setup)
     dma		- DMA # (PnP setup)
     dma2	- 2nd DMA # (PnP setup, -1 to disable)
+    joystick	- Enable gameport - 0 = disable (default), 1 = enable
 
-    This module supports multiple cards.  ISA PnP must be enabled.
-    You need sscape_ctl tool in alsa-tools package for loading
-    the microcode.
+    This module supports multiple cards.
+
+    The driver requires the firmware loader support on kernel.
 
   Module snd-sun-amd7930 (on sparc only)
   --------------------------------------
@@ -1727,6 +1809,13 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
 
     The power-management is supported.
 
+  Module snd-ua101
+  ----------------
+
+    Module for the Edirol UA-101/UA-1000 audio/MIDI interfaces.
+
+    This module supports multiple devices, autoprobe and hotplugging.
+
   Module snd-usb-audio
   --------------------
 
@@ -1859,7 +1948,8 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
   -------------------
 
     Module for sound cards based on the Asus AV100/AV200 chips,
-    i.e., Xonar D1, DX, D2, D2X, HDAV1.3 (Deluxe), and Essence STX.
+    i.e., Xonar D1, DX, D2, D2X, DS, HDAV1.3 (Deluxe), Essence ST
+    (Deluxe) and Essence STX.
 
     This module supports autoprobe and multiple cards.
 

@@ -3,7 +3,7 @@
  *	character device driver for reading z/VM system service records
  *
  *
- *	Copyright 2004 IBM Corporation
+ *	Copyright IBM Corp. 2004, 2009
  *	character device driver for reading z/VM system service records,
  *	Version 1.0
  *	Author(s): Xenia Tkatschow <xenia@us.ibm.com>
@@ -16,6 +16,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/slab.h>
 #include <linux/errno.h>
 #include <linux/types.h>
 #include <linux/interrupt.h>
@@ -312,11 +313,9 @@ static int vmlogrdr_open (struct inode *inode, struct file *filp)
 		return -ENOSYS;
 
 	/* Besure this device hasn't already been opened */
-	lock_kernel();
 	spin_lock_bh(&logptr->priv_lock);
 	if (logptr->dev_in_use)	{
 		spin_unlock_bh(&logptr->priv_lock);
-		unlock_kernel();
 		return -EBUSY;
 	}
 	logptr->dev_in_use = 1;
@@ -360,9 +359,8 @@ static int vmlogrdr_open (struct inode *inode, struct file *filp)
 		   || (logptr->iucv_path_severed));
 	if (logptr->iucv_path_severed)
 		goto out_record;
- 	ret = nonseekable_open(inode, filp);
-	unlock_kernel();
-	return ret;
+	nonseekable_open(inode, filp);
+	return 0;
 
 out_record:
 	if (logptr->autorecording)
@@ -372,7 +370,6 @@ out_path:
 	logptr->path = NULL;
 out_dev:
 	logptr->dev_in_use = 0;
-	unlock_kernel();
 	return -EIO;
 }
 
@@ -504,7 +501,7 @@ static ssize_t vmlogrdr_autopurge_store(struct device * dev,
 					struct device_attribute *attr,
 					const char * buf, size_t count)
 {
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 	ssize_t ret = count;
 
 	switch (buf[0]) {
@@ -525,7 +522,7 @@ static ssize_t vmlogrdr_autopurge_show(struct device *dev,
 				       struct device_attribute *attr,
 				       char *buf)
 {
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 	return sprintf(buf, "%u\n", priv->autopurge);
 }
 
@@ -541,7 +538,7 @@ static ssize_t vmlogrdr_purge_store(struct device * dev,
 
 	char cp_command[80];
 	char cp_response[80];
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 
 	if (buf[0] != '1')
 		return -EINVAL;
@@ -578,7 +575,7 @@ static ssize_t vmlogrdr_autorecording_store(struct device *dev,
 					    struct device_attribute *attr,
 					    const char *buf, size_t count)
 {
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 	ssize_t ret = count;
 
 	switch (buf[0]) {
@@ -599,7 +596,7 @@ static ssize_t vmlogrdr_autorecording_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 	return sprintf(buf, "%u\n", priv->autorecording);
 }
 
@@ -612,7 +609,7 @@ static ssize_t vmlogrdr_recording_store(struct device * dev,
 					struct device_attribute *attr,
 					const char * buf, size_t count)
 {
-	struct vmlogrdr_priv_t *priv = dev->driver_data;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
 	ssize_t ret;
 
 	switch (buf[0]) {
@@ -660,6 +657,29 @@ static struct attribute *vmlogrdr_attrs[] = {
 	NULL,
 };
 
+static int vmlogrdr_pm_prepare(struct device *dev)
+{
+	int rc;
+	struct vmlogrdr_priv_t *priv = dev_get_drvdata(dev);
+
+	rc = 0;
+	if (priv) {
+		spin_lock_bh(&priv->priv_lock);
+		if (priv->dev_in_use)
+			rc = -EBUSY;
+		spin_unlock_bh(&priv->priv_lock);
+	}
+	if (rc)
+		pr_err("vmlogrdr: device %s is busy. Refuse to suspend.\n",
+		       dev_name(dev));
+	return rc;
+}
+
+
+static const struct dev_pm_ops vmlogrdr_pm_ops = {
+	.prepare = vmlogrdr_pm_prepare,
+};
+
 static struct attribute_group vmlogrdr_attr_group = {
 	.attrs = vmlogrdr_attrs,
 };
@@ -668,6 +688,7 @@ static struct class *vmlogrdr_class;
 static struct device_driver vmlogrdr_driver = {
 	.name = "vmlogrdr",
 	.bus  = &iucv_bus,
+	.pm = &vmlogrdr_pm_ops,
 };
 
 
@@ -729,6 +750,7 @@ static int vmlogrdr_register_device(struct vmlogrdr_priv_t *priv)
 		dev->bus = &iucv_bus;
 		dev->parent = iucv_root;
 		dev->driver = &vmlogrdr_driver;
+		dev_set_drvdata(dev, priv);
 		/*
 		 * The release function could be called after the
 		 * module has been unloaded. It's _only_ task is to
@@ -740,8 +762,10 @@ static int vmlogrdr_register_device(struct vmlogrdr_priv_t *priv)
 	} else
 		return -ENOMEM;
 	ret = device_register(dev);
-	if (ret)
+	if (ret) {
+		put_device(dev);
 		return ret;
+	}
 
 	ret = sysfs_create_group(&dev->kobj, &vmlogrdr_attr_group);
 	if (ret) {

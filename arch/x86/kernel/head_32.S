@@ -13,12 +13,13 @@
 #include <asm/segment.h>
 #include <asm/page_types.h>
 #include <asm/pgtable_types.h>
-#include <asm/desc.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
 #include <asm/asm-offsets.h>
 #include <asm/setup.h>
 #include <asm/processor-flags.h>
+#include <asm/msr-index.h>
+#include <asm/cpufeature.h>
 #include <asm/percpu.h>
 
 /* Physical address */
@@ -80,7 +81,7 @@ RESERVE_BRK(pagetables, INIT_MAP_SIZE)
  * any particular GDT layout, because we load our own as soon as we
  * can.
  */
-.section .text.head,"ax",@progbits
+__HEAD
 ENTRY(startup_32)
 	/* test KEEP_SEGMENTS flag to see if the bootloader is asking
 		us to not reload segments */
@@ -158,6 +159,7 @@ subarch_entries:
 	.long default_entry		/* normal x86/PC */
 	.long lguest_entry		/* lguest hypervisor */
 	.long xen_entry			/* Xen hypervisor */
+	.long default_entry		/* Moorestown MID */
 num_subarch_entries = (. - subarch_entries) / 4
 .previous
 #endif /* CONFIG_PARAVIRT */
@@ -262,9 +264,7 @@ page_pde_offset = (__PAGE_OFFSET >> 20);
  * which will be freed later
  */
 
-#ifndef CONFIG_HOTPLUG_CPU
-.section .init.text,"ax",@progbits
-#endif
+__CPUINIT
 
 #ifdef CONFIG_SMP
 ENTRY(startup_32_smp)
@@ -299,25 +299,27 @@ ENTRY(startup_32_smp)
 	orl %edx,%eax
 	movl %eax,%cr4
 
-	btl $5, %eax		# check if PAE is enabled
-	jnc 6f
+	testb $X86_CR4_PAE, %al		# check if PAE is enabled
+	jz 6f
 
 	/* Check if extended functions are implemented */
 	movl $0x80000000, %eax
 	cpuid
-	cmpl $0x80000000, %eax
-	jbe 6f
+	/* Value must be in the range 0x80000001 to 0x8000ffff */
+	subl $0x80000001, %eax
+	cmpl $(0x8000ffff-0x80000001), %eax
+	ja 6f
 	mov $0x80000001, %eax
 	cpuid
 	/* Execute Disable bit supported? */
-	btl $20, %edx
+	btl $(X86_FEATURE_NX & 31), %edx
 	jnc 6f
 
 	/* Setup EFER (Extended Feature Enable Register) */
-	movl $0xc0000080, %ecx
+	movl $MSR_EFER, %ecx
 	rdmsr
 
-	btsl $11, %eax
+	btsl $_EFER_NX, %eax
 	/* Make changes effective */
 	wrmsr
 
@@ -440,9 +442,8 @@ is386:	movl $2,%ecx		# set MP
 	 */
 	cmpb $0,ready
 	jne 1f
-	movl $per_cpu__gdt_page,%eax
-	movl $per_cpu__stack_canary,%ecx
-	subl $20, %ecx
+	movl $gdt_page,%eax
+	movl $stack_canary,%ecx
 	movw %cx, 8 * GDT_ENTRY_STACK_CANARY + 2(%eax)
 	shrl $16, %ecx
 	movb %cl, 8 * GDT_ENTRY_STACK_CANARY + 4(%eax)
@@ -603,22 +604,15 @@ ignore_int:
 #endif
 	iret
 
-.section .cpuinit.data,"wa"
+	__REFDATA
 .align 4
 ENTRY(initial_code)
 	.long i386_start_kernel
 
-.section .text
-/*
- * Real beginning of normal "text" segment
- */
-ENTRY(stext)
-ENTRY(_stext)
-
 /*
  * BSS section
  */
-.section ".bss.page_aligned","wa"
+__PAGE_ALIGNED_BSS
 	.align PAGE_SIZE_asm
 #ifdef CONFIG_X86_PAE
 swapper_pg_pmd:
@@ -636,7 +630,7 @@ ENTRY(empty_zero_page)
  * This starts the data section.
  */
 #ifdef CONFIG_X86_PAE
-.section ".data.page_aligned","wa"
+__PAGE_ALIGNED_DATA
 	/* Page-aligned for the benefit of paravirt? */
 	.align PAGE_SIZE_asm
 ENTRY(swapper_pg_dir)
@@ -712,7 +706,7 @@ idt_descr:
 	.word 0				# 32 bit align gdt_desc.address
 ENTRY(early_gdt_descr)
 	.word GDT_ENTRIES*8-1
-	.long per_cpu__gdt_page		/* Overwritten for secondary CPUs */
+	.long gdt_page			/* Overwritten for secondary CPUs */
 
 /*
  * The boot_gdt must mirror the equivalent in setup.S and is

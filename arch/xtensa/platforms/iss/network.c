@@ -545,7 +545,7 @@ static int iss_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	spin_unlock_irqrestore(&lp->lock, flags);
 
 	dev_kfree_skb(skb);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 
@@ -560,7 +560,7 @@ static void iss_net_set_multicast_list(struct net_device *dev)
 #if 0
 	if (dev->flags & IFF_PROMISC)
 		return;
-	else if (dev->mc_count)
+	else if (!netdev_mc_empty(dev))
 		dev->flags |= IFF_ALLMULTI;
 	else
 		dev->flags &= ~IFF_ALLMULTI;

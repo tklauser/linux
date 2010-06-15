@@ -10,6 +10,9 @@ menu "Library routines"
 config BITREVERSE
 	tristate
 
+config RATIONAL
+	boolean
+
 config GENERIC_FIND_FIRST_BIT
 	bool
 
@@ -114,6 +117,10 @@ config DECOMPRESS_BZIP2
 config DECOMPRESS_LZMA
 	tristate
 
+config DECOMPRESS_LZO
+	select LZO_DECOMPRESS
+	tristate
+
 #
 # Generic allocator support is selected if needed
 #
@@ -153,6 +160,9 @@ config TEXTSEARCH_BM
 config TEXTSEARCH_FSM
 	tristate
 
+config BTREE
+	boolean
+
 config HAS_IOMEM
 	boolean
 	depends on !NO_IOMEM
@@ -190,5 +200,14 @@ config DISABLE_OBSOLETE_CPUMASK_FUNCTIONS
 #
 config NLATTR
 	bool
+
+#
+# Generic 64-bit atomic support is selected if needed
+#
+config GENERIC_ATOMIC64
+       bool
+
+config LRU_CACHE
+	tristate
 
 endmenu

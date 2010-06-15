@@ -57,7 +57,8 @@ struct __attribute__ ((__packed__)) vmcb_control_area {
 	u16 intercept_dr_write;
 	u32 intercept_exceptions;
 	u64 intercept;
-	u8 reserved_1[44];
+	u8 reserved_1[42];
+	u16 pause_filter_count;
 	u64 iopm_base_pa;
 	u64 msrpm_base_pa;
 	u64 tsc_offset;
@@ -225,6 +226,7 @@ struct __attribute__ ((__packed__)) vmcb {
 #define SVM_EVTINJ_VALID_ERR (1 << 11)
 
 #define SVM_EXITINTINFO_VEC_MASK SVM_EVTINJ_VEC_MASK
+#define SVM_EXITINTINFO_TYPE_MASK SVM_EVTINJ_TYPE_MASK
 
 #define	SVM_EXITINTINFO_TYPE_INTR SVM_EVTINJ_TYPE_INTR
 #define	SVM_EXITINTINFO_TYPE_NMI SVM_EVTINJ_TYPE_NMI
@@ -311,7 +313,7 @@ struct __attribute__ ((__packed__)) vmcb {
 
 #define SVM_EXIT_ERR		-1
 
-#define SVM_CR0_SELECTIVE_MASK (1 << 3 | 1) /* TS and MP */
+#define SVM_CR0_SELECTIVE_MASK (X86_CR0_TS | X86_CR0_MP)
 
 #define SVM_VMLOAD ".byte 0x0f, 0x01, 0xda"
 #define SVM_VMRUN  ".byte 0x0f, 0x01, 0xd8"

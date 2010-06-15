@@ -10,6 +10,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/net.h>
 #include <linux/skbuff.h>
 #include <linux/crypto.h>
@@ -444,6 +445,11 @@ int rxrpc_connect_call(struct rxrpc_sock *rx,
 			conn = list_entry(bundle->avail_conns.next,
 					  struct rxrpc_connection,
 					  bundle_link);
+			if (conn->state >= RXRPC_CONN_REMOTELY_ABORTED) {
+				list_del_init(&conn->bundle_link);
+				bundle->num_conns--;
+				continue;
+			}
 			if (--conn->avail_calls == 0)
 				list_move(&conn->bundle_link,
 					  &bundle->busy_conns);
@@ -461,6 +467,11 @@ int rxrpc_connect_call(struct rxrpc_sock *rx,
 			conn = list_entry(bundle->unused_conns.next,
 					  struct rxrpc_connection,
 					  bundle_link);
+			if (conn->state >= RXRPC_CONN_REMOTELY_ABORTED) {
+				list_del_init(&conn->bundle_link);
+				bundle->num_conns--;
+				continue;
+			}
 			ASSERTCMP(conn->avail_calls, ==, RXRPC_MAXCALLS);
 			conn->avail_calls = RXRPC_MAXCALLS - 1;
 			ASSERT(conn->channels[0] == NULL &&

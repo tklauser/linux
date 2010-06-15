@@ -21,7 +21,9 @@
 #include <linux/poll.h>
 #include <linux/interrupt.h>
 #include <linux/cdev.h>
+#include <linux/slab.h>
 #include <linux/phantom.h>
+#include <linux/sched.h>
 #include <linux/smp_lock.h>
 
 #include <asm/atomic.h>
@@ -271,7 +273,7 @@ static unsigned int phantom_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
-static struct file_operations phantom_file_ops = {
+static const struct file_operations phantom_file_ops = {
 	.open = phantom_open,
 	.release = phantom_release,
 	.unlocked_ioctl = phantom_ioctl,
@@ -496,12 +498,7 @@ static struct pci_driver phantom_pci_driver = {
 	.resume = phantom_resume
 };
 
-static ssize_t phantom_show_version(struct class *cls, char *buf)
-{
-	return sprintf(buf, PHANTOM_VERSION "\n");
-}
-
-static CLASS_ATTR(version, 0444, phantom_show_version, NULL);
+static CLASS_ATTR_STRING(version, 0444, PHANTOM_VERSION);
 
 static int __init phantom_init(void)
 {
@@ -514,7 +511,7 @@ static int __init phantom_init(void)
 		printk(KERN_ERR "phantom: can't register phantom class\n");
 		goto err;
 	}
-	retval = class_create_file(phantom_class, &class_attr_version);
+	retval = class_create_file(phantom_class, &class_attr_version.attr);
 	if (retval) {
 		printk(KERN_ERR "phantom: can't create sysfs version file\n");
 		goto err_class;
@@ -540,7 +537,7 @@ static int __init phantom_init(void)
 err_unchr:
 	unregister_chrdev_region(dev, PHANTOM_MAX_MINORS);
 err_attr:
-	class_remove_file(phantom_class, &class_attr_version);
+	class_remove_file(phantom_class, &class_attr_version.attr);
 err_class:
 	class_destroy(phantom_class);
 err:
@@ -553,7 +550,7 @@ static void __exit phantom_exit(void)
 
 	unregister_chrdev_region(MKDEV(phantom_major, 0), PHANTOM_MAX_MINORS);
 
-	class_remove_file(phantom_class, &class_attr_version);
+	class_remove_file(phantom_class, &class_attr_version.attr);
 	class_destroy(phantom_class);
 
 	pr_debug("phantom: module successfully removed\n");

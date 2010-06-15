@@ -28,10 +28,13 @@
  */
 
 #include <linux/input.h>
+#include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/hid.h>
 
 #include "hid-ids.h"
+
+#ifdef CONFIG_DRAGONRISE_FF
 #include "usbhid/usbhid.h"
 
 struct drff_device {
@@ -135,6 +138,12 @@ static int drff_init(struct hid_device *hid)
 
 	return 0;
 }
+#else
+static inline int drff_init(struct hid_device *hid)
+{
+	return 0;
+}
+#endif
 
 static int dr_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {

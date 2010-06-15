@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/rtnetlink.h>
 #include <linux/if_ether.h>
+#include <linux/slab.h>
 #include <net/sock.h>
 
 #include "br_private.h"
@@ -147,6 +148,8 @@ static void del_nbp(struct net_bridge_port *p)
 
 	rcu_assign_pointer(dev->br_port, NULL);
 
+	br_multicast_del_port(p);
+
 	kobject_uevent(&p->kobj, KOBJ_REMOVE);
 	kobject_del(&p->kobj);
 
@@ -154,7 +157,7 @@ static void del_nbp(struct net_bridge_port *p)
 }
 
 /* called with RTNL */
-static void del_br(struct net_bridge *br)
+static void del_br(struct net_bridge *br, struct list_head *head)
 {
 	struct net_bridge_port *p, *n;
 
@@ -165,7 +168,7 @@ static void del_br(struct net_bridge *br)
 	del_timer_sync(&br->gc_timer);
 
 	br_sysfs_delbr(br->dev);
-	unregister_netdevice(br->dev);
+	unregister_netdevice_queue(br->dev, head);
 }
 
 static struct net_device *new_bridge_dev(struct net *net, const char *name)
@@ -206,9 +209,8 @@ static struct net_device *new_bridge_dev(struct net *net, const char *name)
 
 	br_netfilter_rtable_init(br);
 
-	INIT_LIST_HEAD(&br->age_list);
-
 	br_stp_timer_init(br);
+	br_multicast_init(br);
 
 	return dev;
 }
@@ -256,12 +258,18 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	p->path_cost = port_cost(dev);
 	p->priority = 0x8000 >> BR_PORT_BITS;
 	p->port_no = index;
+	p->flags = 0;
 	br_init_port(p);
 	p->state = BR_STATE_DISABLED;
 	br_stp_port_timer_init(p);
+	br_multicast_add_port(p);
 
 	return p;
 }
+
+static struct device_type br_type = {
+	.name	= "bridge",
+};
 
 int br_add_bridge(struct net *net, const char *name)
 {
@@ -278,6 +286,8 @@ int br_add_bridge(struct net *net, const char *name)
 		if (ret < 0)
 			goto out_free;
 	}
+
+	SET_NETDEV_DEVTYPE(dev, &br_type);
 
 	ret = register_netdevice(dev);
 	if (ret)
@@ -316,7 +326,7 @@ int br_del_bridge(struct net *net, const char *name)
 	}
 
 	else
-		del_br(netdev_priv(dev));
+		del_br(netdev_priv(dev), NULL);
 
 	rtnl_unlock();
 	return ret;
@@ -370,14 +380,22 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	struct net_bridge_port *p;
 	int err = 0;
 
-	if (dev->flags & IFF_LOOPBACK || dev->type != ARPHRD_ETHER)
+	/* Don't allow bridging non-ethernet like devices */
+	if ((dev->flags & IFF_LOOPBACK) ||
+	    dev->type != ARPHRD_ETHER || dev->addr_len != ETH_ALEN)
 		return -EINVAL;
 
+	/* No bridging of bridges */
 	if (dev->netdev_ops->ndo_start_xmit == br_dev_xmit)
 		return -ELOOP;
 
+	/* Device is already being bridged */
 	if (dev->br_port != NULL)
 		return -EBUSY;
+
+	/* No bridging devices that dislike that (e.g. wireless) */
+	if (dev->priv_flags & IFF_DONT_BRIDGE)
+		return -EOPNOTSUPP;
 
 	p = new_nbp(br, dev);
 	if (IS_ERR(p))
@@ -424,7 +442,8 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 err2:
 	br_fdb_delete_by_port(br, p, 1);
 err1:
-	kobject_del(&p->kobj);
+	kobject_put(&p->kobj);
+	p = NULL; /* kobject_put frees */
 err0:
 	dev_set_promiscuity(dev, -1);
 put_back:
@@ -451,18 +470,17 @@ int br_del_if(struct net_bridge *br, struct net_device *dev)
 	return 0;
 }
 
-void br_net_exit(struct net *net)
+void __net_exit br_net_exit(struct net *net)
 {
 	struct net_device *dev;
+	LIST_HEAD(list);
 
 	rtnl_lock();
-restart:
-	for_each_netdev(net, dev) {
-		if (dev->priv_flags & IFF_EBRIDGE) {
-			del_br(netdev_priv(dev));
-			goto restart;
-		}
-	}
+	for_each_netdev(net, dev)
+		if (dev->priv_flags & IFF_EBRIDGE)
+			del_br(netdev_priv(dev), &list);
+
+	unregister_netdevice_many(&list);
 	rtnl_unlock();
 
 }

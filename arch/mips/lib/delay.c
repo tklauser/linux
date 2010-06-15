@@ -41,16 +41,16 @@ EXPORT_SYMBOL(__delay);
 
 void __udelay(unsigned long us)
 {
-	unsigned int lpj = current_cpu_data.udelay_val;
+	unsigned int lpj = raw_current_cpu_data.udelay_val;
 
-	__delay((us * 0x000010c7 * HZ * lpj) >> 32);
+	__delay((us * 0x000010c7ull * HZ * lpj) >> 32);
 }
 EXPORT_SYMBOL(__udelay);
 
 void __ndelay(unsigned long ns)
 {
-	unsigned int lpj = current_cpu_data.udelay_val;
+	unsigned int lpj = raw_current_cpu_data.udelay_val;
 
-	__delay((us * 0x00000005 * HZ * lpj) >> 32);
+	__delay((ns * 0x00000005ull * HZ * lpj) >> 32);
 }
 EXPORT_SYMBOL(__ndelay);

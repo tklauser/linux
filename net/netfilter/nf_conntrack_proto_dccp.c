@@ -15,6 +15,7 @@
 #include <linux/spinlock.h>
 #include <linux/skbuff.h>
 #include <linux/dccp.h>
+#include <linux/slab.h>
 
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
@@ -24,8 +25,6 @@
 #include <net/netfilter/nf_conntrack_l4proto.h>
 #include <net/netfilter/nf_conntrack_ecache.h>
 #include <net/netfilter/nf_log.h>
-
-static DEFINE_RWLOCK(dccp_lock);
 
 /* Timeouts are based on values from RFC4340:
  *
@@ -386,7 +385,7 @@ dccp_state_table[CT_DCCP_ROLE_MAX + 1][DCCP_PKT_SYNCACK + 1][CT_DCCP_MAX + 1] = 
 };
 
 /* this module per-net specifics */
-static int dccp_net_id;
+static int dccp_net_id __read_mostly;
 struct dccp_net {
 	int dccp_loose;
 	unsigned int dccp_timeout[CT_DCCP_MAX + 1];
@@ -492,7 +491,7 @@ static int dccp_packet(struct nf_conn *ct, const struct sk_buff *skb,
 		return NF_ACCEPT;
 	}
 
-	write_lock_bh(&dccp_lock);
+	spin_lock_bh(&ct->lock);
 
 	role = ct->proto.dccp.role[dir];
 	old_state = ct->proto.dccp.state;
@@ -536,13 +535,13 @@ static int dccp_packet(struct nf_conn *ct, const struct sk_buff *skb,
 		ct->proto.dccp.last_dir = dir;
 		ct->proto.dccp.last_pkt = type;
 
-		write_unlock_bh(&dccp_lock);
+		spin_unlock_bh(&ct->lock);
 		if (LOG_INVALID(net, IPPROTO_DCCP))
 			nf_log_packet(pf, 0, skb, NULL, NULL, NULL,
 				      "nf_ct_dccp: invalid packet ignored ");
 		return NF_ACCEPT;
 	case CT_DCCP_INVALID:
-		write_unlock_bh(&dccp_lock);
+		spin_unlock_bh(&ct->lock);
 		if (LOG_INVALID(net, IPPROTO_DCCP))
 			nf_log_packet(pf, 0, skb, NULL, NULL, NULL,
 				      "nf_ct_dccp: invalid state transition ");
@@ -552,7 +551,7 @@ static int dccp_packet(struct nf_conn *ct, const struct sk_buff *skb,
 	ct->proto.dccp.last_dir = dir;
 	ct->proto.dccp.last_pkt = type;
 	ct->proto.dccp.state = new_state;
-	write_unlock_bh(&dccp_lock);
+	spin_unlock_bh(&ct->lock);
 
 	if (new_state != old_state)
 		nf_conntrack_event_cache(IPCT_PROTOINFO, ct);
@@ -563,8 +562,9 @@ static int dccp_packet(struct nf_conn *ct, const struct sk_buff *skb,
 	return NF_ACCEPT;
 }
 
-static int dccp_error(struct net *net, struct sk_buff *skb,
-		      unsigned int dataoff, enum ip_conntrack_info *ctinfo,
+static int dccp_error(struct net *net, struct nf_conn *tmpl,
+		      struct sk_buff *skb, unsigned int dataoff,
+		      enum ip_conntrack_info *ctinfo,
 		      u_int8_t pf, unsigned int hooknum)
 {
 	struct dccp_hdr _dh, *dh;
@@ -621,36 +621,39 @@ static int dccp_print_tuple(struct seq_file *s,
 			  ntohs(tuple->dst.u.dccp.port));
 }
 
-static int dccp_print_conntrack(struct seq_file *s, const struct nf_conn *ct)
+static int dccp_print_conntrack(struct seq_file *s, struct nf_conn *ct)
 {
 	return seq_printf(s, "%s ", dccp_state_names[ct->proto.dccp.state]);
 }
 
 #if defined(CONFIG_NF_CT_NETLINK) || defined(CONFIG_NF_CT_NETLINK_MODULE)
 static int dccp_to_nlattr(struct sk_buff *skb, struct nlattr *nla,
-			  const struct nf_conn *ct)
+			  struct nf_conn *ct)
 {
 	struct nlattr *nest_parms;
 
-	read_lock_bh(&dccp_lock);
+	spin_lock_bh(&ct->lock);
 	nest_parms = nla_nest_start(skb, CTA_PROTOINFO_DCCP | NLA_F_NESTED);
 	if (!nest_parms)
 		goto nla_put_failure;
 	NLA_PUT_U8(skb, CTA_PROTOINFO_DCCP_STATE, ct->proto.dccp.state);
 	NLA_PUT_U8(skb, CTA_PROTOINFO_DCCP_ROLE,
 		   ct->proto.dccp.role[IP_CT_DIR_ORIGINAL]);
+	NLA_PUT_BE64(skb, CTA_PROTOINFO_DCCP_HANDSHAKE_SEQ,
+		     cpu_to_be64(ct->proto.dccp.handshake_seq));
 	nla_nest_end(skb, nest_parms);
-	read_unlock_bh(&dccp_lock);
+	spin_unlock_bh(&ct->lock);
 	return 0;
 
 nla_put_failure:
-	read_unlock_bh(&dccp_lock);
+	spin_unlock_bh(&ct->lock);
 	return -1;
 }
 
 static const struct nla_policy dccp_nla_policy[CTA_PROTOINFO_DCCP_MAX + 1] = {
 	[CTA_PROTOINFO_DCCP_STATE]	= { .type = NLA_U8 },
 	[CTA_PROTOINFO_DCCP_ROLE]	= { .type = NLA_U8 },
+	[CTA_PROTOINFO_DCCP_HANDSHAKE_SEQ] = { .type = NLA_U64 },
 };
 
 static int nlattr_to_dccp(struct nlattr *cda[], struct nf_conn *ct)
@@ -674,7 +677,7 @@ static int nlattr_to_dccp(struct nlattr *cda[], struct nf_conn *ct)
 		return -EINVAL;
 	}
 
-	write_lock_bh(&dccp_lock);
+	spin_lock_bh(&ct->lock);
 	ct->proto.dccp.state = nla_get_u8(tb[CTA_PROTOINFO_DCCP_STATE]);
 	if (nla_get_u8(tb[CTA_PROTOINFO_DCCP_ROLE]) == CT_DCCP_ROLE_CLIENT) {
 		ct->proto.dccp.role[IP_CT_DIR_ORIGINAL] = CT_DCCP_ROLE_CLIENT;
@@ -683,7 +686,11 @@ static int nlattr_to_dccp(struct nlattr *cda[], struct nf_conn *ct)
 		ct->proto.dccp.role[IP_CT_DIR_ORIGINAL] = CT_DCCP_ROLE_SERVER;
 		ct->proto.dccp.role[IP_CT_DIR_REPLY] = CT_DCCP_ROLE_CLIENT;
 	}
-	write_unlock_bh(&dccp_lock);
+	if (tb[CTA_PROTOINFO_DCCP_HANDSHAKE_SEQ]) {
+		ct->proto.dccp.handshake_seq =
+		be64_to_cpu(nla_get_be64(tb[CTA_PROTOINFO_DCCP_HANDSHAKE_SEQ]));
+	}
+	spin_unlock_bh(&ct->lock);
 	return 0;
 }
 
@@ -698,64 +705,54 @@ static int dccp_nlattr_size(void)
 /* template, data assigned later */
 static struct ctl_table dccp_sysctl_table[] = {
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_request",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_respond",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_partopen",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_open",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_closereq",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_closing",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_timeout_timewait",
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "nf_conntrack_dccp_loose",
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
-	{
-		.ctl_name	= 0,
-	}
+	{ }
 };
 #endif /* CONFIG_SYSCTL */
 
@@ -805,12 +802,7 @@ static struct nf_conntrack_l4proto dccp_proto6 __read_mostly = {
 
 static __net_init int dccp_net_init(struct net *net)
 {
-	struct dccp_net *dn;
-	int err;
-
-	dn = kmalloc(sizeof(*dn), GFP_KERNEL);
-	if (!dn)
-		return -ENOMEM;
+	struct dccp_net *dn = dccp_pernet(net);
 
 	/* default values */
 	dn->dccp_loose = 1;
@@ -822,16 +814,11 @@ static __net_init int dccp_net_init(struct net *net)
 	dn->dccp_timeout[CT_DCCP_CLOSING]	= 64 * HZ;
 	dn->dccp_timeout[CT_DCCP_TIMEWAIT]	= 2 * DCCP_MSL;
 
-	err = net_assign_generic(net, dccp_net_id, dn);
-	if (err)
-		goto out;
-
 #ifdef CONFIG_SYSCTL
-	err = -ENOMEM;
 	dn->sysctl_table = kmemdup(dccp_sysctl_table,
 			sizeof(dccp_sysctl_table), GFP_KERNEL);
 	if (!dn->sysctl_table)
-		goto out;
+		return -ENOMEM;
 
 	dn->sysctl_table[0].data = &dn->dccp_timeout[CT_DCCP_REQUEST];
 	dn->sysctl_table[1].data = &dn->dccp_timeout[CT_DCCP_RESPOND];
@@ -846,15 +833,11 @@ static __net_init int dccp_net_init(struct net *net)
 			nf_net_netfilter_sysctl_path, dn->sysctl_table);
 	if (!dn->sysctl_header) {
 		kfree(dn->sysctl_table);
-		goto out;
+		return -ENOMEM;
 	}
 #endif
 
 	return 0;
-
-out:
-	kfree(dn);
-	return err;
 }
 
 static __net_exit void dccp_net_exit(struct net *net)
@@ -864,21 +847,20 @@ static __net_exit void dccp_net_exit(struct net *net)
 	unregister_net_sysctl_table(dn->sysctl_header);
 	kfree(dn->sysctl_table);
 #endif
-	kfree(dn);
-
-	net_assign_generic(net, dccp_net_id, NULL);
 }
 
 static struct pernet_operations dccp_net_ops = {
 	.init = dccp_net_init,
 	.exit = dccp_net_exit,
+	.id   = &dccp_net_id,
+	.size = sizeof(struct dccp_net),
 };
 
 static int __init nf_conntrack_proto_dccp_init(void)
 {
 	int err;
 
-	err = register_pernet_gen_subsys(&dccp_net_id, &dccp_net_ops);
+	err = register_pernet_subsys(&dccp_net_ops);
 	if (err < 0)
 		goto err1;
 
@@ -894,14 +876,14 @@ static int __init nf_conntrack_proto_dccp_init(void)
 err3:
 	nf_conntrack_l4proto_unregister(&dccp_proto4);
 err2:
-	unregister_pernet_gen_subsys(dccp_net_id, &dccp_net_ops);
+	unregister_pernet_subsys(&dccp_net_ops);
 err1:
 	return err;
 }
 
 static void __exit nf_conntrack_proto_dccp_fini(void)
 {
-	unregister_pernet_gen_subsys(dccp_net_id, &dccp_net_ops);
+	unregister_pernet_subsys(&dccp_net_ops);
 	nf_conntrack_l4proto_unregister(&dccp_proto6);
 	nf_conntrack_l4proto_unregister(&dccp_proto4);
 }

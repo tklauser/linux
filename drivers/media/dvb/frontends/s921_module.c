@@ -9,6 +9,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/delay.h>
 #include "dvb_frontend.h"
 #include "s921_module.h"
@@ -169,6 +170,8 @@ struct dvb_frontend* s921_attach(const struct s921_config *config,
 
 	struct s921_state *state;
 	state = kzalloc(sizeof(struct s921_state), GFP_KERNEL);
+	if (state == NULL)
+		return NULL;
 
 	state->addr = config->i2c_address;
 	state->i2c = i2c;

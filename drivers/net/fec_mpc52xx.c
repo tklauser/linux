@@ -19,12 +19,14 @@
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/spinlock.h>
+#include <linux/slab.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/crc32.h>
 #include <linux/hardirq.h>
 #include <linux/delay.h>
 #include <linux/of_device.h>
+#include <linux/of_mdio.h>
 #include <linux/of_platform.h>
 
 #include <linux/netdevice.h>
@@ -43,11 +45,9 @@
 
 #define DRIVER_NAME "mpc52xx-fec"
 
-#define FEC5200_PHYADDR_NONE	(-1)
-#define FEC5200_PHYADDR_7WIRE	(-2)
-
 /* Private driver data structure */
 struct mpc52xx_fec_priv {
+	struct net_device *ndev;
 	int duplex;
 	int speed;
 	int r_irq;
@@ -59,10 +59,11 @@ struct mpc52xx_fec_priv {
 	int msg_enable;
 
 	/* MDIO link details */
-	int phy_addr;
-	unsigned int phy_speed;
+	unsigned int mdio_speed;
+	struct device_node *phy_node;
 	struct phy_device *phydev;
 	enum phy_state link;
+	int seven_wire_mode;
 };
 
 
@@ -85,11 +86,15 @@ MODULE_PARM_DESC(debug, "debugging messages level");
 
 static void mpc52xx_fec_tx_timeout(struct net_device *dev)
 {
+	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
+	unsigned long flags;
+
 	dev_warn(&dev->dev, "transmit timed out\n");
 
+	spin_lock_irqsave(&priv->lock, flags);
 	mpc52xx_fec_reset(dev);
-
 	dev->stats.tx_errors++;
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	netif_wake_queue(dev);
 }
@@ -135,28 +140,32 @@ static void mpc52xx_fec_free_rx_buffers(struct net_device *dev, struct bcom_task
 	}
 }
 
+static void
+mpc52xx_fec_rx_submit(struct net_device *dev, struct sk_buff *rskb)
+{
+	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
+	struct bcom_fec_bd *bd;
+
+	bd = (struct bcom_fec_bd *) bcom_prepare_next_buffer(priv->rx_dmatsk);
+	bd->status = FEC_RX_BUFFER_SIZE;
+	bd->skb_pa = dma_map_single(dev->dev.parent, rskb->data,
+				    FEC_RX_BUFFER_SIZE, DMA_FROM_DEVICE);
+	bcom_submit_next_buffer(priv->rx_dmatsk, rskb);
+}
+
 static int mpc52xx_fec_alloc_rx_buffers(struct net_device *dev, struct bcom_task *rxtsk)
 {
-	while (!bcom_queue_full(rxtsk)) {
-		struct sk_buff *skb;
-		struct bcom_fec_bd *bd;
+	struct sk_buff *skb;
 
+	while (!bcom_queue_full(rxtsk)) {
 		skb = dev_alloc_skb(FEC_RX_BUFFER_SIZE);
-		if (skb == NULL)
+		if (!skb)
 			return -EAGAIN;
 
 		/* zero out the initial receive buffers to aid debugging */
 		memset(skb->data, 0, FEC_RX_BUFFER_SIZE);
-
-		bd = (struct bcom_fec_bd *)bcom_prepare_next_buffer(rxtsk);
-
-		bd->status = FEC_RX_BUFFER_SIZE;
-		bd->skb_pa = dma_map_single(dev->dev.parent, skb->data,
-				FEC_RX_BUFFER_SIZE, DMA_FROM_DEVICE);
-
-		bcom_submit_next_buffer(rxtsk, skb);
+		mpc52xx_fec_rx_submit(dev, skb);
 	}
-
 	return 0;
 }
 
@@ -211,92 +220,32 @@ static void mpc52xx_fec_adjust_link(struct net_device *dev)
 		phy_print_status(phydev);
 }
 
-static int mpc52xx_fec_init_phy(struct net_device *dev)
-{
-	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
-	struct phy_device *phydev;
-	char phy_id[BUS_ID_SIZE];
-
-	snprintf(phy_id, sizeof(phy_id), "%x:%02x",
-			(unsigned int)dev->base_addr, priv->phy_addr);
-
-	priv->link = PHY_DOWN;
-	priv->speed = 0;
-	priv->duplex = -1;
-
-	phydev = phy_connect(dev, phy_id, &mpc52xx_fec_adjust_link, 0, PHY_INTERFACE_MODE_MII);
-	if (IS_ERR(phydev)) {
-		dev_err(&dev->dev, "phy_connect failed\n");
-		return PTR_ERR(phydev);
-	}
-	dev_info(&dev->dev, "attached phy %i to driver %s\n",
-			phydev->addr, phydev->drv->name);
-
-	priv->phydev = phydev;
-
-	return 0;
-}
-
-static int mpc52xx_fec_phy_start(struct net_device *dev)
-{
-	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
-	int err;
-
-	if (priv->phy_addr < 0)
-		return 0;
-
-	err = mpc52xx_fec_init_phy(dev);
-	if (err) {
-		dev_err(&dev->dev, "mpc52xx_fec_init_phy failed\n");
-		return err;
-	}
-
-	/* reset phy - this also wakes it from PDOWN */
-	phy_write(priv->phydev, MII_BMCR, BMCR_RESET);
-	phy_start(priv->phydev);
-
-	return 0;
-}
-
-static void mpc52xx_fec_phy_stop(struct net_device *dev)
-{
-	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
-
-	if (!priv->phydev)
-		return;
-
-	phy_disconnect(priv->phydev);
-	/* power down phy */
-	phy_stop(priv->phydev);
-	phy_write(priv->phydev, MII_BMCR, BMCR_PDOWN);
-}
-
-static void mpc52xx_fec_phy_hw_init(struct mpc52xx_fec_priv *priv)
-{
-	struct mpc52xx_fec __iomem *fec = priv->fec;
-
-	if (priv->phydev)
-		return;
-
-	out_be32(&fec->mii_speed, priv->phy_speed);
-}
-
 static int mpc52xx_fec_open(struct net_device *dev)
 {
 	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
 	int err = -EBUSY;
 
-	if (request_irq(dev->irq, &mpc52xx_fec_interrupt, IRQF_SHARED,
+	if (priv->phy_node) {
+		priv->phydev = of_phy_connect(priv->ndev, priv->phy_node,
+					      mpc52xx_fec_adjust_link, 0, 0);
+		if (!priv->phydev) {
+			dev_err(&dev->dev, "of_phy_connect failed\n");
+			return -ENODEV;
+		}
+		phy_start(priv->phydev);
+	}
+
+	if (request_irq(dev->irq, mpc52xx_fec_interrupt, IRQF_SHARED,
 	                DRIVER_NAME "_ctrl", dev)) {
 		dev_err(&dev->dev, "ctrl interrupt request failed\n");
-		goto out;
+		goto free_phy;
 	}
-	if (request_irq(priv->r_irq, &mpc52xx_fec_rx_interrupt, 0,
+	if (request_irq(priv->r_irq, mpc52xx_fec_rx_interrupt, 0,
 	                DRIVER_NAME "_rx", dev)) {
 		dev_err(&dev->dev, "rx interrupt request failed\n");
 		goto free_ctrl_irq;
 	}
-	if (request_irq(priv->t_irq, &mpc52xx_fec_tx_interrupt, 0,
+	if (request_irq(priv->t_irq, mpc52xx_fec_tx_interrupt, 0,
 	                DRIVER_NAME "_tx", dev)) {
 		dev_err(&dev->dev, "tx interrupt request failed\n");
 		goto free_2irqs;
@@ -311,10 +260,6 @@ static int mpc52xx_fec_open(struct net_device *dev)
 		goto free_irqs;
 	}
 
-	err = mpc52xx_fec_phy_start(dev);
-	if (err)
-		goto free_skbs;
-
 	bcom_enable(priv->rx_dmatsk);
 	bcom_enable(priv->tx_dmatsk);
 
@@ -324,16 +269,18 @@ static int mpc52xx_fec_open(struct net_device *dev)
 
 	return 0;
 
- free_skbs:
-	mpc52xx_fec_free_rx_buffers(dev, priv->rx_dmatsk);
-
  free_irqs:
 	free_irq(priv->t_irq, dev);
  free_2irqs:
 	free_irq(priv->r_irq, dev);
  free_ctrl_irq:
 	free_irq(dev->irq, dev);
- out:
+ free_phy:
+	if (priv->phydev) {
+		phy_stop(priv->phydev);
+		phy_disconnect(priv->phydev);
+		priv->phydev = NULL;
+	}
 
 	return err;
 }
@@ -352,7 +299,12 @@ static int mpc52xx_fec_close(struct net_device *dev)
 	free_irq(priv->r_irq, dev);
 	free_irq(priv->t_irq, dev);
 
-	mpc52xx_fec_phy_stop(dev);
+	if (priv->phydev) {
+		/* power down phy */
+		phy_stop(priv->phydev);
+		phy_disconnect(priv->phydev);
+		priv->phydev = NULL;
+	}
 
 	return 0;
 }
@@ -366,6 +318,7 @@ static int mpc52xx_fec_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
 	struct bcom_fec_bd *bd;
+	unsigned long flags;
 
 	if (bcom_queue_full(priv->tx_dmatsk)) {
 		if (net_ratelimit())
@@ -373,7 +326,7 @@ static int mpc52xx_fec_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		return NETDEV_TX_BUSY;
 	}
 
-	spin_lock_irq(&priv->lock);
+	spin_lock_irqsave(&priv->lock, flags);
 	dev->trans_start = jiffies;
 
 	bd = (struct bcom_fec_bd *)
@@ -384,12 +337,11 @@ static int mpc52xx_fec_start_xmit(struct sk_buff *skb, struct net_device *dev)
 				    DMA_TO_DEVICE);
 
 	bcom_submit_next_buffer(priv->tx_dmatsk, skb);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	if (bcom_queue_full(priv->tx_dmatsk)) {
 		netif_stop_queue(dev);
 	}
-
-	spin_unlock_irq(&priv->lock);
 
 	return NETDEV_TX_OK;
 }
@@ -415,9 +367,9 @@ static irqreturn_t mpc52xx_fec_tx_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
+	unsigned long flags;
 
-	spin_lock(&priv->lock);
-
+	spin_lock_irqsave(&priv->lock, flags);
 	while (bcom_buffer_done(priv->tx_dmatsk)) {
 		struct sk_buff *skb;
 		struct bcom_fec_bd *bd;
@@ -428,10 +380,9 @@ static irqreturn_t mpc52xx_fec_tx_interrupt(int irq, void *dev_id)
 
 		dev_kfree_skb_irq(skb);
 	}
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	netif_wake_queue(dev);
-
-	spin_unlock(&priv->lock);
 
 	return IRQ_HANDLED;
 }
@@ -440,66 +391,59 @@ static irqreturn_t mpc52xx_fec_rx_interrupt(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
+	struct sk_buff *rskb; /* received sk_buff */
+	struct sk_buff *skb;  /* new sk_buff to enqueue in its place */
+	struct bcom_fec_bd *bd;
+	u32 status, physaddr;
+	int length;
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->lock, flags);
 
 	while (bcom_buffer_done(priv->rx_dmatsk)) {
-		struct sk_buff *skb;
-		struct sk_buff *rskb;
-		struct bcom_fec_bd *bd;
-		u32 status;
 
 		rskb = bcom_retrieve_buffer(priv->rx_dmatsk, &status,
-				(struct bcom_bd **)&bd);
-		dma_unmap_single(dev->dev.parent, bd->skb_pa, rskb->len,
-				 DMA_FROM_DEVICE);
+					    (struct bcom_bd **)&bd);
+		physaddr = bd->skb_pa;
 
 		/* Test for errors in received frame */
 		if (status & BCOM_FEC_RX_BD_ERRORS) {
 			/* Drop packet and reuse the buffer */
-			bd = (struct bcom_fec_bd *)
-				bcom_prepare_next_buffer(priv->rx_dmatsk);
-
-			bd->status = FEC_RX_BUFFER_SIZE;
-			bd->skb_pa = dma_map_single(dev->dev.parent,
-					rskb->data,
-					FEC_RX_BUFFER_SIZE, DMA_FROM_DEVICE);
-
-			bcom_submit_next_buffer(priv->rx_dmatsk, rskb);
-
+			mpc52xx_fec_rx_submit(dev, rskb);
 			dev->stats.rx_dropped++;
-
 			continue;
 		}
 
 		/* skbs are allocated on open, so now we allocate a new one,
 		 * and remove the old (with the packet) */
 		skb = dev_alloc_skb(FEC_RX_BUFFER_SIZE);
-		if (skb) {
-			/* Process the received skb */
-			int length = status & BCOM_FEC_RX_BD_LEN_MASK;
-
-			skb_put(rskb, length - 4);	/* length without CRC32 */
-
-			rskb->dev = dev;
-			rskb->protocol = eth_type_trans(rskb, dev);
-
-			netif_rx(rskb);
-		} else {
+		if (!skb) {
 			/* Can't get a new one : reuse the same & drop pkt */
-			dev_notice(&dev->dev, "Memory squeeze, dropping packet.\n");
+			dev_notice(&dev->dev, "Low memory - dropped packet.\n");
+			mpc52xx_fec_rx_submit(dev, rskb);
 			dev->stats.rx_dropped++;
-
-			skb = rskb;
+			continue;
 		}
 
-		bd = (struct bcom_fec_bd *)
-			bcom_prepare_next_buffer(priv->rx_dmatsk);
+		/* Enqueue the new sk_buff back on the hardware */
+		mpc52xx_fec_rx_submit(dev, skb);
 
-		bd->status = FEC_RX_BUFFER_SIZE;
-		bd->skb_pa = dma_map_single(dev->dev.parent, skb->data,
-				FEC_RX_BUFFER_SIZE, DMA_FROM_DEVICE);
+		/* Process the received skb - Drop the spin lock while
+		 * calling into the network stack */
+		spin_unlock_irqrestore(&priv->lock, flags);
 
-		bcom_submit_next_buffer(priv->rx_dmatsk, skb);
+		dma_unmap_single(dev->dev.parent, physaddr, rskb->len,
+				 DMA_FROM_DEVICE);
+		length = status & BCOM_FEC_RX_BD_LEN_MASK;
+		skb_put(rskb, length - 4);	/* length without CRC32 */
+		rskb->dev = dev;
+		rskb->protocol = eth_type_trans(rskb, dev);
+		netif_rx(rskb);
+
+		spin_lock_irqsave(&priv->lock, flags);
 	}
+
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -510,6 +454,7 @@ static irqreturn_t mpc52xx_fec_interrupt(int irq, void *dev_id)
 	struct mpc52xx_fec_priv *priv = netdev_priv(dev);
 	struct mpc52xx_fec __iomem *fec = priv->fec;
 	u32 ievent;
+	unsigned long flags;
 
 	ievent = in_be32(&fec->ievent);
 
@@ -527,9 +472,10 @@ static irqreturn_t mpc52xx_fec_interrupt(int irq, void *dev_id)
 		if (net_ratelimit() && (ievent & FEC_IEVENT_XFIFO_ERROR))
 			dev_warn(&dev->dev, "FEC_IEVENT_XFIFO_ERROR\n");
 
+		spin_lock_irqsave(&priv->lock, flags);
 		mpc52xx_fec_reset(dev);
+		spin_unlock_irqrestore(&priv->lock, flags);
 
-		netif_wake_queue(dev);
 		return IRQ_HANDLED;
 	}
 
@@ -630,19 +576,16 @@ static void mpc52xx_fec_set_multicast_list(struct net_device *dev)
 			out_be32(&fec->gaddr2, 0xffffffff);
 		} else {
 			u32 crc;
-			int i;
 			struct dev_mc_list *dmi;
 			u32 gaddr1 = 0x00000000;
 			u32 gaddr2 = 0x00000000;
 
-			dmi = dev->mc_list;
-			for (i=0; i<dev->mc_count; i++) {
+			netdev_for_each_mc_addr(dmi, dev) {
 				crc = ether_crc_le(6, dmi->dmi_addr) >> 26;
 				if (crc >= 32)
 					gaddr1 |= 1 << (crc-32);
 				else
 					gaddr2 |= 1 << crc;
-				dmi = dmi->next;
 			}
 			out_be32(&fec->gaddr1, gaddr1);
 			out_be32(&fec->gaddr2, gaddr2);
@@ -696,7 +639,7 @@ static void mpc52xx_fec_hw_init(struct net_device *dev)
 	/* set phy speed.
 	 * this can't be done in phy driver, since it needs to be called
 	 * before fec stuff (even on resume) */
-	mpc52xx_fec_phy_hw_init(priv);
+	out_be32(&fec->mii_speed, priv->mdio_speed);
 }
 
 /**
@@ -732,7 +675,7 @@ static void mpc52xx_fec_start(struct net_device *dev)
 	rcntrl = FEC_RX_BUFFER_SIZE << 16;	/* max frame length */
 	rcntrl |= FEC_RCNTRL_FCE;
 
-	if (priv->phy_addr != FEC5200_PHYADDR_7WIRE)
+	if (!priv->seven_wire_mode)
 		rcntrl |= FEC_RCNTRL_MII_MODE;
 
 	if (priv->duplex == DUPLEX_FULL)
@@ -798,8 +741,6 @@ static void mpc52xx_fec_stop(struct net_device *dev)
 
 	/* Stop FEC */
 	out_be32(&fec->ecntrl, in_be32(&fec->ecntrl) & ~FEC_ECNTRL_ETHER_EN);
-
-	return;
 }
 
 /* reset fec and bestcomm tasks */
@@ -817,10 +758,6 @@ static void mpc52xx_fec_reset(struct net_device *dev)
 
 	mpc52xx_fec_hw_init(dev);
 
-	phy_stop(priv->phydev);
-	phy_write(priv->phydev, MII_BMCR, BMCR_RESET);
-	phy_start(priv->phydev);
-
 	bcom_fec_rx_reset(priv->rx_dmatsk);
 	bcom_fec_tx_reset(priv->tx_dmatsk);
 
@@ -830,6 +767,8 @@ static void mpc52xx_fec_reset(struct net_device *dev)
 	bcom_enable(priv->tx_dmatsk);
 
 	mpc52xx_fec_start(dev);
+
+	netif_wake_queue(dev);
 }
 
 
@@ -919,8 +858,6 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 	struct net_device *ndev;
 	struct mpc52xx_fec_priv *priv = NULL;
 	struct resource mem;
-	struct device_node *phy_node;
-	const phandle *phy_handle;
 	const u32 *prop;
 	int prop_size;
 
@@ -933,6 +870,7 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 		return -ENOMEM;
 
 	priv = netdev_priv(ndev);
+	priv->ndev = ndev;
 
 	/* Reserve FEC control zone */
 	rv = of_address_to_resource(op->node, 0, &mem);
@@ -956,6 +894,7 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 	ndev->ethtool_ops	= &mpc52xx_fec_ethtool_ops;
 	ndev->watchdog_timeo	= FEC_WATCHDOG_TIMEOUT;
 	ndev->base_addr		= mem.start;
+	SET_NETDEV_DEV(ndev, &op->dev);
 
 	spin_lock_init(&priv->lock);
 
@@ -1003,14 +942,9 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 	 */
 
 	/* Start with safe defaults for link connection */
-	priv->phy_addr = FEC5200_PHYADDR_NONE;
 	priv->speed = 100;
 	priv->duplex = DUPLEX_HALF;
-	priv->phy_speed = ((mpc52xx_find_ipb_freq(op->node) >> 20) / 5) << 1;
-
-	/* the 7-wire property means don't use MII mode */
-	if (of_find_property(op->node, "fsl,7-wire-mode", NULL))
-		priv->phy_addr = FEC5200_PHYADDR_7WIRE;
+	priv->mdio_speed = ((mpc5xxx_get_bus_frequency(op->node) >> 20) / 5) << 1;
 
 	/* The current speed preconfigures the speed of the MII link */
 	prop = of_get_property(op->node, "current-speed", &prop_size);
@@ -1019,42 +953,22 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 		priv->duplex = prop[1] ? DUPLEX_FULL : DUPLEX_HALF;
 	}
 
-	/* If there is a phy handle, setup link to that phy */
-	phy_handle = of_get_property(op->node, "phy-handle", &prop_size);
-	if (phy_handle && (prop_size >= sizeof(phandle))) {
-		phy_node = of_find_node_by_phandle(*phy_handle);
-		prop = of_get_property(phy_node, "reg", &prop_size);
-		if (prop && (prop_size >= sizeof(u32)))
-			if ((*prop >= 0) && (*prop < PHY_MAX_ADDR))
-				priv->phy_addr = *prop;
-		of_node_put(phy_node);
+	/* If there is a phy handle, then get the PHY node */
+	priv->phy_node = of_parse_phandle(op->node, "phy-handle", 0);
+
+	/* the 7-wire property means don't use MII mode */
+	if (of_find_property(op->node, "fsl,7-wire-mode", NULL)) {
+		priv->seven_wire_mode = 1;
+		dev_info(&ndev->dev, "using 7-wire PHY mode\n");
 	}
 
 	/* Hardware init */
 	mpc52xx_fec_hw_init(ndev);
-
 	mpc52xx_fec_reset_stats(ndev);
 
-	SET_NETDEV_DEV(ndev, &op->dev);
-
-	/* Register the new network device */
 	rv = register_netdev(ndev);
 	if (rv < 0)
 		goto probe_error;
-
-	/* Now report the link setup */
-	switch (priv->phy_addr) {
-	 case FEC5200_PHYADDR_NONE:
-		dev_info(&ndev->dev, "Fixed speed MII link: %i%cD\n",
-			 priv->speed, priv->duplex ? 'F' : 'H');
-		break;
-	 case FEC5200_PHYADDR_7WIRE:
-		dev_info(&ndev->dev, "using 7-wire PHY mode\n");
-		break;
-	 default:
-		dev_info(&ndev->dev, "Using PHY at MDIO address %i\n",
-			 priv->phy_addr);
-	}
 
 	/* We're done ! */
 	dev_set_drvdata(&op->dev, ndev);
@@ -1064,6 +978,10 @@ mpc52xx_fec_probe(struct of_device *op, const struct of_device_id *match)
 
 	/* Error handling - free everything that might be allocated */
 probe_error:
+
+	if (priv->phy_node)
+		of_node_put(priv->phy_node);
+	priv->phy_node = NULL;
 
 	irq_dispose_mapping(ndev->irq);
 
@@ -1092,6 +1010,10 @@ mpc52xx_fec_remove(struct of_device *op)
 	priv = netdev_priv(ndev);
 
 	unregister_netdev(ndev);
+
+	if (priv->phy_node)
+		of_node_put(priv->phy_node);
+	priv->phy_node = NULL;
 
 	irq_dispose_mapping(ndev->irq);
 

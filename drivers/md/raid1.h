@@ -59,15 +59,14 @@ struct r1_private_data_s {
 
 	mempool_t *r1bio_pool;
 	mempool_t *r1buf_pool;
+
+	/* When taking over an array from a different personality, we store
+	 * the new thread here until we fully activate the array.
+	 */
+	struct mdk_thread_s	*thread;
 };
 
 typedef struct r1_private_data_s conf_t;
-
-/*
- * this is the only point in the RAID code where we violate
- * C type safety. mddev->private is an 'opaque' pointer.
- */
-#define mddev_to_conf(mddev) ((conf_t *) mddev->private)
 
 /*
  * this is our 'private' RAID1 bio.

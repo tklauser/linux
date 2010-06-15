@@ -9,6 +9,7 @@
 #include <linux/backing-dev.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
+#include <linux/slab.h>
 #include <linux/genhd.h>
 #include <linux/netdevice.h>
 #include "aoe.h"
@@ -172,6 +173,9 @@ aoeblk_make_request(struct request_queue *q, struct bio *bio)
 		BUG();
 		bio_endio(bio, -ENXIO);
 		return 0;
+	} else if (bio_rw_flagged(bio, BIO_RW_BARRIER)) {
+		bio_endio(bio, -EOPNOTSUPP);
+		return 0;
 	} else if (bio->bi_io_vec == NULL) {
 		printk(KERN_ERR "aoe: bi_io_vec is NULL\n");
 		BUG();
@@ -234,7 +238,7 @@ aoeblk_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 	return 0;
 }
 
-static struct block_device_operations aoe_bdops = {
+static const struct block_device_operations aoe_bdops = {
 	.open = aoeblk_open,
 	.release = aoeblk_release,
 	.getgeo = aoeblk_getgeo,
@@ -264,9 +268,13 @@ aoeblk_gdalloc(void *vp)
 		goto err_disk;
 	}
 
-	blk_queue_make_request(&d->blkq, aoeblk_make_request);
-	if (bdi_init(&d->blkq.backing_dev_info))
+	d->blkq = blk_alloc_queue(GFP_KERNEL);
+	if (!d->blkq)
 		goto err_mempool;
+	blk_queue_make_request(d->blkq, aoeblk_make_request);
+	d->blkq->backing_dev_info.name = "aoe";
+	if (bdi_init(&d->blkq->backing_dev_info))
+		goto err_blkq;
 	spin_lock_irqsave(&d->lock, flags);
 	gd->major = AOE_MAJOR;
 	gd->first_minor = d->sysminor * AOE_PARTITIONS;
@@ -276,7 +284,7 @@ aoeblk_gdalloc(void *vp)
 	snprintf(gd->disk_name, sizeof gd->disk_name, "etherd/e%ld.%d",
 		d->aoemajor, d->aoeminor);
 
-	gd->queue = &d->blkq;
+	gd->queue = d->blkq;
 	d->gd = gd;
 	d->flags &= ~DEVFL_GDALLOC;
 	d->flags |= DEVFL_UP;
@@ -287,6 +295,9 @@ aoeblk_gdalloc(void *vp)
 	aoedisk_add_sysfs(d);
 	return;
 
+err_blkq:
+	blk_cleanup_queue(d->blkq);
+	d->blkq = NULL;
 err_mempool:
 	mempool_destroy(d->bufpool);
 err_disk:

@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2004 - 2009 rt2x00 SourceForge Project
+	Copyright (C) 2004 - 2009 Ivo van Doorn <IvDoorn@gmail.com>
 	<http://rt2x00.serialmonkey.com>
 
 	This program is free software; you can redistribute it and/or modify
@@ -31,6 +31,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/eeprom_93cx6.h>
+#include <linux/slab.h>
 
 #include "rt2x00.h"
 #include "rt2x00pci.h"
@@ -199,7 +200,6 @@ static const struct rt2x00debug rt2500pci_rt2x00debug = {
 };
 #endif /* CONFIG_RT2X00_LIB_DEBUGFS */
 
-#ifdef CONFIG_RT2X00_LIB_RFKILL
 static int rt2500pci_rfkill_poll(struct rt2x00_dev *rt2x00dev)
 {
 	u32 reg;
@@ -207,9 +207,6 @@ static int rt2500pci_rfkill_poll(struct rt2x00_dev *rt2x00dev)
 	rt2x00pci_register_read(rt2x00dev, GPIOCSR, &reg);
 	return rt2x00_get_field32(reg, GPIOCSR_BIT0);
 }
-#else
-#define rt2500pci_rfkill_poll	NULL
-#endif /* CONFIG_RT2X00_LIB_RFKILL */
 
 #ifdef CONFIG_RT2X00_LIB_LEDS
 static void rt2500pci_brightness_set(struct led_classdev *led_cdev,
@@ -341,10 +338,10 @@ static void rt2500pci_config_erp(struct rt2x00_dev *rt2x00dev,
 	preamble_mask = erp->short_preamble << 3;
 
 	rt2x00pci_register_read(rt2x00dev, TXCSR1, &reg);
-	rt2x00_set_field32(&reg, TXCSR1_ACK_TIMEOUT,
-			   erp->ack_timeout);
-	rt2x00_set_field32(&reg, TXCSR1_ACK_CONSUME_TIME,
-			   erp->ack_consume_time);
+	rt2x00_set_field32(&reg, TXCSR1_ACK_TIMEOUT, 0x162);
+	rt2x00_set_field32(&reg, TXCSR1_ACK_CONSUME_TIME, 0xa2);
+	rt2x00_set_field32(&reg, TXCSR1_TSF_OFFSET, IEEE80211_HEADER);
+	rt2x00_set_field32(&reg, TXCSR1_AUTORESPONDER, 1);
 	rt2x00pci_register_write(rt2x00dev, TXCSR1, reg);
 
 	rt2x00pci_register_read(rt2x00dev, ARCSR2, &reg);
@@ -376,6 +373,11 @@ static void rt2500pci_config_erp(struct rt2x00_dev *rt2x00dev,
 	rt2x00pci_register_read(rt2x00dev, CSR11, &reg);
 	rt2x00_set_field32(&reg, CSR11_SLOT_TIME, erp->slot_time);
 	rt2x00pci_register_write(rt2x00dev, CSR11, reg);
+
+	rt2x00pci_register_read(rt2x00dev, CSR12, &reg);
+	rt2x00_set_field32(&reg, CSR12_BEACON_INTERVAL, erp->beacon_int * 16);
+	rt2x00_set_field32(&reg, CSR12_CFP_MAX_DURATION, erp->beacon_int * 16);
+	rt2x00pci_register_write(rt2x00dev, CSR12, reg);
 
 	rt2x00pci_register_read(rt2x00dev, CSR18, &reg);
 	rt2x00_set_field32(&reg, CSR18_SIFS, erp->sifs);
@@ -439,8 +441,7 @@ static void rt2500pci_config_ant(struct rt2x00_dev *rt2x00dev,
 	/*
 	 * RT2525E and RT5222 need to flip TX I/Q
 	 */
-	if (rt2x00_rf(&rt2x00dev->chip, RF2525E) ||
-	    rt2x00_rf(&rt2x00dev->chip, RF5222)) {
+	if (rt2x00_rf(rt2x00dev, RF2525E) || rt2x00_rf(rt2x00dev, RF5222)) {
 		rt2x00_set_field8(&r2, BBP_R2_TX_IQ_FLIP, 1);
 		rt2x00_set_field32(&reg, BBPCSR1_CCK_FLIP, 1);
 		rt2x00_set_field32(&reg, BBPCSR1_OFDM_FLIP, 1);
@@ -448,7 +449,7 @@ static void rt2500pci_config_ant(struct rt2x00_dev *rt2x00dev,
 		/*
 		 * RT2525E does not need RX I/Q Flip.
 		 */
-		if (rt2x00_rf(&rt2x00dev->chip, RF2525E))
+		if (rt2x00_rf(rt2x00dev, RF2525E))
 			rt2x00_set_field8(&r14, BBP_R14_RX_IQ_FLIP, 0);
 	} else {
 		rt2x00_set_field32(&reg, BBPCSR1_CCK_FLIP, 0);
@@ -474,14 +475,14 @@ static void rt2500pci_config_channel(struct rt2x00_dev *rt2x00dev,
 	 * Switch on tuning bits.
 	 * For RT2523 devices we do not need to update the R1 register.
 	 */
-	if (!rt2x00_rf(&rt2x00dev->chip, RF2523))
+	if (!rt2x00_rf(rt2x00dev, RF2523))
 		rt2x00_set_field32(&rf->rf1, RF1_TUNER, 1);
 	rt2x00_set_field32(&rf->rf3, RF3_TUNER, 1);
 
 	/*
 	 * For RT2525 we should first set the channel to half band higher.
 	 */
-	if (rt2x00_rf(&rt2x00dev->chip, RF2525)) {
+	if (rt2x00_rf(rt2x00dev, RF2525)) {
 		static const u32 vals[] = {
 			0x00080cbe, 0x00080d02, 0x00080d06, 0x00080d0a,
 			0x00080d0e, 0x00080d12, 0x00080d16, 0x00080d1a,
@@ -515,7 +516,7 @@ static void rt2500pci_config_channel(struct rt2x00_dev *rt2x00dev,
 	 * Switch off tuning bits.
 	 * For RT2523 devices we do not need to update the R1 register.
 	 */
-	if (!rt2x00_rf(&rt2x00dev->chip, RF2523)) {
+	if (!rt2x00_rf(rt2x00dev, RF2523)) {
 		rt2x00_set_field32(&rf->rf1, RF1_TUNER, 0);
 		rt2500pci_rf_write(rt2x00dev, 1, rf->rf1);
 	}
@@ -552,24 +553,6 @@ static void rt2500pci_config_retry_limit(struct rt2x00_dev *rt2x00dev,
 	rt2x00pci_register_write(rt2x00dev, CSR11, reg);
 }
 
-static void rt2500pci_config_duration(struct rt2x00_dev *rt2x00dev,
-				      struct rt2x00lib_conf *libconf)
-{
-	u32 reg;
-
-	rt2x00pci_register_read(rt2x00dev, TXCSR1, &reg);
-	rt2x00_set_field32(&reg, TXCSR1_TSF_OFFSET, IEEE80211_HEADER);
-	rt2x00_set_field32(&reg, TXCSR1_AUTORESPONDER, 1);
-	rt2x00pci_register_write(rt2x00dev, TXCSR1, reg);
-
-	rt2x00pci_register_read(rt2x00dev, CSR12, &reg);
-	rt2x00_set_field32(&reg, CSR12_BEACON_INTERVAL,
-			   libconf->conf->beacon_int * 16);
-	rt2x00_set_field32(&reg, CSR12_CFP_MAX_DURATION,
-			   libconf->conf->beacon_int * 16);
-	rt2x00pci_register_write(rt2x00dev, CSR12, reg);
-}
-
 static void rt2500pci_config_ps(struct rt2x00_dev *rt2x00dev,
 				struct rt2x00lib_conf *libconf)
 {
@@ -581,7 +564,7 @@ static void rt2500pci_config_ps(struct rt2x00_dev *rt2x00dev,
 	if (state == STATE_SLEEP) {
 		rt2x00pci_register_read(rt2x00dev, CSR20, &reg);
 		rt2x00_set_field32(&reg, CSR20_DELAY_AFTER_TBCN,
-				   (libconf->conf->beacon_int - 20) * 16);
+				   (rt2x00dev->beacon_int - 20) * 16);
 		rt2x00_set_field32(&reg, CSR20_TBCN_BEFORE_WAKEUP,
 				   libconf->conf->listen_interval - 1);
 
@@ -609,8 +592,6 @@ static void rt2500pci_config(struct rt2x00_dev *rt2x00dev,
 					 libconf->conf->power_level);
 	if (flags & IEEE80211_CONF_CHANGE_RETRY_LIMITS)
 		rt2500pci_config_retry_limit(rt2x00dev, libconf);
-	if (flags & IEEE80211_CONF_CHANGE_BEACON_INTERVAL)
-		rt2500pci_config_duration(rt2x00dev, libconf);
 	if (flags & IEEE80211_CONF_CHANGE_PS)
 		rt2500pci_config_ps(rt2x00dev, libconf);
 }
@@ -659,7 +640,7 @@ static void rt2500pci_link_tuner(struct rt2x00_dev *rt2x00dev,
 	 * up to version C the link tuning should halt after 20
 	 * seconds while being associated.
 	 */
-	if (rt2x00_rev(&rt2x00dev->chip) < RT2560_VERSION_D &&
+	if (rt2x00_rev(rt2x00dev) < RT2560_VERSION_D &&
 	    rt2x00dev->intf_associated && count > 20)
 		return;
 
@@ -669,7 +650,7 @@ static void rt2500pci_link_tuner(struct rt2x00_dev *rt2x00dev,
 	 * should go straight to dynamic CCA tuning when they
 	 * are not associated.
 	 */
-	if (rt2x00_rev(&rt2x00dev->chip) < RT2560_VERSION_D ||
+	if (rt2x00_rev(rt2x00dev) < RT2560_VERSION_D ||
 	    !rt2x00dev->intf_associated)
 		goto dynamic_cca_tune;
 
@@ -1245,8 +1226,6 @@ static void rt2500pci_write_beacon(struct queue_entry *entry)
 	 * otherwise we might be sending out invalid data.
 	 */
 	rt2x00pci_register_read(rt2x00dev, CSR14, &reg);
-	rt2x00_set_field32(&reg, CSR14_TSF_COUNT, 0);
-	rt2x00_set_field32(&reg, CSR14_TBCN, 0);
 	rt2x00_set_field32(&reg, CSR14_BEACON_GEN, 0);
 	rt2x00pci_register_write(rt2x00dev, CSR14, reg);
 
@@ -1525,14 +1504,15 @@ static int rt2500pci_init_eeprom(struct rt2x00_dev *rt2x00dev)
 	 */
 	value = rt2x00_get_field16(eeprom, EEPROM_ANTENNA_RF_TYPE);
 	rt2x00pci_register_read(rt2x00dev, CSR0, &reg);
-	rt2x00_set_chip(rt2x00dev, RT2560, value, reg);
+	rt2x00_set_chip(rt2x00dev, RT2560, value,
+			rt2x00_get_field32(reg, CSR0_REVISION));
 
-	if (!rt2x00_rf(&rt2x00dev->chip, RF2522) &&
-	    !rt2x00_rf(&rt2x00dev->chip, RF2523) &&
-	    !rt2x00_rf(&rt2x00dev->chip, RF2524) &&
-	    !rt2x00_rf(&rt2x00dev->chip, RF2525) &&
-	    !rt2x00_rf(&rt2x00dev->chip, RF2525E) &&
-	    !rt2x00_rf(&rt2x00dev->chip, RF5222)) {
+	if (!rt2x00_rf(rt2x00dev, RF2522) &&
+	    !rt2x00_rf(rt2x00dev, RF2523) &&
+	    !rt2x00_rf(rt2x00dev, RF2524) &&
+	    !rt2x00_rf(rt2x00dev, RF2525) &&
+	    !rt2x00_rf(rt2x00dev, RF2525E) &&
+	    !rt2x00_rf(rt2x00dev, RF5222)) {
 		ERROR(rt2x00dev, "Invalid RF chipset detected.\n");
 		return -ENODEV;
 	}
@@ -1562,10 +1542,8 @@ static int rt2500pci_init_eeprom(struct rt2x00_dev *rt2x00dev)
 	/*
 	 * Detect if this device has an hardware controlled radio.
 	 */
-#ifdef CONFIG_RT2X00_LIB_RFKILL
 	if (rt2x00_get_field16(eeprom, EEPROM_ANTENNA_HARDWARE_RADIO))
 		__set_bit(CONFIG_SUPPORT_HW_BUTTON, &rt2x00dev->flags);
-#endif /* CONFIG_RT2X00_LIB_RFKILL */
 
 	/*
 	 * Check if the BBP tuning should be enabled.
@@ -1755,8 +1733,6 @@ static int rt2500pci_probe_hw_mode(struct rt2x00_dev *rt2x00dev)
 			       IEEE80211_HW_SUPPORTS_PS |
 			       IEEE80211_HW_PS_NULLFUNC_STACK;
 
-	rt2x00dev->hw->extra_tx_headroom = 0;
-
 	SET_IEEE80211_DEV(rt2x00dev->hw, rt2x00dev->dev);
 	SET_IEEE80211_PERM_ADDR(rt2x00dev->hw,
 				rt2x00_eeprom_addr(rt2x00dev,
@@ -1768,22 +1744,22 @@ static int rt2500pci_probe_hw_mode(struct rt2x00_dev *rt2x00dev)
 	spec->supported_bands = SUPPORT_BAND_2GHZ;
 	spec->supported_rates = SUPPORT_RATE_CCK | SUPPORT_RATE_OFDM;
 
-	if (rt2x00_rf(&rt2x00dev->chip, RF2522)) {
+	if (rt2x00_rf(rt2x00dev, RF2522)) {
 		spec->num_channels = ARRAY_SIZE(rf_vals_bg_2522);
 		spec->channels = rf_vals_bg_2522;
-	} else if (rt2x00_rf(&rt2x00dev->chip, RF2523)) {
+	} else if (rt2x00_rf(rt2x00dev, RF2523)) {
 		spec->num_channels = ARRAY_SIZE(rf_vals_bg_2523);
 		spec->channels = rf_vals_bg_2523;
-	} else if (rt2x00_rf(&rt2x00dev->chip, RF2524)) {
+	} else if (rt2x00_rf(rt2x00dev, RF2524)) {
 		spec->num_channels = ARRAY_SIZE(rf_vals_bg_2524);
 		spec->channels = rf_vals_bg_2524;
-	} else if (rt2x00_rf(&rt2x00dev->chip, RF2525)) {
+	} else if (rt2x00_rf(rt2x00dev, RF2525)) {
 		spec->num_channels = ARRAY_SIZE(rf_vals_bg_2525);
 		spec->channels = rf_vals_bg_2525;
-	} else if (rt2x00_rf(&rt2x00dev->chip, RF2525E)) {
+	} else if (rt2x00_rf(rt2x00dev, RF2525E)) {
 		spec->num_channels = ARRAY_SIZE(rf_vals_bg_2525e);
 		spec->channels = rf_vals_bg_2525e;
-	} else if (rt2x00_rf(&rt2x00dev->chip, RF5222)) {
+	} else if (rt2x00_rf(rt2x00dev, RF5222)) {
 		spec->supported_bands |= SUPPORT_BAND_5GHZ;
 		spec->num_channels = ARRAY_SIZE(rf_vals_5222);
 		spec->channels = rf_vals_5222;
@@ -1879,14 +1855,14 @@ static const struct ieee80211_ops rt2500pci_mac80211_ops = {
 	.add_interface		= rt2x00mac_add_interface,
 	.remove_interface	= rt2x00mac_remove_interface,
 	.config			= rt2x00mac_config,
-	.config_interface	= rt2x00mac_config_interface,
 	.configure_filter	= rt2x00mac_configure_filter,
+	.set_tim		= rt2x00mac_set_tim,
 	.get_stats		= rt2x00mac_get_stats,
 	.bss_info_changed	= rt2x00mac_bss_info_changed,
 	.conf_tx		= rt2x00mac_conf_tx,
-	.get_tx_stats		= rt2x00mac_get_tx_stats,
 	.get_tsf		= rt2500pci_get_tsf,
 	.tx_last_beacon		= rt2500pci_tx_last_beacon,
+	.rfkill_poll		= rt2x00mac_rfkill_poll,
 };
 
 static const struct rt2x00lib_ops rt2500pci_rt2x00_ops = {
@@ -1943,27 +1919,28 @@ static const struct data_queue_desc rt2500pci_queue_atim = {
 };
 
 static const struct rt2x00_ops rt2500pci_ops = {
-	.name		= KBUILD_MODNAME,
-	.max_sta_intf	= 1,
-	.max_ap_intf	= 1,
-	.eeprom_size	= EEPROM_SIZE,
-	.rf_size	= RF_SIZE,
-	.tx_queues	= NUM_TX_QUEUES,
-	.rx		= &rt2500pci_queue_rx,
-	.tx		= &rt2500pci_queue_tx,
-	.bcn		= &rt2500pci_queue_bcn,
-	.atim		= &rt2500pci_queue_atim,
-	.lib		= &rt2500pci_rt2x00_ops,
-	.hw		= &rt2500pci_mac80211_ops,
+	.name			= KBUILD_MODNAME,
+	.max_sta_intf		= 1,
+	.max_ap_intf		= 1,
+	.eeprom_size		= EEPROM_SIZE,
+	.rf_size		= RF_SIZE,
+	.tx_queues		= NUM_TX_QUEUES,
+	.extra_tx_headroom	= 0,
+	.rx			= &rt2500pci_queue_rx,
+	.tx			= &rt2500pci_queue_tx,
+	.bcn			= &rt2500pci_queue_bcn,
+	.atim			= &rt2500pci_queue_atim,
+	.lib			= &rt2500pci_rt2x00_ops,
+	.hw			= &rt2500pci_mac80211_ops,
 #ifdef CONFIG_RT2X00_LIB_DEBUGFS
-	.debugfs	= &rt2500pci_rt2x00debug,
+	.debugfs		= &rt2500pci_rt2x00debug,
 #endif /* CONFIG_RT2X00_LIB_DEBUGFS */
 };
 
 /*
  * RT2500pci module information.
  */
-static struct pci_device_id rt2500pci_device_table[] = {
+static DEFINE_PCI_DEVICE_TABLE(rt2500pci_device_table) = {
 	{ PCI_DEVICE(0x1814, 0x0201), PCI_DEVICE_DATA(&rt2500pci_ops) },
 	{ 0, }
 };

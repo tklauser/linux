@@ -282,7 +282,7 @@ struct cx231xx_board {
 
 	struct cx231xx_input input[MAX_CX231XX_INPUT];
 	struct cx231xx_input radio;
-	IR_KEYTAB_TYPE *ir_codes;
+	struct ir_scancode_table *ir_codes;
 };
 
 /* device states */
@@ -689,8 +689,6 @@ void cx231xx_release_analog_resources(struct cx231xx *dev);
 int cx231xx_register_analog_devices(struct cx231xx *dev);
 void cx231xx_remove_from_devlist(struct cx231xx *dev);
 void cx231xx_add_into_devlist(struct cx231xx *dev);
-struct cx231xx *cx231xx_get_device(int minor,
-				   enum v4l2_buf_type *fh_type, int *has_radio);
 void cx231xx_init_extension(struct cx231xx *dev);
 void cx231xx_close_extension(struct cx231xx *dev);
 
@@ -722,9 +720,6 @@ int cx231xx_set_video_input_mux(struct cx231xx *dev, u8 input);
 int cx231xx_set_decoder_video_input(struct cx231xx *dev, u8 pin_type, u8 input);
 int cx231xx_do_mode_ctrl_overrides(struct cx231xx *dev);
 int cx231xx_set_audio_input(struct cx231xx *dev, u8 input);
-void get_scale(struct cx231xx *dev,
-	       unsigned int width, unsigned int height,
-	       unsigned int *hscale, unsigned int *vscale);
 
 /* Provided by cx231xx-video.c */
 int cx231xx_register_extension(struct cx231xx_ops *dev);
@@ -738,7 +733,7 @@ extern void cx231xx_card_setup(struct cx231xx *dev);
 extern struct cx231xx_board cx231xx_boards[];
 extern struct usb_device_id cx231xx_id_table[];
 extern const unsigned int cx231xx_bcount;
-void cx231xx_set_ir(struct cx231xx *dev, struct IR_i2c *ir);
+void cx231xx_register_i2c_ir(struct cx231xx *dev);
 int cx231xx_tuner_callback(void *ptr, int component, int command, int arg);
 
 /* Provided by cx231xx-input.c */

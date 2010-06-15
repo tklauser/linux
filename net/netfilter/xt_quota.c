@@ -4,6 +4,7 @@
  * Sam Johnston <samj@samj.net>
  */
 #include <linux/skbuff.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 
 #include <linux/netfilter/x_tables.h>
@@ -52,8 +53,9 @@ static bool quota_mt_check(const struct xt_mtchk_param *par)
 
 	q->master = kmalloc(sizeof(*q->master), GFP_KERNEL);
 	if (q->master == NULL)
-		return -ENOMEM;
+		return false;
 
+	q->master->quota = q->quota;
 	return true;
 }
 

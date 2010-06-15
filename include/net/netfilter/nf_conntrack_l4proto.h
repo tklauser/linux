@@ -15,8 +15,7 @@
 
 struct seq_file;
 
-struct nf_conntrack_l4proto
-{
+struct nf_conntrack_l4proto {
 	/* L3 Protocol number. */
 	u_int16_t l3proto;
 
@@ -50,8 +49,8 @@ struct nf_conntrack_l4proto
 	/* Called when a conntrack entry is destroyed */
 	void (*destroy)(struct nf_conn *ct);
 
-	int (*error)(struct net *net, struct sk_buff *skb, unsigned int dataoff,
-		     enum ip_conntrack_info *ctinfo,
+	int (*error)(struct net *net, struct nf_conn *tmpl, struct sk_buff *skb,
+		     unsigned int dataoff, enum ip_conntrack_info *ctinfo,
 		     u_int8_t pf, unsigned int hooknum);
 
 	/* Print out the per-protocol part of the tuple. Return like seq_* */
@@ -59,11 +58,11 @@ struct nf_conntrack_l4proto
 			   const struct nf_conntrack_tuple *);
 
 	/* Print out the private part of the conntrack. */
-	int (*print_conntrack)(struct seq_file *s, const struct nf_conn *);
+	int (*print_conntrack)(struct seq_file *s, struct nf_conn *);
 
 	/* convert protoinfo to nfnetink attributes */
 	int (*to_nlattr)(struct sk_buff *skb, struct nlattr *nla,
-			 const struct nf_conn *ct);
+			 struct nf_conn *ct);
 	/* Calculate protoinfo nlattr size */
 	int (*nlattr_size)(void);
 

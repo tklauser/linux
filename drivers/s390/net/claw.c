@@ -3,12 +3,12 @@
  *    ESCON CLAW network driver
  *
  *  Linux for zSeries version
- *    Copyright (C) 2002,2005 IBM Corporation
+ *    Copyright IBM Corp. 2002, 2009
  *  Author(s) Original code written by:
- *              Kazuo Iimura (iimura@jp.ibm.com)
+ *		Kazuo Iimura <iimura@jp.ibm.com>
  *   	      Rewritten by
- *              Andy Richter (richtera@us.ibm.com)
- *              Marc Price (mwprice@us.ibm.com)
+ *		Andy Richter <richtera@us.ibm.com>
+ *		Marc Price <mwprice@us.ibm.com>
  *
  *    sysfs parms:
  *   group x.x.rrrr,x.x.wwww
@@ -90,7 +90,6 @@
 #include <linux/timer.h>
 #include <linux/types.h>
 
-#include "cu3088.h"
 #include "claw.h"
 
 /*
@@ -253,6 +252,14 @@ static void claw_free_wrt_buf(struct net_device *dev);
 /* Functions for unpack reads   */
 static void unpack_read(struct net_device *dev);
 
+static int claw_pm_prepare(struct ccwgroup_device *gdev)
+{
+	return -EPERM;
+}
+
+/* the root device for claw group devices */
+static struct device *claw_root_dev;
+
 /* ccwgroup table  */
 
 static struct ccwgroup_driver claw_group_driver = {
@@ -264,6 +271,48 @@ static struct ccwgroup_driver claw_group_driver = {
         .remove      = claw_remove_device,
         .set_online  = claw_new_device,
         .set_offline = claw_shutdown_device,
+	.prepare     = claw_pm_prepare,
+};
+
+static struct ccw_device_id claw_ids[] = {
+	{CCW_DEVICE(0x3088, 0x61), .driver_info = claw_channel_type_claw},
+	{},
+};
+MODULE_DEVICE_TABLE(ccw, claw_ids);
+
+static struct ccw_driver claw_ccw_driver = {
+	.owner	= THIS_MODULE,
+	.name	= "claw",
+	.ids	= claw_ids,
+	.probe	= ccwgroup_probe_ccwdev,
+	.remove	= ccwgroup_remove_ccwdev,
+};
+
+static ssize_t
+claw_driver_group_store(struct device_driver *ddrv, const char *buf,
+			size_t count)
+{
+	int err;
+	err = ccwgroup_create_from_string(claw_root_dev,
+					  claw_group_driver.driver_id,
+					  &claw_ccw_driver, 3, buf);
+	return err ? err : count;
+}
+
+static DRIVER_ATTR(group, 0200, NULL, claw_driver_group_store);
+
+static struct attribute *claw_group_attrs[] = {
+	&driver_attr_group.attr,
+	NULL,
+};
+
+static struct attribute_group claw_group_attr_group = {
+	.attrs = claw_group_attrs,
+};
+
+static const struct attribute_group *claw_group_attr_groups[] = {
+	&claw_group_attr_group,
+	NULL,
 };
 
 /*
@@ -284,7 +333,7 @@ claw_probe(struct ccwgroup_device *cgdev)
 	if (!get_device(&cgdev->dev))
 		return -ENODEV;
 	privptr = kzalloc(sizeof(struct claw_privbk), GFP_KERNEL);
-	cgdev->dev.driver_data = privptr;
+	dev_set_drvdata(&cgdev->dev, privptr);
 	if (privptr == NULL) {
 		probe_error(cgdev);
 		put_device(&cgdev->dev);
@@ -338,18 +387,14 @@ claw_tx(struct sk_buff *skb, struct net_device *dev)
 
 	CLAW_DBF_TEXT(4, trace, "claw_tx");
         p_ch=&privptr->channel[WRITE];
-        if (skb == NULL) {
-                privptr->stats.tx_dropped++;
-		privptr->stats.tx_errors++;
-		CLAW_DBF_TEXT_(2, trace, "clawtx%d", -EIO);
-                return -EIO;
-        }
         spin_lock_irqsave(get_ccwdev_lock(p_ch->cdev), saveflags);
         rc=claw_hw_tx( skb, dev, 1 );
         spin_unlock_irqrestore(get_ccwdev_lock(p_ch->cdev), saveflags);
 	CLAW_DBF_TEXT_(4, trace, "clawtx%d", rc);
 	if (rc)
 		rc = NETDEV_TX_BUSY;
+	else
+		rc = NETDEV_TX_OK;
         return rc;
 }   /*  end of claw_tx */
 
@@ -597,14 +642,14 @@ claw_irq_handler(struct ccw_device *cdev,
 
 	CLAW_DBF_TEXT(4, trace, "clawirq");
         /* Bypass all 'unsolicited interrupts' */
-	if (!cdev->dev.driver_data) {
+	privptr = dev_get_drvdata(&cdev->dev);
+	if (!privptr) {
 		dev_warn(&cdev->dev, "An uninitialized CLAW device received an"
 			" IRQ, c-%02x d-%02x\n",
 			irb->scsw.cmd.cstat, irb->scsw.cmd.dstat);
 		CLAW_DBF_TEXT(2, trace, "badirq");
                 return;
         }
-	privptr = (struct claw_privbk *)cdev->dev.driver_data;
 
 	/* Try to extract channel from driver data. */
 	if (privptr->channel[READ].cdev == cdev)
@@ -1986,9 +2031,9 @@ probe_error( struct ccwgroup_device *cgdev)
 	struct claw_privbk *privptr;
 
 	CLAW_DBF_TEXT(4, trace, "proberr");
-	privptr = (struct claw_privbk *) cgdev->dev.driver_data;
+	privptr = dev_get_drvdata(&cgdev->dev);
 	if (privptr != NULL) {
-		cgdev->dev.driver_data = NULL;
+		dev_set_drvdata(&cgdev->dev, NULL);
 		kfree(privptr->p_env);
 		kfree(privptr->p_mtc_envelope);
 		kfree(privptr);
@@ -2917,9 +2962,9 @@ claw_new_device(struct ccwgroup_device *cgdev)
 	dev_info(&cgdev->dev, "add for %s\n",
 		 dev_name(&cgdev->cdev[READ]->dev));
 	CLAW_DBF_TEXT(2, setup, "new_dev");
-	privptr = cgdev->dev.driver_data;
-	cgdev->cdev[READ]->dev.driver_data = privptr;
-	cgdev->cdev[WRITE]->dev.driver_data = privptr;
+	privptr = dev_get_drvdata(&cgdev->dev);
+	dev_set_drvdata(&cgdev->cdev[READ]->dev, privptr);
+	dev_set_drvdata(&cgdev->cdev[WRITE]->dev, privptr);
 	if (!privptr)
 		return -ENODEV;
 	p_env = privptr->p_env;
@@ -2956,9 +3001,9 @@ claw_new_device(struct ccwgroup_device *cgdev)
 		goto out;
 	}
 	dev->ml_priv = privptr;
-	cgdev->dev.driver_data = privptr;
-        cgdev->cdev[READ]->dev.driver_data = privptr;
-        cgdev->cdev[WRITE]->dev.driver_data = privptr;
+	dev_set_drvdata(&cgdev->dev, privptr);
+	dev_set_drvdata(&cgdev->cdev[READ]->dev, privptr);
+	dev_set_drvdata(&cgdev->cdev[WRITE]->dev, privptr);
 	/* sysfs magic */
         SET_NETDEV_DEV(dev, &cgdev->dev);
 	if (register_netdev(dev) != 0) {
@@ -3024,7 +3069,7 @@ claw_shutdown_device(struct ccwgroup_device *cgdev)
 	int	ret;
 
 	CLAW_DBF_TEXT_(2, setup, "%s", dev_name(&cgdev->dev));
-	priv = cgdev->dev.driver_data;
+	priv = dev_get_drvdata(&cgdev->dev);
 	if (!priv)
 		return -ENODEV;
 	ndev = priv->channel[READ].ndev;
@@ -3054,7 +3099,7 @@ claw_remove_device(struct ccwgroup_device *cgdev)
 
 	BUG_ON(!cgdev);
 	CLAW_DBF_TEXT_(2, setup, "%s", dev_name(&cgdev->dev));
-	priv = cgdev->dev.driver_data;
+	priv = dev_get_drvdata(&cgdev->dev);
 	BUG_ON(!priv);
 	dev_info(&cgdev->dev, " will be removed.\n");
 	if (cgdev->state == CCWGROUP_ONLINE)
@@ -3069,9 +3114,9 @@ claw_remove_device(struct ccwgroup_device *cgdev)
 	kfree(priv->channel[1].irb);
 	priv->channel[1].irb=NULL;
 	kfree(priv);
-	cgdev->dev.driver_data=NULL;
-	cgdev->cdev[READ]->dev.driver_data = NULL;
-	cgdev->cdev[WRITE]->dev.driver_data = NULL;
+	dev_set_drvdata(&cgdev->dev, NULL);
+	dev_set_drvdata(&cgdev->cdev[READ]->dev, NULL);
+	dev_set_drvdata(&cgdev->cdev[WRITE]->dev, NULL);
 	put_device(&cgdev->dev);
 
 	return;
@@ -3087,7 +3132,7 @@ claw_hname_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3101,7 +3146,7 @@ claw_hname_write(struct device *dev, struct device_attribute *attr,
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3125,7 +3170,7 @@ claw_adname_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3139,7 +3184,7 @@ claw_adname_write(struct device *dev, struct device_attribute *attr,
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3163,7 +3208,7 @@ claw_apname_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3178,7 +3223,7 @@ claw_apname_write(struct device *dev, struct device_attribute *attr,
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3212,7 +3257,7 @@ claw_wbuff_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct claw_privbk *priv;
 	struct claw_env * p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3227,7 +3272,7 @@ claw_wbuff_write(struct device *dev, struct device_attribute *attr,
 	struct claw_env *  p_env;
 	int nnn,max;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3254,7 +3299,7 @@ claw_rbuff_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct claw_privbk *priv;
 	struct claw_env *  p_env;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3269,7 +3314,7 @@ claw_rbuff_write(struct device *dev, struct device_attribute *attr,
 	struct claw_env *p_env;
 	int nnn,max;
 
-	priv = dev->driver_data;
+	priv = dev_get_drvdata(dev);
 	if (!priv)
 		return -ENODEV;
 	p_env = priv->p_env;
@@ -3324,7 +3369,11 @@ claw_remove_files(struct device *dev)
 static void __exit
 claw_cleanup(void)
 {
-	unregister_cu3088_discipline(&claw_group_driver);
+	driver_remove_file(&claw_group_driver.driver,
+			   &driver_attr_group);
+	ccwgroup_driver_unregister(&claw_group_driver);
+	ccw_driver_unregister(&claw_ccw_driver);
+	root_device_unregister(claw_root_dev);
 	claw_unregister_debug_facility();
 	pr_info("Driver unloaded\n");
 
@@ -3346,16 +3395,31 @@ claw_init(void)
 	if (ret) {
 		pr_err("Registering with the S/390 debug feature"
 			" failed with error code %d\n", ret);
-		return ret;
+		goto out_err;
 	}
 	CLAW_DBF_TEXT(2, setup, "init_mod");
-	ret = register_cu3088_discipline(&claw_group_driver);
-	if (ret) {
-		CLAW_DBF_TEXT(2, setup, "init_bad");
-		claw_unregister_debug_facility();
-		pr_err("Registering with the cu3088 device driver failed "
-			   "with error code %d\n", ret);
-	}
+	claw_root_dev = root_device_register("claw");
+	ret = IS_ERR(claw_root_dev) ? PTR_ERR(claw_root_dev) : 0;
+	if (ret)
+		goto register_err;
+	ret = ccw_driver_register(&claw_ccw_driver);
+	if (ret)
+		goto ccw_err;
+	claw_group_driver.driver.groups = claw_group_attr_groups;
+	ret = ccwgroup_driver_register(&claw_group_driver);
+	if (ret)
+		goto ccwgroup_err;
+	return 0;
+
+ccwgroup_err:
+	ccw_driver_unregister(&claw_ccw_driver);
+ccw_err:
+	root_device_unregister(claw_root_dev);
+register_err:
+	CLAW_DBF_TEXT(2, setup, "init_bad");
+	claw_unregister_debug_facility();
+out_err:
+	pr_err("Initializing the claw device driver failed\n");
 	return ret;
 }
 

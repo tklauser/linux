@@ -151,7 +151,7 @@ static struct file_lock *locks_alloc_lock(void)
 	return kmem_cache_alloc(filelock_cache, GFP_KERNEL);
 }
 
-static void locks_release_private(struct file_lock *fl)
+void locks_release_private(struct file_lock *fl)
 {
 	if (fl->fl_ops) {
 		if (fl->fl_ops->fl_release_private)
@@ -165,6 +165,7 @@ static void locks_release_private(struct file_lock *fl)
 	}
 
 }
+EXPORT_SYMBOL_GPL(locks_release_private);
 
 /* Free a lock which is not in use. */
 static void locks_free_lock(struct file_lock *fl)
@@ -433,7 +434,7 @@ static int lease_mylease_callback(struct file_lock *fl, struct file_lock *try)
 	return fl->fl_file == try->fl_file;
 }
 
-static struct lock_manager_operations lease_manager_ops = {
+static const struct lock_manager_operations lease_manager_ops = {
 	.fl_break = lease_break_callback,
 	.fl_release_private = lease_release_private_callback,
 	.fl_mylease = lease_mylease_callback,
@@ -767,7 +768,7 @@ static int flock_lock_file(struct file *filp, struct file_lock *request)
 	 * give it the opportunity to lock the file.
 	 */
 	if (found)
-		cond_resched_bkl();
+		cond_resched();
 
 find_conflict:
 	for_each_lock(inode, before) {
@@ -1181,8 +1182,9 @@ int __break_lease(struct inode *inode, unsigned int mode)
 	struct file_lock *fl;
 	unsigned long break_time;
 	int i_have_this_lease = 0;
+	int want_write = (mode & O_ACCMODE) != O_RDONLY;
 
-	new_fl = lease_alloc(NULL, mode & FMODE_WRITE ? F_WRLCK : F_RDLCK);
+	new_fl = lease_alloc(NULL, want_write ? F_WRLCK : F_RDLCK);
 
 	lock_kernel();
 
@@ -1196,7 +1198,7 @@ int __break_lease(struct inode *inode, unsigned int mode)
 		if (fl->fl_owner == current->files)
 			i_have_this_lease = 1;
 
-	if (mode & FMODE_WRITE) {
+	if (want_write) {
 		/* If we want write access, we have to revoke any lease. */
 		future = F_UNLCK | F_INPROGRESS;
 	} else if (flock->fl_type & F_INPROGRESS) {
@@ -1453,7 +1455,7 @@ EXPORT_SYMBOL(generic_setlease);
  *	leases held by processes on this node.
  *
  *	There is also no break_lease method; filesystems that
- *	handle their own leases shoud break leases themselves from the
+ *	handle their own leases should break leases themselves from the
  *	filesystem's open, create, and (on truncate) setattr methods.
  *
  *	Warning: the only current setlease methods exist only to disable
@@ -1590,7 +1592,7 @@ SYSCALL_DEFINE2(flock, unsigned int, fd, unsigned int, cmd)
 	if (can_sleep)
 		lock->fl_flags |= FL_SLEEP;
 
-	error = security_file_lock(filp, cmd);
+	error = security_file_lock(filp, lock->fl_type);
 	if (error)
 		goto out_free;
 

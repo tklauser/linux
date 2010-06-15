@@ -72,6 +72,7 @@
  *   wimax_msg_send()
  */
 #include <linux/device.h>
+#include <linux/slab.h>
 #include <net/genetlink.h>
 #include <linux/netdevice.h>
 #include <linux/wimax.h>
@@ -108,6 +109,12 @@
  * Don't use skb_push()/skb_pull()/skb_reserve() on the skb, as
  * wimax_msg_send() depends on skb->data being placed at the
  * beginning of the user message.
+ *
+ * Unlike other WiMAX stack calls, this call can be used way early,
+ * even before wimax_dev_add() is called, as long as the
+ * wimax_dev->net_dev pointer is set to point to a proper
+ * net_dev. This is so that drivers can use it early in case they need
+ * to send stuff around or communicate with user space.
  */
 struct sk_buff *wimax_msg_alloc(struct wimax_dev *wimax_dev,
 				const char *pipe_name,
@@ -115,7 +122,7 @@ struct sk_buff *wimax_msg_alloc(struct wimax_dev *wimax_dev,
 				gfp_t gfp_flags)
 {
 	int result;
-	struct device *dev = wimax_dev->net_dev->dev.parent;
+	struct device *dev = wimax_dev_to_dev(wimax_dev);
 	size_t msg_size;
 	void *genl_msg;
 	struct sk_buff *skb;
@@ -161,7 +168,6 @@ error_genlmsg_put:
 error_new:
 	nlmsg_free(skb);
 	return ERR_PTR(result);
-
 }
 EXPORT_SYMBOL_GPL(wimax_msg_alloc);
 
@@ -256,10 +262,16 @@ EXPORT_SYMBOL_GPL(wimax_msg_len);
  * Don't use skb_push()/skb_pull()/skb_reserve() on the skb, as
  * wimax_msg_send() depends on skb->data being placed at the
  * beginning of the user message.
+ *
+ * Unlike other WiMAX stack calls, this call can be used way early,
+ * even before wimax_dev_add() is called, as long as the
+ * wimax_dev->net_dev pointer is set to point to a proper
+ * net_dev. This is so that drivers can use it early in case they need
+ * to send stuff around or communicate with user space.
  */
 int wimax_msg_send(struct wimax_dev *wimax_dev, struct sk_buff *skb)
 {
-	struct device *dev = wimax_dev->net_dev->dev.parent;
+	struct device *dev = wimax_dev_to_dev(wimax_dev);
 	void *msg = skb->data;
 	size_t size = skb->len;
 	might_sleep();
@@ -309,8 +321,7 @@ int wimax_msg(struct wimax_dev *wimax_dev, const char *pipe_name,
 EXPORT_SYMBOL_GPL(wimax_msg);
 
 
-static const
-struct nla_policy wimax_gnl_msg_policy[WIMAX_GNL_ATTR_MAX + 1] = {
+static const struct nla_policy wimax_gnl_msg_policy[WIMAX_GNL_ATTR_MAX + 1] = {
 	[WIMAX_GNL_MSG_IFIDX] = {
 		.type = NLA_U32,
 	},
@@ -377,6 +388,8 @@ int wimax_gnl_doit_msg_from_user(struct sk_buff *skb, struct genl_info *info)
 	}
 	mutex_lock(&wimax_dev->mutex);
 	result = wimax_dev_is_ready(wimax_dev);
+	if (result == -ENOMEDIUM)
+		result = 0;
 	if (result < 0)
 		goto error_not_ready;
 	result = -ENOSYS;

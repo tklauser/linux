@@ -32,9 +32,6 @@ MODULE_LICENSE("GPL");
 struct sd {
 	struct gspca_dev gspca_dev;		/* !! must be the first item */
 
-	__u8 packet[ISO_MAX_SIZE + 128];
-				 /* !! no more than 128 ff in an ISO packet */
-
 	unsigned char brightness;
 	unsigned char contrast;
 	unsigned char colors;
@@ -71,7 +68,7 @@ static int sd_getcontrast(struct gspca_dev *gspca_dev, __s32 *val);
 static int sd_setcolors(struct gspca_dev *gspca_dev, __s32 val);
 static int sd_getcolors(struct gspca_dev *gspca_dev, __s32 *val);
 
-static struct ctrl sd_ctrls[] = {
+static const struct ctrl sd_ctrls[] = {
 	{
 	    {
 		.id      = V4L2_CID_BRIGHTNESS,
@@ -592,7 +589,7 @@ static void spca500_reinit(struct gspca_dev *gspca_dev)
 	int err;
 	__u8 Data;
 
-	/* some unknow command from Aiptek pocket dv and family300 */
+	/* some unknown command from Aiptek pocket dv and family300 */
 
 	reg_w(gspca_dev, 0x00, 0x0d01, 0x01);
 	reg_w(gspca_dev, 0x00, 0x0d03, 0x00);
@@ -673,6 +670,8 @@ static int sd_start(struct gspca_dev *gspca_dev)
 
 	/* create the JPEG header */
 	sd->jpeg_hdr = kmalloc(JPEG_HDR_SZ, GFP_KERNEL);
+	if (!sd->jpeg_hdr)
+		return -ENOMEM;
 	jpeg_define(sd->jpeg_hdr, gspca_dev->height, gspca_dev->width,
 			0x22);		/* JPEG 411 */
 	jpeg_set_qual(sd->jpeg_hdr, sd->quality);
@@ -900,13 +899,11 @@ static void sd_stop0(struct gspca_dev *gspca_dev)
 }
 
 static void sd_pkt_scan(struct gspca_dev *gspca_dev,
-			struct gspca_frame *frame,	/* target */
-			__u8 *data,			/* isoc packet */
+			u8 *data,			/* isoc packet */
 			int len)			/* iso packet length */
 {
 	struct sd *sd = (struct sd *) gspca_dev;
 	int i;
-	__u8 *s, *d;
 	static __u8 ffd9[] = {0xff, 0xd9};
 
 /* frames are jpeg 4.1.1 without 0xff escape */
@@ -915,11 +912,11 @@ static void sd_pkt_scan(struct gspca_dev *gspca_dev,
 /*			gspca_dev->last_packet_type = DISCARD_PACKET; */
 			return;
 		}
-		frame = gspca_frame_add(gspca_dev, LAST_PACKET, frame,
+		gspca_frame_add(gspca_dev, LAST_PACKET,
 					ffd9, 2);
 
 		/* put the JPEG header in the new frame */
-		gspca_frame_add(gspca_dev, FIRST_PACKET, frame,
+		gspca_frame_add(gspca_dev, FIRST_PACKET,
 			sd->jpeg_hdr, JPEG_HDR_SZ);
 
 		data += SPCA500_OFFSET_DATA;
@@ -930,22 +927,19 @@ static void sd_pkt_scan(struct gspca_dev *gspca_dev,
 	}
 
 	/* add 0x00 after 0xff */
-	for (i = len; --i >= 0; )
-		if (data[i] == 0xff)
-			break;
-	if (i < 0) {			/* no 0xff */
-		gspca_frame_add(gspca_dev, INTER_PACKET, frame, data, len);
-		return;
-	}
-	s = data;
-	d = sd->packet;
-	for (i = 0; i < len; i++) {
-		*d++ = *s++;
-		if (s[-1] == 0xff)
-			*d++ = 0x00;
-	}
-	gspca_frame_add(gspca_dev, INTER_PACKET, frame,
-			sd->packet, d - sd->packet);
+	i = 0;
+	do {
+		if (data[i] == 0xff) {
+			gspca_frame_add(gspca_dev, INTER_PACKET,
+					data, i + 1);
+			len -= i;
+			data += i;
+			*data = 0x00;
+			i = 0;
+		}
+		i++;
+	} while (i < len);
+	gspca_frame_add(gspca_dev, INTER_PACKET, data, len);
 }
 
 static void setbrightness(struct gspca_dev *gspca_dev)
@@ -1053,7 +1047,7 @@ static int sd_get_jcomp(struct gspca_dev *gspca_dev,
 }
 
 /* sub-driver description */
-static struct sd_desc sd_desc = {
+static const struct sd_desc sd_desc = {
 	.name = MODULE_NAME,
 	.ctrls = sd_ctrls,
 	.nctrls = ARRAY_SIZE(sd_ctrls),

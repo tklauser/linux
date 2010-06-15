@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2004 - 2009 rt2x00 SourceForge Project
+	Copyright (C) 2004 - 2009 Ivo van Doorn <IvDoorn@gmail.com>
 	<http://rt2x00.serialmonkey.com>
 
 	This program is free software; you can redistribute it and/or modify
@@ -37,7 +37,7 @@
 
 /*
  * Signal information.
- * Defaul offset is required for RSSI <-> dBm conversion.
+ * Default offset is required for RSSI <-> dBm conversion.
  */
 #define DEFAULT_RSSI_OFFSET		120
 
@@ -142,6 +142,8 @@ struct hw_pairwise_ta_entry {
  * MAC_CSR0: ASIC revision number.
  */
 #define MAC_CSR0			0x3000
+#define MAC_CSR0_REVISION		FIELD32(0x0000000f)
+#define MAC_CSR0_CHIPSET		FIELD32(0x000ffff0)
 
 /*
  * MAC_CSR1: System control register.
@@ -809,7 +811,7 @@ struct hw_pairwise_ta_entry {
 
 /*
  * EEPROM antenna.
- * ANTENNA_NUM: Number of antenna's.
+ * ANTENNA_NUM: Number of antennas.
  * TX_DEFAULT: Default antenna 0: diversity, 1: A, 2: B.
  * RX_DEFAULT: Default antenna 0: diversity, 1: A, 2: B.
  * FRAME_TYPE: 0: DPDT , 1: SPDT , noted this bit is valid for g only.
@@ -1058,7 +1060,7 @@ struct hw_pairwise_ta_entry {
 #define RXD_W5_RESERVED			FIELD32(0xffffffff)
 
 /*
- * Macro's for converting txpower from EEPROM to mac80211 value
+ * Macros for converting txpower from EEPROM to mac80211 value
  * and from mac80211 value to register value.
  */
 #define MIN_TXPOWER	0

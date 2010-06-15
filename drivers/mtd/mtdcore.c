@@ -2,12 +2,14 @@
  * Core registration and callback routines for MTD
  * drivers and users.
  *
+ * bdi bits are:
+ * Copyright © 2006 Red Hat, Inc. All Rights Reserved.
+ * Written by David Howells (dhowells@redhat.com)
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/ptrace.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/timer.h>
 #include <linux/major.h>
@@ -17,14 +19,49 @@
 #include <linux/init.h>
 #include <linux/mtd/compatmac.h>
 #include <linux/proc_fs.h>
+#include <linux/backing-dev.h>
 
 #include <linux/mtd/mtd.h>
-#include "internal.h"
 
 #include "mtdcore.h"
+/*
+ * backing device capabilities for non-mappable devices (such as NAND flash)
+ * - permits private mappings, copies are taken of the data
+ */
+struct backing_dev_info mtd_bdi_unmappable = {
+	.capabilities	= BDI_CAP_MAP_COPY,
+};
 
+/*
+ * backing device capabilities for R/O mappable devices (such as ROM)
+ * - permits private mappings, copies are taken of the data
+ * - permits non-writable shared mappings
+ */
+struct backing_dev_info mtd_bdi_ro_mappable = {
+	.capabilities	= (BDI_CAP_MAP_COPY | BDI_CAP_MAP_DIRECT |
+			   BDI_CAP_EXEC_MAP | BDI_CAP_READ_MAP),
+};
 
-static struct class *mtd_class;
+/*
+ * backing device capabilities for writable mappable devices (such as RAM)
+ * - permits private mappings, copies are taken of the data
+ * - permits non-writable shared mappings
+ */
+struct backing_dev_info mtd_bdi_rw_mappable = {
+	.capabilities	= (BDI_CAP_MAP_COPY | BDI_CAP_MAP_DIRECT |
+			   BDI_CAP_EXEC_MAP | BDI_CAP_READ_MAP |
+			   BDI_CAP_WRITE_MAP),
+};
+
+static int mtd_cls_suspend(struct device *dev, pm_message_t state);
+static int mtd_cls_resume(struct device *dev);
+
+static struct class mtd_class = {
+	.name = "mtd",
+	.owner = THIS_MODULE,
+	.suspend = mtd_cls_suspend,
+	.resume = mtd_cls_resume,
+};
 
 /* These are exported solely for the purpose of mtd_blkdevs.c. You
    should not use them for _anything_ else */
@@ -52,7 +89,26 @@ static void mtd_release(struct device *dev)
 
 	/* remove /dev/mtdXro node if needed */
 	if (index)
-		device_destroy(mtd_class, index + 1);
+		device_destroy(&mtd_class, index + 1);
+}
+
+static int mtd_cls_suspend(struct device *dev, pm_message_t state)
+{
+	struct mtd_info *mtd = dev_to_mtd(dev);
+
+	if (mtd && mtd->suspend)
+		return mtd->suspend(mtd);
+	else
+		return 0;
+}
+
+static int mtd_cls_resume(struct device *dev)
+{
+	struct mtd_info *mtd = dev_to_mtd(dev);
+	
+	if (mtd && mtd->resume)
+		mtd->resume(mtd);
+	return 0;
 }
 
 static ssize_t mtd_type_show(struct device *dev,
@@ -187,11 +243,11 @@ static struct attribute *mtd_attrs[] = {
 	NULL,
 };
 
-struct attribute_group mtd_group = {
+static struct attribute_group mtd_group = {
 	.attrs		= mtd_attrs,
 };
 
-struct attribute_group *mtd_groups[] = {
+static const struct attribute_group *mtd_groups[] = {
 	&mtd_group,
 	NULL,
 };
@@ -269,16 +325,17 @@ int add_mtd_device(struct mtd_info *mtd)
 			 * physical device.
 			 */
 			mtd->dev.type = &mtd_devtype;
-			mtd->dev.class = mtd_class;
+			mtd->dev.class = &mtd_class;
 			mtd->dev.devt = MTD_DEVT(i);
 			dev_set_name(&mtd->dev, "mtd%d", i);
+			dev_set_drvdata(&mtd->dev, mtd);
 			if (device_register(&mtd->dev) != 0) {
 				mtd_table[i] = NULL;
 				break;
 			}
 
 			if (MTD_DEVT(i))
-				device_create(mtd_class, mtd->dev.parent,
+				device_create(&mtd_class, mtd->dev.parent,
 						MTD_DEVT(i) + 1,
 						NULL, "mtd%dro", i);
 
@@ -420,7 +477,7 @@ struct mtd_info *get_mtd_device(struct mtd_info *mtd, int num)
 		for (i=0; i< MAX_MTD_DEVICES; i++)
 			if (mtd_table[i] == mtd)
 				ret = mtd_table[i];
-	} else if (num < MAX_MTD_DEVICES) {
+	} else if (num >= 0 && num < MAX_MTD_DEVICES) {
 		ret = mtd_table[num];
 		if (mtd && mtd != ret)
 			ret = NULL;
@@ -602,19 +659,55 @@ done:
 /*====================================================================*/
 /* Init code */
 
+static int __init mtd_bdi_init(struct backing_dev_info *bdi, const char *name)
+{
+	int ret;
+
+	ret = bdi_init(bdi);
+	if (!ret)
+		ret = bdi_register(bdi, NULL, name);
+
+	if (ret)
+		bdi_destroy(bdi);
+
+	return ret;
+}
+
 static int __init init_mtd(void)
 {
-	mtd_class = class_create(THIS_MODULE, "mtd");
+	int ret;
 
-	if (IS_ERR(mtd_class)) {
-		pr_err("Error creating mtd class.\n");
-		return PTR_ERR(mtd_class);
-	}
+	ret = class_register(&mtd_class);
+	if (ret)
+		goto err_reg;
+
+	ret = mtd_bdi_init(&mtd_bdi_unmappable, "mtd-unmap");
+	if (ret)
+		goto err_bdi1;
+
+	ret = mtd_bdi_init(&mtd_bdi_ro_mappable, "mtd-romap");
+	if (ret)
+		goto err_bdi2;
+
+	ret = mtd_bdi_init(&mtd_bdi_rw_mappable, "mtd-rwmap");
+	if (ret)
+		goto err_bdi3;
+
 #ifdef CONFIG_PROC_FS
 	if ((proc_mtd = create_proc_entry( "mtd", 0, NULL )))
 		proc_mtd->read_proc = mtd_read_proc;
 #endif /* CONFIG_PROC_FS */
 	return 0;
+
+err_bdi3:
+	bdi_destroy(&mtd_bdi_ro_mappable);
+err_bdi2:
+	bdi_destroy(&mtd_bdi_unmappable);
+err_bdi1:
+	class_unregister(&mtd_class);
+err_reg:
+	pr_err("Error registering mtd class or bdi: %d\n", ret);
+	return ret;
 }
 
 static void __exit cleanup_mtd(void)
@@ -623,7 +716,10 @@ static void __exit cleanup_mtd(void)
         if (proc_mtd)
 		remove_proc_entry( "mtd", NULL);
 #endif /* CONFIG_PROC_FS */
-	class_destroy(mtd_class);
+	class_unregister(&mtd_class);
+	bdi_destroy(&mtd_bdi_unmappable);
+	bdi_destroy(&mtd_bdi_ro_mappable);
+	bdi_destroy(&mtd_bdi_rw_mappable);
 }
 
 module_init(init_mtd);

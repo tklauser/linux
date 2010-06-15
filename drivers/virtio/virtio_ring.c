@@ -20,24 +20,51 @@
 #include <linux/virtio_ring.h>
 #include <linux/virtio_config.h>
 #include <linux/device.h>
+#include <linux/slab.h>
+
+/* virtio guest is communicating with a virtual "device" that actually runs on
+ * a host processor.  Memory barriers are used to control SMP effects. */
+#ifdef CONFIG_SMP
+/* Where possible, use SMP barriers which are more lightweight than mandatory
+ * barriers, because mandatory barriers control MMIO effects on accesses
+ * through relaxed memory I/O windows (which virtio does not use). */
+#define virtio_mb() smp_mb()
+#define virtio_rmb() smp_rmb()
+#define virtio_wmb() smp_wmb()
+#else
+/* We must force memory ordering even if guest is UP since host could be
+ * running on another CPU, but SMP barriers are defined to barrier() in that
+ * configuration. So fall back to mandatory barriers instead. */
+#define virtio_mb() mb()
+#define virtio_rmb() rmb()
+#define virtio_wmb() wmb()
+#endif
 
 #ifdef DEBUG
 /* For development, we want to crash whenever the ring is screwed. */
-#define BAD_RING(_vq, fmt...)			\
-	do { dev_err(&(_vq)->vq.vdev->dev, fmt); BUG(); } while(0)
+#define BAD_RING(_vq, fmt, args...)				\
+	do {							\
+		dev_err(&(_vq)->vq.vdev->dev,			\
+			"%s:"fmt, (_vq)->vq.name, ##args);	\
+		BUG();						\
+	} while (0)
 /* Caller is supposed to guarantee no reentry. */
 #define START_USE(_vq)						\
 	do {							\
 		if ((_vq)->in_use)				\
-			panic("in_use = %i\n", (_vq)->in_use);	\
+			panic("%s:in_use = %i\n",		\
+			      (_vq)->vq.name, (_vq)->in_use);	\
 		(_vq)->in_use = __LINE__;			\
-		mb();						\
-	} while(0)
+	} while (0)
 #define END_USE(_vq) \
-	do { BUG_ON(!(_vq)->in_use); (_vq)->in_use = 0; mb(); } while(0)
+	do { BUG_ON(!(_vq)->in_use); (_vq)->in_use = 0; } while(0)
 #else
-#define BAD_RING(_vq, fmt...)			\
-	do { dev_err(&_vq->vq.vdev->dev, fmt); (_vq)->broken = true; } while(0)
+#define BAD_RING(_vq, fmt, args...)				\
+	do {							\
+		dev_err(&_vq->vq.vdev->dev,			\
+			"%s:"fmt, (_vq)->vq.name, ##args);	\
+		(_vq)->broken = true;				\
+	} while (0)
 #define START_USE(vq)
 #define END_USE(vq)
 #endif
@@ -51,6 +78,9 @@ struct vring_virtqueue
 
 	/* Other side has made a mess, don't try any more. */
 	bool broken;
+
+	/* Host supports indirect buffers */
+	bool indirect;
 
 	/* Number of free buffers */
 	unsigned int num_free;
@@ -76,6 +106,55 @@ struct vring_virtqueue
 
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
 
+/* Set up an indirect table of descriptors and add it to the queue. */
+static int vring_add_indirect(struct vring_virtqueue *vq,
+			      struct scatterlist sg[],
+			      unsigned int out,
+			      unsigned int in)
+{
+	struct vring_desc *desc;
+	unsigned head;
+	int i;
+
+	desc = kmalloc((out + in) * sizeof(struct vring_desc), GFP_ATOMIC);
+	if (!desc)
+		return vq->vring.num;
+
+	/* Transfer entries from the sg list into the indirect page */
+	for (i = 0; i < out; i++) {
+		desc[i].flags = VRING_DESC_F_NEXT;
+		desc[i].addr = sg_phys(sg);
+		desc[i].len = sg->length;
+		desc[i].next = i+1;
+		sg++;
+	}
+	for (; i < (out + in); i++) {
+		desc[i].flags = VRING_DESC_F_NEXT|VRING_DESC_F_WRITE;
+		desc[i].addr = sg_phys(sg);
+		desc[i].len = sg->length;
+		desc[i].next = i+1;
+		sg++;
+	}
+
+	/* Last one doesn't continue. */
+	desc[i-1].flags &= ~VRING_DESC_F_NEXT;
+	desc[i-1].next = 0;
+
+	/* We're about to use a buffer */
+	vq->num_free--;
+
+	/* Use a single buffer which doesn't continue */
+	head = vq->free_head;
+	vq->vring.desc[head].flags = VRING_DESC_F_INDIRECT;
+	vq->vring.desc[head].addr = virt_to_phys(desc);
+	vq->vring.desc[head].len = i * sizeof(struct vring_desc);
+
+	/* Update free pointer */
+	vq->free_head = vq->vring.desc[head].next;
+
+	return head;
+}
+
 static int vring_add_buf(struct virtqueue *_vq,
 			 struct scatterlist sg[],
 			 unsigned int out,
@@ -85,11 +164,20 @@ static int vring_add_buf(struct virtqueue *_vq,
 	struct vring_virtqueue *vq = to_vvq(_vq);
 	unsigned int i, avail, head, uninitialized_var(prev);
 
+	START_USE(vq);
+
 	BUG_ON(data == NULL);
+
+	/* If the host supports indirect descriptor tables, and we have multiple
+	 * buffers, then go indirect. FIXME: tune this threshold */
+	if (vq->indirect && (out + in) > 1 && vq->num_free) {
+		head = vring_add_indirect(vq, sg, out, in);
+		if (head != vq->vring.num)
+			goto add_head;
+	}
+
 	BUG_ON(out + in > vq->vring.num);
 	BUG_ON(out + in == 0);
-
-	START_USE(vq);
 
 	if (vq->num_free < out + in) {
 		pr_debug("Can't add buf len %i - avail = %i\n",
@@ -127,6 +215,7 @@ static int vring_add_buf(struct virtqueue *_vq,
 	/* Update free pointer */
 	vq->free_head = i;
 
+add_head:
 	/* Set token. */
 	vq->data[head] = data;
 
@@ -137,7 +226,11 @@ static int vring_add_buf(struct virtqueue *_vq,
 
 	pr_debug("Added buffer head %i to %p\n", head, vq);
 	END_USE(vq);
-	return 0;
+
+	/* If we're indirect, we can fit many (assuming not OOM). */
+	if (vq->indirect)
+		return vq->num_free ? vq->vring.num : 0;
+	return vq->num_free;
 }
 
 static void vring_kick(struct virtqueue *_vq)
@@ -146,13 +239,13 @@ static void vring_kick(struct virtqueue *_vq)
 	START_USE(vq);
 	/* Descriptors and available array need to be set before we expose the
 	 * new available array entries. */
-	wmb();
+	virtio_wmb();
 
 	vq->vring.avail->idx += vq->num_added;
 	vq->num_added = 0;
 
 	/* Need to update avail index before checking if we should notify */
-	mb();
+	virtio_mb();
 
 	if (!(vq->vring.used->flags & VRING_USED_F_NO_NOTIFY))
 		/* Prod other side to tell it about changes. */
@@ -170,6 +263,11 @@ static void detach_buf(struct vring_virtqueue *vq, unsigned int head)
 
 	/* Put back on free list: find end */
 	i = head;
+
+	/* Free the indirect table */
+	if (vq->vring.desc[i].flags & VRING_DESC_F_INDIRECT)
+		kfree(phys_to_virt(vq->vring.desc[i].addr));
+
 	while (vq->vring.desc[i].flags & VRING_DESC_F_NEXT) {
 		i = vq->vring.desc[i].next;
 		vq->num_free++;
@@ -204,6 +302,9 @@ static void *vring_get_buf(struct virtqueue *_vq, unsigned int *len)
 		END_USE(vq);
 		return NULL;
 	}
+
+	/* Only get used array entries after they have been exposed by host. */
+	virtio_rmb();
 
 	i = vq->vring.used->ring[vq->last_used_idx%vq->vring.num].id;
 	*len = vq->vring.used->ring[vq->last_used_idx%vq->vring.num].len;
@@ -241,7 +342,7 @@ static bool vring_enable_cb(struct virtqueue *_vq)
 	/* We optimistically turn back on interrupts, then check if there was
 	 * more to do. */
 	vq->vring.avail->flags &= ~VRING_AVAIL_F_NO_INTERRUPT;
-	mb();
+	virtio_mb();
 	if (unlikely(more_used(vq))) {
 		END_USE(vq);
 		return false;
@@ -249,6 +350,30 @@ static bool vring_enable_cb(struct virtqueue *_vq)
 
 	END_USE(vq);
 	return true;
+}
+
+static void *vring_detach_unused_buf(struct virtqueue *_vq)
+{
+	struct vring_virtqueue *vq = to_vvq(_vq);
+	unsigned int i;
+	void *buf;
+
+	START_USE(vq);
+
+	for (i = 0; i < vq->vring.num; i++) {
+		if (!vq->data[i])
+			continue;
+		/* detach_buf clears data, so grab it now. */
+		buf = vq->data[i];
+		detach_buf(vq, i);
+		END_USE(vq);
+		return buf;
+	}
+	/* That should have freed everything. */
+	BUG_ON(vq->num_free != vq->vring.num);
+
+	END_USE(vq);
+	return NULL;
 }
 
 irqreturn_t vring_interrupt(int irq, void *_vq)
@@ -277,6 +402,7 @@ static struct virtqueue_ops vring_vq_ops = {
 	.kick = vring_kick,
 	.disable_cb = vring_disable_cb,
 	.enable_cb = vring_enable_cb,
+	.detach_unused_buf = vring_detach_unused_buf,
 };
 
 struct virtqueue *vring_new_virtqueue(unsigned int num,
@@ -284,7 +410,8 @@ struct virtqueue *vring_new_virtqueue(unsigned int num,
 				      struct virtio_device *vdev,
 				      void *pages,
 				      void (*notify)(struct virtqueue *),
-				      void (*callback)(struct virtqueue *))
+				      void (*callback)(struct virtqueue *),
+				      const char *name)
 {
 	struct vring_virtqueue *vq;
 	unsigned int i;
@@ -303,13 +430,17 @@ struct virtqueue *vring_new_virtqueue(unsigned int num,
 	vq->vq.callback = callback;
 	vq->vq.vdev = vdev;
 	vq->vq.vq_ops = &vring_vq_ops;
+	vq->vq.name = name;
 	vq->notify = notify;
 	vq->broken = false;
 	vq->last_used_idx = 0;
 	vq->num_added = 0;
+	list_add_tail(&vq->vq.list, &vdev->vqs);
 #ifdef DEBUG
 	vq->in_use = false;
 #endif
+
+	vq->indirect = virtio_has_feature(vdev, VIRTIO_RING_F_INDIRECT_DESC);
 
 	/* No callback?  Tell other side not to bother us. */
 	if (!callback)
@@ -318,8 +449,11 @@ struct virtqueue *vring_new_virtqueue(unsigned int num,
 	/* Put everything in free lists. */
 	vq->num_free = num;
 	vq->free_head = 0;
-	for (i = 0; i < num-1; i++)
+	for (i = 0; i < num-1; i++) {
 		vq->vring.desc[i].next = i+1;
+		vq->data[i] = NULL;
+	}
+	vq->data[i] = NULL;
 
 	return &vq->vq;
 }
@@ -327,6 +461,7 @@ EXPORT_SYMBOL_GPL(vring_new_virtqueue);
 
 void vring_del_virtqueue(struct virtqueue *vq)
 {
+	list_del(&vq->list);
 	kfree(to_vvq(vq));
 }
 EXPORT_SYMBOL_GPL(vring_del_virtqueue);
@@ -338,6 +473,8 @@ void vring_transport_features(struct virtio_device *vdev)
 
 	for (i = VIRTIO_TRANSPORT_F_START; i < VIRTIO_TRANSPORT_F_END; i++) {
 		switch (i) {
+		case VIRTIO_RING_F_INDIRECT_DESC:
+			break;
 		default:
 			/* We don't understand this bit. */
 			clear_bit(i, vdev->features);

@@ -184,7 +184,7 @@ MODULE_PARM_DESC(enable, "Enable the EMU10K1X soundcard.");
  * The hardware has 3 channels for playback and 1 for capture.
  *  - channel 0 is the front channel
  *  - channel 1 is the rear channel
- *  - channel 2 is the center/lfe chanel
+ *  - channel 2 is the center/lfe channel
  * Volume is controlled by the AC97 for the front and rear channels by
  * the PCM Playback Volume, Sigmatel Surround Playback Volume and 
  * Surround Playback Volume. The Sigmatel 4-Speaker Stereo switch affects
@@ -858,7 +858,6 @@ static int __devinit snd_emu10k1x_pcm(struct emu10k1x *emu, int device, struct s
 	}
 
 	pcm->info_flags = 0;
-	pcm->dev_subclass = SNDRV_PCM_SUBCLASS_GENERIC_MIX;
 	switch(device) {
 	case 0:
 		strcpy(pcm->name, "EMU10K1X Front");
@@ -1041,8 +1040,7 @@ static void snd_emu10k1x_proc_reg_write(struct snd_info_entry *entry,
 		if (sscanf(line, "%x %x %x", &reg, &channel_id, &val) != 3)
 			continue;
 
-		if ((reg < 0x49) && (reg >= 0) && (val <= 0xffffffff) 
-		    && (channel_id >= 0) && (channel_id <= 2) )
+		if (reg < 0x49 && val <= 0xffffffff && channel_id <= 2)
 			snd_emu10k1x_ptr_write(emu, reg, channel_id, val);
 	}
 }
@@ -1607,8 +1605,8 @@ static void __devexit snd_emu10k1x_remove(struct pci_dev *pci)
 }
 
 // PCI IDs
-static struct pci_device_id snd_emu10k1x_ids[] = {
-	{ 0x1102, 0x0006, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },	/* Dell OEM version (EMU10K1) */
+static DEFINE_PCI_DEVICE_TABLE(snd_emu10k1x_ids) = {
+	{ PCI_VDEVICE(CREATIVE, 0x0006), 0 },	/* Dell OEM version (EMU10K1) */
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, snd_emu10k1x_ids);

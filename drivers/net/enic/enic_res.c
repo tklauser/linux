@@ -66,21 +66,21 @@ int enic_get_vnic_config(struct enic *enic)
 	GET_CONFIG(wq_desc_count);
 	GET_CONFIG(rq_desc_count);
 	GET_CONFIG(mtu);
-	GET_CONFIG(intr_timer);
 	GET_CONFIG(intr_timer_type);
 	GET_CONFIG(intr_mode);
+	GET_CONFIG(intr_timer_usec);
 
 	c->wq_desc_count =
 		min_t(u32, ENIC_MAX_WQ_DESCS,
 		max_t(u32, ENIC_MIN_WQ_DESCS,
 		c->wq_desc_count));
-	c->wq_desc_count &= 0xfffffff0; /* must be aligned to groups of 16 */
+	c->wq_desc_count &= 0xffffffe0; /* must be aligned to groups of 32 */
 
 	c->rq_desc_count =
 		min_t(u32, ENIC_MAX_RQ_DESCS,
 		max_t(u32, ENIC_MIN_RQ_DESCS,
 		c->rq_desc_count));
-	c->rq_desc_count &= 0xfffffff0; /* must be aligned to groups of 16 */
+	c->rq_desc_count &= 0xffffffe0; /* must be aligned to groups of 32 */
 
 	if (c->mtu == 0)
 		c->mtu = 1500;
@@ -88,15 +88,17 @@ int enic_get_vnic_config(struct enic *enic)
 		max_t(u16, ENIC_MIN_MTU,
 		c->mtu));
 
-	c->intr_timer = min_t(u16, VNIC_INTR_TIMER_MAX, c->intr_timer);
+	c->intr_timer_usec = min_t(u32,
+		INTR_COALESCE_HW_TO_USEC(VNIC_INTR_TIMER_MAX),
+		c->intr_timer_usec);
 
 	printk(KERN_INFO PFX "vNIC MAC addr %pM wq/rq %d/%d\n",
 		enic->mac_addr, c->wq_desc_count, c->rq_desc_count);
 	printk(KERN_INFO PFX "vNIC mtu %d csum tx/rx %d/%d tso/lro %d/%d "
-		"intr timer %d\n",
+		"intr timer %d usec\n",
 		c->mtu, ENIC_SETTING(enic, TXCSUM),
 		ENIC_SETTING(enic, RXCSUM), ENIC_SETTING(enic, TSO),
-		ENIC_SETTING(enic, LRO), c->intr_timer);
+		ENIC_SETTING(enic, LRO), c->intr_timer_usec);
 
 	return 0;
 }
@@ -156,6 +158,22 @@ int enic_set_nic_cfg(struct enic *enic, u8 rss_default_cpu, u8 rss_hash_type,
 	return vnic_dev_cmd(enic->vdev, CMD_NIC_CFG, &a0, &a1, wait);
 }
 
+int enic_set_rss_key(struct enic *enic, dma_addr_t key_pa, u64 len)
+{
+	u64 a0 = (u64)key_pa, a1 = len;
+	int wait = 1000;
+
+	return vnic_dev_cmd(enic->vdev, CMD_RSS_KEY, &a0, &a1, wait);
+}
+
+int enic_set_rss_cpu(struct enic *enic, dma_addr_t cpu_pa, u64 len)
+{
+	u64 a0 = (u64)cpu_pa, a1 = len;
+	int wait = 1000;
+
+	return vnic_dev_cmd(enic->vdev, CMD_RSS_CPU, &a0, &a1, wait);
+}
+
 void enic_free_vnic_resources(struct enic *enic)
 {
 	unsigned int i;
@@ -172,11 +190,18 @@ void enic_free_vnic_resources(struct enic *enic)
 
 void enic_get_res_counts(struct enic *enic)
 {
-	enic->wq_count = vnic_dev_get_res_count(enic->vdev, RES_TYPE_WQ);
-	enic->rq_count = vnic_dev_get_res_count(enic->vdev, RES_TYPE_RQ);
-	enic->cq_count = vnic_dev_get_res_count(enic->vdev, RES_TYPE_CQ);
-	enic->intr_count = vnic_dev_get_res_count(enic->vdev,
-		RES_TYPE_INTR_CTRL);
+	enic->wq_count = min_t(int,
+		vnic_dev_get_res_count(enic->vdev, RES_TYPE_WQ),
+		ENIC_WQ_MAX);
+	enic->rq_count = min_t(int,
+		vnic_dev_get_res_count(enic->vdev, RES_TYPE_RQ),
+		ENIC_RQ_MAX);
+	enic->cq_count = min_t(int,
+		vnic_dev_get_res_count(enic->vdev, RES_TYPE_CQ),
+		ENIC_CQ_MAX);
+	enic->intr_count = min_t(int,
+		vnic_dev_get_res_count(enic->vdev, RES_TYPE_INTR_CTRL),
+		ENIC_INTR_MAX);
 
 	printk(KERN_INFO PFX "vNIC resources avail: "
 		"wq %d rq %d cq %d intr %d\n",
@@ -280,7 +305,7 @@ void enic_init_vnic_resources(struct enic *enic)
 
 	for (i = 0; i < enic->intr_count; i++) {
 		vnic_intr_init(&enic->intr[i],
-			enic->config.intr_timer,
+			INTR_COALESCE_USEC_TO_HW(enic->config.intr_timer_usec),
 			enic->config.intr_timer_type,
 			mask_on_assertion);
 	}

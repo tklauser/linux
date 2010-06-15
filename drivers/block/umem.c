@@ -40,13 +40,13 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
+#include <linux/gfp.h>
 #include <linux/ioctl.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/timer.h>
 #include <linux/pci.h>
-#include <linux/slab.h>
 #include <linux/dma-mapping.h>
 
 #include <linux/fcntl.h>        /* O_ACCMODE */
@@ -140,7 +140,6 @@ struct cardinfo {
 };
 
 static struct cardinfo cards[MM_MAXCARDS];
-static struct block_device_operations mm_fops;
 static struct timer_list battery_timer;
 
 static int num_cards;
@@ -789,7 +788,7 @@ static int mm_check_change(struct gendisk *disk)
 	return 0;
 }
 
-static struct block_device_operations mm_fops = {
+static const struct block_device_operations mm_fops = {
 	.owner		= THIS_MODULE,
 	.getgeo		= mm_getgeo,
 	.revalidate_disk = mm_revalidate,

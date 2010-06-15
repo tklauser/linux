@@ -40,6 +40,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/mm.h>
+#include <linux/slab.h>
 #include <net/sock.h>
 
 #include <asm/system.h>
@@ -1293,7 +1294,7 @@ static void rr_dump(struct net_device *dev)
 
 	printk("Error code 0x%x\n", readl(&regs->Fail1));
 
-	index = (((readl(&regs->EvtPrd) >> 8) & 0xff ) - 1) % EVT_RING_ENTRIES;
+	index = (((readl(&regs->EvtPrd) >> 8) & 0xff) - 1) % TX_RING_ENTRIES;
 	cons = rrpriv->dirty_tx;
 	printk("TX ring index %i, TX consumer %i\n",
 	       index, cons);
@@ -1401,7 +1402,8 @@ static int rr_close(struct net_device *dev)
 }
 
 
-static int rr_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t rr_start_xmit(struct sk_buff *skb,
+				 struct net_device *dev)
 {
 	struct rr_private *rrpriv = netdev_priv(dev);
 	struct rr_regs __iomem *regs = rrpriv->regs;
@@ -1425,7 +1427,7 @@ static int rr_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		if (!(new_skb = dev_alloc_skb(len + 8))) {
 			dev_kfree_skb(skb);
 			netif_wake_queue(dev);
-			return -EBUSY;
+			return NETDEV_TX_OK;
 		}
 		skb_reserve(new_skb, 8);
 		skb_put(new_skb, len);
@@ -1466,7 +1468,7 @@ static int rr_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	spin_unlock_irqrestore(&rrpriv->lock, flags);
 
 	dev->trans_start = jiffies;
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 
@@ -1687,7 +1689,7 @@ static int rr_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	}
 }
 
-static struct pci_device_id rr_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(rr_pci_tbl) = {
 	{ PCI_VENDOR_ID_ESSENTIAL, PCI_DEVICE_ID_ESSENTIAL_ROADRUNNER,
 		PCI_ANY_ID, PCI_ANY_ID, },
 	{ 0,}

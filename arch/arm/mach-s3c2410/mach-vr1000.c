@@ -1,6 +1,6 @@
 /* linux/arch/arm/mach-s3c2410/mach-vr1000.c
  *
- * Copyright (c) 2003-2005,2008 Simtec Electronics
+ * Copyright (c) 2003-2008 Simtec Electronics
  *   Ben Dooks <ben@simtec.co.uk>
  *
  * Machine support for Thorcom VR1000 board. Designed for Thorcom by
@@ -18,6 +18,7 @@
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <linux/dm9000.h>
 #include <linux/i2c.h>
 
@@ -48,6 +49,7 @@
 #include <plat/devs.h>
 #include <plat/cpu.h>
 #include <plat/iic.h>
+#include <plat/audio-simtec.h>
 
 #include "usb-simtec.h"
 #include "nor-simtec.h"
@@ -277,19 +279,19 @@ static struct platform_device vr1000_dm9k1 = {
 
 static struct s3c24xx_led_platdata vr1000_led1_pdata = {
 	.name		= "led1",
-	.gpio		= S3C2410_GPB0,
+	.gpio		= S3C2410_GPB(0),
 	.def_trigger	= "",
 };
 
 static struct s3c24xx_led_platdata vr1000_led2_pdata = {
 	.name		= "led2",
-	.gpio		= S3C2410_GPB1,
+	.gpio		= S3C2410_GPB(1),
 	.def_trigger	= "",
 };
 
 static struct s3c24xx_led_platdata vr1000_led3_pdata = {
 	.name		= "led3",
-	.gpio		= S3C2410_GPB2,
+	.gpio		= S3C2410_GPB(2),
 	.def_trigger	= "",
 };
 
@@ -332,7 +334,7 @@ static struct i2c_board_info vr1000_i2c_devs[] __initdata = {
 /* devices for this board */
 
 static struct platform_device *vr1000_devices[] __initdata = {
-	&s3c_device_usb,
+	&s3c_device_ohci,
 	&s3c_device_lcd,
 	&s3c_device_wdt,
 	&s3c_device_i2c0,
@@ -355,8 +357,8 @@ static struct clk *vr1000_clocks[] __initdata = {
 
 static void vr1000_power_off(void)
 {
-	s3c2410_gpio_cfgpin(S3C2410_GPB9, S3C2410_GPB9_OUTP);
-	s3c2410_gpio_setpin(S3C2410_GPB9, 1);
+	s3c2410_gpio_cfgpin(S3C2410_GPB(9), S3C2410_GPIO_OUTPUT);
+	s3c2410_gpio_setpin(S3C2410_GPB(9), 1);
 }
 
 static void __init vr1000_map_io(void)
@@ -392,6 +394,7 @@ static void __init vr1000_init(void)
 				ARRAY_SIZE(vr1000_i2c_devs));
 
 	nor_simtec_init();
+	simtec_audio_add(NULL, true, NULL);
 }
 
 MACHINE_START(VR1000, "Thorcom-VR1000")

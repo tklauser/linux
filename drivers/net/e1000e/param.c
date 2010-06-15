@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -427,6 +427,8 @@ void __devinit e1000e_check_options(struct e1000_adapter *adapter)
 			e1000_validate_option(&crc_stripping, &opt, adapter);
 			if (crc_stripping == OPTION_ENABLED)
 				adapter->flags2 |= FLAG2_CRC_STRIPPING;
+		} else {
+			adapter->flags2 |= FLAG2_CRC_STRIPPING;
 		}
 	}
 	{ /* Kumeran Lock Loss Workaround */

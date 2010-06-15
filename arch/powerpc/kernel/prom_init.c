@@ -44,10 +44,7 @@
 #include <asm/sections.h>
 #include <asm/machdep.h>
 
-#ifdef CONFIG_LOGO_LINUX_CLUT224
 #include <linux/linux_logo.h>
-extern const struct linux_logo logo_linux_clut224;
-#endif
 
 /*
  * Properties whose value is longer than this get excluded from our
@@ -192,6 +189,8 @@ static unsigned long __initdata prom_tce_alloc_end;
 static int __initdata of_platform;
 
 static char __initdata prom_cmd_line[COMMAND_LINE_SIZE];
+
+static unsigned long __initdata prom_memory_limit;
 
 static unsigned long __initdata alloc_top;
 static unsigned long __initdata alloc_top_high;
@@ -487,6 +486,67 @@ static int __init prom_setprop(phandle node, const char *nodename,
 	return call_prom("interpret", 1, 1, (u32)(unsigned long) cmd);
 }
 
+/* We can't use the standard versions because of RELOC headaches. */
+#define isxdigit(c)	(('0' <= (c) && (c) <= '9') \
+			 || ('a' <= (c) && (c) <= 'f') \
+			 || ('A' <= (c) && (c) <= 'F'))
+
+#define isdigit(c)	('0' <= (c) && (c) <= '9')
+#define islower(c)	('a' <= (c) && (c) <= 'z')
+#define toupper(c)	(islower(c) ? ((c) - 'a' + 'A') : (c))
+
+unsigned long prom_strtoul(const char *cp, const char **endp)
+{
+	unsigned long result = 0, base = 10, value;
+
+	if (*cp == '0') {
+		base = 8;
+		cp++;
+		if (toupper(*cp) == 'X') {
+			cp++;
+			base = 16;
+		}
+	}
+
+	while (isxdigit(*cp) &&
+	       (value = isdigit(*cp) ? *cp - '0' : toupper(*cp) - 'A' + 10) < base) {
+		result = result * base + value;
+		cp++;
+	}
+
+	if (endp)
+		*endp = cp;
+
+	return result;
+}
+
+unsigned long prom_memparse(const char *ptr, const char **retptr)
+{
+	unsigned long ret = prom_strtoul(ptr, retptr);
+	int shift = 0;
+
+	/*
+	 * We can't use a switch here because GCC *may* generate a
+	 * jump table which won't work, because we're not running at
+	 * the address we're linked at.
+	 */
+	if ('G' == **retptr || 'g' == **retptr)
+		shift = 30;
+
+	if ('M' == **retptr || 'm' == **retptr)
+		shift = 20;
+
+	if ('K' == **retptr || 'k' == **retptr)
+		shift = 10;
+
+	if (shift) {
+		ret <<= shift;
+		(*retptr)++;
+	}
+
+	return ret;
+}
+
 /*
  * Early parsing of the command line passed to the kernel, used for
  * "mem=x" and the options that affect the iommu
@@ -494,9 +554,8 @@ static int __init prom_setprop(phandle node, const char *nodename,
 static void __init early_cmdline_parse(void)
 {
 	struct prom_t *_prom = &RELOC(prom);
-#ifdef CONFIG_PPC64
 	const char *opt;
-#endif
+
 	char *p;
 	int l = 0;
 
@@ -524,6 +583,15 @@ static void __init early_cmdline_parse(void)
 			RELOC(prom_iommu_force_on) = 1;
 	}
 #endif
+	opt = strstr(RELOC(prom_cmd_line), RELOC("mem="));
+	if (opt) {
+		opt += 4;
+		RELOC(prom_memory_limit) = prom_memparse(opt, (const char **)&opt);
+#ifdef CONFIG_PPC64
+		/* Align to 16 MB == size of ppc64 large page */
+		RELOC(prom_memory_limit) = ALIGN(RELOC(prom_memory_limit), 0x1000000);
+#endif
+	}
 }
 
 #ifdef CONFIG_PPC_PSERIES
@@ -585,6 +653,10 @@ static void __init early_cmdline_parse(void)
 #else
 #define OV5_CMO			0x00
 #endif
+#define OV5_TYPE1_AFFINITY	0x80	/* Type 1 NUMA affinity */
+
+/* Option Vector 6: IBM PAPR hints */
+#define OV6_LINUX		0x02	/* Linux is our OS */
 
 /*
  * The architecture vector has an array of PVR mask/value pairs,
@@ -597,7 +669,7 @@ static unsigned char ibm_architecture_vec[] = {
 	W(0xffffffff), W(0x0f000003),	/* all 2.06-compliant */
 	W(0xffffffff), W(0x0f000002),	/* all 2.05-compliant */
 	W(0xfffffffe), W(0x0f000001),	/* all 2.04-compliant and earlier */
-	5 - 1,				/* 5 option vectors */
+	6 - 1,				/* 6 option vectors */
 
 	/* option vector 1: processor architectures supported */
 	3 - 2,				/* length */
@@ -629,12 +701,29 @@ static unsigned char ibm_architecture_vec[] = {
 	0,				/* don't halt */
 
 	/* option vector 5: PAPR/OF options */
-	5 - 2,				/* length */
+	13 - 2,				/* length */
 	0,				/* don't ignore, don't halt */
 	OV5_LPAR | OV5_SPLPAR | OV5_LARGE_PAGES | OV5_DRCONF_MEMORY |
 	OV5_DONATE_DEDICATE_CPU | OV5_MSI,
 	0,
 	OV5_CMO,
+	OV5_TYPE1_AFFINITY,
+	0,
+	0,
+	0,
+	/* WARNING: The offset of the "number of cores" field below
+	 * must match by the macro below. Update the definition if
+	 * the structure layout changes.
+	 */
+#define IBM_ARCH_VEC_NRCORES_OFFSET	100
+	W(NR_CPUS),			/* number of cores supported */
+
+	/* option vector 6: IBM PAPR hints */
+	4 - 2,				/* length */
+	0,
+	0,
+	OV6_LINUX,
+
 };
 
 /* Old method - ELF header with PT_NOTE sections */
@@ -724,15 +813,72 @@ static struct fake_elf {
 	}
 };
 
+static int __init prom_count_smt_threads(void)
+{
+	phandle node;
+	char type[64];
+	unsigned int plen;
+
+	/* Pick up th first CPU node we can find */
+	for (node = 0; prom_next_node(&node); ) {
+		type[0] = 0;
+		prom_getprop(node, "device_type", type, sizeof(type));
+
+		if (strcmp(type, RELOC("cpu")))
+			continue;
+		/*
+		 * There is an entry for each smt thread, each entry being
+		 * 4 bytes long.  All cpus should have the same number of
+		 * smt threads, so return after finding the first.
+		 */
+		plen = prom_getproplen(node, "ibm,ppc-interrupt-server#s");
+		if (plen == PROM_ERROR)
+			break;
+		plen >>= 2;
+		prom_debug("Found 0x%x smt threads per core\n", (unsigned long)plen);
+
+		/* Sanity check */
+		if (plen < 1 || plen > 64) {
+			prom_printf("Threads per core 0x%x out of bounds, assuming 1\n",
+				    (unsigned long)plen);
+			return 1;
+		}
+		return plen;
+	}
+	prom_debug("No threads found, assuming 1 per core\n");
+
+	return 1;
+
+}
+
+
 static void __init prom_send_capabilities(void)
 {
 	ihandle elfloader, root;
 	prom_arg_t ret;
+	u32 *cores;
 
 	root = call_prom("open", 1, 1, ADDR("/"));
 	if (root != 0) {
+		/* We need to tell the FW about the number of cores we support.
+		 *
+		 * To do that, we count the number of threads on the first core
+		 * (we assume this is the same for all cores) and use it to
+		 * divide NR_CPUS.
+		 */
+		cores = (u32 *)PTRRELOC(&ibm_architecture_vec[IBM_ARCH_VEC_NRCORES_OFFSET]);
+		if (*cores != NR_CPUS) {
+			prom_printf("WARNING ! "
+				    "ibm_architecture_vec structure inconsistent: 0x%x !\n",
+				    *cores);
+		} else {
+			*cores = NR_CPUS / prom_count_smt_threads();
+			prom_printf("Max number of cores passed to firmware: 0x%x\n",
+				    (unsigned long)*cores);
+		}
+
 		/* try calling the ibm,client-architecture-support method */
-		prom_printf("Calling ibm,client-architecture...");
+		prom_printf("Calling ibm,client-architecture-support...");
 		if (call_prom_ret("call-method", 3, 2, &ret,
 				  ADDR("ibm,client-architecture-support"),
 				  root,
@@ -746,6 +892,7 @@ static void __init prom_send_capabilities(void)
 			return;
 		}
 		call_prom("close", 1, 0, root);
+		prom_printf(" not implemented\n");
 	}
 
 	/* no ibm,client-architecture-support call, try the old way */
@@ -1030,6 +1177,29 @@ static void __init prom_init_mem(void)
 	}
 
 	/*
+	 * If prom_memory_limit is set we reduce the upper limits *except* for
+	 * alloc_top_high. This must be the real top of RAM so we can put
+	 * TCE's up there.
+	 */
+
+	RELOC(alloc_top_high) = RELOC(ram_top);
+
+	if (RELOC(prom_memory_limit)) {
+		if (RELOC(prom_memory_limit) <= RELOC(alloc_bottom)) {
+			prom_printf("Ignoring mem=%x <= alloc_bottom.\n",
+				RELOC(prom_memory_limit));
+			RELOC(prom_memory_limit) = 0;
+		} else if (RELOC(prom_memory_limit) >= RELOC(ram_top)) {
+			prom_printf("Ignoring mem=%x >= ram_top.\n",
+				RELOC(prom_memory_limit));
+			RELOC(prom_memory_limit) = 0;
+		} else {
+			RELOC(ram_top) = RELOC(prom_memory_limit);
+			RELOC(rmo_top) = min(RELOC(rmo_top), RELOC(prom_memory_limit));
+		}
+	}
+
+	/*
 	 * Setup our top alloc point, that is top of RMO or top of
 	 * segment 0 when running non-LPAR.
 	 * Some RS64 machines have buggy firmware where claims up at
@@ -1044,6 +1214,7 @@ static void __init prom_init_mem(void)
 	RELOC(alloc_top_high) = RELOC(ram_top);
 
 	prom_printf("memory layout at init:\n");
+	prom_printf("  memory_limit : %x (16 MB aligned)\n", RELOC(prom_memory_limit));
 	prom_printf("  alloc_bottom : %x\n", RELOC(alloc_bottom));
 	prom_printf("  alloc_top    : %x\n", RELOC(alloc_top));
 	prom_printf("  alloc_top_hi : %x\n", RELOC(alloc_top_high));
@@ -1262,10 +1433,6 @@ static void __init prom_initialize_tce_table(void)
  *
  * -- Cort
  */
-extern char __secondary_hold;
-extern unsigned long __secondary_hold_spinloop;
-extern unsigned long __secondary_hold_acknowledge;
-
 /*
  * We want to reference the copy of __secondary_hold_* in the
  * 0 - 0x100 address range
@@ -1950,8 +2117,47 @@ static void __init fixup_device_tree_maple(void)
 	prom_setprop(isa, name, "ranges",
 			isa_ranges, sizeof(isa_ranges));
 }
+
+#define CPC925_MC_START		0xf8000000
+#define CPC925_MC_LENGTH	0x1000000
+/* The values for memory-controller don't have right number of cells */
+static void __init fixup_device_tree_maple_memory_controller(void)
+{
+	phandle mc;
+	u32 mc_reg[4];
+	char *name = "/hostbridge@f8000000";
+	struct prom_t *_prom = &RELOC(prom);
+	u32 ac, sc;
+
+	mc = call_prom("finddevice", 1, 1, ADDR(name));
+	if (!PHANDLE_VALID(mc))
+		return;
+
+	if (prom_getproplen(mc, "reg") != 8)
+		return;
+
+	prom_getprop(_prom->root, "#address-cells", &ac, sizeof(ac));
+	prom_getprop(_prom->root, "#size-cells", &sc, sizeof(sc));
+	if ((ac != 2) || (sc != 2))
+		return;
+
+	if (prom_getprop(mc, "reg", mc_reg, sizeof(mc_reg)) == PROM_ERROR)
+		return;
+
+	if (mc_reg[0] != CPC925_MC_START || mc_reg[1] != CPC925_MC_LENGTH)
+		return;
+
+	prom_printf("Fixing up bogus hostbridge on Maple...\n");
+
+	mc_reg[0] = 0x0;
+	mc_reg[1] = CPC925_MC_START;
+	mc_reg[2] = 0x0;
+	mc_reg[3] = CPC925_MC_LENGTH;
+	prom_setprop(mc, name, "reg", mc_reg, sizeof(mc_reg));
+}
 #else
 #define fixup_device_tree_maple()
+#define fixup_device_tree_maple_memory_controller()
 #endif
 
 #ifdef CONFIG_PPC_CHRP
@@ -2192,6 +2398,7 @@ static void __init fixup_device_tree_efika(void)
 static void __init fixup_device_tree(void)
 {
 	fixup_device_tree_maple();
+	fixup_device_tree_maple_memory_controller();
 	fixup_device_tree_chrp();
 	fixup_device_tree_pmac();
 	fixup_device_tree_efika();
@@ -2362,6 +2569,10 @@ unsigned long __init prom_init(unsigned long r3, unsigned long r4,
 	/*
 	 * Fill in some infos for use by the kernel later on
 	 */
+	if (RELOC(prom_memory_limit))
+		prom_setprop(_prom->chosen, "/chosen", "linux,memory-limit",
+			     &RELOC(prom_memory_limit),
+			     sizeof(prom_memory_limit));
 #ifdef CONFIG_PPC64
 	if (RELOC(prom_iommu_off))
 		prom_setprop(_prom->chosen, "/chosen", "linux,iommu-off",

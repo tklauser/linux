@@ -10,21 +10,8 @@
 #include <linux/compiler.h>
 #include <linux/linkage.h>
 #include <asm/types.h>
-#include <asm/ptrace.h>
 
 #define AT_VECTOR_SIZE_ARCH 5 /* entries in ARCH_DLINFO */
-
-#if defined(CONFIG_CPU_SH4A) || defined(CONFIG_CPU_SH5)
-#define __icbi()			\
-{					\
-	unsigned long __addr;		\
-	__addr = 0xa8000000;		\
-	__asm__ __volatile__(		\
-		"icbi   %0\n\t"		\
-		: /* no output */	\
-		: "m" (__m(__addr)));	\
-}
-#endif
 
 /*
  * A brief note on ctrl_barrier(), the control register write barrier.
@@ -44,7 +31,7 @@
 #define mb()		__asm__ __volatile__ ("synco": : :"memory")
 #define rmb()		mb()
 #define wmb()		__asm__ __volatile__ ("synco": : :"memory")
-#define ctrl_barrier()	__icbi()
+#define ctrl_barrier()	__icbi(PAGE_OFFSET)
 #define read_barrier_depends()	do { } while(0)
 #else
 #define mb()		__asm__ __volatile__ ("": : :"memory")
@@ -126,6 +113,8 @@ static inline unsigned long __cmpxchg(volatile void * ptr, unsigned long old,
 				    (unsigned long)_n_, sizeof(*(ptr))); \
   })
 
+struct pt_regs;
+
 extern void die(const char *str, struct pt_regs *regs, long err) __attribute__ ((noreturn));
 void free_initmem(void);
 void free_initrd_mem(unsigned long start, unsigned long end);
@@ -149,13 +138,14 @@ extern unsigned int instruction_size(unsigned int insn);
 #endif
 
 extern unsigned long cached_to_uncached;
+extern unsigned long uncached_size;
 
 extern struct dentry *sh_debugfs_root;
 
 void per_cpu_trap_init(void);
 void default_idle(void);
-
-asmlinkage void break_point_trap(void);
+void cpu_idle_wait(void);
+void stop_this_cpu(void *);
 
 #ifdef CONFIG_SUPERH32
 #define BUILD_TRAP_HANDLER(name)					\
@@ -180,6 +170,7 @@ BUILD_TRAP_HANDLER(breakpoint);
 BUILD_TRAP_HANDLER(singlestep);
 BUILD_TRAP_HANDLER(fpu_error);
 BUILD_TRAP_HANDLER(fpu_state_restore);
+BUILD_TRAP_HANDLER(nmi);
 
 #define arch_align_stack(x) (x)
 

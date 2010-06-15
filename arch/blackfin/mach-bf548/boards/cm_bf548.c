@@ -1,31 +1,10 @@
 /*
- * File:         arch/blackfin/mach-bf548/boards/cm_bf548.c
- * Based on:     arch/blackfin/mach-bf537/boards/ezkit.c
- * Author:       Aidan Williams <aidan@nicta.com.au>
+ * Copyright 2004-2009 Analog Devices Inc.
+ *           2008-2009 Bluetechnix
+ *                2005 National ICT Australia (NICTA)
+ *                      Aidan Williams <aidan@nicta.com.au>
  *
- * Created:
- * Description:
- *
- * Modified:
- *               Copyright 2005 National ICT Australia (NICTA)
- *               Copyright 2004-2008 Analog Devices Inc.
- *
- * Bugs:         Enter bugs at http://blackfin.uclinux.org/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see the file COPYING, or write
- * to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Licensed under the GPL-2 or later.
  */
 
 #include <linux/device.h>
@@ -148,43 +127,210 @@ static struct platform_device rtc_device = {
 #endif
 
 #if defined(CONFIG_SERIAL_BFIN) || defined(CONFIG_SERIAL_BFIN_MODULE)
-static struct resource bfin_uart_resources[] = {
 #ifdef CONFIG_SERIAL_BFIN_UART0
+static struct resource bfin_uart0_resources[] = {
 	{
-		.start = 0xFFC00400,
-		.end = 0xFFC004FF,
+		.start = UART0_DLL,
+		.end = UART0_RBR+2,
 		.flags = IORESOURCE_MEM,
 	},
+	{
+		.start = IRQ_UART0_RX,
+		.end = IRQ_UART0_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_UART0_ERROR,
+		.end = IRQ_UART0_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = CH_UART0_TX,
+		.end = CH_UART0_TX,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = CH_UART0_RX,
+		.end = CH_UART0_RX,
+		.flags = IORESOURCE_DMA,
+	},
+};
+
+unsigned short bfin_uart0_peripherals[] = {
+	P_UART0_TX, P_UART0_RX, 0
+};
+
+static struct platform_device bfin_uart0_device = {
+	.name = "bfin-uart",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(bfin_uart0_resources),
+	.resource = bfin_uart0_resources,
+	.dev = {
+		.platform_data = &bfin_uart0_peripherals, /* Passed to driver */
+	},
+};
 #endif
 #ifdef CONFIG_SERIAL_BFIN_UART1
+static struct resource bfin_uart1_resources[] = {
 	{
-		.start = 0xFFC02000,
-		.end = 0xFFC020FF,
+		.start = UART1_DLL,
+		.end = UART1_RBR+2,
 		.flags = IORESOURCE_MEM,
 	},
-#endif
-#ifdef CONFIG_SERIAL_BFIN_UART2
 	{
-		.start = 0xFFC02100,
-		.end = 0xFFC021FF,
-		.flags = IORESOURCE_MEM,
+		.start = IRQ_UART1_RX,
+		.end = IRQ_UART1_RX+1,
+		.flags = IORESOURCE_IRQ,
 	},
-#endif
-#ifdef CONFIG_SERIAL_BFIN_UART3
 	{
-		.start = 0xFFC03100,
-		.end = 0xFFC031FF,
-		.flags = IORESOURCE_MEM,
+		.start = IRQ_UART1_ERROR,
+		.end = IRQ_UART1_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = CH_UART1_TX,
+		.end = CH_UART1_TX,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = CH_UART1_RX,
+		.end = CH_UART1_RX,
+		.flags = IORESOURCE_DMA,
+	},
+#ifdef CONFIG_BFIN_UART1_CTSRTS
+	{	/* CTS pin -- 0 means not supported */
+		.start = GPIO_PE10,
+		.end = GPIO_PE10,
+		.flags = IORESOURCE_IO,
+	},
+	{	/* RTS pin -- 0 means not supported */
+		.start = GPIO_PE9,
+		.end = GPIO_PE9,
+		.flags = IORESOURCE_IO,
 	},
 #endif
 };
 
-static struct platform_device bfin_uart_device = {
+unsigned short bfin_uart1_peripherals[] = {
+	P_UART1_TX, P_UART1_RX,
+#ifdef CONFIG_BFIN_UART1_CTSRTS
+	P_UART1_RTS, P_UART1_CTS,
+#endif
+	0
+};
+
+static struct platform_device bfin_uart1_device = {
 	.name = "bfin-uart",
 	.id = 1,
-	.num_resources = ARRAY_SIZE(bfin_uart_resources),
-	.resource = bfin_uart_resources,
+	.num_resources = ARRAY_SIZE(bfin_uart1_resources),
+	.resource = bfin_uart1_resources,
+	.dev = {
+		.platform_data = &bfin_uart1_peripherals, /* Passed to driver */
+	},
 };
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART2
+static struct resource bfin_uart2_resources[] = {
+	{
+		.start = UART2_DLL,
+		.end = UART2_RBR+2,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_UART2_RX,
+		.end = IRQ_UART2_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_UART2_ERROR,
+		.end = IRQ_UART2_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = CH_UART2_TX,
+		.end = CH_UART2_TX,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = CH_UART2_RX,
+		.end = CH_UART2_RX,
+		.flags = IORESOURCE_DMA,
+	},
+};
+
+unsigned short bfin_uart2_peripherals[] = {
+	P_UART2_TX, P_UART2_RX, 0
+};
+
+static struct platform_device bfin_uart2_device = {
+	.name = "bfin-uart",
+	.id = 2,
+	.num_resources = ARRAY_SIZE(bfin_uart2_resources),
+	.resource = bfin_uart2_resources,
+	.dev = {
+		.platform_data = &bfin_uart2_peripherals, /* Passed to driver */
+	},
+};
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART3
+static struct resource bfin_uart3_resources[] = {
+	{
+		.start = UART3_DLL,
+		.end = UART3_RBR+2,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_UART3_RX,
+		.end = IRQ_UART3_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_UART3_ERROR,
+		.end = IRQ_UART3_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = CH_UART3_TX,
+		.end = CH_UART3_TX,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = CH_UART3_RX,
+		.end = CH_UART3_RX,
+		.flags = IORESOURCE_DMA,
+	},
+#ifdef CONFIG_BFIN_UART3_CTSRTS
+	{	/* CTS pin -- 0 means not supported */
+		.start = GPIO_PB3,
+		.end = GPIO_PB3,
+		.flags = IORESOURCE_IO,
+	},
+	{	/* RTS pin -- 0 means not supported */
+		.start = GPIO_PB2,
+		.end = GPIO_PB2,
+		.flags = IORESOURCE_IO,
+	},
+#endif
+};
+
+unsigned short bfin_uart3_peripherals[] = {
+	P_UART3_TX, P_UART3_RX,
+#ifdef CONFIG_BFIN_UART3_CTSRTS
+	P_UART3_RTS, P_UART3_CTS,
+#endif
+	0
+};
+
+static struct platform_device bfin_uart3_device = {
+	.name = "bfin-uart",
+	.id = 3,
+	.num_resources = ARRAY_SIZE(bfin_uart3_resources),
+	.resource = bfin_uart3_resources,
+	.dev = {
+		.platform_data = &bfin_uart3_peripherals, /* Passed to driver */
+	},
+};
+#endif
 #endif
 
 #if defined(CONFIG_BFIN_SIR) || defined(CONFIG_BFIN_SIR_MODULE)
@@ -291,6 +437,8 @@ static struct platform_device bfin_sir3_device = {
 #endif
 
 #if defined(CONFIG_SMSC911X) || defined(CONFIG_SMSC911X_MODULE)
+#include <linux/smsc911x.h>
+
 static struct resource smsc911x_resources[] = {
 	{
 		.name = "smsc911x-memory",
@@ -304,11 +452,22 @@ static struct resource smsc911x_resources[] = {
 		.flags = IORESOURCE_IRQ | IORESOURCE_IRQ_LOWLEVEL,
 	},
 };
+
+static struct smsc911x_platform_config smsc911x_config = {
+	.flags = SMSC911X_USE_16BIT,
+	.irq_polarity = SMSC911X_IRQ_POLARITY_ACTIVE_LOW,
+	.irq_type = SMSC911X_IRQ_TYPE_OPEN_DRAIN,
+	.phy_interface = PHY_INTERFACE_MODE_MII,
+};
+
 static struct platform_device smsc911x_device = {
 	.name = "smsc911x",
 	.id = 0,
 	.num_resources = ARRAY_SIZE(smsc911x_resources),
 	.resource = smsc911x_resources,
+	.dev = {
+		.platform_data = &smsc911x_config,
+	},
 };
 #endif
 
@@ -367,18 +526,144 @@ static struct platform_device musb_device = {
 };
 #endif
 
-static struct resource bfin_gpios_resources = {
-	.start = 0,
-	.end   = MAX_BLACKFIN_GPIOS - 1,
-	.flags = IORESOURCE_IRQ,
+#if defined(CONFIG_SERIAL_BFIN_SPORT) || defined(CONFIG_SERIAL_BFIN_SPORT_MODULE)
+#ifdef CONFIG_SERIAL_BFIN_SPORT0_UART
+static struct resource bfin_sport0_uart_resources[] = {
+	{
+		.start = SPORT0_TCR1,
+		.end = SPORT0_MRCS3+4,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_SPORT0_RX,
+		.end = IRQ_SPORT0_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_SPORT0_ERROR,
+		.end = IRQ_SPORT0_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
 };
 
-static struct platform_device bfin_gpios_device = {
-	.name = "simple-gpio",
-	.id = -1,
-	.num_resources = 1,
-	.resource = &bfin_gpios_resources,
+unsigned short bfin_sport0_peripherals[] = {
+	P_SPORT0_TFS, P_SPORT0_DTPRI, P_SPORT0_TSCLK, P_SPORT0_RFS,
+	P_SPORT0_DRPRI, P_SPORT0_RSCLK, P_SPORT0_DRSEC, P_SPORT0_DTSEC, 0
 };
+
+static struct platform_device bfin_sport0_uart_device = {
+	.name = "bfin-sport-uart",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(bfin_sport0_uart_resources),
+	.resource = bfin_sport0_uart_resources,
+	.dev = {
+		.platform_data = &bfin_sport0_peripherals, /* Passed to driver */
+	},
+};
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT1_UART
+static struct resource bfin_sport1_uart_resources[] = {
+	{
+		.start = SPORT1_TCR1,
+		.end = SPORT1_MRCS3+4,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_SPORT1_RX,
+		.end = IRQ_SPORT1_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_SPORT1_ERROR,
+		.end = IRQ_SPORT1_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+unsigned short bfin_sport1_peripherals[] = {
+	P_SPORT1_TFS, P_SPORT1_DTPRI, P_SPORT1_TSCLK, P_SPORT1_RFS,
+	P_SPORT1_DRPRI, P_SPORT1_RSCLK, P_SPORT1_DRSEC, P_SPORT1_DTSEC, 0
+};
+
+static struct platform_device bfin_sport1_uart_device = {
+	.name = "bfin-sport-uart",
+	.id = 1,
+	.num_resources = ARRAY_SIZE(bfin_sport1_uart_resources),
+	.resource = bfin_sport1_uart_resources,
+	.dev = {
+		.platform_data = &bfin_sport1_peripherals, /* Passed to driver */
+	},
+};
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT2_UART
+static struct resource bfin_sport2_uart_resources[] = {
+	{
+		.start = SPORT2_TCR1,
+		.end = SPORT2_MRCS3+4,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_SPORT2_RX,
+		.end = IRQ_SPORT2_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_SPORT2_ERROR,
+		.end = IRQ_SPORT2_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+unsigned short bfin_sport2_peripherals[] = {
+	P_SPORT2_TFS, P_SPORT2_DTPRI, P_SPORT2_TSCLK, P_SPORT2_RFS,
+	P_SPORT2_DRPRI, P_SPORT2_RSCLK, P_SPORT2_DRSEC, P_SPORT2_DTSEC, 0
+};
+
+static struct platform_device bfin_sport2_uart_device = {
+	.name = "bfin-sport-uart",
+	.id = 2,
+	.num_resources = ARRAY_SIZE(bfin_sport2_uart_resources),
+	.resource = bfin_sport2_uart_resources,
+	.dev = {
+		.platform_data = &bfin_sport2_peripherals, /* Passed to driver */
+	},
+};
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT3_UART
+static struct resource bfin_sport3_uart_resources[] = {
+	{
+		.start = SPORT3_TCR1,
+		.end = SPORT3_MRCS3+4,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_SPORT3_RX,
+		.end = IRQ_SPORT3_RX+1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_SPORT3_ERROR,
+		.end = IRQ_SPORT3_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+unsigned short bfin_sport3_peripherals[] = {
+	P_SPORT3_TFS, P_SPORT3_DTPRI, P_SPORT3_TSCLK, P_SPORT3_RFS,
+	P_SPORT3_DRPRI, P_SPORT3_RSCLK, P_SPORT3_DRSEC, P_SPORT3_DTSEC, 0
+};
+
+static struct platform_device bfin_sport3_uart_device = {
+	.name = "bfin-sport-uart",
+	.id = 3,
+	.num_resources = ARRAY_SIZE(bfin_sport3_uart_resources),
+	.resource = bfin_sport3_uart_resources,
+	.dev = {
+		.platform_data = &bfin_sport3_peripherals, /* Passed to driver */
+	},
+};
+#endif
+#endif
 
 #if defined(CONFIG_PATA_BF54X) || defined(CONFIG_PATA_BF54X_MODULE)
 static struct resource bfin_atapi_resources[] = {
@@ -473,7 +758,7 @@ static struct mtd_partition para_partitions[] = {
 		.offset     = 0,
 	}, {
 		.name       = "linux kernel(nor)",
-		.size       = 0x400000,
+		.size       = 0x100000,
 		.offset     = MTDPART_OFS_APPEND,
 	}, {
 		.name       = "file system(nor)",
@@ -533,13 +818,11 @@ static struct flash_platform_data bfin_spi_flash_data = {
 static struct bfin5xx_spi_chip spi_flash_chip_info = {
 	.enable_dma = 0,         /* use dma transfer with this chip*/
 	.bits_per_word = 8,
-	.cs_change_per_word = 0,
 };
 #endif
 
 #if defined(CONFIG_TOUCHSCREEN_AD7877) || defined(CONFIG_TOUCHSCREEN_AD7877_MODULE)
 static struct bfin5xx_spi_chip spi_ad7877_chip_info = {
-	.cs_change_per_word = 0,
 	.enable_dma = 0,
 	.bits_per_word = 16,
 };
@@ -612,6 +895,11 @@ static struct resource bfin_spi0_resource[] = {
 	[1] = {
 		.start = CH_SPI0,
 		.end   = CH_SPI0,
+		.flags = IORESOURCE_DMA,
+	},
+	[2] = {
+		.start = IRQ_SPI0,
+		.end   = IRQ_SPI0,
 		.flags = IORESOURCE_IRQ,
 	}
 };
@@ -626,13 +914,18 @@ static struct resource bfin_spi1_resource[] = {
 	[1] = {
 		.start = CH_SPI1,
 		.end   = CH_SPI1,
+		.flags = IORESOURCE_DMA,
+	},
+	[2] = {
+		.start = IRQ_SPI1,
+		.end   = IRQ_SPI1,
 		.flags = IORESOURCE_IRQ,
 	}
 };
 
 /* SPI controller data */
 static struct bfin5xx_spi_master bf54x_spi_master_info0 = {
-	.num_chipselect = 8,
+	.num_chipselect = 3,
 	.enable_dma = 1,  /* master has the ability to do dma transfer */
 	.pin_req = {P_SPI0_SCK, P_SPI0_MISO, P_SPI0_MOSI, 0},
 };
@@ -648,7 +941,7 @@ static struct platform_device bf54x_spi_master0 = {
 };
 
 static struct bfin5xx_spi_master bf54x_spi_master_info1 = {
-	.num_chipselect = 8,
+	.num_chipselect = 3,
 	.enable_dma = 1,  /* master has the ability to do dma transfer */
 	.pin_req = {P_SPI1_SCK, P_SPI1_MISO, P_SPI1_MOSI, 0},
 };
@@ -765,7 +1058,18 @@ static struct platform_device *cm_bf548_devices[] __initdata = {
 #endif
 
 #if defined(CONFIG_SERIAL_BFIN) || defined(CONFIG_SERIAL_BFIN_MODULE)
-	&bfin_uart_device,
+#ifdef CONFIG_SERIAL_BFIN_UART0
+	&bfin_uart0_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART1
+	&bfin_uart1_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART2
+	&bfin_uart2_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART3
+	&bfin_uart3_device,
+#endif
 #endif
 
 #if defined(CONFIG_BFIN_SIR) || defined(CONFIG_BFIN_SIR_MODULE)
@@ -793,6 +1097,21 @@ static struct platform_device *cm_bf548_devices[] __initdata = {
 
 #if defined(CONFIG_USB_MUSB_HDRC) || defined(CONFIG_USB_MUSB_HDRC_MODULE)
 	&musb_device,
+#endif
+
+#if defined(CONFIG_SERIAL_BFIN_SPORT) || defined(CONFIG_SERIAL_BFIN_SPORT_MODULE)
+#ifdef CONFIG_SERIAL_BFIN_SPORT0_UART
+	&bfin_sport0_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT1_UART
+	&bfin_sport1_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT2_UART
+	&bfin_sport2_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT3_UART
+	&bfin_sport3_uart_device,
+#endif
 #endif
 
 #if defined(CONFIG_PATA_BF54X) || defined(CONFIG_PATA_BF54X_MODULE)
@@ -830,8 +1149,6 @@ static struct platform_device *cm_bf548_devices[] __initdata = {
 #if defined(CONFIG_MTD_PHYSMAP) || defined(CONFIG_MTD_PHYSMAP_MODULE)
 	&para_flash_device,
 #endif
-
-	&bfin_gpios_device,
 };
 
 static int __init cm_bf548_init(void)
@@ -848,3 +1165,42 @@ static int __init cm_bf548_init(void)
 }
 
 arch_initcall(cm_bf548_init);
+
+static struct platform_device *cm_bf548_early_devices[] __initdata = {
+#if defined(CONFIG_SERIAL_BFIN_CONSOLE) || defined(CONFIG_EARLY_PRINTK)
+#ifdef CONFIG_SERIAL_BFIN_UART0
+	&bfin_uart0_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART1
+	&bfin_uart1_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART2
+	&bfin_uart2_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_UART3
+	&bfin_uart3_device,
+#endif
+#endif
+
+#if defined(CONFIG_SERIAL_BFIN_SPORT_CONSOLE)
+#ifdef CONFIG_SERIAL_BFIN_SPORT0_UART
+	&bfin_sport0_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT1_UART
+	&bfin_sport1_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT2_UART
+	&bfin_sport2_uart_device,
+#endif
+#ifdef CONFIG_SERIAL_BFIN_SPORT3_UART
+	&bfin_sport3_uart_device,
+#endif
+#endif
+};
+
+void __init native_machine_early_platform_add_devices(void)
+{
+	printk(KERN_INFO "register early platform devices\n");
+	early_platform_add_devices(cm_bf548_early_devices,
+		ARRAY_SIZE(cm_bf548_early_devices));
+}

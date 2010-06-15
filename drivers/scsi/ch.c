@@ -23,6 +23,7 @@
 #include <linux/mutex.h>
 #include <linux/idr.h>
 #include <linux/smp_lock.h>
+#include <linux/slab.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -353,6 +354,12 @@ ch_readconfig(scsi_changer *ch)
 	/* look up the devices of the data transfer elements */
 	ch->dt = kmalloc(ch->counts[CHET_DT]*sizeof(struct scsi_device),
 			 GFP_KERNEL);
+
+	if (!ch->dt) {
+		kfree(buffer);
+		return -ENOMEM;
+	}
+
 	for (elem = 0; elem < ch->counts[CHET_DT]; elem++) {
 		id  = -1;
 		lun = 0;

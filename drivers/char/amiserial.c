@@ -81,6 +81,7 @@ static char *serial_version = "4.30";
 #include <linux/mm.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/smp_lock.h>
 #include <linux/init.h>
 #include <linux/bitops.h>
 
@@ -779,7 +780,7 @@ static void change_speed(struct async_struct *info,
 		info->IER |= UART_IER_MSI;
 	}
 	/* TBD:
-	 * Does clearing IER_MSI imply that we should disbale the VBL interrupt ?
+	 * Does clearing IER_MSI imply that we should disable the VBL interrupt ?
 	 */
 
 	/*
@@ -2020,8 +2021,6 @@ static int __init rs_init(void)
 	state->baud_base = amiga_colorclock;
 	state->xmit_fifo_size = 1;
 
-	local_irq_save(flags);
-
 	/* set ISRs, and then disable the rx interrupts */
 	error = request_irq(IRQ_AMIGA_TBE, ser_tx_int, 0, "serial TX", state);
 	if (error)
@@ -2031,6 +2030,8 @@ static int __init rs_init(void)
 			    "serial RX", state);
 	if (error)
 		goto fail_free_irq;
+
+	local_irq_save(flags);
 
 	/* turn off Rx and Tx interrupts */
 	custom.intena = IF_RBF | IF_TBE;

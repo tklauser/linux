@@ -16,6 +16,7 @@
  */
 #include <linux/module.h>
 #include <linux/scatterlist.h>
+#include <linux/slab.h>
 #include <linux/err.h>
 #include "ima.h"
 
@@ -38,7 +39,7 @@ int ima_used_chip;
  * a different value.) Violations add a zero entry to the measurement
  * list and extend the aggregate PCR value with ff...ff's.
  */
-static void ima_add_boot_aggregate(void)
+static void __init ima_add_boot_aggregate(void)
 {
 	struct ima_template_entry *entry;
 	const char *op = "add_boot_aggregate";
@@ -71,7 +72,7 @@ err_out:
 			    audit_cause, result, 0);
 }
 
-int ima_init(void)
+int __init ima_init(void)
 {
 	u8 pcr_i[IMA_DIGEST_SIZE];
 	int rc;

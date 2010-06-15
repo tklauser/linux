@@ -13,8 +13,8 @@
 #define MOUSEDEV_MINORS		32
 #define MOUSEDEV_MIX		31
 
+#include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/smp_lock.h>
 #include <linux/poll.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -60,7 +60,6 @@ struct mousedev {
 	int exist;
 	int open;
 	int minor;
-	char name[16];
 	struct input_handle handle;
 	wait_queue_head_t wait;
 	struct list_head client_list;
@@ -542,10 +541,8 @@ static int mousedev_open(struct inode *inode, struct file *file)
 	if (i >= MOUSEDEV_MINORS)
 		return -ENODEV;
 
-	lock_kernel();
 	error = mutex_lock_interruptible(&mousedev_table_mutex);
 	if (error) {
-		unlock_kernel();
 		return error;
 	}
 	mousedev = mousedev_table[i];
@@ -554,7 +551,6 @@ static int mousedev_open(struct inode *inode, struct file *file)
 	mutex_unlock(&mousedev_table_mutex);
 
 	if (!mousedev) {
-		unlock_kernel();
 		return -ENODEV;
 	}
 
@@ -575,7 +571,6 @@ static int mousedev_open(struct inode *inode, struct file *file)
 		goto err_free_client;
 
 	file->private_data = client;
-	unlock_kernel();
 	return 0;
 
  err_free_client:
@@ -583,7 +578,6 @@ static int mousedev_open(struct inode *inode, struct file *file)
 	kfree(client);
  err_put_mousedev:
 	put_device(&mousedev->dev);
-	unlock_kernel();
 	return error;
 }
 
@@ -863,19 +857,17 @@ static struct mousedev *mousedev_create(struct input_dev *dev,
 	init_waitqueue_head(&mousedev->wait);
 
 	if (minor == MOUSEDEV_MIX)
-		strlcpy(mousedev->name, "mice", sizeof(mousedev->name));
+		dev_set_name(&mousedev->dev, "mice");
 	else
-		snprintf(mousedev->name, sizeof(mousedev->name),
-			 "mouse%d", minor);
+		dev_set_name(&mousedev->dev, "mouse%d", minor);
 
 	mousedev->minor = minor;
 	mousedev->exist = 1;
 	mousedev->handle.dev = input_get_device(dev);
-	mousedev->handle.name = mousedev->name;
+	mousedev->handle.name = dev_name(&mousedev->dev);
 	mousedev->handle.handler = handler;
 	mousedev->handle.private = mousedev;
 
-	dev_set_name(&mousedev->dev, mousedev->name);
 	mousedev->dev.class = &input_class;
 	if (dev)
 		mousedev->dev.parent = &dev->dev;

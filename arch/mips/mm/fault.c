@@ -58,11 +58,17 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long write,
 	 * only copy the information from the master page table,
 	 * nothing more.
 	 */
+#ifdef CONFIG_64BIT
+# define VMALLOC_FAULT_TARGET no_context
+#else
+# define VMALLOC_FAULT_TARGET vmalloc_fault
+#endif
+
 	if (unlikely(address >= VMALLOC_START && address <= VMALLOC_END))
-		goto vmalloc_fault;
+		goto VMALLOC_FAULT_TARGET;
 #ifdef MODULE_START
 	if (unlikely(address >= MODULE_START && address < MODULE_END))
-		goto vmalloc_fault;
+		goto VMALLOC_FAULT_TARGET;
 #endif
 
 	/*
@@ -93,8 +99,31 @@ good_area:
 		if (!(vma->vm_flags & VM_WRITE))
 			goto bad_area;
 	} else {
-		if (!(vma->vm_flags & (VM_READ | VM_WRITE | VM_EXEC)))
-			goto bad_area;
+		if (kernel_uses_smartmips_rixi) {
+			if (address == regs->cp0_epc && !(vma->vm_flags & VM_EXEC)) {
+#if 0
+				pr_notice("Cpu%d[%s:%d:%0*lx:%ld:%0*lx] XI violation\n",
+					  raw_smp_processor_id(),
+					  current->comm, current->pid,
+					  field, address, write,
+					  field, regs->cp0_epc);
+#endif
+				goto bad_area;
+			}
+			if (!(vma->vm_flags & VM_READ)) {
+#if 0
+				pr_notice("Cpu%d[%s:%d:%0*lx:%ld:%0*lx] RI violation\n",
+					  raw_smp_processor_id(),
+					  current->comm, current->pid,
+					  field, address, write,
+					  field, regs->cp0_epc);
+#endif
+				goto bad_area;
+			}
+		} else {
+			if (!(vma->vm_flags & (VM_READ | VM_WRITE | VM_EXEC)))
+				goto bad_area;
+		}
 	}
 
 	/*
@@ -102,7 +131,7 @@ good_area:
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
-	fault = handle_mm_fault(mm, vma, address, write);
+	fault = handle_mm_fault(mm, vma, address, write ? FAULT_FLAG_WRITE : 0);
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		if (fault & VM_FAULT_OOM)
 			goto out_of_memory;
@@ -171,6 +200,7 @@ out_of_memory:
 	 * We ran out of memory, call the OOM killer, and return the userspace
 	 * (which will retry the fault, or kill us if we got oom-killed).
 	 */
+	up_read(&mm->mmap_sem);
 	pagefault_out_of_memory();
 	return;
 
@@ -202,6 +232,7 @@ do_sigbus:
 	force_sig_info(SIGBUS, &info, tsk);
 
 	return;
+#ifndef CONFIG_64BIT
 vmalloc_fault:
 	{
 		/*
@@ -240,4 +271,5 @@ vmalloc_fault:
 			goto no_context;
 		return;
 	}
+#endif
 }

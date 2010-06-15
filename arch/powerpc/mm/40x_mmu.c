@@ -84,14 +84,14 @@ void __init MMU_init_hw(void)
 	 * vectors and the kernel live in real-mode.
 	 */
 
-        mtspr(SPRN_DCCR, 0xF0000000);	/* 512 MB of data space at 0x0. */
-        mtspr(SPRN_ICCR, 0xF0000000);	/* 512 MB of instr. space at 0x0. */
+        mtspr(SPRN_DCCR, 0xFFFF0000);	/* 2GByte of data space at 0x0. */
+        mtspr(SPRN_ICCR, 0xFFFF0000);	/* 2GByte of instr. space at 0x0. */
 }
 
 #define LARGE_PAGE_SIZE_16M	(1<<24)
 #define LARGE_PAGE_SIZE_4M	(1<<22)
 
-unsigned long __init mmu_mapin_ram(void)
+unsigned long __init mmu_mapin_ram(unsigned long top)
 {
 	unsigned long v, s, mapped;
 	phys_addr_t p;
@@ -105,7 +105,7 @@ unsigned long __init mmu_mapin_ram(void)
 
 	while (s >= LARGE_PAGE_SIZE_16M) {
 		pmd_t *pmdp;
-		unsigned long val = p | _PMD_SIZE_16M | _PAGE_HWEXEC | _PAGE_HWWRITE;
+		unsigned long val = p | _PMD_SIZE_16M | _PAGE_EXEC | _PAGE_HWWRITE;
 
 		pmdp = pmd_offset(pud_offset(pgd_offset_k(v), v), v);
 		pmd_val(*pmdp++) = val;
@@ -120,7 +120,7 @@ unsigned long __init mmu_mapin_ram(void)
 
 	while (s >= LARGE_PAGE_SIZE_4M) {
 		pmd_t *pmdp;
-		unsigned long val = p | _PMD_SIZE_4M | _PAGE_HWEXEC | _PAGE_HWWRITE;
+		unsigned long val = p | _PMD_SIZE_4M | _PAGE_EXEC | _PAGE_HWWRITE;
 
 		pmdp = pmd_offset(pud_offset(pgd_offset_k(v), v), v);
 		pmd_val(*pmdp) = val;

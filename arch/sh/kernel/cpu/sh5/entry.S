@@ -187,7 +187,7 @@ trap_jtable:
 	.rept 6
 		.long do_exception_error	/* 0x880 - 0x920 */
 	.endr
-	.long	do_software_break_point	/* 0x940 */
+	.long	breakpoint_trap_handler	/* 0x940 */
 	.long	do_exception_error		/* 0x960 */
 	.long	do_single_step		/* 0x980 */
 
@@ -812,27 +812,6 @@ no_underflow:
 	! exceptions
 	add	SP, ZERO, r14
 
-#ifdef CONFIG_POOR_MANS_STRACE
-	/* We've pushed all the registers now, so only r2-r4 hold anything
-	 * useful. Move them into callee save registers */
-	or	r2, ZERO, r28
-	or	r3, ZERO, r29
-	or	r4, ZERO, r30
-
-	/* Preserve r2 as the event code */
-	movi	evt_debug, r3
-	ori	r3, 1, r3
-	ptabs	r3, tr0
-
-	or	SP, ZERO, r6
-	getcon	TRA, r5
-	blink	tr0, LINK
-
-	or	r28, ZERO, r2
-	or	r29, ZERO, r3
-	or	r30, ZERO, r4
-#endif
-
 	/* For syscall and debug race condition, get TRA now */
 	getcon	TRA, r5
 
@@ -887,11 +866,6 @@ no_underflow:
  */
 	.global ret_from_irq
 ret_from_irq:
-#ifdef CONFIG_POOR_MANS_STRACE
-	pta	evt_debug_ret_from_irq, tr0
-	ori	SP, 0, r2
-	blink	tr0, LINK
-#endif
 	ld.q	SP, FRAME_S(FSSR), r6
 	shlri	r6, 30, r6
 	andi	r6, 1, r6
@@ -904,12 +878,6 @@ ret_from_irq:
 	.global ret_from_exception
 ret_from_exception:
 	preempt_stop()
-
-#ifdef CONFIG_POOR_MANS_STRACE
-	pta	evt_debug_ret_from_exc, tr0
-	ori	SP, 0, r2
-	blink	tr0, LINK
-#endif
 
 	ld.q	SP, FRAME_S(FSSR), r6
 	shlri	r6, 30, r6
@@ -965,7 +933,7 @@ ret_with_reschedule:
 
 	pta	restore_all, tr1
 
-	movi	(_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK), r8
+	movi	_TIF_SIGPENDING, r8
 	and	r8, r7, r8
 	pta	work_notifysig, tr0
 	bne	r8, ZERO, tr0
@@ -1156,7 +1124,7 @@ fpu_error_or_IRQA:
 	pta	its_IRQ, tr0
 	beqi/l	r4, EVENT_INTERRUPT, tr0
 #ifdef CONFIG_SH_FPU
-	movi	do_fpu_state_restore, r6
+	movi	fpu_state_restore_trap_handler, r6
 #else
 	movi	do_exception_error, r6
 #endif
@@ -1167,7 +1135,7 @@ fpu_error_or_IRQB:
 	pta	its_IRQ, tr0
 	beqi/l	r4, EVENT_INTERRUPT, tr0
 #ifdef CONFIG_SH_FPU
-	movi	do_fpu_state_restore, r6
+	movi	fpu_state_restore_trap_handler, r6
 #else
 	movi	do_exception_error, r6
 #endif
@@ -1236,18 +1204,6 @@ syscall_bad:
 	.global syscall_ret
 syscall_ret:
 	st.q	SP, FRAME_R(9), r2	/* Expecting SP back to BASIC frame */
-
-#ifdef CONFIG_POOR_MANS_STRACE
-	/* nothing useful in registers at this point */
-
-	movi	evt_debug2, r5
-	ori	r5, 1, r5
-	ptabs	r5, tr0
-	ld.q	SP, FRAME_R(9), r2
-	or	SP, ZERO, r3
-	blink	tr0, LINK
-#endif
-
 	ld.q	SP, FRAME_S(FSPC), r2
 	addi	r2, 4, r2		/* Move PC, being pre-execution event */
 	st.q	SP, FRAME_S(FSPC), r2
@@ -1268,24 +1224,11 @@ ret_from_fork:
 	ptabs	r5, tr0
 	blink	tr0, LINK
 
-#ifdef CONFIG_POOR_MANS_STRACE
-	/* nothing useful in registers at this point */
-
-	movi	evt_debug2, r5
-	ori	r5, 1, r5
-	ptabs	r5, tr0
-	ld.q	SP, FRAME_R(9), r2
-	or	SP, ZERO, r3
-	blink	tr0, LINK
-#endif
-
 	ld.q	SP, FRAME_S(FSPC), r2
 	addi	r2, 4, r2		/* Move PC, being pre-execution event */
 	st.q	SP, FRAME_S(FSPC), r2
 	pta	ret_from_syscall, tr0
 	blink	tr0, ZERO
-
-
 
 syscall_allowed:
 	/* Use LINK to deflect the exit point, default is syscall_ret */
@@ -1410,8 +1353,8 @@ peek_real_address_q:
 	   r2(out) : result quadword
 
 	   This is provided as a cheapskate way of manipulating device
-	   registers for debugging (to avoid the need to onchip_remap the debug
-	   module, and to avoid the need to onchip_remap the watchpoint
+	   registers for debugging (to avoid the need to ioremap the debug
+	   module, and to avoid the need to ioremap the watchpoint
 	   controller in a way that identity maps sufficient bits to avoid the
 	   SH5-101 cut2 silicon defect).
 
@@ -1459,8 +1402,8 @@ poke_real_address_q:
 	   r3 : quadword value to write.
 
 	   This is provided as a cheapskate way of manipulating device
-	   registers for debugging (to avoid the need to onchip_remap the debug
-	   module, and to avoid the need to onchip_remap the watchpoint
+	   registers for debugging (to avoid the need to ioremap the debug
+	   module, and to avoid the need to ioremap the watchpoint
 	   controller in a way that identity maps sufficient bits to avoid the
 	   SH5-101 cut2 silicon defect).
 

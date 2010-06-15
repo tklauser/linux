@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2007-2008 Emulex.  All rights reserved.           *
+ * Copyright (C) 2007-2009 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -24,6 +24,7 @@
 #include <linux/idr.h>
 #include <linux/interrupt.h>
 #include <linux/kthread.h>
+#include <linux/slab.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/ctype.h>
@@ -33,8 +34,10 @@
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_transport_fc.h>
 
+#include "lpfc_hw4.h"
 #include "lpfc_hw.h"
 #include "lpfc_sli.h"
+#include "lpfc_sli4.h"
 #include "lpfc_nl.h"
 #include "lpfc_disc.h"
 #include "lpfc_scsi.h"
@@ -51,8 +54,7 @@
  * debugfs interface
  *
  * To access this interface the user should:
- * # mkdir /debug
- * # mount -t debugfs none /debug
+ * # mount -t debugfs none /sys/kernel/debug
  *
  * The lpfc debugfs directory hierarchy is:
  * lpfc/lpfcX/vportY
@@ -280,6 +282,8 @@ lpfc_debugfs_hbqinfo_data(struct lpfc_hba *phba, char *buf, int size)
 	struct lpfc_dmabuf *d_buf;
 	struct hbq_dmabuf *hbq_buf;
 
+	if (phba->sli_rev != 3)
+		return 0;
 	cnt = LPFC_HBQINFO_SIZE;
 	spin_lock_irq(&phba->hbalock);
 
@@ -489,12 +493,15 @@ lpfc_debugfs_dumpHostSlim_data(struct lpfc_hba *phba, char *buf, int size)
 				 pring->next_cmdidx, pring->local_getidx,
 				 pring->flag, pgpp->rspPutInx, pring->numRiocb);
 	}
-	word0 = readl(phba->HAregaddr);
-	word1 = readl(phba->CAregaddr);
-	word2 = readl(phba->HSregaddr);
-	word3 = readl(phba->HCregaddr);
-	len +=  snprintf(buf+len, size-len, "HA:%08x CA:%08x HS:%08x HC:%08x\n",
-	word0, word1, word2, word3);
+
+	if (phba->sli_rev <= LPFC_SLI_REV3) {
+		word0 = readl(phba->HAregaddr);
+		word1 = readl(phba->CAregaddr);
+		word2 = readl(phba->HSregaddr);
+		word3 = readl(phba->HCregaddr);
+		len +=  snprintf(buf+len, size-len, "HA:%08x CA:%08x HS:%08x "
+				 "HC:%08x\n", word0, word1, word2, word3);
+	}
 	spin_unlock_irq(&phba->hbalock);
 	return len;
 }
@@ -920,7 +927,7 @@ lpfc_debugfs_dumpData_open(struct inode *inode, struct file *file)
 		goto out;
 
 	/* Round to page boundry */
-	printk(KERN_ERR "BLKGRD %s: _dump_buf_data=0x%p\n",
+	printk(KERN_ERR "9059 BLKGRD:  %s: _dump_buf_data=0x%p\n",
 			__func__, _dump_buf_data);
 	debug->buffer = _dump_buf_data;
 	if (!debug->buffer) {
@@ -950,8 +957,8 @@ lpfc_debugfs_dumpDif_open(struct inode *inode, struct file *file)
 		goto out;
 
 	/* Round to page boundry */
-	printk(KERN_ERR "BLKGRD %s: _dump_buf_dif=0x%p file=%s\n", __func__,
-	       _dump_buf_dif, file->f_dentry->d_name.name);
+	printk(KERN_ERR	"9060 BLKGRD: %s: _dump_buf_dif=0x%p file=%s\n",
+		__func__, _dump_buf_dif, file->f_dentry->d_name.name);
 	debug->buffer = _dump_buf_dif;
 	if (!debug->buffer) {
 		kfree(debug);
@@ -1371,7 +1378,7 @@ lpfc_debugfs_initialize(struct lpfc_vport *vport)
 			debugfs_create_dir(name, phba->hba_debugfs_root);
 		if (!vport->vport_debugfs_root) {
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
-					 "0417 Cant create debugfs");
+					 "0417 Cant create debugfs\n");
 			goto debug_failed;
 		}
 		atomic_inc(&phba->debugfs_vport_count);
@@ -1424,7 +1431,7 @@ lpfc_debugfs_initialize(struct lpfc_vport *vport)
 				 vport, &lpfc_debugfs_op_nodelist);
 	if (!vport->debug_nodelist) {
 		lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
-				 "0409 Cant create debugfs nodelist");
+				 "0409 Cant create debugfs nodelist\n");
 		goto debug_failed;
 	}
 debug_failed:

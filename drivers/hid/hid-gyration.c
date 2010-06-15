@@ -53,10 +53,13 @@ static int gyration_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 static int gyration_event(struct hid_device *hdev, struct hid_field *field,
 		struct hid_usage *usage, __s32 value)
 {
-	struct input_dev *input = field->hidinput->input;
+
+	if (!(hdev->claimed & HID_CLAIMED_INPUT) || !field->hidinput)
+		return 0;
 
 	if ((usage->hid & HID_USAGE_PAGE) == HID_UP_GENDESK &&
 			(usage->hid & 0xff) == 0x82) {
+		struct input_dev *input = field->hidinput->input;
 		input_event(input, usage->type, usage->code, 1);
 		input_sync(input);
 		input_event(input, usage->type, usage->code, 0);
@@ -81,12 +84,12 @@ static struct hid_driver gyration_driver = {
 	.event = gyration_event,
 };
 
-static int gyration_init(void)
+static int __init gyration_init(void)
 {
 	return hid_register_driver(&gyration_driver);
 }
 
-static void gyration_exit(void)
+static void __exit gyration_exit(void)
 {
 	hid_unregister_driver(&gyration_driver);
 }

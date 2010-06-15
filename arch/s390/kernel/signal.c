@@ -26,6 +26,7 @@
 #include <linux/binfmts.h>
 #include <linux/tracehook.h>
 #include <linux/syscalls.h>
+#include <linux/compat.h>
 #include <asm/ucontext.h>
 #include <asm/uaccess.h>
 #include <asm/lowcore.h>
@@ -63,7 +64,7 @@ SYSCALL_DEFINE3(sigsuspend, int, history0, int, history1, old_sigset_t, mask)
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 
-	current->state = TASK_INTERRUPTIBLE;
+	set_current_state(TASK_INTERRUPTIBLE);
 	schedule();
 	set_thread_flag(TIF_RESTORE_SIGMASK);
 
@@ -482,7 +483,7 @@ void do_signal(struct pt_regs *regs)
 		/* Whee!  Actually deliver the signal.  */
 		int ret;
 #ifdef CONFIG_COMPAT
-		if (test_thread_flag(TIF_31BIT)) {
+		if (is_compat_task()) {
 			ret = handle_signal32(signr, &ka, &info, oldset, regs);
 	        }
 		else
@@ -499,18 +500,10 @@ void do_signal(struct pt_regs *regs)
 				clear_thread_flag(TIF_RESTORE_SIGMASK);
 
 			/*
-			 * If we would have taken a single-step trap
-			 * for a normal instruction, act like we took
-			 * one for the handler setup.
-			 */
-			if (current->thread.per_info.single_step)
-				set_thread_flag(TIF_SINGLE_STEP);
-
-			/*
 			 * Let tracing know that we've done the handler setup.
 			 */
 			tracehook_signal_handler(signr, &info, &ka, regs,
-					 test_thread_flag(TIF_SINGLE_STEP));
+					current->thread.per_info.single_step);
 		}
 		return;
 	}
@@ -535,4 +528,6 @@ void do_notify_resume(struct pt_regs *regs)
 {
 	clear_thread_flag(TIF_NOTIFY_RESUME);
 	tracehook_notify_resume(regs);
+	if (current->replacement_session_keyring)
+		key_replace_session_keyring();
 }

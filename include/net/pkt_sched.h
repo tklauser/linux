@@ -5,8 +5,7 @@
 #include <linux/ktime.h>
 #include <net/sch_generic.h>
 
-struct qdisc_walker
-{
+struct qdisc_walker {
 	int	stop;
 	int	skip;
 	int	count;
@@ -41,16 +40,17 @@ static inline void *qdisc_priv(struct Qdisc *q)
 typedef u64	psched_time_t;
 typedef long	psched_tdiff_t;
 
-/* Avoid doing 64 bit divide by 1000 */
-#define PSCHED_US2NS(x)			((s64)(x) << 10)
-#define PSCHED_NS2US(x)			((x) >> 10)
+/* Avoid doing 64 bit divide */
+#define PSCHED_SHIFT			6
+#define PSCHED_TICKS2NS(x)		((s64)(x) << PSCHED_SHIFT)
+#define PSCHED_NS2TICKS(x)		((x) >> PSCHED_SHIFT)
 
-#define PSCHED_TICKS_PER_SEC		PSCHED_NS2US(NSEC_PER_SEC)
+#define PSCHED_TICKS_PER_SEC		PSCHED_NS2TICKS(NSEC_PER_SEC)
 #define PSCHED_PASTPERFECT		0
 
 static inline psched_time_t psched_get_time(void)
 {
-	return PSCHED_NS2US(ktime_to_ns(ktime_get()));
+	return PSCHED_NS2TICKS(ktime_to_ns(ktime_get()));
 }
 
 static inline psched_tdiff_t
@@ -71,6 +71,7 @@ extern void qdisc_watchdog_cancel(struct qdisc_watchdog *wd);
 
 extern struct Qdisc_ops pfifo_qdisc_ops;
 extern struct Qdisc_ops bfifo_qdisc_ops;
+extern struct Qdisc_ops pfifo_head_drop_qdisc_ops;
 
 extern int fifo_set_limit(struct Qdisc *q, unsigned int limit);
 extern struct Qdisc *fifo_create_dflt(struct Qdisc *sch, struct Qdisc_ops *ops,
@@ -86,6 +87,9 @@ extern struct qdisc_rate_table *qdisc_get_rtab(struct tc_ratespec *r,
 extern void qdisc_put_rtab(struct qdisc_rate_table *tab);
 extern void qdisc_put_stab(struct qdisc_size_table *tab);
 extern void qdisc_warn_nonwc(char *txt, struct Qdisc *qdisc);
+extern int sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
+			   struct net_device *dev, struct netdev_queue *txq,
+			   spinlock_t *root_lock);
 
 extern void __qdisc_run(struct Qdisc *q);
 

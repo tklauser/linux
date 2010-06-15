@@ -20,6 +20,7 @@
  */
 #include <linux/fs.h>
 #include <linux/stat.h>
+#include <linux/slab.h>
 #include <linux/namei.h>
 #include "cifsfs.h"
 #include "cifspdu.h"
@@ -172,8 +173,9 @@ cifs_symlink(struct inode *inode, struct dentry *direntry, const char *symname)
 	full_path = build_path_from_dentry(direntry);
 
 	if (full_path == NULL) {
+		rc = -ENOMEM;
 		FreeXid(xid);
-		return -ENOMEM;
+		return rc;
 	}
 
 	cFYI(1, ("Full path: %s", full_path));

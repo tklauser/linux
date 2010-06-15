@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/timer.h>
+#include <linux/slab.h>
 #include <linux/smp_lock.h>
 #include <linux/io.h>
 #include <linux/of.h>
@@ -154,9 +155,9 @@ static struct cpwd *cpwd_device;
 
 static struct timer_list cpwd_timer;
 
-static int wd0_timeout = 0;
-static int wd1_timeout = 0;
-static int wd2_timeout = 0;
+static int wd0_timeout;
+static int wd1_timeout;
+static int wd2_timeout;
 
 module_param(wd0_timeout, int, 0);
 MODULE_PARM_DESC(wd0_timeout, "Default watchdog0 timeout in 1/10secs");
@@ -403,7 +404,7 @@ static int cpwd_release(struct inode *inode, struct file *file)
 
 static long cpwd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	static struct watchdog_info info = {
+	static const struct watchdog_info info = {
 		.options		= WDIOF_SETTIMEOUT,
 		.firmware_version	= 1,
 		.identity		= DRIVER_NAME,

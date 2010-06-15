@@ -14,6 +14,7 @@
 
 #include <linux/module.h>
 #include <linux/usb.h>
+#include <linux/slab.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/wireless.h>
@@ -111,6 +112,9 @@ exit:
 	release_firmware(fw_entry);
 	return err;
 }
+
+MODULE_FIRMWARE("zd1201-ap.fw");
+MODULE_FIRMWARE("zd1201.fw");
 
 static void zd1201_usbfree(struct urb *urb)
 {
@@ -779,7 +783,8 @@ static int zd1201_net_stop(struct net_device *dev)
 				(llc+snap+type+payload)
 		zd		1 null byte, zd1201 packet type
  */
-static int zd1201_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t zd1201_hard_start_xmit(struct sk_buff *skb,
+						struct net_device *dev)
 {
 	struct zd1201 *zd = netdev_priv(dev);
 	unsigned char *txbuf = zd->txdata;
@@ -789,7 +794,7 @@ static int zd1201_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!zd->mac_enabled || zd->monitor) {
 		dev->stats.tx_dropped++;
 		kfree_skb(skb);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 	netif_stop_queue(dev);
 
@@ -819,14 +824,14 @@ static int zd1201_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (err) {
 		dev->stats.tx_errors++;
 		netif_start_queue(dev);
-		return err;
+	} else {
+		dev->stats.tx_packets++;
+		dev->stats.tx_bytes += skb->len;
+		dev->trans_start = jiffies;
 	}
-	dev->stats.tx_packets++;
-	dev->stats.tx_bytes += skb->len;
-	dev->trans_start = jiffies;
 	kfree_skb(skb);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void zd1201_tx_timeout(struct net_device *dev)
@@ -871,20 +876,18 @@ static struct iw_statistics *zd1201_get_wireless_stats(struct net_device *dev)
 static void zd1201_set_multicast(struct net_device *dev)
 {
 	struct zd1201 *zd = netdev_priv(dev);
-	struct dev_mc_list *mc = dev->mc_list;
+	struct dev_mc_list *mc;
 	unsigned char reqbuf[ETH_ALEN*ZD1201_MAXMULTI];
 	int i;
 
-	if (dev->mc_count > ZD1201_MAXMULTI)
+	if (netdev_mc_count(dev) > ZD1201_MAXMULTI)
 		return;
 
-	for (i=0; i<dev->mc_count; i++) {
-		memcpy(reqbuf+i*ETH_ALEN, mc->dmi_addr, ETH_ALEN);
-		mc = mc->next;
-	}
+	i = 0;
+	netdev_for_each_mc_addr(mc, dev)
+		memcpy(reqbuf + i++ * ETH_ALEN, mc->dmi_addr, ETH_ALEN);
 	zd1201_setconfig(zd, ZD1201_RID_CNFGROUPADDRESS, reqbuf,
-	    dev->mc_count*ETH_ALEN, 0);
-	
+			 netdev_mc_count(dev) * ETH_ALEN, 0);
 }
 
 static int zd1201_config_commit(struct net_device *dev, 

@@ -32,10 +32,24 @@
 
 #include <plat/regs-s3c2412-iis.h>
 
-#include <plat/audio.h>
 #include <mach/dma.h>
 
 #include "s3c-i2s-v2.h"
+#include "s3c-dma.h"
+
+#undef S3C_IIS_V2_SUPPORTED
+
+#if defined(CONFIG_CPU_S3C2412) || defined(CONFIG_CPU_S3C2413)
+#define S3C_IIS_V2_SUPPORTED
+#endif
+
+#ifdef CONFIG_PLAT_S3C64XX
+#define S3C_IIS_V2_SUPPORTED
+#endif
+
+#ifndef S3C_IIS_V2_SUPPORTED
+#error Unsupported CPU model
+#endif
 
 #define S3C2412_I2S_DEBUG_CON 0
 
@@ -75,7 +89,7 @@ static inline void dbg_showcon(const char *fn, u32 con)
 
 
 /* Turn on or off the transmission path. */
-void s3c2412_snd_txctrl(struct s3c_i2sv2_info *i2s, int on)
+static void s3c2412_snd_txctrl(struct s3c_i2sv2_info *i2s, int on)
 {
 	void __iomem *regs = i2s->regs;
 	u32 fic, con, mod;
@@ -105,7 +119,9 @@ void s3c2412_snd_txctrl(struct s3c_i2sv2_info *i2s, int on)
 			break;
 
 		default:
-			dev_err(i2s->dev, "TXEN: Invalid MODE in IISMOD\n");
+			dev_err(i2s->dev, "TXEN: Invalid MODE %x in IISMOD\n",
+				mod & S3C2412_IISMOD_MODE_MASK);
+			break;
 		}
 
 		writel(con, regs + S3C2412_IISCON);
@@ -132,7 +148,9 @@ void s3c2412_snd_txctrl(struct s3c_i2sv2_info *i2s, int on)
 			break;
 
 		default:
-			dev_err(i2s->dev, "TXDIS: Invalid MODE in IISMOD\n");
+			dev_err(i2s->dev, "TXDIS: Invalid MODE %x in IISMOD\n",
+				mod & S3C2412_IISMOD_MODE_MASK);
+			break;
 		}
 
 		writel(mod, regs + S3C2412_IISMOD);
@@ -143,9 +161,8 @@ void s3c2412_snd_txctrl(struct s3c_i2sv2_info *i2s, int on)
 	dbg_showcon(__func__, con);
 	pr_debug("%s: IIS: CON=%x MOD=%x FIC=%x\n", __func__, con, mod, fic);
 }
-EXPORT_SYMBOL_GPL(s3c2412_snd_txctrl);
 
-void s3c2412_snd_rxctrl(struct s3c_i2sv2_info *i2s, int on)
+static void s3c2412_snd_rxctrl(struct s3c_i2sv2_info *i2s, int on)
 {
 	void __iomem *regs = i2s->regs;
 	u32 fic, con, mod;
@@ -175,7 +192,8 @@ void s3c2412_snd_rxctrl(struct s3c_i2sv2_info *i2s, int on)
 			break;
 
 		default:
-			dev_err(i2s->dev, "RXEN: Invalid MODE in IISMOD\n");
+			dev_err(i2s->dev, "RXEN: Invalid MODE %x in IISMOD\n",
+				mod & S3C2412_IISMOD_MODE_MASK);
 		}
 
 		writel(mod, regs + S3C2412_IISMOD);
@@ -199,7 +217,8 @@ void s3c2412_snd_rxctrl(struct s3c_i2sv2_info *i2s, int on)
 			break;
 
 		default:
-			dev_err(i2s->dev, "RXEN: Invalid MODE in IISMOD\n");
+			dev_err(i2s->dev, "RXDIS: Invalid MODE %x in IISMOD\n",
+				mod & S3C2412_IISMOD_MODE_MASK);
 		}
 
 		writel(con, regs + S3C2412_IISCON);
@@ -209,7 +228,8 @@ void s3c2412_snd_rxctrl(struct s3c_i2sv2_info *i2s, int on)
 	fic = readl(regs + S3C2412_IISFIC);
 	pr_debug("%s: IIS: CON=%x MOD=%x FIC=%x\n", __func__, con, mod, fic);
 }
-EXPORT_SYMBOL_GPL(s3c2412_snd_rxctrl);
+
+#define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
 /*
  * Wait for the LR signal to allow synchronisation to the L/R clock
@@ -218,19 +238,21 @@ EXPORT_SYMBOL_GPL(s3c2412_snd_rxctrl);
 static int s3c2412_snd_lrsync(struct s3c_i2sv2_info *i2s)
 {
 	u32 iiscon;
-	unsigned long timeout = jiffies + msecs_to_jiffies(5);
+	unsigned long loops = msecs_to_loops(5);
 
 	pr_debug("Entered %s\n", __func__);
 
-	while (1) {
+	while (--loops) {
 		iiscon = readl(i2s->regs + S3C2412_IISCON);
 		if (iiscon & S3C2412_IISCON_LRINDEX)
 			break;
 
-		if (timeout < jiffies) {
-			printk(KERN_ERR "%s: timeout\n", __func__);
-			return -ETIMEDOUT;
-		}
+		cpu_relax();
+	}
+
+	if (!loops) {
+		printk(KERN_ERR "%s: timeout\n", __func__);
+		return -ETIMEDOUT;
 	}
 
 	return 0;
@@ -266,7 +288,7 @@ static int s3c2412_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
  */
 #define IISMOD_MASTER_MASK (1 << 11)
 #define IISMOD_SLAVE (1 << 11)
-#define IISMOD_MASTER (0x0)
+#define IISMOD_MASTER (0 << 11)
 #endif
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
@@ -281,7 +303,7 @@ static int s3c2412_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 		iismod |= IISMOD_MASTER;
 		break;
 	default:
-		pr_debug("unknwon master/slave format\n");
+		pr_err("unknwon master/slave format\n");
 		return -EINVAL;
 	}
 
@@ -289,16 +311,19 @@ static int s3c2412_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_RIGHT_J:
+		iismod |= S3C2412_IISMOD_LR_RLOW;
 		iismod |= S3C2412_IISMOD_SDF_MSB;
 		break;
 	case SND_SOC_DAIFMT_LEFT_J:
+		iismod |= S3C2412_IISMOD_LR_RLOW;
 		iismod |= S3C2412_IISMOD_SDF_LSB;
 		break;
 	case SND_SOC_DAIFMT_I2S:
+		iismod &= ~S3C2412_IISMOD_LR_RLOW;
 		iismod |= S3C2412_IISMOD_SDF_IIS;
 		break;
 	default:
-		pr_debug("Unknown data format\n");
+		pr_err("Unknown data format\n");
 		return -EINVAL;
 	}
 
@@ -314,19 +339,23 @@ static int s3c2412_i2s_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai = rtd->dai;
 	struct s3c_i2sv2_info *i2s = to_info(dai->cpu_dai);
+	struct s3c_dma_params *dma_data;
 	u32 iismod;
 
 	pr_debug("Entered %s\n", __func__);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		dai->cpu_dai->dma_data = i2s->dma_playback;
+		dma_data = i2s->dma_playback;
 	else
-		dai->cpu_dai->dma_data = i2s->dma_capture;
+		dma_data = i2s->dma_capture;
+
+	snd_soc_dai_set_dma_data(dai->cpu_dai, substream, dma_data);
 
 	/* Working copies of register */
 	iismod = readl(i2s->regs + S3C2412_IISMOD);
 	pr_debug("%s: r: IISMOD: %x\n", __func__, iismod);
 
+#if defined(CONFIG_CPU_S3C2412) || defined(CONFIG_CPU_S3C2413)
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S8:
 		iismod |= S3C2412_IISMOD_8BIT;
@@ -335,6 +364,25 @@ static int s3c2412_i2s_hw_params(struct snd_pcm_substream *substream,
 		iismod &= ~S3C2412_IISMOD_8BIT;
 		break;
 	}
+#endif
+
+#ifdef CONFIG_PLAT_S3C64XX
+	iismod &= ~(S3C64XX_IISMOD_BLC_MASK | S3C2412_IISMOD_BCLK_MASK);
+	/* Sample size */
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S8:
+		/* 8 bit sample, 16fs BCLK */
+		iismod |= (S3C64XX_IISMOD_BLC_8BIT | S3C2412_IISMOD_BCLK_16FS);
+		break;
+	case SNDRV_PCM_FORMAT_S16_LE:
+		/* 16 bit sample, 32fs BCLK */
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		/* 24 bit sample, 48fs BCLK */
+		iismod |= (S3C64XX_IISMOD_BLC_24BIT | S3C2412_IISMOD_BCLK_48FS);
+		break;
+	}
+#endif
 
 	writel(iismod, i2s->regs + S3C2412_IISMOD);
 	pr_debug("%s: w: IISMOD: %x\n", __func__, iismod);
@@ -349,6 +397,8 @@ static int s3c2412_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 	int capture = (substream->stream == SNDRV_PCM_STREAM_CAPTURE);
 	unsigned long irqs;
 	int ret = 0;
+	struct s3c_dma_params *dma_data =
+		snd_soc_dai_get_dma_data(rtd->dai->cpu_dai, substream);
 
 	pr_debug("Entered %s\n", __func__);
 
@@ -378,6 +428,14 @@ static int s3c2412_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 			s3c2412_snd_txctrl(i2s, 1);
 
 		local_irq_restore(irqs);
+
+		/*
+		 * Load the next buffer to DMA to meet the reqirement
+		 * of the auto reload mechanism of S3C24XX.
+		 * This call won't bother S3C64XX.
+		 */
+		s3c2410_dma_ctrl(dma_data->channel, S3C2410_DMAOP_STARTED);
+
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -414,6 +472,31 @@ static int s3c2412_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai,
 
 	switch (div_id) {
 	case S3C_I2SV2_DIV_BCLK:
+		if (div > 3) {
+			/* convert value to bit field */
+
+			switch (div) {
+			case 16:
+				div = S3C2412_IISMOD_BCLK_16FS;
+				break;
+
+			case 32:
+				div = S3C2412_IISMOD_BCLK_32FS;
+				break;
+
+			case 24:
+				div = S3C2412_IISMOD_BCLK_24FS;
+				break;
+
+			case 48:
+				div = S3C2412_IISMOD_BCLK_48FS;
+				break;
+
+			default:
+				return -EINVAL;
+			}
+		}
+
 		reg = readl(i2s->regs + S3C2412_IISMOD);
 		reg &= ~S3C2412_IISMOD_BCLK_MASK;
 		writel(reg | div, i2s->regs + S3C2412_IISMOD);
@@ -489,6 +572,8 @@ int s3c_i2sv2_iis_calc_rate(struct s3c_i2sv2_rate_calc *info,
 	unsigned int best_rate = 0;
 	unsigned int best_deviation = INT_MAX;
 
+	pr_debug("Input clock rate %ldHz\n", clkrate);
+
 	if (fstab == NULL)
 		fstab = iis_fs_tab;
 
@@ -507,7 +592,7 @@ int s3c_i2sv2_iis_calc_rate(struct s3c_i2sv2_rate_calc *info,
 		actual = clkrate / (fsdiv * div);
 		deviation = actual - rate;
 
-		printk(KERN_DEBUG "%dfs: div %d => result %d, deviation %d\n",
+		printk(KERN_DEBUG "%ufs: div %u => result %u, deviation %d\n",
 		       fsdiv, div, actual, deviation);
 
 		deviation = abs(deviation);
@@ -523,7 +608,7 @@ int s3c_i2sv2_iis_calc_rate(struct s3c_i2sv2_rate_calc *info,
 			break;
 	}
 
-	printk(KERN_DEBUG "best: fs=%d, div=%d, rate=%d\n",
+	printk(KERN_DEBUG "best: fs=%u, div=%u, rate=%u\n",
 	       best_fs, best_div, best_rate);
 
 	info->fs_div = best_fs;
@@ -539,11 +624,30 @@ int s3c_i2sv2_probe(struct platform_device *pdev,
 		    unsigned long base)
 {
 	struct device *dev = &pdev->dev;
+	unsigned int iismod;
 
 	i2s->dev = dev;
 
 	/* record our i2s structure for later use in the callbacks */
 	dai->private_data = i2s;
+
+	if (!base) {
+		struct resource *res = platform_get_resource(pdev,
+							     IORESOURCE_MEM,
+							     0);
+		if (!res) {
+			dev_err(dev, "Unable to get register resource\n");
+			return -ENXIO;
+		}
+
+		if (!request_mem_region(res->start, resource_size(res),
+					"s3c64xx-i2s-v4")) {
+			dev_err(dev, "Unable to request register region\n");
+			return -EBUSY;
+		}
+
+		base = res->start;
+	}
 
 	i2s->regs = ioremap(base, 0x100);
 	if (i2s->regs == NULL) {
@@ -552,7 +656,7 @@ int s3c_i2sv2_probe(struct platform_device *pdev,
 	}
 
 	i2s->iis_pclk = clk_get(dev, "iis");
-	if (i2s->iis_pclk == NULL) {
+	if (IS_ERR(i2s->iis_pclk)) {
 		dev_err(dev, "failed to get iis_clock\n");
 		iounmap(i2s->regs);
 		return -ENOENT;
@@ -560,12 +664,16 @@ int s3c_i2sv2_probe(struct platform_device *pdev,
 
 	clk_enable(i2s->iis_pclk);
 
+	/* Mark ourselves as in TXRX mode so we can run through our cleanup
+	 * process without warnings. */
+	iismod = readl(i2s->regs + S3C2412_IISMOD);
+	iismod |= S3C2412_IISMOD_MODE_TXRX;
+	writel(iismod, i2s->regs + S3C2412_IISMOD);
 	s3c2412_snd_txctrl(i2s, 0);
 	s3c2412_snd_rxctrl(i2s, 0);
 
 	return 0;
 }
-
 EXPORT_SYMBOL_GPL(s3c_i2sv2_probe);
 
 #ifdef CONFIG_PM

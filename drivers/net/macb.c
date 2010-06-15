@@ -189,18 +189,11 @@ static void macb_handle_link_change(struct net_device *dev)
 static int macb_mii_probe(struct net_device *dev)
 {
 	struct macb *bp = netdev_priv(dev);
-	struct phy_device *phydev = NULL;
+	struct phy_device *phydev;
 	struct eth_platform_data *pdata;
-	int phy_addr;
+	int ret;
 
-	/* find the first phy */
-	for (phy_addr = 0; phy_addr < PHY_MAX_ADDR; phy_addr++) {
-		if (bp->mii_bus->phy_map[phy_addr]) {
-			phydev = bp->mii_bus->phy_map[phy_addr];
-			break;
-		}
-	}
-
+	phydev = phy_find_first(bp->mii_bus);
 	if (!phydev) {
 		printk (KERN_ERR "%s: no PHY found\n", dev->name);
 		return -1;
@@ -210,17 +203,13 @@ static int macb_mii_probe(struct net_device *dev)
 	/* TODO : add pin_irq */
 
 	/* attach the mac to the phy */
-	if (pdata && pdata->is_rmii) {
-		phydev = phy_connect(dev, dev_name(&phydev->dev),
-			&macb_handle_link_change, 0, PHY_INTERFACE_MODE_RMII);
-	} else {
-		phydev = phy_connect(dev, dev_name(&phydev->dev),
-			&macb_handle_link_change, 0, PHY_INTERFACE_MODE_MII);
-	}
-
-	if (IS_ERR(phydev)) {
+	ret = phy_connect_direct(dev, phydev, &macb_handle_link_change, 0,
+				 pdata && pdata->is_rmii ?
+				 PHY_INTERFACE_MODE_RMII :
+				 PHY_INTERFACE_MODE_MII);
+	if (ret) {
 		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
-		return PTR_ERR(phydev);
+		return ret;
 	}
 
 	/* mask with MAC supported features */
@@ -241,7 +230,7 @@ static int macb_mii_init(struct macb *bp)
 	struct eth_platform_data *pdata;
 	int err = -ENXIO, i;
 
-	/* Enable managment port */
+	/* Enable management port */
 	macb_writel(bp, NCR, MACB_BIT(MPE));
 
 	bp->mii_bus = mdiobus_alloc();
@@ -599,12 +588,28 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_NET_POLL_CONTROLLER
+/*
+ * Polling receive - used by netconsole and other diagnostic tools
+ * to allow network i/o with interrupts disabled.
+ */
+static void macb_poll_controller(struct net_device *dev)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	macb_interrupt(dev->irq, dev);
+	local_irq_restore(flags);
+}
+#endif
+
 static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct macb *bp = netdev_priv(dev);
 	dma_addr_t mapping;
 	unsigned int len, entry;
 	u32 ctrl;
+	unsigned long flags;
 
 #ifdef DEBUG
 	int i;
@@ -620,17 +625,17 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 #endif
 
 	len = skb->len;
-	spin_lock_irq(&bp->lock);
+	spin_lock_irqsave(&bp->lock, flags);
 
 	/* This is a hard error, log it. */
 	if (TX_BUFFS_AVAIL(bp) < 1) {
 		netif_stop_queue(dev);
-		spin_unlock_irq(&bp->lock);
+		spin_unlock_irqrestore(&bp->lock, flags);
 		dev_err(&bp->pdev->dev,
 			"BUG! Tx Ring full when queue awake!\n");
 		dev_dbg(&bp->pdev->dev, "tx_head = %u, tx_tail = %u\n",
 			bp->tx_head, bp->tx_tail);
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 
 	entry = bp->tx_head;
@@ -659,11 +664,11 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (TX_BUFFS_AVAIL(bp) < 1)
 		netif_stop_queue(dev);
 
-	spin_unlock_irq(&bp->lock);
+	spin_unlock_irqrestore(&bp->lock, flags);
 
 	dev->trans_start = jiffies;
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void macb_free_consistent(struct macb *bp)
@@ -879,15 +884,12 @@ static void macb_sethashtable(struct net_device *dev)
 {
 	struct dev_mc_list *curr;
 	unsigned long mc_filter[2];
-	unsigned int i, bitnr;
+	unsigned int bitnr;
 	struct macb *bp = netdev_priv(dev);
 
 	mc_filter[0] = mc_filter[1] = 0;
 
-	curr = dev->mc_list;
-	for (i = 0; i < dev->mc_count; i++, curr = curr->next) {
-		if (!curr) break;	/* unexpected end of list */
-
+	netdev_for_each_mc_addr(curr, dev) {
 		bitnr = hash_get_index(curr->dmi_addr);
 		mc_filter[bitnr >> 5] |= 1 << (bitnr & 31);
 	}
@@ -918,7 +920,7 @@ static void macb_set_rx_mode(struct net_device *dev)
 		macb_writel(bp, HRB, -1);
 		macb_writel(bp, HRT, -1);
 		cfg |= MACB_BIT(NCFGR_MTI);
-	} else if (dev->mc_count > 0) {
+	} else if (!netdev_mc_empty(dev)) {
 		/* Enable specific multicasts */
 		macb_sethashtable(dev);
 		cfg |= MACB_BIT(NCFGR_MTI);
@@ -1063,7 +1065,7 @@ static void macb_get_drvinfo(struct net_device *dev,
 	strcpy(info->bus_info, dev_name(&bp->pdev->dev));
 }
 
-static struct ethtool_ops macb_ethtool_ops = {
+static const struct ethtool_ops macb_ethtool_ops = {
 	.get_settings		= macb_get_settings,
 	.set_settings		= macb_set_settings,
 	.get_drvinfo		= macb_get_drvinfo,
@@ -1094,6 +1096,9 @@ static const struct net_device_ops macb_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_set_mac_address	= eth_mac_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller	= macb_poll_controller,
+#endif
 };
 
 static int __init macb_probe(struct platform_device *pdev)

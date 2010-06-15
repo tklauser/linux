@@ -97,11 +97,9 @@ struct ti_device {
 /* Function Declarations */
 
 static int ti_startup(struct usb_serial *serial);
-static void ti_shutdown(struct usb_serial *serial);
-static int ti_open(struct tty_struct *tty, struct usb_serial_port *port,
-		struct file *file);
-static void ti_close(struct tty_struct *tty, struct usb_serial_port *port,
-		struct file *file);
+static void ti_release(struct usb_serial *serial);
+static int ti_open(struct tty_struct *tty, struct usb_serial_port *port);
+static void ti_close(struct usb_serial_port *port);
 static int ti_write(struct tty_struct *tty, struct usb_serial_port *port,
 		const unsigned char *data, int count);
 static int ti_write_room(struct tty_struct *tty);
@@ -174,7 +172,7 @@ static unsigned int product_5052_count;
 /* the array dimension is the number of default entries plus */
 /* TI_EXTRA_VID_PID_COUNT user defined entries plus 1 terminating */
 /* null entry */
-static struct usb_device_id ti_id_table_3410[10+TI_EXTRA_VID_PID_COUNT+1] = {
+static struct usb_device_id ti_id_table_3410[13+TI_EXTRA_VID_PID_COUNT+1] = {
 	{ USB_DEVICE(TI_VENDOR_ID, TI_3410_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_3410_EZ430_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_GSM_NO_FW_PRODUCT_ID) },
@@ -182,6 +180,9 @@ static struct usb_device_id ti_id_table_3410[10+TI_EXTRA_VID_PID_COUNT+1] = {
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_CDMA_PRODUCT_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_GSM_PRODUCT_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_EDGE_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234MU_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234ZBA_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234ZBAOLD_PRODUCT_ID) },
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_4543_PRODUCT_ID) },
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_454B_PRODUCT_ID) },
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_454C_PRODUCT_ID) },
@@ -192,10 +193,9 @@ static struct usb_device_id ti_id_table_5052[5+TI_EXTRA_VID_PID_COUNT+1] = {
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5152_BOOT_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5052_EEPROM_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5052_FIRMWARE_PRODUCT_ID) },
-	{ USB_DEVICE(IBM_VENDOR_ID, IBM_4543_PRODUCT_ID) },
 };
 
-static struct usb_device_id ti_id_table_combined[14+2*TI_EXTRA_VID_PID_COUNT+1] = {
+static struct usb_device_id ti_id_table_combined[17+2*TI_EXTRA_VID_PID_COUNT+1] = {
 	{ USB_DEVICE(TI_VENDOR_ID, TI_3410_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_3410_EZ430_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_GSM_NO_FW_PRODUCT_ID) },
@@ -203,6 +203,9 @@ static struct usb_device_id ti_id_table_combined[14+2*TI_EXTRA_VID_PID_COUNT+1] 
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_CDMA_PRODUCT_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_GSM_PRODUCT_ID) },
 	{ USB_DEVICE(MTS_VENDOR_ID, MTS_EDGE_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234MU_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234ZBA_PRODUCT_ID) },
+	{ USB_DEVICE(MTS_VENDOR_ID, MTS_MT9234ZBAOLD_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5052_BOOT_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5152_BOOT_PRODUCT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, TI_5052_EEPROM_PRODUCT_ID) },
@@ -231,7 +234,7 @@ static struct usb_serial_driver ti_1port_device = {
 	.id_table		= ti_id_table_3410,
 	.num_ports		= 1,
 	.attach			= ti_startup,
-	.shutdown		= ti_shutdown,
+	.release		= ti_release,
 	.open			= ti_open,
 	.close			= ti_close,
 	.write			= ti_write,
@@ -259,7 +262,7 @@ static struct usb_serial_driver ti_2port_device = {
 	.id_table		= ti_id_table_5052,
 	.num_ports		= 2,
 	.attach			= ti_startup,
-	.shutdown		= ti_shutdown,
+	.release		= ti_release,
 	.open			= ti_open,
 	.close			= ti_close,
 	.write			= ti_write,
@@ -290,6 +293,8 @@ MODULE_FIRMWARE("ti_5052.fw");
 MODULE_FIRMWARE("mts_cdma.fw");
 MODULE_FIRMWARE("mts_gsm.fw");
 MODULE_FIRMWARE("mts_edge.fw");
+MODULE_FIRMWARE("mts_mt9234mu.fw");
+MODULE_FIRMWARE("mts_mt9234zba.fw");
 
 module_param(debug, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "Enable debugging, 0=no, 1=yes");
@@ -474,7 +479,7 @@ free_tdev:
 }
 
 
-static void ti_shutdown(struct usb_serial *serial)
+static void ti_release(struct usb_serial *serial)
 {
 	int i;
 	struct ti_device *tdev = usb_get_serial_data(serial);
@@ -487,17 +492,14 @@ static void ti_shutdown(struct usb_serial *serial)
 		if (tport) {
 			ti_buf_free(tport->tp_write_buf);
 			kfree(tport);
-			usb_set_serial_port_data(serial->port[i], NULL);
 		}
 	}
 
 	kfree(tdev);
-	usb_set_serial_data(serial, NULL);
 }
 
 
-static int ti_open(struct tty_struct *tty,
-			struct usb_serial_port *port, struct file *file)
+static int ti_open(struct tty_struct *tty, struct usb_serial_port *port)
 {
 	struct ti_port *tport = usb_get_serial_port_data(port);
 	struct ti_device *tdev;
@@ -647,8 +649,7 @@ release_lock:
 }
 
 
-static void ti_close(struct tty_struct *tty, struct usb_serial_port *port,
-							struct file *file)
+static void ti_close(struct usb_serial_port *port)
 {
 	struct ti_device *tdev;
 	struct ti_port *tport;
@@ -732,7 +733,7 @@ static int ti_write_room(struct tty_struct *tty)
 	dbg("%s - port %d", __func__, port->number);
 
 	if (tport == NULL)
-		return -ENODEV;
+		return 0;
 
 	spin_lock_irqsave(&tport->tp_lock, flags);
 	room = ti_buf_space_avail(tport->tp_write_buf);
@@ -753,7 +754,7 @@ static int ti_chars_in_buffer(struct tty_struct *tty)
 	dbg("%s - port %d", __func__, port->number);
 
 	if (tport == NULL)
-		return -ENODEV;
+		return 0;
 
 	spin_lock_irqsave(&tport->tp_lock, flags);
 	chars = ti_buf_data_avail(tport->tp_write_buf);
@@ -1278,14 +1279,13 @@ static void ti_recv(struct device *dev, struct tty_struct *tty,
 	int cnt;
 
 	do {
-		cnt = tty_buffer_request_room(tty, length);
+		cnt = tty_insert_flip_string(tty, data, length);
 		if (cnt < length) {
 			dev_err(dev, "%s - dropping data, %d bytes lost\n",
 						__func__, length - cnt);
 			if (cnt == 0)
 				break;
 		}
-		tty_insert_flip_string(tty, data, cnt);
 		tty_flip_buffer_push(tty);
 		data += cnt;
 		length -= cnt;
@@ -1662,7 +1662,7 @@ static int ti_do_download(struct usb_device *dev, int pipe,
 	u8 cs = 0;
 	int done;
 	struct ti_firmware_header *header;
-	int status;
+	int status = 0;
 	int len;
 
 	for (pos = sizeof(struct ti_firmware_header); pos < size; pos++)
@@ -1695,6 +1695,7 @@ static int ti_download_firmware(struct ti_device *tdev)
 	const struct firmware *fw_p;
 	char buf[32];
 
+	dbg("%s\n", __func__);
 	/* try ID specific firmware first, then try generic firmware */
 	sprintf(buf, "ti_usb-v%04x-p%04x.fw", dev->descriptor.idVendor,
 	    dev->descriptor.idProduct);
@@ -1711,7 +1712,15 @@ static int ti_download_firmware(struct ti_device *tdev)
 			case MTS_EDGE_PRODUCT_ID:
 				strcpy(buf, "mts_edge.fw");
 				break;
-			}
+			case MTS_MT9234MU_PRODUCT_ID:
+				strcpy(buf, "mts_mt9234mu.fw");
+				break;
+			case MTS_MT9234ZBA_PRODUCT_ID:
+				strcpy(buf, "mts_mt9234zba.fw");
+				break;
+			case MTS_MT9234ZBAOLD_PRODUCT_ID:
+				strcpy(buf, "mts_mt9234zba.fw");
+				break;			}
 		}
 		if (buf[0] == '\0') {
 			if (tdev->td_is_3410)
@@ -1726,7 +1735,7 @@ static int ti_download_firmware(struct ti_device *tdev)
 		return -ENOENT;
 	}
 	if (fw_p->size > TI_FIRMWARE_BUF_SIZE) {
-		dev_err(&dev->dev, "%s - firmware too large\n", __func__);
+		dev_err(&dev->dev, "%s - firmware too large %zu\n", __func__, fw_p->size);
 		return -ENOENT;
 	}
 
@@ -1738,6 +1747,7 @@ static int ti_download_firmware(struct ti_device *tdev)
 		status = ti_do_download(dev, pipe, buffer, fw_p->size);
 		kfree(buffer);
 	} else {
+		dbg("%s ENOMEM\n", __func__);
 		status = -ENOMEM;
 	}
 	release_firmware(fw_p);

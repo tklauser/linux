@@ -32,26 +32,27 @@ Configuration options:
   [0] - I/O port base address
   [1] - IRQ
   [2] - A/D reference
-          0 = differential
-          1 = pseudodifferential (common)
-          2 = single-ended
+	0 = differential
+	1 = pseudodifferential (common)
+	2 = single-ended
   [3] - A/D range
-          0 = [-10,10]
-          1 = [-5,5]
-          2 = [0,10]
+	0 = [-10,10]
+	1 = [-5,5]
+	2 = [0,10]
   [4] - A/D encoding
-          0 = two's complement
-          1 = straight binary
+	0 = two's complement
+	1 = straight binary
   [5] - DAC 0 range
-          0 = [-10,10]
-          1 = [0,10]
+	0 = [-10,10]
+	1 = [0,10]
   [6] - DAC 0 encoding
-          0 = two's complement
-          1 = straight binary
+	0 = two's complement
+	1 = straight binary
   [7] - DAC 1 range (same as DAC 0)
   [8] - DAC 1 encoding (same as DAC 0)
 */
 
+#include <linux/interrupt.h>
 #include "../comedidev.h"
 
 #include <linux/ioport.h>
@@ -89,33 +90,46 @@ Configuration options:
 
 #define Am9513_8BITBUS
 
-#define Am9513_output_control(a)	outb(a,dev->iobase+RTI800_9513A_CNTRL)
-#define Am9513_output_data(a)		outb(a,dev->iobase+RTI800_9513A_DATA)
+#define Am9513_output_control(a)	outb(a, dev->iobase+RTI800_9513A_CNTRL)
+#define Am9513_output_data(a)		outb(a, dev->iobase+RTI800_9513A_DATA)
 #define Am9513_input_data()		inb(dev->iobase+RTI800_9513A_DATA)
 #define Am9513_input_status()		inb(dev->iobase+RTI800_9513A_STATUS)
 
 #include "am9513.h"
 
 static const struct comedi_lrange range_rti800_ai_10_bipolar = { 4, {
-			BIP_RANGE(10),
-			BIP_RANGE(1),
-			BIP_RANGE(0.1),
-			BIP_RANGE(0.02)
-	}
+								     BIP_RANGE
+								     (10),
+								     BIP_RANGE
+								     (1),
+								     BIP_RANGE
+								     (0.1),
+								     BIP_RANGE
+								     (0.02)
+								     }
 };
+
 static const struct comedi_lrange range_rti800_ai_5_bipolar = { 4, {
-			BIP_RANGE(5),
-			BIP_RANGE(0.5),
-			BIP_RANGE(0.05),
-			BIP_RANGE(0.01)
-	}
+								    BIP_RANGE
+								    (5),
+								    BIP_RANGE
+								    (0.5),
+								    BIP_RANGE
+								    (0.05),
+								    BIP_RANGE
+								    (0.01)
+								    }
 };
+
 static const struct comedi_lrange range_rti800_ai_unipolar = { 4, {
-			UNI_RANGE(10),
-			UNI_RANGE(1),
-			UNI_RANGE(0.1),
-			UNI_RANGE(0.02)
-	}
+								   UNI_RANGE
+								   (10),
+								   UNI_RANGE(1),
+								   UNI_RANGE
+								   (0.1),
+								   UNI_RANGE
+								   (0.02)
+								   }
 };
 
 struct rti800_board {
@@ -131,21 +145,22 @@ static const struct rti800_board boardtypes[] = {
 
 #define this_board ((const struct rti800_board *)dev->board_ptr)
 
-static int rti800_attach(struct comedi_device * dev, struct comedi_devconfig * it);
-static int rti800_detach(struct comedi_device * dev);
+static int rti800_attach(struct comedi_device *dev,
+			 struct comedi_devconfig *it);
+static int rti800_detach(struct comedi_device *dev);
 static struct comedi_driver driver_rti800 = {
-      driver_name:"rti800",
-      module:THIS_MODULE,
-      attach:rti800_attach,
-      detach:rti800_detach,
-      num_names:sizeof(boardtypes) / sizeof(struct rti800_board),
-      board_name:&boardtypes[0].name,
-      offset:sizeof(struct rti800_board),
+	.driver_name = "rti800",
+	.module = THIS_MODULE,
+	.attach = rti800_attach,
+	.detach = rti800_detach,
+	.num_names = ARRAY_SIZE(boardtypes),
+	.board_name = &boardtypes[0].name,
+	.offset = sizeof(struct rti800_board),
 };
 
 COMEDI_INITCLEANUP(driver_rti800);
 
-static irqreturn_t rti800_interrupt(int irq, void *dev PT_REGS_ARG);
+static irqreturn_t rti800_interrupt(int irq, void *dev);
 
 struct rti800_private {
 	enum {
@@ -172,16 +187,17 @@ struct rti800_private {
 
 #define RTI800_TIMEOUT 100
 
-static irqreturn_t rti800_interrupt(int irq, void *dev PT_REGS_ARG)
+static irqreturn_t rti800_interrupt(int irq, void *dev)
 {
 	return IRQ_HANDLED;
 }
 
-// settling delay times in usec for different gains
+/* settling delay times in usec for different gains */
 static const int gaindelay[] = { 10, 20, 40, 80 };
 
-static int rti800_ai_insn_read(struct comedi_device * dev, struct comedi_subdevice * s,
-	struct comedi_insn * insn, unsigned int * data)
+static int rti800_ai_insn_read(struct comedi_device *dev,
+			       struct comedi_subdevice *s,
+			       struct comedi_insn *insn, unsigned int *data)
 {
 	int i, t;
 	int status;
@@ -199,9 +215,8 @@ static int rti800_ai_insn_read(struct comedi_device * dev, struct comedi_subdevi
 		/* without a delay here, the RTI_OVERRUN bit
 		 * gets set, and you will have an error. */
 		if (insn->n > 0) {
-			BUG_ON(gain >=
-				sizeof(gaindelay) / sizeof(gaindelay[0]));
-			comedi_udelay(gaindelay[gain]);
+			BUG_ON(gain >= ARRAY_SIZE(gaindelay));
+			udelay(gaindelay[gain]);
 		}
 	}
 
@@ -210,31 +225,31 @@ static int rti800_ai_insn_read(struct comedi_device * dev, struct comedi_subdevi
 		for (t = RTI800_TIMEOUT; t; t--) {
 			status = inb(dev->iobase + RTI800_CSR);
 			if (status & RTI800_OVERRUN) {
-				rt_printk("rti800: a/d overrun\n");
+				printk(KERN_WARNING "rti800: a/d overrun\n");
 				outb(0, dev->iobase + RTI800_CLRFLAGS);
 				return -EIO;
 			}
 			if (status & RTI800_DONE)
 				break;
-			comedi_udelay(1);
+			udelay(1);
 		}
 		if (t == 0) {
-			rt_printk("rti800: timeout\n");
+			printk(KERN_WARNING "rti800: timeout\n");
 			return -ETIME;
 		}
 		data[i] = inb(dev->iobase + RTI800_ADCLO);
 		data[i] |= (0xf & inb(dev->iobase + RTI800_ADCHI)) << 8;
 
-		if (devpriv->adc_coding == adc_2comp) {
+		if (devpriv->adc_coding == adc_2comp)
 			data[i] ^= 0x800;
-		}
 	}
 
 	return i;
 }
 
-static int rti800_ao_insn_read(struct comedi_device * dev, struct comedi_subdevice * s,
-	struct comedi_insn * insn, unsigned int * data)
+static int rti800_ao_insn_read(struct comedi_device *dev,
+			       struct comedi_subdevice *s,
+			       struct comedi_insn *insn, unsigned int *data)
 {
 	int i;
 	int chan = CR_CHAN(insn->chanspec);
@@ -245,8 +260,9 @@ static int rti800_ao_insn_read(struct comedi_device * dev, struct comedi_subdevi
 	return i;
 }
 
-static int rti800_ao_insn_write(struct comedi_device * dev, struct comedi_subdevice * s,
-	struct comedi_insn * insn, unsigned int * data)
+static int rti800_ao_insn_write(struct comedi_device *dev,
+				struct comedi_subdevice *s,
+				struct comedi_insn *insn, unsigned int *data)
 {
 	int chan = CR_CHAN(insn->chanspec);
 	int d;
@@ -254,19 +270,20 @@ static int rti800_ao_insn_write(struct comedi_device * dev, struct comedi_subdev
 
 	for (i = 0; i < insn->n; i++) {
 		devpriv->ao_readback[chan] = d = data[i];
-		if (devpriv->dac0_coding == dac_2comp) {
+		if (devpriv->dac0_coding == dac_2comp)
 			d ^= 0x800;
-		}
+
 		outb(d & 0xff,
-			dev->iobase + (chan ? RTI800_DAC1LO : RTI800_DAC0LO));
+		     dev->iobase + (chan ? RTI800_DAC1LO : RTI800_DAC0LO));
 		outb(d >> 8,
-			dev->iobase + (chan ? RTI800_DAC1HI : RTI800_DAC0HI));
+		     dev->iobase + (chan ? RTI800_DAC1HI : RTI800_DAC0HI));
 	}
 	return i;
 }
 
-static int rti800_di_insn_bits(struct comedi_device * dev, struct comedi_subdevice * s,
-	struct comedi_insn * insn, unsigned int * data)
+static int rti800_di_insn_bits(struct comedi_device *dev,
+			       struct comedi_subdevice *s,
+			       struct comedi_insn *insn, unsigned int *data)
 {
 	if (insn->n != 2)
 		return -EINVAL;
@@ -274,8 +291,9 @@ static int rti800_di_insn_bits(struct comedi_device * dev, struct comedi_subdevi
 	return 2;
 }
 
-static int rti800_do_insn_bits(struct comedi_device * dev, struct comedi_subdevice * s,
-	struct comedi_insn * insn, unsigned int * data)
+static int rti800_do_insn_bits(struct comedi_device *dev,
+			       struct comedi_subdevice *s,
+			       struct comedi_insn *insn, unsigned int *data)
 {
 	if (insn->n != 2)
 		return -EINVAL;
@@ -296,20 +314,20 @@ static int rti800_do_insn_bits(struct comedi_device * dev, struct comedi_subdevi
    options[0] - I/O port
    options[1] - irq
    options[2] - a/d mux
-   	0=differential, 1=pseudodiff, 2=single
+	0=differential, 1=pseudodiff, 2=single
    options[3] - a/d range
-   	0=bipolar10, 1=bipolar5, 2=unipolar10
+	0=bipolar10, 1=bipolar5, 2=unipolar10
    options[4] - a/d coding
-   	0=2's comp, 1=straight binary
+	0=2's comp, 1=straight binary
    options[5] - dac0 range
-   	0=bipolar10, 1=unipolar10
+	0=bipolar10, 1=unipolar10
    options[6] - dac0 coding
-   	0=2's comp, 1=straight binary
+	0=2's comp, 1=straight binary
    options[7] - dac1 range
    options[8] - dac1 coding
  */
 
-static int rti800_attach(struct comedi_device * dev, struct comedi_devconfig * it)
+static int rti800_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 {
 	unsigned int irq;
 	unsigned long iobase;
@@ -317,19 +335,19 @@ static int rti800_attach(struct comedi_device * dev, struct comedi_devconfig * i
 	struct comedi_subdevice *s;
 
 	iobase = it->options[0];
-	printk("comedi%d: rti800: 0x%04lx ", dev->minor, iobase);
+	printk(KERN_INFO "comedi%d: rti800: 0x%04lx\n", dev->minor, iobase);
 	if (!request_region(iobase, RTI800_SIZE, "rti800")) {
-		printk("I/O port conflict\n");
+		printk(KERN_WARNING "I/O port conflict\n");
 		return -EIO;
 	}
 	dev->iobase = iobase;
 
 #ifdef DEBUG
-	printk("fingerprint=%x,%x,%x,%x,%x ",
-		inb(dev->iobase + 0),
-		inb(dev->iobase + 1),
-		inb(dev->iobase + 2),
-		inb(dev->iobase + 3), inb(dev->iobase + 4));
+	printk(KERN_DEBUG "fingerprint=%x,%x,%x,%x,%x ",
+	       inb(dev->iobase + 0),
+	       inb(dev->iobase + 1),
+	       inb(dev->iobase + 2),
+	       inb(dev->iobase + 3), inb(dev->iobase + 4));
 #endif
 
 	outb(0, dev->iobase + RTI800_CSR);
@@ -338,22 +356,25 @@ static int rti800_attach(struct comedi_device * dev, struct comedi_devconfig * i
 
 	irq = it->options[1];
 	if (irq) {
-		printk("( irq = %u )", irq);
-		if ((ret = comedi_request_irq(irq, rti800_interrupt, 0,
-					"rti800", dev)) < 0) {
-			printk(" Failed to allocate IRQ\n");
+		printk(KERN_INFO "( irq = %u )\n", irq);
+		ret = request_irq(irq, rti800_interrupt, 0, "rti800", dev);
+		if (ret < 0) {
+			printk(KERN_WARNING " Failed to allocate IRQ\n");
 			return ret;
 		}
 		dev->irq = irq;
 	} else {
-		printk("( no irq )");
+		printk(KERN_INFO "( no irq )\n");
 	}
 
 	dev->board_name = this_board->name;
 
-	if ((ret = alloc_subdevices(dev, 4)) < 0)
+	ret = alloc_subdevices(dev, 4);
+	if (ret < 0)
 		return ret;
-	if ((ret = alloc_private(dev, sizeof(struct rti800_private))) < 0)
+
+	ret = alloc_private(dev, sizeof(struct rti800_private));
+	if (ret < 0)
 		return ret;
 
 	devpriv->adc_mux = it->options[2];
@@ -439,20 +460,18 @@ static int rti800_attach(struct comedi_device * dev, struct comedi_devconfig * i
 	s->type = COMEDI_SUBD_TIMER;
 #endif
 
-	printk("\n");
-
 	return 0;
 }
 
-static int rti800_detach(struct comedi_device * dev)
+static int rti800_detach(struct comedi_device *dev)
 {
-	printk("comedi%d: rti800: remove\n", dev->minor);
+	printk(KERN_INFO "comedi%d: rti800: remove\n", dev->minor);
 
 	if (dev->iobase)
 		release_region(dev->iobase, RTI800_SIZE);
 
 	if (dev->irq)
-		comedi_free_irq(dev->irq, dev);
+		free_irq(dev->irq, dev);
 
 	return 0;
 }

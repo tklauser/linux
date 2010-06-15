@@ -90,14 +90,14 @@ static const struct file_operations sockstat_seq_fops = {
 
 /* snmp items */
 static const struct snmp_mib snmp4_ipstats_list[] = {
-	SNMP_MIB_ITEM("InReceives", IPSTATS_MIB_INRECEIVES),
+	SNMP_MIB_ITEM("InReceives", IPSTATS_MIB_INPKTS),
 	SNMP_MIB_ITEM("InHdrErrors", IPSTATS_MIB_INHDRERRORS),
 	SNMP_MIB_ITEM("InAddrErrors", IPSTATS_MIB_INADDRERRORS),
 	SNMP_MIB_ITEM("ForwDatagrams", IPSTATS_MIB_OUTFORWDATAGRAMS),
 	SNMP_MIB_ITEM("InUnknownProtos", IPSTATS_MIB_INUNKNOWNPROTOS),
 	SNMP_MIB_ITEM("InDiscards", IPSTATS_MIB_INDISCARDS),
 	SNMP_MIB_ITEM("InDelivers", IPSTATS_MIB_INDELIVERS),
-	SNMP_MIB_ITEM("OutRequests", IPSTATS_MIB_OUTREQUESTS),
+	SNMP_MIB_ITEM("OutRequests", IPSTATS_MIB_OUTPKTS),
 	SNMP_MIB_ITEM("OutDiscards", IPSTATS_MIB_OUTDISCARDS),
 	SNMP_MIB_ITEM("OutNoRoutes", IPSTATS_MIB_OUTNOROUTES),
 	SNMP_MIB_ITEM("ReasmTimeout", IPSTATS_MIB_REASMTIMEOUT),
@@ -118,11 +118,17 @@ static const struct snmp_mib snmp4_ipextstats_list[] = {
 	SNMP_MIB_ITEM("OutMcastPkts", IPSTATS_MIB_OUTMCASTPKTS),
 	SNMP_MIB_ITEM("InBcastPkts", IPSTATS_MIB_INBCASTPKTS),
 	SNMP_MIB_ITEM("OutBcastPkts", IPSTATS_MIB_OUTBCASTPKTS),
+	SNMP_MIB_ITEM("InOctets", IPSTATS_MIB_INOCTETS),
+	SNMP_MIB_ITEM("OutOctets", IPSTATS_MIB_OUTOCTETS),
+	SNMP_MIB_ITEM("InMcastOctets", IPSTATS_MIB_INMCASTOCTETS),
+	SNMP_MIB_ITEM("OutMcastOctets", IPSTATS_MIB_OUTMCASTOCTETS),
+	SNMP_MIB_ITEM("InBcastOctets", IPSTATS_MIB_INBCASTOCTETS),
+	SNMP_MIB_ITEM("OutBcastOctets", IPSTATS_MIB_OUTBCASTOCTETS),
 	SNMP_MIB_SENTINEL
 };
 
-static struct {
-	char *name;
+static const struct {
+	const char *name;
 	int index;
 } icmpmibmap[] = {
 	{ "DestUnreachs", ICMP_DEST_UNREACH },
@@ -243,6 +249,8 @@ static const struct snmp_mib snmp4_net_list[] = {
 	SNMP_MIB_ITEM("TCPSackShifted", LINUX_MIB_SACKSHIFTED),
 	SNMP_MIB_ITEM("TCPSackMerged", LINUX_MIB_SACKMERGED),
 	SNMP_MIB_ITEM("TCPSackShiftFallback", LINUX_MIB_SACKSHIFTFALLBACK),
+	SNMP_MIB_ITEM("TCPBacklogDrop", LINUX_MIB_TCPBACKLOGDROP),
+	SNMP_MIB_ITEM("TCPMinTTLDrop", LINUX_MIB_TCPMINTTLDROP),
 	SNMP_MIB_SENTINEL
 };
 
@@ -274,7 +282,7 @@ static void icmpmsg_put(struct seq_file *seq)
 
 	count = 0;
 	for (i = 0; i < ICMPMSG_MIB_MAX; i++) {
-		val = snmp_fold_field((void **) net->mib.icmpmsg_statistics, i);
+		val = snmp_fold_field((void __percpu **) net->mib.icmpmsg_statistics, i);
 		if (val) {
 			type[count] = i;
 			vals[count++] = val;
@@ -301,18 +309,18 @@ static void icmp_put(struct seq_file *seq)
 	for (i=0; icmpmibmap[i].name != NULL; i++)
 		seq_printf(seq, " Out%s", icmpmibmap[i].name);
 	seq_printf(seq, "\nIcmp: %lu %lu",
-		snmp_fold_field((void **) net->mib.icmp_statistics, ICMP_MIB_INMSGS),
-		snmp_fold_field((void **) net->mib.icmp_statistics, ICMP_MIB_INERRORS));
+		snmp_fold_field((void __percpu **) net->mib.icmp_statistics, ICMP_MIB_INMSGS),
+		snmp_fold_field((void __percpu **) net->mib.icmp_statistics, ICMP_MIB_INERRORS));
 	for (i=0; icmpmibmap[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			snmp_fold_field((void **) net->mib.icmpmsg_statistics,
+			snmp_fold_field((void __percpu **) net->mib.icmpmsg_statistics,
 				icmpmibmap[i].index));
 	seq_printf(seq, " %lu %lu",
-		snmp_fold_field((void **) net->mib.icmp_statistics, ICMP_MIB_OUTMSGS),
-		snmp_fold_field((void **) net->mib.icmp_statistics, ICMP_MIB_OUTERRORS));
+		snmp_fold_field((void __percpu **) net->mib.icmp_statistics, ICMP_MIB_OUTMSGS),
+		snmp_fold_field((void __percpu **) net->mib.icmp_statistics, ICMP_MIB_OUTERRORS));
 	for (i=0; icmpmibmap[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			snmp_fold_field((void **) net->mib.icmpmsg_statistics,
+			snmp_fold_field((void __percpu **) net->mib.icmpmsg_statistics,
 				icmpmibmap[i].index | 0x100));
 }
 
@@ -335,7 +343,7 @@ static int snmp_seq_show(struct seq_file *seq, void *v)
 
 	for (i = 0; snmp4_ipstats_list[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			   snmp_fold_field((void **)net->mib.ip_statistics,
+			   snmp_fold_field((void __percpu **)net->mib.ip_statistics,
 					   snmp4_ipstats_list[i].entry));
 
 	icmp_put(seq);	/* RFC 2011 compatibility */
@@ -350,11 +358,11 @@ static int snmp_seq_show(struct seq_file *seq, void *v)
 		/* MaxConn field is signed, RFC 2012 */
 		if (snmp4_tcp_list[i].entry == TCP_MIB_MAXCONN)
 			seq_printf(seq, " %ld",
-				   snmp_fold_field((void **)net->mib.tcp_statistics,
+				   snmp_fold_field((void __percpu **)net->mib.tcp_statistics,
 						   snmp4_tcp_list[i].entry));
 		else
 			seq_printf(seq, " %lu",
-				   snmp_fold_field((void **)net->mib.tcp_statistics,
+				   snmp_fold_field((void __percpu **)net->mib.tcp_statistics,
 						   snmp4_tcp_list[i].entry));
 	}
 
@@ -365,7 +373,7 @@ static int snmp_seq_show(struct seq_file *seq, void *v)
 	seq_puts(seq, "\nUdp:");
 	for (i = 0; snmp4_udp_list[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			   snmp_fold_field((void **)net->mib.udp_statistics,
+			   snmp_fold_field((void __percpu **)net->mib.udp_statistics,
 					   snmp4_udp_list[i].entry));
 
 	/* the UDP and UDP-Lite MIBs are the same */
@@ -376,7 +384,7 @@ static int snmp_seq_show(struct seq_file *seq, void *v)
 	seq_puts(seq, "\nUdpLite:");
 	for (i = 0; snmp4_udp_list[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			   snmp_fold_field((void **)net->mib.udplite_statistics,
+			   snmp_fold_field((void __percpu **)net->mib.udplite_statistics,
 					   snmp4_udp_list[i].entry));
 
 	seq_putc(seq, '\n');
@@ -413,7 +421,7 @@ static int netstat_seq_show(struct seq_file *seq, void *v)
 	seq_puts(seq, "\nTcpExt:");
 	for (i = 0; snmp4_net_list[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			   snmp_fold_field((void **)net->mib.net_statistics,
+			   snmp_fold_field((void __percpu **)net->mib.net_statistics,
 					   snmp4_net_list[i].entry));
 
 	seq_puts(seq, "\nIpExt:");
@@ -423,7 +431,7 @@ static int netstat_seq_show(struct seq_file *seq, void *v)
 	seq_puts(seq, "\nIpExt:");
 	for (i = 0; snmp4_ipextstats_list[i].name != NULL; i++)
 		seq_printf(seq, " %lu",
-			   snmp_fold_field((void **)net->mib.ip_statistics,
+			   snmp_fold_field((void __percpu **)net->mib.ip_statistics,
 					   snmp4_ipextstats_list[i].entry));
 
 	seq_putc(seq, '\n');

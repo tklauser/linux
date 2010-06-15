@@ -225,8 +225,10 @@ static char rcsid[] =
 #include <linux/skbuff.h>
 #include <linux/if_arp.h>
 #include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 #include <linux/spinlock.h>
 #include <linux/if.h>
+#include <linux/slab.h>
 #include <net/arp.h>
 
 #include <asm/io.h>
@@ -250,7 +252,7 @@ static char rcsid[] =
 #undef	PC300_DEBUG_RX
 #undef	PC300_DEBUG_OTHER
 
-static struct pci_device_id cpc_pci_dev_id[] __devinitdata = {
+static DEFINE_PCI_DEVICE_TABLE(cpc_pci_dev_id) = {
 	/* PC300/RSV or PC300/X21, 2 chan */
 	{0x120e, 0x300, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0x300},
 	/* PC300/RSV or PC300/X21, 1 chan */
@@ -513,8 +515,8 @@ static int dma_buf_read(pc300_t * card, int ch, struct sk_buff *skb)
 				  RX_BD_ADDR(ch, chan->rx_first_bd));
 	while ((status = cpc_readb(&ptdescr->status)) & DST_OSB) {
 		nchar = cpc_readw(&ptdescr->len);
-		if ((status & (DST_OVR | DST_CRC | DST_RBIT | DST_SHRT | DST_ABT))
-		    || (nchar > BD_DEF_LEN)) {
+		if ((status & (DST_OVR | DST_CRC | DST_RBIT | DST_SHRT | DST_ABT)) ||
+		    (nchar > BD_DEF_LEN)) {
 
 			if (nchar > BD_DEF_LEN)
 				status |= DST_RBIT;
@@ -1427,8 +1429,7 @@ static void falc_update_stats(pc300_t * card, int ch)
 
 		if (((conf->media == IF_IFACE_T1) &&
 		     (cpc_readb(falcbase + F_REG(FRS1, ch)) & FRS1_LLBAD) &&
-		     (!(cpc_readb(falcbase + F_REG(FRS1, ch)) & FRS1_PDEN)))
-		    ||
+		     (!(cpc_readb(falcbase + F_REG(FRS1, ch)) & FRS1_PDEN))) ||
 		    ((conf->media == IF_IFACE_E1) &&
 		     (cpc_readb(falcbase + F_REG(RSP, ch)) & RSP_LLBAD))) {
 			pfalc->prbs = 2;
@@ -2284,8 +2285,8 @@ static void falc_e1_intr(pc300_t * card, int ch)
 		if (gis & GIS_ISR1) {
 			isr1 = cpc_readb(falcbase + F_REG(FISR1, ch));
 			if (isr1 & FISR1_XMB) {
-				if ((pfalc->xmb_cause & 2)
-				    && pfalc->multiframe_mode) {
+				if ((pfalc->xmb_cause & 2) &&
+				    pfalc->multiframe_mode) {
 					if (cpc_readb (falcbase + F_REG(FRS0, ch)) & 
 									(FRS0_LOS | FRS0_AIS | FRS0_LFA)) {
 						cpc_writeb(falcbase + F_REG(XSP, ch),
@@ -2638,9 +2639,9 @@ static int cpc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 						!(cpc_readb (scabase + M_REG(CTL, ch)) & CTL_DTR);
 					/* There is no DSR in HD64572 */
 				}
-				if (!arg
-				    || copy_to_user(arg, &pc300status, sizeof(pc300status_t)))
-						return -EINVAL;
+				if (!arg ||
+				    copy_to_user(arg, &pc300status, sizeof(pc300status_t)))
+					return -EINVAL;
 				return 0;
 			}
 
@@ -3246,6 +3247,16 @@ static inline void show_version(void)
 		rcsvers, rcsdate, __DATE__, __TIME__);
 }				/* show_version */
 
+static const struct net_device_ops cpc_netdev_ops = {
+	.ndo_open		= cpc_open,
+	.ndo_stop		= cpc_close,
+	.ndo_tx_timeout		= cpc_tx_timeout,
+	.ndo_set_mac_address	= NULL,
+	.ndo_change_mtu		= cpc_change_mtu,
+	.ndo_do_ioctl		= cpc_ioctl,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+
 static void cpc_init_card(pc300_t * card)
 {
 	int i, devcount = 0;
@@ -3357,18 +3368,11 @@ static void cpc_init_card(pc300_t * card)
 		dev->mem_start = card->hw.ramphys;
 		dev->mem_end = card->hw.ramphys + card->hw.ramsize - 1;
 		dev->irq = card->hw.irq;
-		dev->init = NULL;
 		dev->tx_queue_len = PC300_TX_QUEUE_LEN;
 		dev->mtu = PC300_DEF_MTU;
 
-		dev->open = cpc_open;
-		dev->stop = cpc_close;
-		dev->tx_timeout = cpc_tx_timeout;
+		dev->netdev_ops = &cpc_netdev_ops;
 		dev->watchdog_timeo = PC300_TX_TIMEOUT;
-		dev->set_multicast_list = NULL;
-		dev->set_mac_address = NULL;
-		dev->change_mtu = cpc_change_mtu;
-		dev->do_ioctl = cpc_ioctl;
 
 		if (register_hdlc_device(dev) == 0) {
 			printk("%s: Cyclades-PC300/", dev->name);

@@ -136,7 +136,7 @@ static struct {
 };
 
 
-static struct pci_device_id ne2k_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(ne2k_pci_tbl) = {
 	{ 0x10ec, 0x8029, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_RealTek_RTL_8029 },
 	{ 0x1050, 0x0940, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_Winbond_89C940 },
 	{ 0x11f6, 0x1401, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_Compex_RL2000 },
@@ -374,7 +374,7 @@ static int __devinit ne2k_pci_init_one (struct pci_dev *pdev,
 	dev->ethtool_ops = &ne2k_pci_ethtool_ops;
 	NS8390_init(dev, 0);
 
-	memcpy(dev->dev_addr, SA_prom, 6);
+	memcpy(dev->dev_addr, SA_prom, dev->addr_len);
 	memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
 
 	i = register_netdev(dev);

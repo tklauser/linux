@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <media/tuner.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 #include <asm/unaligned.h>
 #include "tuner-i2c.h"
 #include "tuner-xc2028.h"
@@ -30,7 +31,7 @@ MODULE_PARM_DESC(debug, "enable verbose debug messages");
 
 static int no_poweroff;
 module_param(no_poweroff, int, 0644);
-MODULE_PARM_DESC(debug, "0 (default) powers device off when not used.\n"
+MODULE_PARM_DESC(no_poweroff, "0 (default) powers device off when not used.\n"
 	"1 keep device energized and with tuner ready all the times.\n"
 	"  Faster, but consumes more power and keeps the device hotter\n");
 
@@ -48,7 +49,7 @@ MODULE_PARM_DESC(audio_std,
 	"NICAM/A\n"
 	"NICAM/B\n");
 
-static char firmware_name[FIRMWARE_NAME_MAX];
+static char firmware_name[30];
 module_param_string(firmware_name, firmware_name, sizeof(firmware_name), 0);
 MODULE_PARM_DESC(firmware_name, "Firmware file name. Allows overriding the "
 				"default firmware name\n");
@@ -272,7 +273,7 @@ static int load_all_firmwares(struct dvb_frontend *fe)
 		fname = firmware_name;
 
 	tuner_dbg("Reading firmware %s\n", fname);
-	rc = request_firmware(&fw, fname, &priv->i2c_props.adap->dev);
+	rc = request_firmware(&fw, fname, priv->i2c_props.adap->dev.parent);
 	if (rc < 0) {
 		if (rc == -ENOENT)
 			tuner_err("Error: firmware %s not found.\n",
@@ -919,21 +920,66 @@ static int generic_set_freq(struct dvb_frontend *fe, u32 freq /* in HZ */,
 	 */
 	if (new_mode == T_ANALOG_TV) {
 		rc = send_seq(priv, {0x00, 0x00});
-	} else if (priv->cur_fw.type & ATSC) {
-		offset = 1750000;
+
+		/* Analog modes require offset = 0 */
 	} else {
-		offset = 2750000;
 		/*
-		 * We must adjust the offset by 500kHz in two cases in order
-		 * to correctly center the IF output:
-		 * 1) When the ZARLINK456 or DIBCOM52 tables were explicitly
-		 *    selected and a 7MHz channel is tuned;
-		 * 2) When tuning a VHF channel with DTV78 firmware.
+		 * Digital modes require an offset to adjust to the
+		 * proper frequency. The offset depends on what
+		 * firmware version is used.
 		 */
-		if (((priv->cur_fw.type & DTV7) &&
-		     (priv->cur_fw.scode_table & (ZARLINK456 | DIBCOM52))) ||
-		    ((priv->cur_fw.type & DTV78) && freq < 470000000))
+
+		/*
+		 * Adjust to the center frequency. This is calculated by the
+		 * formula: offset = 1.25MHz - BW/2
+		 * For DTV 7/8, the firmware uses BW = 8000, so it needs a
+		 * further adjustment to get the frequency center on VHF
+		 */
+		if (priv->cur_fw.type & DTV6)
+			offset = 1750000;
+		else if (priv->cur_fw.type & DTV7)
+			offset = 2250000;
+		else	/* DTV8 or DTV78 */
+			offset = 2750000;
+		if ((priv->cur_fw.type & DTV78) && freq < 470000000)
 			offset -= 500000;
+
+		/*
+		 * xc3028 additional "magic"
+		 * Depending on the firmware version, it needs some adjustments
+		 * to properly centralize the frequency. This seems to be
+		 * needed to compensate the SCODE table adjustments made by
+		 * newer firmwares
+		 */
+
+#if 1
+		/*
+		 * The proper adjustment would be to do it at s-code table.
+		 * However, this didn't work, as reported by
+		 * Robert Lowery <rglowery@exemail.com.au>
+		 */
+
+		if (priv->cur_fw.type & DTV7)
+			offset += 500000;
+
+#else
+		/*
+		 * Still need tests for XC3028L (firmware 3.2 or upper)
+		 * So, for now, let's just comment the per-firmware
+		 * version of this change. Reports with xc3028l working
+		 * with and without the lines bellow are welcome
+		 */
+
+		if (priv->firm_version < 0x0302) {
+			if (priv->cur_fw.type & DTV7)
+				offset += 500000;
+		} else {
+			if (priv->cur_fw.type & DTV7)
+				offset -= 300000;
+			else if (type != ATSC) /* DVB @6MHz, DTV 8 and DTV 7/8 */
+				offset += 200000;
+		}
+#endif
 	}
 
 	div = (freq - offset + DIV / 2) / DIV;
@@ -991,7 +1037,7 @@ static int xc2028_set_analog_freq(struct dvb_frontend *fe,
 		if (priv->ctrl.input1)
 			type |= INPUT1;
 		return generic_set_freq(fe, (625l * p->frequency) / 10,
-				T_ANALOG_TV, type, 0, 0);
+				T_RADIO, type, 0, 0);
 	}
 
 	/* if std is not defined, choose one */
@@ -1022,21 +1068,20 @@ static int xc2028_set_params(struct dvb_frontend *fe,
 	switch(fe->ops.info.type) {
 	case FE_OFDM:
 		bw = p->u.ofdm.bandwidth;
-		break;
-	case FE_QAM:
-		tuner_info("WARN: There are some reports that "
-			   "QAM 6 MHz doesn't work.\n"
-			   "If this works for you, please report by "
-			   "e-mail to: v4l-dvb-maintainer@linuxtv.org\n");
-		bw = BANDWIDTH_6_MHZ;
-		type |= QAM;
+		/*
+		 * The only countries with 6MHz seem to be Taiwan/Uruguay.
+		 * Both seem to require QAM firmware for OFDM decoding
+		 * Tested in Taiwan by Terry Wu <terrywu2009@gmail.com>
+		 */
+		if (bw == BANDWIDTH_6_MHZ)
+			type |= QAM;
 		break;
 	case FE_ATSC:
 		bw = BANDWIDTH_6_MHZ;
 		/* The only ATSC firmware (at least on v2.7) is D2633 */
 		type |= ATSC | D2633;
 		break;
-	/* DVB-S is not supported */
+	/* DVB-S and pure QAM (FE_QAM) are not supported */
 	default:
 		return -EINVAL;
 	}
@@ -1090,8 +1135,26 @@ static int xc2028_set_params(struct dvb_frontend *fe,
 	}
 
 	/* All S-code tables need a 200kHz shift */
-	if (priv->ctrl.demod)
-		demod = priv->ctrl.demod + 200;
+	if (priv->ctrl.demod) {
+		demod = priv->ctrl.demod;
+
+		/*
+		 * Newer firmwares require a 200 kHz offset only for ATSC
+		 */
+		if (type == ATSC || priv->firm_version < 0x0302)
+			demod += 200;
+		/*
+		 * The DTV7 S-code table needs a 700 kHz shift.
+		 *
+		 * DTV7 is only used in Australia.  Germany or Italy may also
+		 * use this firmware after initialization, but a tune to a UHF
+		 * channel should then cause DTV78 to be used.
+		 *
+		 * Unfortunately, on real-field tests, the s-code offset
+		 * didn't work as expected, as reported by
+		 * Robert Lowery <rglowery@exemail.com.au>
+		 */
+	}
 
 	return generic_set_freq(fe, p->frequency,
 				T_DIGITAL_TV, type, 0, demod);
@@ -1102,8 +1165,8 @@ static int xc2028_sleep(struct dvb_frontend *fe)
 	struct xc2028_data *priv = fe->tuner_priv;
 	int rc = 0;
 
-	/* Avoid firmware reload on slow devices */
-	if (no_poweroff)
+	/* Avoid firmware reload on slow devices or if PM disabled */
+	if (no_poweroff || priv->ctrl.disable_power_mgmt)
 		return 0;
 
 	tuner_dbg("Putting xc2028/3028 into poweroff mode.\n");

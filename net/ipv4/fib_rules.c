@@ -94,7 +94,7 @@ static int fib4_rule_action(struct fib_rule *rule, struct flowi *flp,
 	if ((tbl = fib_get_table(rule->fr_net, rule->table)) == NULL)
 		goto errout;
 
-	err = tbl->tb_lookup(tbl, flp, (struct fib_result *) arg->result);
+	err = fib_table_lookup(tbl, flp, (struct fib_result *) arg->result);
 	if (err > 0)
 		err = -EAGAIN;
 errout:
@@ -134,7 +134,7 @@ static const struct nla_policy fib4_rule_policy[FRA_MAX+1] = {
 };
 
 static int fib4_rule_configure(struct fib_rule *rule, struct sk_buff *skb,
-			       struct nlmsghdr *nlh, struct fib_rule_hdr *frh,
+			       struct fib_rule_hdr *frh,
 			       struct nlattr **tb)
 {
 	struct net *net = sock_net(skb->sk);
@@ -209,7 +209,7 @@ static int fib4_rule_compare(struct fib_rule *rule, struct fib_rule_hdr *frh,
 }
 
 static int fib4_rule_fill(struct fib_rule *rule, struct sk_buff *skb,
-			  struct nlmsghdr *nlh, struct fib_rule_hdr *frh)
+			  struct fib_rule_hdr *frh)
 {
 	struct fib4_rule *rule4 = (struct fib4_rule *) rule;
 
@@ -284,7 +284,7 @@ static int fib_default_rules_init(struct fib_rules_ops *ops)
 {
 	int err;
 
-	err = fib_default_rule_add(ops, 0, RT_TABLE_LOCAL, FIB_RULE_PERMANENT);
+	err = fib_default_rule_add(ops, 0, RT_TABLE_LOCAL, 0);
 	if (err < 0)
 		return err;
 	err = fib_default_rule_add(ops, 0x7FFE, RT_TABLE_MAIN, 0);
@@ -301,13 +301,9 @@ int __net_init fib4_rules_init(struct net *net)
 	int err;
 	struct fib_rules_ops *ops;
 
-	ops = kmemdup(&fib4_rules_ops_template, sizeof(*ops), GFP_KERNEL);
-	if (ops == NULL)
-		return -ENOMEM;
-	INIT_LIST_HEAD(&ops->rules_list);
-	ops->fro_net = net;
-
-	fib_rules_register(ops);
+	ops = fib_rules_register(&fib4_rules_ops_template, net);
+	if (IS_ERR(ops))
+		return PTR_ERR(ops);
 
 	err = fib_default_rules_init(ops);
 	if (err < 0)
@@ -318,12 +314,10 @@ int __net_init fib4_rules_init(struct net *net)
 fail:
 	/* also cleans all rules already added */
 	fib_rules_unregister(ops);
-	kfree(ops);
 	return err;
 }
 
 void __net_exit fib4_rules_exit(struct net *net)
 {
 	fib_rules_unregister(net->ipv4.rules_ops);
-	kfree(net->ipv4.rules_ops);
 }

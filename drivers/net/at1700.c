@@ -47,7 +47,6 @@
 #include <linux/ioport.h>
 #include <linux/in.h>
 #include <linux/skbuff.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/init.h>
 #include <linux/crc32.h>
@@ -159,7 +158,8 @@ struct net_local {
 static int at1700_probe1(struct net_device *dev, int ioaddr);
 static int read_eeprom(long ioaddr, int location);
 static int net_open(struct net_device *dev);
-static int	net_send_packet(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t net_send_packet(struct sk_buff *skb,
+				   struct net_device *dev);
 static irqreturn_t net_interrupt(int irq, void *dev_id);
 static void net_rx(struct net_device *dev);
 static int net_close(struct net_device *dev);
@@ -318,7 +318,7 @@ static int __init at1700_probe1(struct net_device *dev, int ioaddr)
 				pos3 = mca_read_stored_pos( slot, 3 );
 				pos4 = mca_read_stored_pos( slot, 4 );
 
-				for (l_i = 0; l_i < 0x09; l_i++)
+				for (l_i = 0; l_i < 8; l_i++)
 					if (( pos3 & 0x07) == at1700_ioaddr_pattern[l_i])
 						break;
 				ioaddr = at1700_mca_probe_list[l_i];
@@ -349,13 +349,13 @@ static int __init at1700_probe1(struct net_device *dev, int ioaddr)
 	slot = -1;
 	/* We must check for the EEPROM-config boards first, else accessing
 	   IOCONFIG0 will move the board! */
-	if (at1700_probe_list[inb(ioaddr + IOCONFIG1) & 0x07] == ioaddr
-		&& read_eeprom(ioaddr, 4) == 0x0000
-		&& (read_eeprom(ioaddr, 5) & 0xff00) == 0xF400)
+	if (at1700_probe_list[inb(ioaddr + IOCONFIG1) & 0x07] == ioaddr &&
+	    read_eeprom(ioaddr, 4) == 0x0000 &&
+	    (read_eeprom(ioaddr, 5) & 0xff00) == 0xF400)
 		is_at1700 = 1;
-	else if (inb(ioaddr   + SAPROM    ) == 0x00
-		&& inb(ioaddr + SAPROM + 1) == 0x00
-		&& inb(ioaddr + SAPROM + 2) == 0x0e)
+	else if (inb(ioaddr + SAPROM    ) == 0x00 &&
+		 inb(ioaddr + SAPROM + 1) == 0x00 &&
+		 inb(ioaddr + SAPROM + 2) == 0x0e)
 		is_fmv18x = 1;
 	else {
 		goto err_out;
@@ -467,7 +467,7 @@ found:
 	lp->jumpered = is_fmv18x;
 	lp->mca_slot = slot;
 	/* Snarf the interrupt vector now. */
-	ret = request_irq(irq, &net_interrupt, 0, DRV_NAME, dev);
+	ret = request_irq(irq, net_interrupt, 0, DRV_NAME, dev);
 	if (ret) {
 		printk(KERN_ERR "AT1700 at %#3x is unusable due to a "
 		       "conflict on IRQ %d.\n",
@@ -595,7 +595,8 @@ static void net_tx_timeout (struct net_device *dev)
 }
 
 
-static int net_send_packet (struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t net_send_packet (struct sk_buff *skb,
+				    struct net_device *dev)
 {
 	struct net_local *lp = netdev_priv(dev);
 	int ioaddr = dev->base_addr;
@@ -643,7 +644,7 @@ static int net_send_packet (struct sk_buff *skb, struct net_device *dev)
 		netif_start_queue (dev);
 	dev_kfree_skb (skb);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /* The typical workload of the driver:
@@ -837,21 +838,19 @@ set_rx_mode(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC) {
 		memset(mc_filter, 0xff, sizeof(mc_filter));
 		outb(3, ioaddr + RX_MODE);	/* Enable promiscuous mode */
-	} else if (dev->mc_count > MC_FILTERBREAK
-			   ||  (dev->flags & IFF_ALLMULTI)) {
+	} else if (netdev_mc_count(dev) > MC_FILTERBREAK ||
+			   (dev->flags & IFF_ALLMULTI)) {
 		/* Too many to filter perfectly -- accept all multicasts. */
 		memset(mc_filter, 0xff, sizeof(mc_filter));
 		outb(2, ioaddr + RX_MODE);	/* Use normal mode. */
-	} else if (dev->mc_count == 0) {
+	} else if (netdev_mc_empty(dev)) {
 		memset(mc_filter, 0x00, sizeof(mc_filter));
 		outb(1, ioaddr + RX_MODE);	/* Ignore almost all multicasts. */
 	} else {
 		struct dev_mc_list *mclist;
-		int i;
 
 		memset(mc_filter, 0, sizeof(mc_filter));
-		for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
-			 i++, mclist = mclist->next) {
+		netdev_for_each_mc_addr(mclist, dev) {
 			unsigned int bit =
 				ether_crc_le(ETH_ALEN, mclist->dmi_addr) >> 26;
 			mc_filter[bit >> 3] |= (1 << bit);

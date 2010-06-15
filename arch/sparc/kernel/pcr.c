@@ -7,13 +7,16 @@
 #include <linux/init.h>
 #include <linux/irq.h>
 
+#include <linux/perf_event.h>
+#include <linux/ftrace.h>
+
 #include <asm/pil.h>
 #include <asm/pcr.h>
 #include <asm/nmi.h>
 
 /* This code is shared between various users of the performance
  * counters.  Users will be oprofile, pseudo-NMI watchdog, and the
- * perf_counter support layer.
+ * perf_event support layer.
  */
 
 #define PCR_SUN4U_ENABLE	(PCR_PIC_PRIV | PCR_STRACE | PCR_UTRACE)
@@ -32,12 +35,22 @@ unsigned int picl_shift;
  * Therefore in such situations we defer the work by signalling
  * a lower level cpu IRQ.
  */
-void deferred_pcr_work_irq(int irq, struct pt_regs *regs)
+void __irq_entry deferred_pcr_work_irq(int irq, struct pt_regs *regs)
 {
+	struct pt_regs *old_regs;
+
 	clear_softint(1 << PIL_DEFERRED_PCR_WORK);
+
+	old_regs = set_irq_regs(regs);
+	irq_enter();
+#ifdef CONFIG_PERF_EVENTS
+	perf_event_do_pending();
+#endif
+	irq_exit();
+	set_irq_regs(old_regs);
 }
 
-void schedule_deferred_pcr_work(void)
+void set_perf_event_pending(void)
 {
 	set_softint(1 << PIL_DEFERRED_PCR_WORK);
 }

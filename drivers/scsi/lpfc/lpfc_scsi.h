@@ -118,6 +118,7 @@ struct lpfc_scsi_buf {
 
 	uint32_t timeout;
 
+	uint16_t exch_busy;     /* SLI4 hba reported XB on complete WCQE */
 	uint16_t status;	/* From IOCB Word 7- ulpStatus */
 	uint32_t result;	/* From IOCB Word 4. */
 
@@ -139,6 +140,8 @@ struct lpfc_scsi_buf {
 	struct fcp_cmnd *fcp_cmnd;
 	struct fcp_rsp *fcp_rsp;
 	struct ulp_bde64 *fcp_bpl;
+
+	dma_addr_t dma_phys_bpl;
 
 	/* cur_iocbq has phys of the dma-able buffer.
 	 * Iotag is in here

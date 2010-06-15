@@ -144,7 +144,7 @@ static inline void unix_set_secdata(struct scm_cookie *scm, struct sk_buff *skb)
 /*
  *  SMP locking strategy:
  *    hash table is protected with spinlock unix_table_lock
- *    each socket state is protected by separate rwlock.
+ *    each socket state is protected by separate spin lock.
  */
 
 static inline unsigned unix_hash_fold(__wsum n)
@@ -315,7 +315,7 @@ static void unix_write_space(struct sock *sk)
 {
 	read_lock(&sk->sk_callback_lock);
 	if (unix_writable(sk)) {
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+		if (sk_has_sleeper(sk))
 			wake_up_interruptible_sync(sk->sk_sleep);
 		sk_wake_async(sk, SOCK_WAKE_SPACE, POLL_OUT);
 	}
@@ -621,7 +621,8 @@ out:
 	return sk;
 }
 
-static int unix_create(struct net *net, struct socket *sock, int protocol)
+static int unix_create(struct net *net, struct socket *sock, int protocol,
+		       int kern)
 {
 	if (protocol && protocol != PF_UNIX)
 		return -EPROTONOSUPPORT;
@@ -1032,8 +1033,8 @@ static int unix_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 		goto out;
 	addr_len = err;
 
-	if (test_bit(SOCK_PASSCRED, &sock->flags)
-		&& !u->addr && (err = unix_autobind(sock)) != 0)
+	if (test_bit(SOCK_PASSCRED, &sock->flags) && !u->addr &&
+	    (err = unix_autobind(sock)) != 0)
 		goto out;
 
 	timeo = sock_sndtimeo(sk, flags & O_NONBLOCK);
@@ -1073,6 +1074,8 @@ restart:
 
 	err = -ECONNREFUSED;
 	if (other->sk_state != TCP_LISTEN)
+		goto out_unlock;
+	if (other->sk_shutdown & RCV_SHUTDOWN)
 		goto out_unlock;
 
 	if (unix_recvq_full(other)) {
@@ -1256,7 +1259,7 @@ static int unix_getname(struct socket *sock, struct sockaddr *uaddr, int *uaddr_
 {
 	struct sock *sk = sock->sk;
 	struct unix_sock *u;
-	struct sockaddr_un *sunaddr = (struct sockaddr_un *)uaddr;
+	DECLARE_SOCKADDR(struct sockaddr_un *, sunaddr, uaddr);
 	int err = 0;
 
 	if (peer) {
@@ -1375,8 +1378,8 @@ static int unix_dgram_sendmsg(struct kiocb *kiocb, struct socket *sock,
 			goto out;
 	}
 
-	if (test_bit(SOCK_PASSCRED, &sock->flags)
-		&& !u->addr && (err = unix_autobind(sock)) != 0)
+	if (test_bit(SOCK_PASSCRED, &sock->flags) && !u->addr
+	    && (err = unix_autobind(sock)) != 0)
 		goto out;
 
 	err = -EMSGSIZE;
@@ -1501,6 +1504,7 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 	struct sk_buff *skb;
 	int sent = 0;
 	struct scm_cookie tmp_scm;
+	bool fds_sent = false;
 
 	if (NULL == siocb->scm)
 		siocb->scm = &tmp_scm;
@@ -1562,12 +1566,14 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		size = min_t(int, size, skb_tailroom(skb));
 
 		memcpy(UNIXCREDS(skb), &siocb->scm->creds, sizeof(struct ucred));
-		if (siocb->scm->fp) {
+		/* Only send the fds in the first buffer */
+		if (siocb->scm->fp && !fds_sent) {
 			err = unix_attach_fds(siocb->scm, skb);
 			if (err) {
 				kfree_skb(skb);
 				goto out_err;
 			}
+			fds_sent = true;
 		}
 
 		err = memcpy_fromiovec(skb_put(skb, size), msg->msg_iov, size);
@@ -1946,7 +1952,7 @@ static int unix_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case SIOCOUTQ:
-		amount = atomic_read(&sk->sk_wmem_alloc);
+		amount = sk_wmem_alloc_get(sk);
 		err = put_user(amount, (int __user *)arg);
 		break;
 	case SIOCINQ:
@@ -1985,7 +1991,7 @@ static unsigned int unix_poll(struct file *file, struct socket *sock, poll_table
 	struct sock *sk = sock->sk;
 	unsigned int mask;
 
-	poll_wait(file, sk->sk_sleep, wait);
+	sock_poll_wait(file, sk->sk_sleep, wait);
 	mask = 0;
 
 	/* exceptional events? */
@@ -2022,7 +2028,7 @@ static unsigned int unix_dgram_poll(struct file *file, struct socket *sock,
 	struct sock *sk = sock->sk, *other;
 	unsigned int mask, writable;
 
-	poll_wait(file, sk->sk_sleep, wait);
+	sock_poll_wait(file, sk->sk_sleep, wait);
 	mask = 0;
 
 	/* exceptional events? */
@@ -2053,7 +2059,7 @@ static unsigned int unix_dgram_poll(struct file *file, struct socket *sock,
 		other = unix_peer_get(sk);
 		if (other) {
 			if (unix_peer(other) != sk) {
-				poll_wait(file, &unix_sk(other)->peer_wait,
+				sock_poll_wait(file, &unix_sk(other)->peer_wait,
 					  wait);
 				if (unix_recvq_full(other))
 					writable = 0;
@@ -2211,14 +2217,14 @@ static const struct file_operations unix_seq_fops = {
 
 #endif
 
-static struct net_proto_family unix_family_ops = {
+static const struct net_proto_family unix_family_ops = {
 	.family = PF_UNIX,
 	.create = unix_create,
 	.owner	= THIS_MODULE,
 };
 
 
-static int unix_net_init(struct net *net)
+static int __net_init unix_net_init(struct net *net)
 {
 	int error = -ENOMEM;
 
@@ -2237,7 +2243,7 @@ out:
 	return error;
 }
 
-static void unix_net_exit(struct net *net)
+static void __net_exit unix_net_exit(struct net *net)
 {
 	unix_sysctl_unregister(net);
 	proc_net_remove(net, "unix");

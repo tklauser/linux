@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2004 - 2009 rt2x00 SourceForge Project
+	Copyright (C) 2004 - 2009 Ivo van Doorn <IvDoorn@gmail.com>
 	<http://rt2x00.serialmonkey.com>
 
 	This program is free software; you can redistribute it and/or modify
@@ -27,6 +27,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/slab.h>
 
 #include "rt2x00.h"
 #include "rt2x00pci.h"
@@ -40,6 +41,9 @@ int rt2x00pci_regbusy_read(struct rt2x00_dev *rt2x00dev,
 			   u32 *reg)
 {
 	unsigned int i;
+
+	if (!test_bit(DEVICE_STATE_PRESENT, &rt2x00dev->flags))
+		return 0;
 
 	for (i = 0; i < REGISTER_BUSY_COUNT; i++) {
 		rt2x00pci_register_read(rt2x00dev, offset, reg);
@@ -170,7 +174,6 @@ static void rt2x00pci_free_queue_dma(struct rt2x00_dev *rt2x00dev,
 
 int rt2x00pci_initialize(struct rt2x00_dev *rt2x00dev)
 {
-	struct pci_dev *pci_dev = to_pci_dev(rt2x00dev->dev);
 	struct data_queue *queue;
 	int status;
 
@@ -186,11 +189,11 @@ int rt2x00pci_initialize(struct rt2x00_dev *rt2x00dev)
 	/*
 	 * Register interrupt handler.
 	 */
-	status = request_irq(pci_dev->irq, rt2x00dev->ops->lib->irq_handler,
-			     IRQF_SHARED, pci_name(pci_dev), rt2x00dev);
+	status = request_irq(rt2x00dev->irq, rt2x00dev->ops->lib->irq_handler,
+			     IRQF_SHARED, rt2x00dev->name, rt2x00dev);
 	if (status) {
 		ERROR(rt2x00dev, "IRQ %d allocation failed (error %d).\n",
-		      pci_dev->irq, status);
+		      rt2x00dev->irq, status);
 		goto exit;
 	}
 
@@ -307,6 +310,10 @@ int rt2x00pci_probe(struct pci_dev *pci_dev, const struct pci_device_id *id)
 	rt2x00dev->dev = &pci_dev->dev;
 	rt2x00dev->ops = ops;
 	rt2x00dev->hw = hw;
+	rt2x00dev->irq = pci_dev->irq;
+	rt2x00dev->name = pci_name(pci_dev);
+
+	rt2x00_set_chip_intf(rt2x00dev, RT2X00_CHIP_INTF_PCI);
 
 	retval = rt2x00pci_alloc_reg(rt2x00dev);
 	if (retval)

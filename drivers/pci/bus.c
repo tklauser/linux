@@ -14,8 +14,55 @@
 #include <linux/ioport.h>
 #include <linux/proc_fs.h>
 #include <linux/init.h>
+#include <linux/slab.h>
 
 #include "pci.h"
+
+void pci_bus_add_resource(struct pci_bus *bus, struct resource *res,
+			  unsigned int flags)
+{
+	struct pci_bus_resource *bus_res;
+
+	bus_res = kzalloc(sizeof(struct pci_bus_resource), GFP_KERNEL);
+	if (!bus_res) {
+		dev_err(&bus->dev, "can't add %pR resource\n", res);
+		return;
+	}
+
+	bus_res->res = res;
+	bus_res->flags = flags;
+	list_add_tail(&bus_res->list, &bus->resources);
+}
+
+struct resource *pci_bus_resource_n(const struct pci_bus *bus, int n)
+{
+	struct pci_bus_resource *bus_res;
+
+	if (n < PCI_BRIDGE_RESOURCE_NUM)
+		return bus->resource[n];
+
+	n -= PCI_BRIDGE_RESOURCE_NUM;
+	list_for_each_entry(bus_res, &bus->resources, list) {
+		if (n-- == 0)
+			return bus_res->res;
+	}
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(pci_bus_resource_n);
+
+void pci_bus_remove_resources(struct pci_bus *bus)
+{
+	struct pci_bus_resource *bus_res, *tmp;
+	int i;
+
+	for (i = 0; i < PCI_BRIDGE_RESOURCE_NUM; i++)
+		bus->resource[i] = 0;
+
+	list_for_each_entry_safe(bus_res, tmp, &bus->resources, list) {
+		list_del(&bus_res->list);
+		kfree(bus_res);
+	}
+}
 
 /**
  * pci_bus_alloc_resource - allocate a resource from a parent bus
@@ -36,16 +83,23 @@ int
 pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 		resource_size_t size, resource_size_t align,
 		resource_size_t min, unsigned int type_mask,
-		void (*alignf)(void *, struct resource *, resource_size_t,
-				resource_size_t),
+		resource_size_t (*alignf)(void *,
+					  const struct resource *,
+					  resource_size_t,
+					  resource_size_t),
 		void *alignf_data)
 {
 	int i, ret = -ENOMEM;
+	struct resource *r;
+	resource_size_t max = -1;
 
 	type_mask |= IORESOURCE_IO | IORESOURCE_MEM;
 
-	for (i = 0; i < PCI_BUS_NUM_RESOURCES; i++) {
-		struct resource *r = bus->resource[i];
+	/* don't allocate too high if the pref mem doesn't support 64bit*/
+	if (!(res->flags & IORESOURCE_MEM_64))
+		max = PCIBIOS_MAX_MEM_32;
+
+	pci_bus_for_each_resource(bus, r, i) {
 		if (!r)
 			continue;
 
@@ -62,7 +116,7 @@ pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 		/* Ok, try it out.. */
 		ret = allocate_resource(r, res, size,
 					r->start ? : min,
-					-1, align,
+					max, align,
 					alignf, alignf_data);
 		if (ret == 0)
 			break;
@@ -201,13 +255,18 @@ void pci_enable_bridges(struct pci_bus *bus)
  *  Walk the given bus, including any bridged devices
  *  on buses under this bus.  Call the provided callback
  *  on each device found.
+ *
+ *  We check the return of @cb each time. If it returns anything
+ *  other than 0, we break out.
+ *
  */
-void pci_walk_bus(struct pci_bus *top, void (*cb)(struct pci_dev *, void *),
+void pci_walk_bus(struct pci_bus *top, int (*cb)(struct pci_dev *, void *),
 		  void *userdata)
 {
 	struct pci_dev *dev;
 	struct pci_bus *bus;
 	struct list_head *next;
+	int retval;
 
 	bus = top;
 	down_read(&pci_bus_sem);
@@ -230,9 +289,11 @@ void pci_walk_bus(struct pci_bus *top, void (*cb)(struct pci_dev *, void *),
 			next = dev->bus_list.next;
 
 		/* Run device routines with the device locked */
-		down(&dev->dev.sem);
-		cb(dev, userdata);
-		up(&dev->dev.sem);
+		device_lock(&dev->dev);
+		retval = cb(dev, userdata);
+		device_unlock(&dev->dev);
+		if (retval)
+			break;
 	}
 	up_read(&pci_bus_sem);
 }

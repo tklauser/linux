@@ -1,7 +1,7 @@
 /*
  *  Cobalt server LCD frame buffer driver.
  *
- *  Copyright (C) 2008  Yoichi Yuasa <yoichi_yuasa@tripeaks.co.jp>
+ *  Copyright (C) 2008  Yoichi Yuasa <yuasa@linux-mips.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -287,7 +287,7 @@ static struct fb_ops cobalt_lcd_fbops = {
 	.fb_cursor	= cobalt_lcdfb_cursor,
 };
 
-static int __init cobalt_lcdfb_probe(struct platform_device *dev)
+static int __devinit cobalt_lcdfb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
 	struct resource *res;

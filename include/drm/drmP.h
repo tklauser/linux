@@ -34,9 +34,6 @@
 #ifndef _DRM_P_H_
 #define _DRM_P_H_
 
-/* If you want the memory alloc debug functionality, change define below */
-/* #define DEBUG_MEMORY */
-
 #ifdef __KERNEL__
 #ifdef __alpha__
 /* add include of current.h so that "current" is defined
@@ -58,6 +55,7 @@
 #include <linux/mm.h>
 #include <linux/cdev.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 #if defined(__alpha__) || defined(__powerpc__)
 #include <asm/pgtable.h>	/* For pte_wrprotect */
 #endif
@@ -86,7 +84,47 @@ struct drm_device;
 
 #include "drm_os_linux.h"
 #include "drm_hashtab.h"
+#include "drm_mm.h"
 
+#define DRM_UT_CORE 		0x01
+#define DRM_UT_DRIVER		0x02
+#define DRM_UT_KMS		0x04
+/*
+ * Three debug levels are defined.
+ * drm_core, drm_driver, drm_kms
+ * drm_core level can be used in the generic drm code. For example:
+ * 	drm_ioctl, drm_mm, drm_memory
+ * The macro definiton of DRM_DEBUG is used.
+ * 	DRM_DEBUG(fmt, args...)
+ * 	The debug info by using the DRM_DEBUG can be obtained by adding
+ * 	the boot option of "drm.debug=1".
+ *
+ * drm_driver level can be used in the specific drm driver. It is used
+ * to add the debug info related with the drm driver. For example:
+ * i915_drv, i915_dma, i915_gem, radeon_drv,
+ * 	The macro definition of DRM_DEBUG_DRIVER can be used.
+ * 	DRM_DEBUG_DRIVER(fmt, args...)
+ * 	The debug info by using the DRM_DEBUG_DRIVER can be obtained by
+ * 	adding the boot option of "drm.debug=0x02"
+ *
+ * drm_kms level can be used in the KMS code related with specific drm driver.
+ * It is used to add the debug info related with KMS mode. For example:
+ * the connector/crtc ,
+ * 	The macro definition of DRM_DEBUG_KMS can be used.
+ * 	DRM_DEBUG_KMS(fmt, args...)
+ * 	The debug info by using the DRM_DEBUG_KMS can be obtained by
+ * 	adding the boot option of "drm.debug=0x04"
+ *
+ * If we add the boot option of "drm.debug=0x06", we can get the debug info by
+ * using the DRM_DEBUG_KMS and DRM_DEBUG_DRIVER.
+ * If we add the boot option of "drm.debug=0x05", we can get the debug info by
+ * using the DRM_DEBUG_KMS and DRM_DEBUG.
+ */
+
+extern void drm_ut_debug_printk(unsigned int request_level,
+				const char *prefix,
+				const char *function_name,
+				const char *format, ...);
 /***********************************************************************/
 /** \name DRM template customization defaults */
 /*@{*/
@@ -122,31 +160,6 @@ struct drm_device;
 #define DRM_LOCK_SLICE	      1	/**< Time slice for lock, in jiffies */
 
 #define DRM_FLAG_DEBUG	  0x01
-
-#define DRM_MEM_DMA	   0
-#define DRM_MEM_SAREA	   1
-#define DRM_MEM_DRIVER	   2
-#define DRM_MEM_MAGIC	   3
-#define DRM_MEM_IOCTLS	   4
-#define DRM_MEM_MAPS	   5
-#define DRM_MEM_VMAS	   6
-#define DRM_MEM_BUFS	   7
-#define DRM_MEM_SEGS	   8
-#define DRM_MEM_PAGES	   9
-#define DRM_MEM_FILES	  10
-#define DRM_MEM_QUEUES	  11
-#define DRM_MEM_CMDS	  12
-#define DRM_MEM_MAPPINGS  13
-#define DRM_MEM_BUFLISTS  14
-#define DRM_MEM_AGPLISTS  15
-#define DRM_MEM_TOTALAGP  16
-#define DRM_MEM_BOUNDAGP  17
-#define DRM_MEM_CTXBITMAP 18
-#define DRM_MEM_STUB      19
-#define DRM_MEM_SGLISTS   20
-#define DRM_MEM_CTXLIST   21
-#define DRM_MEM_MM        22
-#define DRM_MEM_HASHTAB   23
 
 #define DRM_MAX_CTXBITMAP (PAGE_SIZE * 8)
 #define DRM_MAP_HASH_OFFSET 0x10000000
@@ -186,26 +199,52 @@ struct drm_device;
  * \param arg arguments
  */
 #if DRM_DEBUG_CODE
-#define DRM_DEBUG(fmt, arg...)						\
+#define DRM_DEBUG(fmt, args...)						\
 	do {								\
-		if ( drm_debug )			\
-			printk(KERN_DEBUG				\
-			       "[" DRM_NAME ":%s] " fmt ,	\
-			       __func__ , ##arg);			\
+		drm_ut_debug_printk(DRM_UT_CORE, DRM_NAME, 		\
+					__func__, fmt, ##args);		\
+	} while (0)
+
+#define DRM_DEBUG_DRIVER(fmt, args...)					\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_DRIVER, DRM_NAME,		\
+					__func__, fmt, ##args);		\
+	} while (0)
+#define DRM_DEBUG_KMS(fmt, args...)				\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_KMS, DRM_NAME, 		\
+					 __func__, fmt, ##args);	\
+	} while (0)
+#define DRM_LOG(fmt, args...)						\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_CORE, NULL,			\
+					NULL, fmt, ##args);		\
+	} while (0)
+#define DRM_LOG_KMS(fmt, args...)					\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_KMS, NULL,			\
+					NULL, fmt, ##args);		\
+	} while (0)
+#define DRM_LOG_MODE(fmt, args...)					\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_MODE, NULL,			\
+					NULL, fmt, ##args);		\
+	} while (0)
+#define DRM_LOG_DRIVER(fmt, args...)					\
+	do {								\
+		drm_ut_debug_printk(DRM_UT_DRIVER, NULL,		\
+					NULL, fmt, ##args);		\
 	} while (0)
 #else
+#define DRM_DEBUG_DRIVER(fmt, args...) do { } while (0)
+#define DRM_DEBUG_KMS(fmt, args...)	do { } while (0)
 #define DRM_DEBUG(fmt, arg...)		 do { } while (0)
+#define DRM_LOG(fmt, arg...)		do { } while (0)
+#define DRM_LOG_KMS(fmt, args...) do { } while (0)
+#define DRM_LOG_MODE(fmt, arg...) do { } while (0)
+#define DRM_LOG_DRIVER(fmt, arg...) do { } while (0)
+
 #endif
-
-#define DRM_PROC_LIMIT (PAGE_SIZE-80)
-
-#define DRM_PROC_PRINT(fmt, arg...)					\
-   len += sprintf(&buf[len], fmt , ##arg);				\
-   if (len > DRM_PROC_LIMIT) { *eof = 1; return len - offset; }
-
-#define DRM_PROC_PRINT_RET(ret, fmt, arg...)				\
-   len += sprintf(&buf[len], fmt , ##arg);				\
-   if (len > DRM_PROC_LIMIT) { ret; *eof = 1; return len - offset; }
 
 /*@}*/
 
@@ -217,19 +256,8 @@ struct drm_device;
 
 #define DRM_LEFTCOUNT(x) (((x)->rp + (x)->count - (x)->wp) % ((x)->count + 1))
 #define DRM_BUFCOUNT(x) ((x)->count - DRM_LEFTCOUNT(x))
-#define DRM_WAITCOUNT(dev,idx) DRM_BUFCOUNT(&dev->queuelist[idx]->waitlist)
 
 #define DRM_IF_VERSION(maj, min) (maj << 16 | min)
-/**
- * Get the private SAREA mapping.
- *
- * \param _dev DRM device.
- * \param _ctx context number.
- * \param _map output mapping.
- */
-#define DRM_GET_PRIV_SAREA(_dev, _ctx, _map) do {	\
-	(_map) = (_dev)->context_sareas[_ctx];		\
-} while(0)
 
 /**
  * Test that the hardware lock is held by the caller, returning otherwise.
@@ -237,28 +265,16 @@ struct drm_device;
  * \param dev DRM device.
  * \param filp file pointer of the caller.
  */
-#define LOCK_TEST_WITH_RETURN( dev, file_priv )				\
-do {									\
-	if (!_DRM_LOCK_IS_HELD(file_priv->master->lock.hw_lock->lock) ||		\
-	    file_priv->master->lock.file_priv != file_priv)	{			\
+#define LOCK_TEST_WITH_RETURN( dev, _file_priv )				\
+do {										\
+	if (!_DRM_LOCK_IS_HELD(_file_priv->master->lock.hw_lock->lock) ||	\
+	    _file_priv->master->lock.file_priv != _file_priv)	{		\
 		DRM_ERROR( "%s called without lock held, held  %d owner %p %p\n",\
-			   __func__, _DRM_LOCK_IS_HELD(file_priv->master->lock.hw_lock->lock),\
-			   file_priv->master->lock.file_priv, file_priv);		\
-		return -EINVAL;						\
-	}								\
+			   __func__, _DRM_LOCK_IS_HELD(_file_priv->master->lock.hw_lock->lock),\
+			   _file_priv->master->lock.file_priv, _file_priv);	\
+		return -EINVAL;							\
+	}									\
 } while (0)
-
-/**
- * Copy and IOCTL return string to user space
- */
-#define DRM_COPY( name, value )						\
-	len = strlen( value );						\
-	if ( len > name##_len ) len = name##_len;			\
-	name##_len = strlen( value );					\
-	if ( len && name ) {						\
-		if ( copy_to_user( name, value, len ) )			\
-			return -EFAULT;					\
-	}
 
 /**
  * Ioctl function type.
@@ -274,10 +290,14 @@ typedef int drm_ioctl_t(struct drm_device *dev, void *data,
 typedef int drm_ioctl_compat_t(struct file *filp, unsigned int cmd,
 			       unsigned long arg);
 
+#define DRM_IOCTL_NR(n)                _IOC_NR(n)
+#define DRM_MAJOR       226
+
 #define DRM_AUTH	0x1
 #define	DRM_MASTER	0x2
 #define DRM_ROOT_ONLY	0x4
 #define DRM_CONTROL_ALLOW 0x8
+#define DRM_UNLOCKED	0x10
 
 struct drm_ioctl_desc {
 	unsigned int cmd;
@@ -378,6 +398,14 @@ struct drm_buf_entry {
 	struct drm_freelist freelist;
 };
 
+/* Event queued up for userspace to read */
+struct drm_pending_event {
+	struct drm_event *event;
+	struct list_head link;
+	struct drm_file *file_priv;
+	void (*destroy)(struct drm_pending_event *event);
+};
+
 /** File private data */
 struct drm_file {
 	int authenticated;
@@ -401,6 +429,10 @@ struct drm_file {
 	struct drm_master *master; /* master this node is currently associated with
 				      N.B. not always minor->master */
 	struct list_head fbs;
+
+	wait_queue_head_t event_wait;
+	struct list_head event_list;
+	int event_space;
 };
 
 /** Wait queue */
@@ -499,26 +531,6 @@ struct drm_sg_mem {
 struct drm_sigdata {
 	int context;
 	struct drm_hw_lock *lock;
-};
-
-
-/*
- * Generic memory manager structs
- */
-
-struct drm_mm_node {
-	struct list_head fl_entry;
-	struct list_head ml_entry;
-	int free;
-	unsigned long start;
-	unsigned long size;
-	struct drm_mm *mm;
-	void *private;
-};
-
-struct drm_mm {
-	struct list_head fl_entry;
-	struct list_head ml_entry;
 };
 
 
@@ -767,6 +779,15 @@ struct drm_driver {
 	/* Master routines */
 	int (*master_create)(struct drm_device *dev, struct drm_master *master);
 	void (*master_destroy)(struct drm_device *dev, struct drm_master *master);
+	/**
+	 * master_set is called whenever the minor master is set.
+	 * master_drop is called whenever the minor master is dropped.
+	 */
+
+	int (*master_set)(struct drm_device *dev, struct drm_file *file_priv,
+			  bool from_open);
+	void (*master_drop)(struct drm_device *dev, struct drm_file *file_priv,
+			    bool from_release);
 
 	int (*proc_init)(struct drm_minor *minor);
 	void (*proc_cleanup)(struct drm_minor *minor);
@@ -781,6 +802,10 @@ struct drm_driver {
 	 */
 	int (*gem_init_object) (struct drm_gem_object *obj);
 	void (*gem_free_object) (struct drm_gem_object *obj);
+	void (*gem_free_object_unlocked) (struct drm_gem_object *obj);
+
+	/* vga arb irq handler */
+	void (*vgaarb_irq)(struct drm_device *dev, bool state);
 
 	/* Driver private ops for this object */
 	struct vm_operations_struct *gem_vm_ops;
@@ -867,6 +892,12 @@ struct drm_minor {
 	struct drm_master *master; /* currently active master for this node */
 	struct list_head master_list;
 	struct drm_mode_group mode_group;
+};
+
+struct drm_pending_vblank_event {
+	struct drm_pending_event base;
+	int pipe;
+	struct drm_event_vblank event;
 };
 
 /**
@@ -967,6 +998,12 @@ struct drm_device {
 	struct timer_list vblank_disable_timer;
 
 	u32 max_vblank_count;           /**< size of vblank counter register */
+
+	/**
+	 * List of events
+	 */
+	struct list_head vblank_event_list;
+	spinlock_t event_lock;
 
 	/*@} */
 	cycles_t ctx_start;
@@ -1094,8 +1131,8 @@ static inline int drm_mtrr_del(int handle, unsigned long offset,
 				/* Driver support (drm_drv.h) */
 extern int drm_init(struct drm_driver *driver);
 extern void drm_exit(struct drm_driver *driver);
-extern int drm_ioctl(struct inode *inode, struct file *filp,
-		     unsigned int cmd, unsigned long arg);
+extern long drm_ioctl(struct file *filp,
+		      unsigned int cmd, unsigned long arg);
 extern long drm_compat_ioctl(struct file *filp,
 			     unsigned int cmd, unsigned long arg);
 extern int drm_lastclose(struct drm_device *dev);
@@ -1104,6 +1141,8 @@ extern int drm_lastclose(struct drm_device *dev);
 extern int drm_open(struct inode *inode, struct file *filp);
 extern int drm_stub_open(struct inode *inode, struct file *filp);
 extern int drm_fasync(int fd, struct file *filp, int on);
+extern ssize_t drm_read(struct file *filp, char __user *buffer,
+			size_t count, loff_t *offset);
 extern int drm_release(struct inode *inode, struct file *filp);
 
 				/* Mapping support (drm_vm.h) */
@@ -1264,6 +1303,7 @@ extern u32 drm_vblank_count(struct drm_device *dev, int crtc);
 extern void drm_handle_vblank(struct drm_device *dev, int crtc);
 extern int drm_vblank_get(struct drm_device *dev, int crtc);
 extern void drm_vblank_put(struct drm_device *dev, int crtc);
+extern void drm_vblank_off(struct drm_device *dev, int crtc);
 extern void drm_vblank_cleanup(struct drm_device *dev);
 /* Modesetting support */
 extern void drm_vblank_pre_modeset(struct drm_device *dev, int crtc);
@@ -1370,7 +1410,7 @@ extern int drm_ati_pcigart_cleanup(struct drm_device *dev,
 				   struct drm_ati_pcigart_info * gart_info);
 
 extern drm_dma_handle_t *drm_pci_alloc(struct drm_device *dev, size_t size,
-				       size_t align, dma_addr_t maxaddr);
+				       size_t align);
 extern void __drm_pci_free(struct drm_device *dev, drm_dma_handle_t * dmah);
 extern void drm_pci_free(struct drm_device *dev, drm_dma_handle_t * dmah);
 
@@ -1385,26 +1425,11 @@ extern char *drm_get_connector_status_name(enum drm_connector_status status);
 extern int drm_sysfs_connector_add(struct drm_connector *connector);
 extern void drm_sysfs_connector_remove(struct drm_connector *connector);
 
-/*
- * Basic memory manager support (drm_mm.c)
- */
-extern struct drm_mm_node *drm_mm_get_block(struct drm_mm_node * parent,
-				       unsigned long size,
-				       unsigned alignment);
-extern void drm_mm_put_block(struct drm_mm_node * cur);
-extern struct drm_mm_node *drm_mm_search_free(const struct drm_mm *mm, unsigned long size,
-					 unsigned alignment, int best_match);
-extern int drm_mm_init(struct drm_mm *mm, unsigned long start, unsigned long size);
-extern void drm_mm_takedown(struct drm_mm *mm);
-extern int drm_mm_clean(struct drm_mm *mm);
-extern unsigned long drm_mm_tail_space(struct drm_mm *mm);
-extern int drm_mm_remove_space_from_tail(struct drm_mm *mm, unsigned long size);
-extern int drm_mm_add_space_to_tail(struct drm_mm *mm, unsigned long size);
-
 /* Graphics Execution Manager library functions (drm_gem.c) */
 int drm_gem_init(struct drm_device *dev);
 void drm_gem_destroy(struct drm_device *dev);
 void drm_gem_object_free(struct kref *kref);
+void drm_gem_object_free_unlocked(struct kref *kref);
 struct drm_gem_object *drm_gem_object_alloc(struct drm_device *dev,
 					    size_t size);
 void drm_gem_object_handle_free(struct kref *kref);
@@ -1421,15 +1446,20 @@ drm_gem_object_reference(struct drm_gem_object *obj)
 static inline void
 drm_gem_object_unreference(struct drm_gem_object *obj)
 {
-	if (obj == NULL)
-		return;
+	if (obj != NULL)
+		kref_put(&obj->refcount, drm_gem_object_free);
+}
 
-	kref_put(&obj->refcount, drm_gem_object_free);
+static inline void
+drm_gem_object_unreference_unlocked(struct drm_gem_object *obj)
+{
+	if (obj != NULL)
+		kref_put(&obj->refcount, drm_gem_object_free_unlocked);
 }
 
 int drm_gem_handle_create(struct drm_file *file_priv,
 			  struct drm_gem_object *obj,
-			  int *handlep);
+			  u32 *handlep);
 
 static inline void
 drm_gem_object_handle_reference(struct drm_gem_object *obj)
@@ -1453,9 +1483,24 @@ drm_gem_object_handle_unreference(struct drm_gem_object *obj)
 	drm_gem_object_unreference(obj);
 }
 
+static inline void
+drm_gem_object_handle_unreference_unlocked(struct drm_gem_object *obj)
+{
+	if (obj == NULL)
+		return;
+
+	/*
+	* Must bump handle count first as this may be the last
+	* ref, in which case the object would disappear before we
+	* checked for a name
+	*/
+	kref_put(&obj->handlecount, drm_gem_object_handle_free);
+	drm_gem_object_unreference_unlocked(obj);
+}
+
 struct drm_gem_object *drm_gem_object_lookup(struct drm_device *dev,
 					     struct drm_file *filp,
-					     int handle);
+					     u32 handle);
 int drm_gem_close_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int drm_gem_flink_ioctl(struct drm_device *dev, void *data,
@@ -1501,54 +1546,7 @@ static __inline__ void drm_core_dropmap(struct drm_local_map *map)
 {
 }
 
-#ifndef DEBUG_MEMORY
-/** Wrapper around kmalloc() */
-static __inline__ void *drm_alloc(size_t size, int area)
-{
-	return kmalloc(size, GFP_KERNEL);
-}
-
-/** Wrapper around kfree() */
-static __inline__ void drm_free(void *pt, size_t size, int area)
-{
-	kfree(pt);
-}
-
-/** Wrapper around kcalloc() */
-static __inline__ void *drm_calloc(size_t nmemb, size_t size, int area)
-{
-	return kcalloc(nmemb, size, GFP_KERNEL);
-}
-
-static __inline__ void *drm_calloc_large(size_t nmemb, size_t size)
-{
-	u8 *addr;
-
-	if (size <= PAGE_SIZE)
-	    return kcalloc(nmemb, size, GFP_KERNEL);
-
-	addr = vmalloc(nmemb * size);
-	if (!addr)
-		return NULL;
-
-	memset(addr, 0, nmemb * size);
-
-	return addr;
-}
-
-static __inline void drm_free_large(void *ptr)
-{
-	if (!is_vmalloc_addr(ptr))
-		return kfree(ptr);
-
-	vfree(ptr);
-}
-#else
-extern void *drm_alloc(size_t size, int area);
-extern void drm_free(void *pt, size_t size, int area);
-extern void *drm_calloc(size_t nmemb, size_t size, int area);
-#endif
-
+#include "drm_mem_util.h"
 /*@}*/
 
 #endif				/* __KERNEL__ */

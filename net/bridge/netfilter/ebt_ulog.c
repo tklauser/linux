@@ -29,6 +29,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/socket.h>
 #include <linux/skbuff.h>
@@ -266,7 +267,7 @@ static bool ebt_ulog_tg_check(const struct xt_tgchk_param *par)
 	if (uloginfo->qthreshold > EBT_ULOG_MAX_QLEN)
 		uloginfo->qthreshold = EBT_ULOG_MAX_QLEN;
 
-	return 0;
+	return true;
 }
 
 static struct xt_target ebt_ulog_tg_reg __read_mostly = {
@@ -275,7 +276,7 @@ static struct xt_target ebt_ulog_tg_reg __read_mostly = {
 	.family		= NFPROTO_BRIDGE,
 	.target		= ebt_ulog_tg,
 	.checkentry	= ebt_ulog_tg_check,
-	.targetsize	= XT_ALIGN(sizeof(struct ebt_ulog_info)),
+	.targetsize	= sizeof(struct ebt_ulog_info),
 	.me		= THIS_MODULE,
 };
 

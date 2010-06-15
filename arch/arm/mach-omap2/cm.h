@@ -4,8 +4,8 @@
 /*
  * OMAP2/3 Clock Management (CM) register definitions
  *
- * Copyright (C) 2007-2008 Texas Instruments, Inc.
- * Copyright (C) 2007-2008 Nokia Corporation
+ * Copyright (C) 2007-2009 Texas Instruments, Inc.
+ * Copyright (C) 2007-2009 Nokia Corporation
  *
  * Written by Paul Walmsley
  *
@@ -16,17 +16,18 @@
 
 #include "prcm-common.h"
 
-#ifndef __ASSEMBLER__
-#define OMAP_CM_REGADDR(module, reg)					\
-			IO_ADDRESS(OMAP2_CM_BASE + (module) + (reg))
-#else
 #define OMAP2420_CM_REGADDR(module, reg)				\
-			IO_ADDRESS(OMAP2420_CM_BASE + (module) + (reg))
+			OMAP2_L4_IO_ADDRESS(OMAP2420_CM_BASE + (module) + (reg))
 #define OMAP2430_CM_REGADDR(module, reg)				\
-			IO_ADDRESS(OMAP2430_CM_BASE + (module) + (reg))
+			OMAP2_L4_IO_ADDRESS(OMAP2430_CM_BASE + (module) + (reg))
 #define OMAP34XX_CM_REGADDR(module, reg)				\
-			IO_ADDRESS(OMAP3430_CM_BASE + (module) + (reg))
-#endif
+			OMAP2_L4_IO_ADDRESS(OMAP3430_CM_BASE + (module) + (reg))
+#define OMAP44XX_CM1_REGADDR(module, reg)				\
+			OMAP2_L4_IO_ADDRESS(OMAP4430_CM1_BASE + (module) + (reg))
+#define OMAP44XX_CM2_REGADDR(module, reg)				\
+			OMAP2_L4_IO_ADDRESS(OMAP4430_CM2_BASE + (module) + (reg))
+
+#include "cm44xx.h"
 
 /*
  * Architecture-specific global CM registers
@@ -34,10 +35,11 @@
  * These registers appear once per CM module.
  */
 
-#define OMAP3430_CM_REVISION		OMAP_CM_REGADDR(OCP_MOD, 0x0000)
-#define OMAP3430_CM_SYSCONFIG		OMAP_CM_REGADDR(OCP_MOD, 0x0010)
-#define OMAP3430_CM_POLCTRL		OMAP_CM_REGADDR(OCP_MOD, 0x009c)
+#define OMAP3430_CM_REVISION		OMAP34XX_CM_REGADDR(OCP_MOD, 0x0000)
+#define OMAP3430_CM_SYSCONFIG		OMAP34XX_CM_REGADDR(OCP_MOD, 0x0010)
+#define OMAP3430_CM_POLCTRL		OMAP34XX_CM_REGADDR(OCP_MOD, 0x009c)
 
+#define OMAP3_CM_CLKOUT_CTRL_OFFSET	0x0070
 #define OMAP3430_CM_CLKOUT_CTRL		OMAP_CM_REGADDR(OMAP3430_CCR_MOD, 0x0070)
 
 /*
@@ -65,7 +67,8 @@
 #define CM_CLKSEL					0x0040
 #define CM_CLKSEL1					CM_CLKSEL
 #define CM_CLKSEL2					0x0044
-#define CM_CLKSTCTRL					0x0048
+#define OMAP2_CM_CLKSTCTRL				0x0048
+#define OMAP4_CM_CLKSTCTRL				0x0000
 
 
 /* Architecture-specific registers */
@@ -86,13 +89,18 @@
 #define OMAP3430_CM_CLKSEL1_PLL				CM_CLKSEL
 #define OMAP3430_CM_CLKSEL2_PLL				CM_CLKSEL2
 #define OMAP3430_CM_SLEEPDEP				CM_CLKSEL2
-#define OMAP3430_CM_CLKSEL3				CM_CLKSTCTRL
+#define OMAP3430_CM_CLKSEL3				OMAP2_CM_CLKSTCTRL
 #define OMAP3430_CM_CLKSTST				0x004c
 #define OMAP3430ES2_CM_CLKSEL4				0x004c
 #define OMAP3430ES2_CM_CLKSEL5				0x0050
 #define OMAP3430_CM_CLKSEL2_EMU				0x0050
 #define OMAP3430_CM_CLKSEL3_EMU				0x0054
 
+/* CM2.CEFUSE_CM2 register offsets */
+
+/* OMAP4 modulemode control */
+#define OMAP4430_MODULEMODE_HWCTRL			0
+#define OMAP4430_MODULEMODE_SWCTRL			1
 
 /* Clock management domain register get/set */
 
@@ -101,6 +109,10 @@
 extern u32 cm_read_mod_reg(s16 module, u16 idx);
 extern void cm_write_mod_reg(u32 val, s16 module, u16 idx);
 extern u32 cm_rmw_mod_reg_bits(u32 mask, u32 bits, s16 module, s16 idx);
+
+extern int omap2_cm_wait_module_ready(s16 prcm_mod, u8 idlest_id,
+				      u8 idlest_shift);
+extern int omap4_cm_wait_module_ready(u32 prcm_mod, u8 prcm_dev_offs);
 
 static inline u32 cm_set_mod_reg_bits(u32 bits, s16 module, s16 idx)
 {
@@ -127,5 +139,8 @@ static inline u32 cm_clear_mod_reg_bits(u32 bits, s16 module, s16 idx)
 /* CM_IDLEST_GFX */
 #define OMAP_ST_GFX					(1 << 0)
 
+/* CM_IDLEST indicator */
+#define OMAP24XX_CM_IDLEST_VAL		0
+#define OMAP34XX_CM_IDLEST_VAL		1
 
 #endif

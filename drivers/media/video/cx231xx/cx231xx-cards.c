@@ -22,6 +22,7 @@
 
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/usb.h>
@@ -68,19 +69,19 @@ struct cx231xx_board cx231xx_boards[] = {
 				.type = CX231XX_VMUX_TELEVISION,
 				.vmux = CX231XX_VIN_3_1,
 				.amux = CX231XX_AMUX_VIDEO,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_COMPOSITE1,
 				.vmux = CX231XX_VIN_2_1,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_SVIDEO,
 				.vmux = CX231XX_VIN_1_1 |
 					(CX231XX_VIN_1_2 << 8) |
 					CX25840_SVIDEO_ON,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}
 		},
 	},
@@ -107,19 +108,19 @@ struct cx231xx_board cx231xx_boards[] = {
 				.type = CX231XX_VMUX_TELEVISION,
 				.vmux = CX231XX_VIN_3_1,
 				.amux = CX231XX_AMUX_VIDEO,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_COMPOSITE1,
 				.vmux = CX231XX_VIN_2_1,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_SVIDEO,
 				.vmux = CX231XX_VIN_1_1 |
 					(CX231XX_VIN_1_2 << 8) |
 					CX25840_SVIDEO_ON,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}
 		},
 	},
@@ -147,19 +148,19 @@ struct cx231xx_board cx231xx_boards[] = {
 				.type = CX231XX_VMUX_TELEVISION,
 				.vmux = CX231XX_VIN_3_1,
 				.amux = CX231XX_AMUX_VIDEO,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_COMPOSITE1,
 				.vmux = CX231XX_VIN_2_1,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}, {
 				.type = CX231XX_VMUX_SVIDEO,
 				.vmux = CX231XX_VIN_1_1 |
 					(CX231XX_VIN_1_2 << 8) |
 					CX25840_SVIDEO_ON,
 				.amux = CX231XX_AMUX_LINE_IN,
-				.gpio = 0,
+				.gpio = NULL,
 			}
 		},
 	},
@@ -281,12 +282,12 @@ static void cx231xx_config_tuner(struct cx231xx *dev)
 }
 
 /* ----------------------------------------------------------------------- */
-void cx231xx_set_ir(struct cx231xx *dev, struct IR_i2c *ir)
+void cx231xx_register_i2c_ir(struct cx231xx *dev)
 {
-	if (disable_ir) {
-		ir->get_key = NULL;
+	if (disable_ir)
 		return;
-	}
+
+	/* REVISIT: instantiate IR device */
 
 	/* detect & configure */
 	switch (dev->model) {
@@ -313,7 +314,7 @@ void cx231xx_card_setup(struct cx231xx *dev)
 	if (dev->board.decoder == CX231XX_AVDECODER) {
 		dev->sd_cx25840 = v4l2_i2c_new_subdev(&dev->v4l2_dev,
 					&dev->i2c_bus[0].i2c_adap,
-					"cx25840", "cx25840", 0x88 >> 1);
+					"cx25840", "cx25840", 0x88 >> 1, NULL);
 		if (dev->sd_cx25840 == NULL)
 			cx231xx_info("cx25840 subdev registration failure\n");
 		cx25840_call(dev, core, load_fw);
@@ -323,7 +324,7 @@ void cx231xx_card_setup(struct cx231xx *dev)
 	if (dev->board.tuner_type != TUNER_ABSENT) {
 		dev->sd_tuner =	v4l2_i2c_new_subdev(&dev->v4l2_dev,
 				&dev->i2c_bus[1].i2c_adap,
-				"tuner", "tuner", 0xc2 >> 1);
+				"tuner", "tuner", 0xc2 >> 1, NULL);
 		if (dev->sd_tuner == NULL)
 			cx231xx_info("tuner subdev registration failure\n");
 
@@ -856,8 +857,9 @@ static void cx231xx_usb_disconnect(struct usb_interface *interface)
 
 	if (dev->users) {
 		cx231xx_warn
-		    ("device /dev/video%d is open! Deregistration and memory "
-		     "deallocation are deferred on close.\n", dev->vdev->num);
+		    ("device %s is open! Deregistration and memory "
+		     "deallocation are deferred on close.\n",
+		     video_device_node_name(dev->vdev));
 
 		dev->state |= DEV_MISCONFIGURED;
 		cx231xx_uninit_isoc(dev);

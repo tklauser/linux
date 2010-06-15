@@ -25,9 +25,6 @@
  *
  ---------------------------------------------------------------------*/
 
-
-#include <asm/traps.h>
-
 #if defined(__ASSEMBLY__) || defined(ASSEMBLER)
 
 #define UR ERROR
@@ -375,10 +372,12 @@ extern int unresolved_symbol;
 #define __NR_pipe2		329
 #define __NR_inotify_init1	330
 #define __NR_preadv		331
-#define __NR_pwritev    	332
+#define __NR_pwritev		332
+#define __NR_rt_tgsigqueueinfo	333
+#define __NR_perf_event_open	334
+#define __NR_recvmmsg		335
 
-
-#define NR_syscalls                     333
+#define NR_syscalls		336
 
 #ifdef __KERNEL__
 
@@ -386,6 +385,7 @@ extern int unresolved_symbol;
 #define __ARCH_WANT_STAT64
 #define __ARCH_WANT_SYS_ALARM
 #define __ARCH_WANT_SYS_GETHOSTNAME
+#define __ARCH_WANT_SYS_IPC
 #define __ARCH_WANT_SYS_PAUSE
 #define __ARCH_WANT_SYS_SGETMASK
 #define __ARCH_WANT_SYS_SIGNAL
@@ -397,6 +397,8 @@ extern int unresolved_symbol;
 #define __ARCH_WANT_SYS_GETPGRP
 #define __ARCH_WANT_SYS_LLSEEK
 #define __ARCH_WANT_SYS_NICE
+#define __ARCH_WANT_SYS_OLD_SELECT
+#define __ARCH_WANT_SYS_OLD_UNAME
 #define __ARCH_WANT_SYS_SIGPENDING
 #define __ARCH_WANT_SYS_SIGPROCMASK
 #define __ARCH_WANT_SYS_RT_SIGACTION

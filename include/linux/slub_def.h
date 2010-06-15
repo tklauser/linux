@@ -10,7 +10,8 @@
 #include <linux/gfp.h>
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
-#include <trace/kmemtrace.h>
+#include <linux/kmemtrace.h>
+#include <linux/kmemleak.h>
 
 enum stat_item {
 	ALLOC_FASTPATH,		/* Allocation from cpu slab */
@@ -37,8 +38,6 @@ struct kmem_cache_cpu {
 	void **freelist;	/* Pointer to first free per cpu object */
 	struct page *page;	/* The slab from which we are allocating */
 	int node;		/* The node of the page (or -1 for debug) */
-	unsigned int offset;	/* Freepointer offset (in word units) */
-	unsigned int objsize;	/* Size of an object (from kmem_cache) */
 #ifdef CONFIG_SLUB_STATS
 	unsigned stat[NR_SLUB_STAT_ITEMS];
 #endif
@@ -68,6 +67,7 @@ struct kmem_cache_order_objects {
  * Slab cache management.
  */
 struct kmem_cache {
+	struct kmem_cache_cpu *cpu_slab;
 	/* Used for retriving partial slabs etc */
 	unsigned long flags;
 	int size;		/* The size of an object including meta data */
@@ -103,11 +103,6 @@ struct kmem_cache {
 	int remote_node_defrag_ratio;
 	struct kmem_cache_node *node[MAX_NUMNODES];
 #endif
-#ifdef CONFIG_SMP
-	struct kmem_cache_cpu *cpu_slab[NR_CPUS];
-#else
-	struct kmem_cache_cpu cpu_slab;
-#endif
 };
 
 /*
@@ -134,11 +129,21 @@ struct kmem_cache {
 
 #define SLUB_PAGE_SHIFT (PAGE_SHIFT + 2)
 
+#ifdef CONFIG_ZONE_DMA
+#define SLUB_DMA __GFP_DMA
+/* Reserve extra caches for potential DMA use */
+#define KMALLOC_CACHES (2 * SLUB_PAGE_SHIFT - 6)
+#else
+/* Disable DMA functionality */
+#define SLUB_DMA (__force gfp_t)0
+#define KMALLOC_CACHES SLUB_PAGE_SHIFT
+#endif
+
 /*
  * We keep the general caches in an array of slab caches that are used for
  * 2^x bytes of allocations.
  */
-extern struct kmem_cache kmalloc_caches[SLUB_PAGE_SHIFT];
+extern struct kmem_cache kmalloc_caches[KMALLOC_CACHES];
 
 /*
  * Sorry that the following has to be that ugly but some versions of GCC
@@ -152,12 +157,10 @@ static __always_inline int kmalloc_index(size_t size)
 	if (size <= KMALLOC_MIN_SIZE)
 		return KMALLOC_SHIFT_LOW;
 
-#if KMALLOC_MIN_SIZE <= 64
-	if (size > 64 && size <= 96)
+	if (KMALLOC_MIN_SIZE <= 32 && size > 64 && size <= 96)
 		return 1;
-	if (size > 128 && size <= 192)
+	if (KMALLOC_MIN_SIZE <= 64 && size > 128 && size <= 192)
 		return 2;
-#endif
 	if (size <=          8) return 3;
 	if (size <=         16) return 4;
 	if (size <=         32) return 5;
@@ -208,17 +211,10 @@ static __always_inline struct kmem_cache *kmalloc_slab(size_t size)
 	return &kmalloc_caches[index];
 }
 
-#ifdef CONFIG_ZONE_DMA
-#define SLUB_DMA __GFP_DMA
-#else
-/* Disable DMA functionality */
-#define SLUB_DMA (__force gfp_t)0
-#endif
-
 void *kmem_cache_alloc(struct kmem_cache *, gfp_t);
 void *__kmalloc(size_t size, gfp_t flags);
 
-#ifdef CONFIG_KMEMTRACE
+#ifdef CONFIG_TRACING
 extern void *kmem_cache_alloc_notrace(struct kmem_cache *s, gfp_t gfpflags);
 #else
 static __always_inline void *
@@ -233,6 +229,7 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
 	unsigned int order = get_order(size);
 	void *ret = (void *) __get_free_pages(flags | __GFP_COMP, order);
 
+	kmemleak_alloc(ret, size, 1, flags);
 	trace_kmalloc(_THIS_IP_, ret, size, PAGE_SIZE << order, flags);
 
 	return ret;
@@ -266,7 +263,7 @@ static __always_inline void *kmalloc(size_t size, gfp_t flags)
 void *__kmalloc_node(size_t size, gfp_t flags, int node);
 void *kmem_cache_alloc_node(struct kmem_cache *, gfp_t flags, int node);
 
-#ifdef CONFIG_KMEMTRACE
+#ifdef CONFIG_TRACING
 extern void *kmem_cache_alloc_node_notrace(struct kmem_cache *s,
 					   gfp_t gfpflags,
 					   int node);

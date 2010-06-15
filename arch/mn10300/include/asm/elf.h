@@ -28,13 +28,15 @@
 #define R_MN10300_PCREL8	6	/* PC-relative 8-bit signed.  */
 #define R_MN10300_24		9	/* Direct 24 bit.  */
 #define R_MN10300_RELATIVE	23	/* Adjust by program base.  */
+#define R_MN10300_SYM_DIFF	33	/* Adjustment when relaxing. */
+#define R_MN10300_ALIGN 	34	/* Alignment requirement. */
 
 /*
  * ELF register definitions..
  */
 typedef unsigned long elf_greg_t;
 
-#define ELF_NGREG (sizeof (struct pt_regs) / sizeof(elf_greg_t))
+#define ELF_NGREG ((sizeof(struct pt_regs) / sizeof(elf_greg_t)) - 1)
 typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 
 #define ELF_NFPREG 32
@@ -75,7 +77,7 @@ do {									\
 	_ur->a1   = 0;	_ur->a0   = 0;	_ur->d1   = 0;	_ur->d0   = 0;	\
 } while (0)
 
-#define USE_ELF_CORE_DUMP
+#define CORE_DUMP_USE_REGSET
 #define ELF_EXEC_PAGESIZE	4096
 
 /*

@@ -56,8 +56,8 @@ static inline void auide_insw(unsigned long port, void *addr, u32 count)
 	chan_tab_t *ctp;
 	au1x_ddma_desc_t *dp;
 
-	if(!put_dest_flags(ahwif->rx_chan, (void*)addr, count << 1, 
-			   DDMA_FLAGS_NOIE)) {
+	if (!au1xxx_dbdma_put_dest(ahwif->rx_chan, virt_to_phys(addr),
+				   count << 1, DDMA_FLAGS_NOIE)) {
 		printk(KERN_ERR "%s failed %d\n", __func__, __LINE__);
 		return;
 	}
@@ -74,8 +74,8 @@ static inline void auide_outsw(unsigned long port, void *addr, u32 count)
 	chan_tab_t *ctp;
 	au1x_ddma_desc_t *dp;
 
-	if(!put_source_flags(ahwif->tx_chan, (void*)addr,
-			     count << 1, DDMA_FLAGS_NOIE)) {
+	if (!au1xxx_dbdma_put_source(ahwif->tx_chan, virt_to_phys(addr),
+				     count << 1, DDMA_FLAGS_NOIE)) {
 		printk(KERN_ERR "%s failed %d\n", __func__, __LINE__);
 		return;
 	}
@@ -99,12 +99,11 @@ static void au1xxx_output_data(ide_drive_t *drive, struct ide_cmd *cmd,
 }
 #endif
 
-static void au1xxx_set_pio_mode(ide_drive_t *drive, const u8 pio)
+static void au1xxx_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
 	int mem_sttime = 0, mem_stcfg = au_readl(MEM_STCFG2);
 
-	/* set pio mode! */
-	switch(pio) {
+	switch (drive->pio_mode - XFER_PIO_0) {
 	case 0:
 		mem_sttime = SBC_IDE_TIMING(PIO0);
 
@@ -161,11 +160,11 @@ static void au1xxx_set_pio_mode(ide_drive_t *drive, const u8 pio)
 	au_writel(mem_stcfg,MEM_STCFG2);
 }
 
-static void auide_set_dma_mode(ide_drive_t *drive, const u8 speed)
+static void auide_set_dma_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
 	int mem_sttime = 0, mem_stcfg = au_readl(MEM_STCFG2);
 
-	switch(speed) {
+	switch (drive->dma_mode) {
 #ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
 	case XFER_MW_DMA_2:
 		mem_sttime = SBC_IDE_TIMING(MDMA2);
@@ -246,17 +245,14 @@ static int auide_build_dmatable(ide_drive_t *drive, struct ide_cmd *cmd)
 				flags = DDMA_FLAGS_NOIE;
 
 			if (iswrite) {
-				if(!put_source_flags(ahwif->tx_chan, 
-						     (void*) sg_virt(sg),
-						     tc, flags)) { 
+				if (!au1xxx_dbdma_put_source(ahwif->tx_chan,
+					sg_phys(sg), tc, flags)) {
 					printk(KERN_ERR "%s failed %d\n", 
 					       __func__, __LINE__);
 				}
-			} else 
-			{
-				if(!put_dest_flags(ahwif->rx_chan, 
-						   (void*) sg_virt(sg),
-						   tc, flags)) { 
+			} else  {
+				if (!au1xxx_dbdma_put_dest(ahwif->rx_chan,
+					sg_phys(sg), tc, flags)) {
 					printk(KERN_ERR "%s failed %d\n", 
 					       __func__, __LINE__);
 				}
@@ -300,8 +296,8 @@ static int auide_dma_test_irq(ide_drive_t *drive)
 	 */
 	drive->waiting_for_dma++;
 	if (drive->waiting_for_dma >= DMA_WAIT_TIMEOUT) {
-		printk(KERN_WARNING "%s: timeout waiting for ddma to \
-                                     complete\n", drive->name);
+		printk(KERN_WARNING "%s: timeout waiting for ddma to complete\n",
+		       drive->name);
 		return 1;
 	}
 	udelay(10);
@@ -449,7 +445,7 @@ static int auide_ddma_init(ide_hwif_t *hwif, const struct ide_port_info *d)
 }
 #endif
 
-static void auide_setup_ports(hw_regs_t *hw, _auide_hwif *ahwif)
+static void auide_setup_ports(struct ide_hw *hw, _auide_hwif *ahwif)
 {
 	int i;
 	unsigned long *ata_regs = hw->io_ports_array;
@@ -499,6 +495,7 @@ static const struct ide_port_info au1xxx_port_info = {
 #ifdef CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA
 	.mwdma_mask		= ATA_MWDMA2,
 #endif
+	.chipset		= ide_au1xxx,
 };
 
 static int au_ide_probe(struct platform_device *dev)
@@ -507,7 +504,7 @@ static int au_ide_probe(struct platform_device *dev)
 	struct resource *res;
 	struct ide_host *host;
 	int ret = 0;
-	hw_regs_t hw, *hws[] = { &hw, NULL, NULL, NULL };
+	struct ide_hw hw, *hws[] = { &hw };
 
 #if defined(CONFIG_BLK_DEV_IDE_AU1XXX_MDMA2_DBDMA)
 	char *mode = "MWDMA2";
@@ -531,14 +528,13 @@ static int au_ide_probe(struct platform_device *dev)
 		goto out;
 	}
 
-	if (!request_mem_region(res->start, res->end - res->start + 1,
-				dev->name)) {
+	if (!request_mem_region(res->start, resource_size(res), dev->name)) {
 		pr_debug("%s: request_mem_region failed\n", DRV_NAME);
 		ret =  -EBUSY;
 		goto out;
 	}
 
-	ahwif->regbase = (u32)ioremap(res->start, res->end - res->start + 1);
+	ahwif->regbase = (u32)ioremap(res->start, resource_size(res));
 	if (ahwif->regbase == 0) {
 		ret = -ENOMEM;
 		goto out;
@@ -548,9 +544,8 @@ static int au_ide_probe(struct platform_device *dev)
 	auide_setup_ports(&hw, ahwif);
 	hw.irq = ahwif->irq;
 	hw.dev = &dev->dev;
-	hw.chipset = ide_au1xxx;
 
-	ret = ide_host_add(&au1xxx_port_info, hws, &host);
+	ret = ide_host_add(&au1xxx_port_info, hws, 1, &host);
 	if (ret)
 		goto out;
 
@@ -575,7 +570,7 @@ static int au_ide_remove(struct platform_device *dev)
 	iounmap((void *)ahwif->regbase);
 
 	res = platform_get_resource(dev, IORESOURCE_MEM, 0);
-	release_mem_region(res->start, res->end - res->start + 1);
+	release_mem_region(res->start, resource_size(res));
 
 	return 0;
 }

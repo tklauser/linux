@@ -22,6 +22,7 @@
 
 #include <linux/fs.h>
 #include <linux/list.h>
+#include <linux/gfp.h>
 #include <linux/wait.h>
 #include <linux/net.h>
 #include <linux/delay.h>
@@ -101,57 +102,6 @@ DeleteMidQEntry(struct mid_q_entry *midEntry)
 	}
 #endif
 	mempool_free(midEntry, cifs_mid_poolp);
-}
-
-struct oplock_q_entry *
-AllocOplockQEntry(struct inode *pinode, __u16 fid, struct cifsTconInfo *tcon)
-{
-	struct oplock_q_entry *temp;
-	if ((pinode == NULL) || (tcon == NULL)) {
-		cERROR(1, ("Null parms passed to AllocOplockQEntry"));
-		return NULL;
-	}
-	temp = (struct oplock_q_entry *) kmem_cache_alloc(cifs_oplock_cachep,
-						       GFP_KERNEL);
-	if (temp == NULL)
-		return temp;
-	else {
-		temp->pinode = pinode;
-		temp->tcon = tcon;
-		temp->netfid = fid;
-		spin_lock(&GlobalMid_Lock);
-		list_add_tail(&temp->qhead, &GlobalOplock_Q);
-		spin_unlock(&GlobalMid_Lock);
-	}
-	return temp;
-
-}
-
-void DeleteOplockQEntry(struct oplock_q_entry *oplockEntry)
-{
-	spin_lock(&GlobalMid_Lock);
-    /* should we check if list empty first? */
-	list_del(&oplockEntry->qhead);
-	spin_unlock(&GlobalMid_Lock);
-	kmem_cache_free(cifs_oplock_cachep, oplockEntry);
-}
-
-
-void DeleteTconOplockQEntries(struct cifsTconInfo *tcon)
-{
-	struct oplock_q_entry *temp;
-
-	if (tcon == NULL)
-		return;
-
-	spin_lock(&GlobalMid_Lock);
-	list_for_each_entry(temp, &GlobalOplock_Q, qhead) {
-		if ((temp->tcon) && (temp->tcon == tcon)) {
-			list_del(&temp->qhead);
-			kmem_cache_free(cifs_oplock_cachep, temp);
-		}
-	}
-	spin_unlock(&GlobalMid_Lock);
 }
 
 static int

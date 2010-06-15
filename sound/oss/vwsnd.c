@@ -149,6 +149,7 @@
 #include <linux/wait.h>
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 #include <asm/visws/cobalt.h>
 
@@ -628,7 +629,7 @@ static void li_setup_dma(dma_chan_t *chan,
 	ASSERT(!(buffer_paddr & 0xFF));
 	chan->baseval = (buffer_paddr >> 8) | 1 << (37 - 8);
 
-	chan->cfgval = (!LI_CCFG_LOCK |
+	chan->cfgval = ((chan->cfgval & ~LI_CCFG_LOCK) |
 			SHIFT_FIELD(desc->ad1843_slot, LI_CCFG_SLOT) |
 			desc->direction |
 			mode |
@@ -638,9 +639,9 @@ static void li_setup_dma(dma_chan_t *chan,
 	tmask = 13 - fragshift;		/* See Lithium DMA Notes above. */
 	ASSERT(size >= 2 && size <= 7);
 	ASSERT(tmask >= 1 && tmask <= 7);
-	chan->ctlval = (!LI_CCTL_RESET |
+	chan->ctlval = ((chan->ctlval & ~LI_CCTL_RESET) |
 			SHIFT_FIELD(size, LI_CCTL_SIZE) |
-			!LI_CCTL_DMA_ENABLE |
+			(chan->ctlval & ~LI_CCTL_DMA_ENABLE) |
 			SHIFT_FIELD(tmask, LI_CCTL_TMASK) |
 			SHIFT_FIELD(0, LI_CCTL_TPTR));
 

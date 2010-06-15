@@ -30,6 +30,7 @@
 #include <linux/fs.h>
 #include <linux/oprofile.h>
 #include <linux/sched.h>
+#include <linux/gfp.h>
 
 #include "oprofile_stats.h"
 #include "event_buffer.h"
@@ -154,9 +155,8 @@ int sync_start(void)
 {
 	int err;
 
-	if (!alloc_cpumask_var(&marked_cpus, GFP_KERNEL))
+	if (!zalloc_cpumask_var(&marked_cpus, GFP_KERNEL))
 		return -ENOMEM;
-	cpumask_clear(marked_cpus);
 
 	start_cpu_work();
 

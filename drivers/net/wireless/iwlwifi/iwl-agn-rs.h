@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2003 - 2009 Intel Corporation. All rights reserved.
+ * Copyright(c) 2003 - 2010 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -54,6 +54,7 @@ struct iwl3945_rate_info {
 	u8 prev_table_rs;	/* prev in rate table cmd */
 };
 
+
 /*
  * These serve as indexes into
  * struct iwl_rate_info iwl_rates[IWL_RATE_COUNT];
@@ -73,6 +74,7 @@ enum {
 	IWL_RATE_54M_INDEX,
 	IWL_RATE_60M_INDEX,
 	IWL_RATE_COUNT, /*FIXME:RS:change to IWL_RATE_INDEX_COUNT,*/
+	IWL_RATE_COUNT_LEGACY = IWL_RATE_COUNT - 1,	/* Excluding 60M */
 	IWL_RATE_COUNT_3945 = IWL_RATE_COUNT - 1,
 	IWL_RATE_INVM_INDEX = IWL_RATE_COUNT,
 	IWL_RATE_INVALID = IWL_RATE_COUNT,
@@ -189,7 +191,7 @@ enum {
 	IWL_RATE_2M_MASK)
 
 #define IWL_CCK_RATES_MASK          \
-       (IWL_BASIC_RATES_MASK      | \
+       (IWL_CCK_BASIC_RATES_MASK  | \
 	IWL_RATE_5M_MASK          | \
 	IWL_RATE_11M_MASK)
 
@@ -241,6 +243,7 @@ enum {
 #define IWL_LEGACY_SWITCH_MIMO2_AB      3
 #define IWL_LEGACY_SWITCH_MIMO2_AC      4
 #define IWL_LEGACY_SWITCH_MIMO2_BC      5
+#define IWL_LEGACY_SWITCH_MIMO3_ABC     6
 
 /* possible actions when in siso mode */
 #define IWL_SISO_SWITCH_ANTENNA1        0
@@ -249,6 +252,8 @@ enum {
 #define IWL_SISO_SWITCH_MIMO2_AC        3
 #define IWL_SISO_SWITCH_MIMO2_BC        4
 #define IWL_SISO_SWITCH_GI              5
+#define IWL_SISO_SWITCH_MIMO3_ABC       6
+
 
 /* possible actions when in mimo mode */
 #define IWL_MIMO2_SWITCH_ANTENNA1       0
@@ -257,6 +262,23 @@ enum {
 #define IWL_MIMO2_SWITCH_SISO_B         3
 #define IWL_MIMO2_SWITCH_SISO_C         4
 #define IWL_MIMO2_SWITCH_GI             5
+#define IWL_MIMO2_SWITCH_MIMO3_ABC      6
+
+
+/* possible actions when in mimo3 mode */
+#define IWL_MIMO3_SWITCH_ANTENNA1       0
+#define IWL_MIMO3_SWITCH_ANTENNA2       1
+#define IWL_MIMO3_SWITCH_SISO_A         2
+#define IWL_MIMO3_SWITCH_SISO_B         3
+#define IWL_MIMO3_SWITCH_SISO_C         4
+#define IWL_MIMO3_SWITCH_MIMO2_AB       5
+#define IWL_MIMO3_SWITCH_MIMO2_AC       6
+#define IWL_MIMO3_SWITCH_MIMO2_BC       7
+#define IWL_MIMO3_SWITCH_GI             8
+
+
+#define IWL_MAX_11N_MIMO3_SEARCH IWL_MIMO3_SWITCH_GI
+#define IWL_MAX_SEARCH IWL_MIMO2_SWITCH_MIMO3_ABC
 
 /*FIXME:RS:add possible actions for MIMO3*/
 
@@ -306,6 +328,113 @@ enum iwl_table_type {
 #define	ANT_AC		(ANT_A | ANT_C)
 #define ANT_BC		(ANT_B | ANT_C)
 #define ANT_ABC		(ANT_AB | ANT_C)
+
+#define IWL_MAX_MCS_DISPLAY_SIZE	12
+
+struct iwl_rate_mcs_info {
+	char	mbps[IWL_MAX_MCS_DISPLAY_SIZE];
+	char	mcs[IWL_MAX_MCS_DISPLAY_SIZE];
+};
+
+/**
+ * struct iwl_rate_scale_data -- tx success history for one rate
+ */
+struct iwl_rate_scale_data {
+	u64 data;		/* bitmap of successful frames */
+	s32 success_counter;	/* number of frames successful */
+	s32 success_ratio;	/* per-cent * 128  */
+	s32 counter;		/* number of frames attempted */
+	s32 average_tpt;	/* success ratio * expected throughput */
+	unsigned long stamp;
+};
+
+/**
+ * struct iwl_scale_tbl_info -- tx params and success history for all rates
+ *
+ * There are two of these in struct iwl_lq_sta,
+ * one for "active", and one for "search".
+ */
+struct iwl_scale_tbl_info {
+	enum iwl_table_type lq_type;
+	u8 ant_type;
+	u8 is_SGI;	/* 1 = short guard interval */
+	u8 is_ht40;	/* 1 = 40 MHz channel width */
+	u8 is_dup;	/* 1 = duplicated data streams */
+	u8 action;	/* change modulation; IWL_[LEGACY/SISO/MIMO]_SWITCH_* */
+	u8 max_search;	/* maximun number of tables we can search */
+	s32 *expected_tpt;	/* throughput metrics; expected_tpt_G, etc. */
+	u32 current_rate;  /* rate_n_flags, uCode API format */
+	struct iwl_rate_scale_data win[IWL_RATE_COUNT]; /* rate histories */
+};
+
+struct iwl_traffic_load {
+	unsigned long time_stamp;	/* age of the oldest statistics */
+	u32 packet_count[TID_QUEUE_MAX_SIZE];   /* packet count in this time
+						 * slice */
+	u32 total;			/* total num of packets during the
+					 * last TID_MAX_TIME_DIFF */
+	u8 queue_count;			/* number of queues that has
+					 * been used since the last cleanup */
+	u8 head;			/* start of the circular buffer */
+};
+
+/**
+ * struct iwl_lq_sta -- driver's rate scaling private structure
+ *
+ * Pointer to this gets passed back and forth between driver and mac80211.
+ */
+struct iwl_lq_sta {
+	u8 active_tbl;		/* index of active table, range 0-1 */
+	u8 enable_counter;	/* indicates HT mode */
+	u8 stay_in_tbl;		/* 1: disallow, 0: allow search for new mode */
+	u8 search_better_tbl;	/* 1: currently trying alternate mode */
+	s32 last_tpt;
+
+	/* The following determine when to search for a new mode */
+	u32 table_count_limit;
+	u32 max_failure_limit;	/* # failed frames before new search */
+	u32 max_success_limit;	/* # successful frames before new search */
+	u32 table_count;
+	u32 total_failed;	/* total failed frames, any/all rates */
+	u32 total_success;	/* total successful frames, any/all rates */
+	u64 flush_timer;	/* time staying in mode before new search */
+
+	u8 action_counter;	/* # mode-switch actions tried */
+	u8 is_green;
+	u8 is_dup;
+	enum ieee80211_band band;
+	u8 ibss_sta_added;
+
+	/* The following are bitmaps of rates; IWL_RATE_6M_MASK, etc. */
+	u32 supp_rates;
+	u16 active_legacy_rate;
+	u16 active_siso_rate;
+	u16 active_mimo2_rate;
+	u16 active_mimo3_rate;
+	u16 active_rate_basic;
+	s8 max_rate_idx;     /* Max rate set by user */
+	u8 missed_rate_counter;
+
+	struct iwl_link_quality_cmd lq;
+	struct iwl_scale_tbl_info lq_info[LQ_SIZE]; /* "active", "search" */
+	struct iwl_traffic_load load[TID_MAX_LOAD_COUNT];
+	u8 tx_agg_tid_en;
+#ifdef CONFIG_MAC80211_DEBUGFS
+	struct dentry *rs_sta_dbgfs_scale_table_file;
+	struct dentry *rs_sta_dbgfs_stats_table_file;
+	struct dentry *rs_sta_dbgfs_rate_scale_data_file;
+	struct dentry *rs_sta_dbgfs_tx_agg_tid_en_file;
+	u32 dbg_fixed_rate;
+#endif
+	struct iwl_priv *drv;
+
+	/* used to be in sta_info */
+	int last_txrate_idx;
+	/* last tx rate_n_flags */
+	u32 last_rate_n_flags;
+	/* packets destined for this STA are aggregated */
+	u8 is_agg;
+};
 
 static inline u8 num_of_ant(u8 mask)
 {

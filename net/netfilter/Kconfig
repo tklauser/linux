@@ -83,6 +83,19 @@ config NF_CONNTRACK_SECMARK
 
 	  If unsure, say 'N'.
 
+config NF_CONNTRACK_ZONES
+	bool  'Connection tracking zones'
+	depends on NETFILTER_ADVANCED
+	depends on NETFILTER_XT_TARGET_CT
+	help
+	  This option enables support for connection tracking zones.
+	  Normally, each connection needs to have a unique system wide
+	  identity. Connection tracking zones allow to have multiple
+	  connections using the same identity, as long as they are
+	  contained in different zones.
+
+	  If unsure, say `N'.
+
 config NF_CONNTRACK_EVENTS
 	bool "Connection tracking events"
 	depends on NETFILTER_ADVANCED
@@ -327,7 +340,7 @@ config NETFILTER_XT_TARGET_CONNMARK
 
 	  If you want to compile it as a module, say M here and read
 	  <file:Documentation/kbuild/modules.txt>.  The module will be called
-	  ipt_CONNMARK.ko.  If unsure, say `N'.
+	  ipt_CONNMARK.  If unsure, say `N'.
 
 config NETFILTER_XT_TARGET_CONNSECMARK
 	tristate '"CONNSECMARK" target support'
@@ -338,6 +351,18 @@ config NETFILTER_XT_TARGET_CONNSECMARK
 	  to connections, and restores security markings from connections
 	  to packets (if the packets are not already marked).  This would
 	  normally be used in conjunction with the SECMARK target.
+
+	  To compile it as a module, choose M here.  If unsure, say N.
+
+config NETFILTER_XT_TARGET_CT
+	tristate '"CT" target support'
+	depends on NF_CONNTRACK
+	depends on IP_NF_RAW || IP6_NF_RAW
+	depends on NETFILTER_ADVANCED
+	help
+	  This options adds a `CT' target, which allows to specify initial
+	  connection tracking parameters like events to be delivered and
+	  the helper to be used.
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 
@@ -584,7 +609,7 @@ config NETFILTER_XT_MATCH_CONNMARK
 
 	  If you want to compile it as a module, say M here and read
 	  <file:Documentation/kbuild/modules.txt>.  The module will be called
-	  ipt_connmark.ko.  If unsure, say `N'.
+	  ipt_connmark.  If unsure, say `N'.
 
 config NETFILTER_XT_MATCH_CONNTRACK
 	tristate '"conntrack" connection tracking match support'
@@ -916,6 +941,19 @@ config NETFILTER_XT_MATCH_U32
 	  lengths.
 
 	  Details and examples are in the kernel module source.
+
+config NETFILTER_XT_MATCH_OSF
+	tristate '"osf" Passive OS fingerprint match'
+	depends on NETFILTER_ADVANCED && NETFILTER_NETLINK
+	help
+	  This option selects the Passive OS Fingerprinting match module
+	  that allows to passively match the remote operating system by
+	  analyzing incoming TCP SYN packets.
+
+	  Rules and loading software can be downloaded from
+	  http://www.ioremap.net/projects/osf
+
+	  To compile it as a module, choose M here.  If unsure, say N.
 
 endif # NETFILTER_XTABLES
 

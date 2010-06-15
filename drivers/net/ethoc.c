@@ -17,9 +17,11 @@
 #include <linux/mii.h>
 #include <linux/phy.h>
 #include <linux/platform_device.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
 #include <net/ethoc.h>
 
-static int buffer_size = (128 * 1536) + 4; /* total 128 buffer and align */
+static int buffer_size = 0x8000; /* 32 KBytes */
 module_param(buffer_size, int, 0);
 MODULE_PARM_DESC(buffer_size, "DMA buffer allocation size");
 
@@ -302,7 +304,6 @@ static int ethoc_init_ring(struct ethoc *dev)
 		bd.addr += ETHOC_BUFSIZ;
 	}
 
-	bd.addr += 2; /* offset to help memcpy in rx */
 	bd.stat = RX_BD_EMPTY | RX_BD_IRQ;
 
 	for (i = 0; i < dev->num_rx; i++) {
@@ -406,16 +407,15 @@ static int ethoc_rx(struct net_device *dev, int limit)
 
 		if (ethoc_update_rx_stats(priv, &bd) == 0) {
 			int size = bd.stat >> 16;
-			struct sk_buff *skb = netdev_alloc_skb(dev, size);
+			struct sk_buff *skb;
 
 			size -= 4; /* strip the CRC */
-			skb_reserve(skb, NET_IP_ALIGN);
+			skb = netdev_alloc_skb_ip_align(dev, size);
 
 			if (likely(skb)) {
 				void *src = phys_to_virt(bd.addr);
 				memcpy_fromio(skb_put(skb, size), src, size);
 				skb->protocol = eth_type_trans(skb, dev);
-				dev->last_rx = jiffies;
 				priv->stats.rx_packets++;
 				priv->stats.rx_bytes += size;
 				netif_receive_skb(skb);
@@ -642,7 +642,7 @@ static int ethoc_mdio_probe(struct net_device *dev)
 		return -ENXIO;
 	}
 
-	phy = phy_connect(dev, dev_name(&phy->dev), &ethoc_mdio_poll, 0,
+	phy = phy_connect(dev, dev_name(&phy->dev), ethoc_mdio_poll, 0,
 			PHY_INTERFACE_MODE_GMII);
 	if (IS_ERR(phy)) {
 		dev_err(&dev->dev, "could not attach to PHY\n");
@@ -666,7 +666,8 @@ static int ethoc_open(struct net_device *dev)
 		return ret;
 
 	/* calculate the number of TX/RX buffers, maximum 128 supported */
-	num_bd = min(128, (dev->mem_end - dev->mem_start + 1) / ETHOC_BUFSIZ);
+	num_bd = min_t(unsigned int,
+		128, (dev->mem_end - dev->mem_start + 1) / ETHOC_BUFSIZ);
 	priv->num_tx = max(min_tx, num_bd / 4);
 	priv->num_rx = num_bd - priv->num_tx;
 	ethoc_write(priv, TX_BD_NUM, priv->num_tx);
@@ -755,7 +756,7 @@ static void ethoc_set_multicast_list(struct net_device *dev)
 {
 	struct ethoc *priv = netdev_priv(dev);
 	u32 mode = ethoc_read(priv, MODER);
-	struct dev_mc_list *mc = NULL;
+	struct dev_mc_list *mc;
 	u32 hash[2] = { 0, 0 };
 
 	/* set loopback mode if requested */
@@ -783,8 +784,8 @@ static void ethoc_set_multicast_list(struct net_device *dev)
 		hash[0] = 0xffffffff;
 		hash[1] = 0xffffffff;
 	} else {
-		for (mc = dev->mc_list; mc; mc = mc->next) {
-			u32 crc = ether_crc(mc->dmi_addrlen, mc->dmi_addr);
+		netdev_for_each_mc_addr(mc, dev) {
+			u32 crc = ether_crc(ETH_ALEN, mc->dmi_addr);
 			int bit = (crc >> 26) & 0x3f;
 			hash[bit >> 5] |= 1 << (bit & 0x1f);
 		}
@@ -813,7 +814,7 @@ static struct net_device_stats *ethoc_stats(struct net_device *dev)
 	return &priv->stats;
 }
 
-static int ethoc_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t ethoc_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ethoc *priv = netdev_priv(dev);
 	struct ethoc_bd bd;
@@ -822,7 +823,7 @@ static int ethoc_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if (unlikely(skb->len > ETHOC_BUFSIZ)) {
 		priv->stats.tx_errors++;
-		return -EMSGSIZE;
+		goto out;
 	}
 
 	entry = priv->cur_tx % priv->num_tx;
@@ -851,9 +852,9 @@ static int ethoc_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	dev->trans_start = jiffies;
-	dev_kfree_skb(skb);
-
 	spin_unlock_irq(&priv->lock);
+out:
+	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
 
@@ -904,8 +905,8 @@ static int ethoc_probe(struct platform_device *pdev)
 	}
 
 	mmio = devm_request_mem_region(&pdev->dev, res->start,
-			res->end - res->start + 1, res->name);
-	if (!res) {
+			resource_size(res), res->name);
+	if (!mmio) {
 		dev_err(&pdev->dev, "cannot request I/O memory space\n");
 		ret = -ENXIO;
 		goto free;
@@ -917,7 +918,7 @@ static int ethoc_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (res) {
 		mem = devm_request_mem_region(&pdev->dev, res->start,
-			res->end - res->start + 1, res->name);
+			resource_size(res), res->name);
 		if (!mem) {
 			dev_err(&pdev->dev, "cannot request memory space\n");
 			ret = -ENXIO;
@@ -945,7 +946,7 @@ static int ethoc_probe(struct platform_device *pdev)
 	priv->dma_alloc = 0;
 
 	priv->iobase = devm_ioremap_nocache(&pdev->dev, netdev->base_addr,
-			mmio->end - mmio->start + 1);
+			resource_size(mmio));
 	if (!priv->iobase) {
 		dev_err(&pdev->dev, "cannot remap I/O memory space\n");
 		ret = -ENXIO;
@@ -954,7 +955,7 @@ static int ethoc_probe(struct platform_device *pdev)
 
 	if (netdev->mem_end) {
 		priv->membase = devm_ioremap_nocache(&pdev->dev,
-			netdev->mem_start, mem->end - mem->start + 1);
+			netdev->mem_start, resource_size(mem));
 		if (!priv->membase) {
 			dev_err(&pdev->dev, "cannot remap memory space\n");
 			ret = -ENXIO;

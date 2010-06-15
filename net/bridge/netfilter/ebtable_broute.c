@@ -41,7 +41,7 @@ static int check(const struct ebt_table_info *info, unsigned int valid_hooks)
 	return 0;
 }
 
-static struct ebt_table broute_table =
+static const struct ebt_table broute_table =
 {
 	.name		= "broute",
 	.table		= &initial_table,
@@ -71,7 +71,7 @@ static int __net_init broute_net_init(struct net *net)
 
 static void __net_exit broute_net_exit(struct net *net)
 {
-	ebt_unregister_table(net->xt.broute_table);
+	ebt_unregister_table(net, net->xt.broute_table);
 }
 
 static struct pernet_operations broute_net_ops = {

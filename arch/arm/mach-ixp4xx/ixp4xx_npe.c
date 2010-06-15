@@ -20,7 +20,6 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <mach/npe.h>
 
 #define DEBUG_MSG			0
@@ -386,15 +385,6 @@ static int npe_reset(struct npe *npe)
 	/* reset the NPE */
 	ixp4xx_write_feature_bits(val &
 				  ~(IXP4XX_FEATURE_RESET_NPEA << npe->id));
-	for (i = 0; i < MAX_RETRIES; i++) {
-		if (!(ixp4xx_read_feature_bits() &
-		      (IXP4XX_FEATURE_RESET_NPEA << npe->id)))
-			break;	/* reset completed */
-		udelay(1);
-	}
-	if (i == MAX_RETRIES)
-		return -ETIMEDOUT;
-
 	/* deassert reset */
 	ixp4xx_write_feature_bits(val |
 				  (IXP4XX_FEATURE_RESET_NPEA << npe->id));
@@ -674,7 +664,7 @@ err:
 }
 
 
-struct npe *npe_request(int id)
+struct npe *npe_request(unsigned id)
 {
 	if (id < NPE_COUNT)
 		if (npe_tab[id].valid)

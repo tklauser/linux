@@ -12,11 +12,13 @@
 #include <asm/io_apic.h>
 #include <asm/irq.h>
 #include <asm/idle.h>
+#include <asm/mce.h>
+#include <asm/hw_irq.h>
 
 atomic_t irq_err_count;
 
 /* Function pointer for generic interrupt vector handling */
-void (*generic_interrupt_extension)(void) = NULL;
+void (*x86_platform_ipi_callback)(void) = NULL;
 
 /*
  * 'what should we do if we get a hw irq event on an illegal vector'.
@@ -24,9 +26,9 @@ void (*generic_interrupt_extension)(void) = NULL;
  */
 void ack_bad_irq(unsigned int irq)
 {
-	printk(KERN_ERR "unexpected IRQ trap at vector %02x\n", irq);
+	if (printk_ratelimit())
+		pr_err("unexpected IRQ trap at vector %02x\n", irq);
 
-#ifdef CONFIG_X86_LOCAL_APIC
 	/*
 	 * Currently unexpected vectors happen only on SMP and APIC.
 	 * We _must_ ack these because every local APIC has only N
@@ -36,9 +38,7 @@ void ack_bad_irq(unsigned int irq)
 	 * completely.
 	 * But only ack when the APIC is enabled -AK
 	 */
-	if (cpu_has_apic)
-		ack_APIC_irq();
-#endif
+	ack_APIC_irq();
 }
 
 #define irq_stats(x)		(&per_cpu(irq_stat, x))
@@ -63,11 +63,19 @@ static int show_other_interrupts(struct seq_file *p, int prec)
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_spurious_count);
 	seq_printf(p, "  Spurious interrupts\n");
+	seq_printf(p, "%*s: ", prec, "PMI");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", irq_stats(j)->apic_perf_irqs);
+	seq_printf(p, "  Performance monitoring interrupts\n");
+	seq_printf(p, "%*s: ", prec, "PND");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", irq_stats(j)->apic_pending_irqs);
+	seq_printf(p, "  Performance pending work\n");
 #endif
-	if (generic_interrupt_extension) {
+	if (x86_platform_ipi_callback) {
 		seq_printf(p, "%*s: ", prec, "PLT");
 		for_each_online_cpu(j)
-			seq_printf(p, "%10u ", irq_stats(j)->generic_irqs);
+			seq_printf(p, "%10u ", irq_stats(j)->x86_platform_ipis);
 		seq_printf(p, "  Platform interrupts\n");
 	}
 #ifdef CONFIG_SMP
@@ -84,17 +92,27 @@ static int show_other_interrupts(struct seq_file *p, int prec)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_tlb_count);
 	seq_printf(p, "  TLB shootdowns\n");
 #endif
-#ifdef CONFIG_X86_MCE
+#ifdef CONFIG_X86_THERMAL_VECTOR
 	seq_printf(p, "%*s: ", prec, "TRM");
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_thermal_count);
 	seq_printf(p, "  Thermal event interrupts\n");
-# ifdef CONFIG_X86_64
+#endif
+#ifdef CONFIG_X86_MCE_THRESHOLD
 	seq_printf(p, "%*s: ", prec, "THR");
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", irq_stats(j)->irq_threshold_count);
 	seq_printf(p, "  Threshold APIC interrupts\n");
-# endif
+#endif
+#ifdef CONFIG_X86_MCE
+	seq_printf(p, "%*s: ", prec, "MCE");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", per_cpu(mce_exception_count, j));
+	seq_printf(p, "  Machine check exceptions\n");
+	seq_printf(p, "%*s: ", prec, "MCP");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ", per_cpu(mce_poll_count, j));
+	seq_printf(p, "  Machine check polls\n");
 #endif
 	seq_printf(p, "%*s: %10u\n", prec, "ERR", atomic_read(&irq_err_count));
 #if defined(CONFIG_X86_IO_APIC)
@@ -131,7 +149,7 @@ int show_interrupts(struct seq_file *p, void *v)
 	if (!desc)
 		return 0;
 
-	spin_lock_irqsave(&desc->lock, flags);
+	raw_spin_lock_irqsave(&desc->lock, flags);
 	for_each_online_cpu(j)
 		any_count |= kstat_irqs_cpu(i, j);
 	action = desc->action;
@@ -152,7 +170,7 @@ int show_interrupts(struct seq_file *p, void *v)
 
 	seq_putc(p, '\n');
 out:
-	spin_unlock_irqrestore(&desc->lock, flags);
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
 	return 0;
 }
 
@@ -166,19 +184,25 @@ u64 arch_irq_stat_cpu(unsigned int cpu)
 #ifdef CONFIG_X86_LOCAL_APIC
 	sum += irq_stats(cpu)->apic_timer_irqs;
 	sum += irq_stats(cpu)->irq_spurious_count;
+	sum += irq_stats(cpu)->apic_perf_irqs;
+	sum += irq_stats(cpu)->apic_pending_irqs;
 #endif
-	if (generic_interrupt_extension)
-		sum += irq_stats(cpu)->generic_irqs;
+	if (x86_platform_ipi_callback)
+		sum += irq_stats(cpu)->x86_platform_ipis;
 #ifdef CONFIG_SMP
 	sum += irq_stats(cpu)->irq_resched_count;
 	sum += irq_stats(cpu)->irq_call_count;
 	sum += irq_stats(cpu)->irq_tlb_count;
 #endif
-#ifdef CONFIG_X86_MCE
+#ifdef CONFIG_X86_THERMAL_VECTOR
 	sum += irq_stats(cpu)->irq_thermal_count;
-# ifdef CONFIG_X86_64
+#endif
+#ifdef CONFIG_X86_MCE_THRESHOLD
 	sum += irq_stats(cpu)->irq_threshold_count;
 #endif
+#ifdef CONFIG_X86_MCE
+	sum += per_cpu(mce_exception_count, cpu);
+	sum += per_cpu(mce_poll_count, cpu);
 #endif
 	return sum;
 }
@@ -213,14 +237,11 @@ unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 	irq = __get_cpu_var(vector_irq)[vector];
 
 	if (!handle_irq(irq, regs)) {
-#ifdef CONFIG_X86_64
-		if (!disable_apic)
-			ack_APIC_irq();
-#endif
+		ack_APIC_irq();
 
 		if (printk_ratelimit())
-			printk(KERN_EMERG "%s: %d.%d No irq handler for vector (irq %d)\n",
-			       __func__, smp_processor_id(), vector, irq);
+			pr_emerg("%s: %d.%d No irq handler for vector (irq %d)\n",
+				__func__, smp_processor_id(), vector, irq);
 	}
 
 	irq_exit();
@@ -230,9 +251,9 @@ unsigned int __irq_entry do_IRQ(struct pt_regs *regs)
 }
 
 /*
- * Handler for GENERIC_INTERRUPT_VECTOR.
+ * Handler for X86_PLATFORM_IPI_VECTOR.
  */
-void smp_generic_interrupt(struct pt_regs *regs)
+void smp_x86_platform_ipi(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
@@ -242,10 +263,10 @@ void smp_generic_interrupt(struct pt_regs *regs)
 
 	irq_enter();
 
-	inc_irq_stat(generic_irqs);
+	inc_irq_stat(x86_platform_ipis);
 
-	if (generic_interrupt_extension)
-		generic_interrupt_extension();
+	if (x86_platform_ipi_callback)
+		x86_platform_ipi_callback();
 
 	irq_exit();
 
@@ -253,3 +274,93 @@ void smp_generic_interrupt(struct pt_regs *regs)
 }
 
 EXPORT_SYMBOL_GPL(vector_used_by_percpu_irq);
+
+#ifdef CONFIG_HOTPLUG_CPU
+/* A cpu has been removed from cpu_online_mask.  Reset irq affinities. */
+void fixup_irqs(void)
+{
+	unsigned int irq, vector;
+	static int warned;
+	struct irq_desc *desc;
+
+	for_each_irq_desc(irq, desc) {
+		int break_affinity = 0;
+		int set_affinity = 1;
+		const struct cpumask *affinity;
+
+		if (!desc)
+			continue;
+		if (irq == 2)
+			continue;
+
+		/* interrupt's are disabled at this point */
+		raw_spin_lock(&desc->lock);
+
+		affinity = desc->affinity;
+		if (!irq_has_action(irq) ||
+		    cpumask_equal(affinity, cpu_online_mask)) {
+			raw_spin_unlock(&desc->lock);
+			continue;
+		}
+
+		/*
+		 * Complete the irq move. This cpu is going down and for
+		 * non intr-remapping case, we can't wait till this interrupt
+		 * arrives at this cpu before completing the irq move.
+		 */
+		irq_force_complete_move(irq);
+
+		if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
+			break_affinity = 1;
+			affinity = cpu_all_mask;
+		}
+
+		if (!(desc->status & IRQ_MOVE_PCNTXT) && desc->chip->mask)
+			desc->chip->mask(irq);
+
+		if (desc->chip->set_affinity)
+			desc->chip->set_affinity(irq, affinity);
+		else if (!(warned++))
+			set_affinity = 0;
+
+		if (!(desc->status & IRQ_MOVE_PCNTXT) && desc->chip->unmask)
+			desc->chip->unmask(irq);
+
+		raw_spin_unlock(&desc->lock);
+
+		if (break_affinity && set_affinity)
+			printk("Broke affinity for irq %i\n", irq);
+		else if (!set_affinity)
+			printk("Cannot set affinity for irq %i\n", irq);
+	}
+
+	/*
+	 * We can remove mdelay() and then send spuriuous interrupts to
+	 * new cpu targets for all the irqs that were handled previously by
+	 * this cpu. While it works, I have seen spurious interrupt messages
+	 * (nothing wrong but still...).
+	 *
+	 * So for now, retain mdelay(1) and check the IRR and then send those
+	 * interrupts to new targets as this cpu is already offlined...
+	 */
+	mdelay(1);
+
+	for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS; vector++) {
+		unsigned int irr;
+
+		if (__get_cpu_var(vector_irq)[vector] < 0)
+			continue;
+
+		irr = apic_read(APIC_IRR + (vector / 32 * 0x10));
+		if (irr  & (1 << (vector % 32))) {
+			irq = __get_cpu_var(vector_irq)[vector];
+
+			desc = irq_to_desc(irq);
+			raw_spin_lock(&desc->lock);
+			if (desc->chip->retrigger)
+				desc->chip->retrigger(irq);
+			raw_spin_unlock(&desc->lock);
+		}
+	}
+}
+#endif

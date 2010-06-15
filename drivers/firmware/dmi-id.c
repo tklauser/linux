@@ -11,6 +11,7 @@
 #include <linux/init.h>
 #include <linux/dmi.h>
 #include <linux/device.h>
+#include <linux/slab.h>
 
 struct dmi_device_attribute{
 	struct device_attribute dev_attr;
@@ -139,7 +140,7 @@ static struct attribute_group sys_dmi_attribute_group = {
 	.attrs = sys_dmi_attributes,
 };
 
-static struct attribute_group* sys_dmi_attribute_groups[] = {
+static const struct attribute_group* sys_dmi_attribute_groups[] = {
 	&sys_dmi_attribute_group,
 	NULL
 };

@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2008 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2010 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -25,15 +25,19 @@
 #include <linux/blkdev.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
+#include <linux/slab.h>
 #include <linux/utsname.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_transport_fc.h>
+#include <scsi/fc/fc_fs.h>
 
+#include "lpfc_hw4.h"
 #include "lpfc_hw.h"
 #include "lpfc_sli.h"
+#include "lpfc_sli4.h"
 #include "lpfc_nl.h"
 #include "lpfc_disc.h"
 #include "lpfc_scsi.h"
@@ -85,7 +89,6 @@ void
 lpfc_ct_unsol_event(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 		    struct lpfc_iocbq *piocbq)
 {
-
 	struct lpfc_dmabuf *mp = NULL;
 	IOCB_t *icmd = &piocbq->iocb;
 	int i;
@@ -94,6 +97,9 @@ lpfc_ct_unsol_event(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 	uint32_t size;
 	struct list_head head;
 	struct lpfc_dmabuf *bdeBuf;
+
+	if (lpfc_bsg_ct_unsol_event(phba, pring, piocbq) == 0)
+		return;
 
 	if (unlikely(icmd->ulpStatus == IOSTAT_NEED_BUFFER)) {
 		lpfc_sli_hbqbuf_add_hbqs(phba, LPFC_ELS_HBQ);
@@ -154,6 +160,40 @@ lpfc_ct_unsol_event(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 		}
 		list_del(&head);
 	}
+}
+
+/**
+ * lpfc_sli4_ct_abort_unsol_event - Default handle for sli4 unsol abort
+ * @phba: Pointer to HBA context object.
+ * @pring: Pointer to the driver internal I/O ring.
+ * @piocbq: Pointer to the IOCBQ.
+ *
+ * This function serves as the default handler for the sli4 unsolicited
+ * abort event. It shall be invoked when there is no application interface
+ * registered unsolicited abort handler. This handler does nothing but
+ * just simply releases the dma buffer used by the unsol abort event.
+ **/
+void
+lpfc_sli4_ct_abort_unsol_event(struct lpfc_hba *phba,
+			       struct lpfc_sli_ring *pring,
+			       struct lpfc_iocbq *piocbq)
+{
+	IOCB_t *icmd = &piocbq->iocb;
+	struct lpfc_dmabuf *bdeBuf;
+	uint32_t size;
+
+	/* Forward abort event to any process registered to receive ct event */
+	if (lpfc_bsg_ct_unsol_event(phba, pring, piocbq) == 0)
+		return;
+
+	/* If there is no BDE associated with IOCB, there is nothing to do */
+	if (icmd->ulpBdeCount == 0)
+		return;
+	bdeBuf = piocbq->context2;
+	piocbq->context2 = NULL;
+	size  = icmd->un.cont64[0].tus.f.bdeSize;
+	lpfc_ct_unsol_buffer(phba, piocbq, bdeBuf, size);
+	lpfc_in_buf_free(phba, bdeBuf);
 }
 
 static void
@@ -267,8 +307,6 @@ lpfc_gen_req(struct lpfc_vport *vport, struct lpfc_dmabuf *bmp,
 	     uint32_t tmo, uint8_t retry)
 {
 	struct lpfc_hba  *phba = vport->phba;
-	struct lpfc_sli  *psli = &phba->sli;
-	struct lpfc_sli_ring *pring = &psli->ring[LPFC_ELS_RING];
 	IOCB_t *icmd;
 	struct lpfc_iocbq *geniocb;
 	int rc;
@@ -302,8 +340,8 @@ lpfc_gen_req(struct lpfc_vport *vport, struct lpfc_dmabuf *bmp,
 	/* Fill in rest of iocb */
 	icmd->un.genreq64.w5.hcsw.Fctl = (SI | LA);
 	icmd->un.genreq64.w5.hcsw.Dfctl = 0;
-	icmd->un.genreq64.w5.hcsw.Rctl = FC_UNSOL_CTL;
-	icmd->un.genreq64.w5.hcsw.Type = FC_COMMON_TRANSPORT_ULP;
+	icmd->un.genreq64.w5.hcsw.Rctl = FC_RCTL_DD_UNSOL_CTL;
+	icmd->un.genreq64.w5.hcsw.Type = FC_TYPE_CT;
 
 	if (!tmo) {
 		 /* FC spec states we need 3 * ratov for CT requests */
@@ -331,7 +369,7 @@ lpfc_gen_req(struct lpfc_vport *vport, struct lpfc_dmabuf *bmp,
 	geniocb->drvrTimeout = icmd->ulpTimeout + LPFC_DRVR_TIMEOUT;
 	geniocb->vport = vport;
 	geniocb->retry = retry;
-	rc = lpfc_sli_issue_iocb(phba, pring, geniocb, 0);
+	rc = lpfc_sli_issue_iocb(phba, LPFC_ELS_RING, geniocb, 0);
 
 	if (rc == IOCB_ERROR) {
 		lpfc_sli_release_iocbq(phba, geniocb);
@@ -361,9 +399,14 @@ lpfc_ct_cmd(struct lpfc_vport *vport, struct lpfc_dmabuf *inmp,
 	outmp = lpfc_alloc_ct_rsp(phba, cmdcode, bpl, rsp_size, &cnt);
 	if (!outmp)
 		return -ENOMEM;
-
+	/*
+	 * Form the CT IOCB.  The total number of BDEs in this IOCB
+	 * is the single command plus response count from
+	 * lpfc_alloc_ct_rsp.
+	 */
+	cnt += 1;
 	status = lpfc_gen_req(vport, bmp, inmp, outmp, cmpl, ndlp, 0,
-			      cnt+1, 0, retry);
+			      cnt, 0, retry);
 	if (status) {
 		lpfc_free_ct_rsp(phba, outmp);
 		return -ENOMEM;
@@ -499,6 +542,9 @@ lpfc_ns_rsp(struct lpfc_vport *vport, struct lpfc_dmabuf *mp, uint32_t Size)
 							SLI_CTNS_GFF_ID,
 							0, Did) == 0)
 							vport->num_disc_nodes++;
+						else
+							lpfc_setup_disc_node
+								(vport, Did);
 					}
 					else {
 						lpfc_debugfs_disc_trc(vport,
@@ -1205,9 +1251,9 @@ lpfc_ns_cmd(struct lpfc_vport *vport, int cmdcode,
 		vport->ct_flags &= ~FC_CT_RFF_ID;
 		CtReq->CommandResponse.bits.CmdRsp =
 		    be16_to_cpu(SLI_CTNS_RFF_ID);
-		CtReq->un.rff.PortId = cpu_to_be32(vport->fc_myDID);;
+		CtReq->un.rff.PortId = cpu_to_be32(vport->fc_myDID);
 		CtReq->un.rff.fbits = FC4_FEATURE_INIT;
-		CtReq->un.rff.type_code = FC_FCP_DATA;
+		CtReq->un.rff.type_code = FC_TYPE_FCP;
 		cmpl = lpfc_cmpl_ct_cmd_rff_id;
 		break;
 	}
@@ -1578,6 +1624,9 @@ lpfc_fdmi_cmd(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp, int cmdcode)
 				case LA_8GHZ_LINK:
 					ae->un.PortSpeed = HBA_PORTSPEED_8GBIT;
 				break;
+				case LA_10GHZ_LINK:
+					ae->un.PortSpeed = HBA_PORTSPEED_10GBIT;
+				break;
 				default:
 					ae->un.PortSpeed =
 						HBA_PORTSPEED_UNKNOWN;
@@ -1729,8 +1778,10 @@ lpfc_decode_firmware_rev(struct lpfc_hba *phba, char *fwrevision, int flag)
 	uint32_t *ptr, str[4];
 	uint8_t *fwname;
 
-	if (vp->rev.rBit) {
-		if (psli->sli_flag & LPFC_SLI2_ACTIVE)
+	if (phba->sli_rev == LPFC_SLI_REV4)
+		sprintf(fwrevision, "%s", vp->rev.opFwName);
+	else if (vp->rev.rBit) {
+		if (psli->sli_flag & LPFC_SLI_ACTIVE)
 			rev = vp->rev.sli2FwRev;
 		else
 			rev = vp->rev.sli1FwRev;
@@ -1756,7 +1807,7 @@ lpfc_decode_firmware_rev(struct lpfc_hba *phba, char *fwrevision, int flag)
 		}
 		b4 = (rev & 0x0000000f);
 
-		if (psli->sli_flag & LPFC_SLI2_ACTIVE)
+		if (psli->sli_flag & LPFC_SLI_ACTIVE)
 			fwname = vp->rev.sli2FwName;
 		else
 			fwname = vp->rev.sli1FwName;
@@ -1795,12 +1846,7 @@ lpfc_decode_firmware_rev(struct lpfc_hba *phba, char *fwrevision, int flag)
 		c  = (rev & 0x0000ff00) >> 8;
 		b4 = (rev & 0x000000ff);
 
-		if (flag)
-			sprintf(fwrevision, "%d.%d%d%c%d ", b1,
-				b2, b3, c, b4);
-		else
-			sprintf(fwrevision, "%d.%d%d%c%d ", b1,
-				b2, b3, c, b4);
+		sprintf(fwrevision, "%d.%d%d%c%d", b1, b2, b3, c, b4);
 	}
 	return;
 }

@@ -896,7 +896,7 @@ static int pm2fb_setcolreg(unsigned regno, unsigned red, unsigned green,
 	 * Pseudocolor:
 	 *    uses offset = 0 && length = DAC register width.
 	 *    var->{color}.offset is 0
-	 *    var->{color}.length contains widht of DAC
+	 *    var->{color}.length contains width of DAC
 	 *    cmap is not used
 	 *    DAC[X] is programmed to (red, green, blue)
 	 * Truecolor:
@@ -1748,7 +1748,7 @@ static void __devexit pm2fb_remove(struct pci_dev *pdev)
 	pci_set_drvdata(pdev, NULL);
 	fb_dealloc_cmap(&info->cmap);
 	kfree(info->pixmap.addr);
-	kfree(info);
+	framebuffer_release(info);
 }
 
 static struct pci_device_id pm2fb_id_table[] = {

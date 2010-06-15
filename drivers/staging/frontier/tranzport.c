@@ -38,7 +38,6 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/version.h>
 
 #include <linux/uaccess.h>
 #include <linux/input.h>
@@ -56,7 +55,7 @@
 #endif
 
 /* table of devices that work with this driver */
-static struct usb_device_id usb_tranzport_table[] = {
+static const struct usb_device_id usb_tranzport_table[] = {
 	{USB_DEVICE(VENDOR_ID, PRODUCT_ID)},
 	{}			/* Terminating entry */
 };

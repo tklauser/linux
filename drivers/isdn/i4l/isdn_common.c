@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/isdn.h>
 #include <linux/smp_lock.h>
@@ -761,7 +762,7 @@ isdn_getnum(char **p)
  * Be aware that this is not an atomic operation when sleep != 0, even though 
  * interrupts are turned off! Well, like that we are currently only called
  * on behalf of a read system call on raw device files (which are documented
- * to be dangerous and for for debugging purpose only). The inode semaphore
+ * to be dangerous and for debugging purpose only). The inode semaphore
  * takes care that this is not called for the same minor device number while
  * we are sleeping, but access is not serialized against simultaneous read()
  * from the corresponding ttyI device. Can other ugly events, like changes
@@ -873,7 +874,7 @@ isdn_readbchan(int di, int channel, u_char * buf, u_char * fp, int len, wait_que
  * Be aware that this is not an atomic operation when sleep != 0, even though
  * interrupts are turned off! Well, like that we are currently only called
  * on behalf of a read system call on raw device files (which are documented
- * to be dangerous and for for debugging purpose only). The inode semaphore
+ * to be dangerous and for debugging purpose only). The inode semaphore
  * takes care that this is not called for the same minor device number while
  * we are sleeping, but access is not serialized against simultaneous read()
  * from the corresponding ttyI device. Can other ugly events, like changes
@@ -1347,7 +1348,7 @@ isdn_ioctl(struct inode *inode, struct file *file, uint cmd, ulong arg)
 /*
  * isdn net devices manage lots of configuration variables as linked lists.
  * Those lists must only be manipulated from user space. Some of the ioctl's
- * service routines access user space and are not atomic. Therefor, ioctl's
+ * service routines access user space and are not atomic. Therefore, ioctl's
  * manipulating the lists and ioctl's sleeping while accessing the lists
  * are serialized by means of a semaphore.
  */

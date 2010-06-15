@@ -9,11 +9,9 @@
  *		 Heiko Carstens <heiko.carstens@de.ibm.com>
  */
 
-#include <linux/sys.h>
 #include <linux/linkage.h>
 #include <linux/init.h>
 #include <asm/cache.h>
-#include <asm/lowcore.h>
 #include <asm/errno.h>
 #include <asm/ptrace.h>
 #include <asm/thread_info.h>
@@ -56,6 +54,8 @@ _TIF_WORK_SVC = (_TIF_SIGPENDING | _TIF_NOTIFY_RESUME | _TIF_NEED_RESCHED | \
 		 _TIF_MCCK_PENDING | _TIF_RESTART_SVC | _TIF_SINGLE_STEP )
 _TIF_WORK_INT = (_TIF_SIGPENDING | _TIF_NOTIFY_RESUME | _TIF_NEED_RESCHED | \
 		 _TIF_MCCK_PENDING)
+_TIF_SYSCALL = (_TIF_SYSCALL_TRACE>>8 | _TIF_SYSCALL_AUDIT>>8 | \
+		_TIF_SECCOMP>>8 | _TIF_SYSCALL_TRACEPOINT>>8)
 
 #define BASED(name) name-system_call(%r13)
 
@@ -260,7 +260,7 @@ sysc_do_restart:
 	larl	%r10,sys_call_table_emu  # use 31 bit emulation system calls
 sysc_noemu:
 #endif
-	tm	__TI_flags+7(%r9),(_TIF_SYSCALL_TRACE|_TIF_SYSCALL_AUDIT)
+	tm	__TI_flags+6(%r9),_TIF_SYSCALL
 	lgf	%r8,0(%r7,%r10) # load address of system call routine
 	jnz	sysc_tracesys
 	basr	%r14,%r8	# call sys_xxxx
@@ -282,10 +282,12 @@ sysc_leave:
 sysc_done:
 
 #ifdef CONFIG_TRACE_IRQFLAGS
+	.section .data,"aw",@progbits
 	.align	8
 	.globl sysc_restore_trace_psw
 sysc_restore_trace_psw:
 	.quad	0, sysc_restore_trace
+	.previous
 #endif
 
 #
@@ -391,7 +393,7 @@ sysc_tracego:
 	basr	%r14,%r8		# call sys_xxx
 	stg	%r2,SP_R2(%r15)		# store return value
 sysc_tracenogo:
-	tm	__TI_flags+7(%r9),(_TIF_SYSCALL_TRACE|_TIF_SYSCALL_AUDIT)
+	tm	__TI_flags+6(%r9),_TIF_SYSCALL
 	jz	sysc_return
 	la	%r2,SP_PTREGS(%r15)	# load pt_regs
 	larl	%r14,sysc_return	# return point is sysc_return
@@ -539,12 +541,13 @@ pgm_svcper:
 	mvc	__LC_LAST_UPDATE_TIMER(8),__LC_SYNC_ENTER_TIMER
 	llgh	%r7,__LC_SVC_INT_CODE	# get svc number from lowcore
 	lg	%r9,__LC_THREAD_INFO	# load pointer to thread_info struct
-	lg	%r1,__TI_task(%r9)
-	mvc	__THREAD_per+__PER_atmid(2,%r1),__LC_PER_ATMID
-	mvc	__THREAD_per+__PER_address(8,%r1),__LC_PER_ADDRESS
-	mvc	__THREAD_per+__PER_access_id(1,%r1),__LC_PER_ACCESS_ID
+	lg	%r8,__TI_task(%r9)
+	mvc	__THREAD_per+__PER_atmid(2,%r8),__LC_PER_ATMID
+	mvc	__THREAD_per+__PER_address(8,%r8),__LC_PER_ADDRESS
+	mvc	__THREAD_per+__PER_access_id(1,%r8),__LC_PER_ACCESS_ID
 	oi	__TI_flags+7(%r9),_TIF_SINGLE_STEP # set TIF_SINGLE_STEP
 	TRACE_IRQS_ON
+	lmg	%r2,%r6,SP_R2(%r15)	# load svc arguments
 	stosm	__SF_EMPTY(%r15),0x03	# reenable interrupts
 	j	sysc_do_svc
 
@@ -593,10 +596,12 @@ io_leave:
 io_done:
 
 #ifdef CONFIG_TRACE_IRQFLAGS
+	.section .data,"aw",@progbits
 	.align	8
 	.globl io_restore_trace_psw
 io_restore_trace_psw:
 	.quad	0, io_restore_trace
+	.previous
 #endif
 
 #
@@ -941,7 +946,7 @@ cleanup_critical:
 	clc	8(8,%r12),BASED(cleanup_table_io_work_loop)
 	jl	0f
 	clc	8(8,%r12),BASED(cleanup_table_io_work_loop+8)
-	jl	cleanup_io_return
+	jl	cleanup_io_work_loop
 0:
 	br	%r14
 
@@ -1016,6 +1021,12 @@ cleanup_sysc_leave_insn:
 
 cleanup_io_return:
 	mvc	__LC_RETURN_PSW(8),0(%r12)
+	mvc	__LC_RETURN_PSW+8(8),BASED(cleanup_table_io_return)
+	la	%r12,__LC_RETURN_PSW
+	br	%r14
+
+cleanup_io_work_loop:
+	mvc	__LC_RETURN_PSW(8),0(%r12)
 	mvc	__LC_RETURN_PSW+8(8),BASED(cleanup_table_io_work_loop)
 	la	%r12,__LC_RETURN_PSW
 	br	%r14
@@ -1058,6 +1069,7 @@ cleanup_io_leave_insn:
 
 		.section .rodata, "a"
 #define SYSCALL(esa,esame,emu)	.long esame
+	.globl	sys_call_table
 sys_call_table:
 #include "syscalls.S"
 #undef SYSCALL

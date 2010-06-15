@@ -73,7 +73,6 @@ static int rx_copybreak;
 #include <linux/timer.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
@@ -167,7 +166,7 @@ static const struct epic_chip_info pci_id_tbl[] = {
 };
 
 
-static struct pci_device_id epic_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(epic_pci_tbl) = {
 	{ 0x10B8, 0x0005, 0x1092, 0x0AB4, 0, 0, SMSC_83C170_0 },
 	{ 0x10B8, 0x0005, PCI_ANY_ID, PCI_ANY_ID, 0, 0, SMSC_83C170 },
 	{ 0x10B8, 0x0006, PCI_ANY_ID, PCI_ANY_ID,
@@ -298,7 +297,8 @@ static void epic_restart(struct net_device *dev);
 static void epic_timer(unsigned long data);
 static void epic_tx_timeout(struct net_device *dev);
 static void epic_init_ring(struct net_device *dev);
-static int epic_start_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t epic_start_xmit(struct sk_buff *skb,
+				   struct net_device *dev);
 static int epic_rx(struct net_device *dev, int budget);
 static int epic_poll(struct napi_struct *napi, int budget);
 static irqreturn_t epic_interrupt(int irq, void *dev_instance);
@@ -338,8 +338,7 @@ static int __devinit epic_init_one (struct pci_dev *pdev,
 #ifndef MODULE
 	static int printed_version;
 	if (!printed_version++)
-		printk (KERN_INFO "%s" KERN_INFO "%s",
-			version, version2);
+		printk(KERN_INFO "%s%s", version, version2);
 #endif
 
 	card_idx++;
@@ -630,8 +629,8 @@ static int mdio_read(struct net_device *dev, int phy_id, int location)
 		barrier();
 		if ((inl(ioaddr + MIICtrl) & MII_READOP) == 0) {
 			/* Work around read failure bug. */
-			if (phy_id == 1 && location < 6
-				&& inw(ioaddr + MIIData) == 0xffff) {
+			if (phy_id == 1 && location < 6 &&
+			    inw(ioaddr + MIIData) == 0xffff) {
 				outl(read_cmd, ioaddr + MIICtrl);
 				continue;
 			}
@@ -668,7 +667,7 @@ static int epic_open(struct net_device *dev)
 	outl(0x4001, ioaddr + GENCTL);
 
 	napi_enable(&ep->napi);
-	if ((retval = request_irq(dev->irq, &epic_interrupt, IRQF_SHARED, dev->name, dev))) {
+	if ((retval = request_irq(dev->irq, epic_interrupt, IRQF_SHARED, dev->name, dev))) {
 		napi_disable(&ep->napi);
 		return retval;
 	}
@@ -962,7 +961,7 @@ static void epic_init_ring(struct net_device *dev)
 	return;
 }
 
-static int epic_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t epic_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct epic_private *ep = netdev_priv(dev);
 	int entry, free_count;
@@ -970,7 +969,7 @@ static int epic_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned long flags;
 
 	if (skb_padto(skb, ETH_ZLEN))
-		return 0;
+		return NETDEV_TX_OK;
 
 	/* Caution: the write order is important here, set the field with the
 	   "ownership" bit last. */
@@ -1014,7 +1013,7 @@ static int epic_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			   dev->name, (int)skb->len, entry, ctrl_word,
 			   (int)inl(dev->base_addr + TxSTAT));
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void epic_tx_error(struct net_device *dev, struct epic_private *ep,
@@ -1205,8 +1204,8 @@ static int epic_rx(struct net_device *dev, int budget)
 			}
 			/* Check if the packet is long enough to accept without copying
 			   to a minimally-sized skbuff. */
-			if (pkt_len < rx_copybreak
-				&& (skb = dev_alloc_skb(pkt_len + 2)) != NULL) {
+			if (pkt_len < rx_copybreak &&
+			    (skb = dev_alloc_skb(pkt_len + 2)) != NULL) {
 				skb_reserve(skb, 2);	/* 16 byte align the IP header */
 				pci_dma_sync_single_for_cpu(ep->pci_dev,
 							    ep->rx_ring[entry].bufaddr,
@@ -1390,21 +1389,20 @@ static void set_rx_mode(struct net_device *dev)
 		outl(0x002C, ioaddr + RxCtrl);
 		/* Unconditionally log net taps. */
 		memset(mc_filter, 0xff, sizeof(mc_filter));
-	} else if ((dev->mc_count > 0)  ||  (dev->flags & IFF_ALLMULTI)) {
+	} else if ((!netdev_mc_empty(dev)) || (dev->flags & IFF_ALLMULTI)) {
 		/* There is apparently a chip bug, so the multicast filter
 		   is never enabled. */
 		/* Too many to filter perfectly -- accept all multicasts. */
 		memset(mc_filter, 0xff, sizeof(mc_filter));
 		outl(0x000C, ioaddr + RxCtrl);
-	} else if (dev->mc_count == 0) {
+	} else if (netdev_mc_empty(dev)) {
 		outl(0x0004, ioaddr + RxCtrl);
 		return;
 	} else {					/* Never executed, for now. */
 		struct dev_mc_list *mclist;
 
 		memset(mc_filter, 0, sizeof(mc_filter));
-		for (i = 0, mclist = dev->mc_list; mclist && i < dev->mc_count;
-			 i++, mclist = mclist->next) {
+		netdev_for_each_mc_addr(mclist, dev) {
 			unsigned int bit_nr =
 				ether_crc_le(ETH_ALEN, mclist->dmi_addr) & 0x3f;
 			mc_filter[bit_nr >> 3] |= (1 << bit_nr);
@@ -1600,7 +1598,7 @@ static int __init epic_init (void)
 {
 /* when a module, this is printed whether or not devices are found in probe */
 #ifdef MODULE
-	printk (KERN_INFO "%s" KERN_INFO "%s",
+	printk (KERN_INFO "%s%s",
 		version, version2);
 #endif
 

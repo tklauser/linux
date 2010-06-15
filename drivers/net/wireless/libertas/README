@@ -1,5 +1,5 @@
 ================================================================================
-			README for USB8388
+			README for Libertas
 
  (c) Copyright © 2003-2006, Marvell International Ltd.
  All Rights Reserved
@@ -72,7 +72,7 @@ rdrf
 	location that is to be read.  This parameter must be specified in
 	hexadecimal (its possible to preceed preceding the number with a "0x").
 
-	Path: /debugfs/libertas_wireless/ethX/registers/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/registers/
 
 	Usage:
 		echo "0xa123" > rdmac ; cat rdmac
@@ -95,7 +95,7 @@ wrrf
 sleepparams
 	This command is used to set the sleepclock configurations
 
-	Path: /debugfs/libertas_wireless/ethX/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/
 
 	Usage:
 		cat sleepparams: reads the current sleepclock configuration
@@ -115,7 +115,7 @@ subscribed_events
 	The subscribed_events directory contains the interface for the
 	subscribed events API.
 
-	Path: /debugfs/libertas_wireless/ethX/subscribed_events/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/subscribed_events/
 
 	Each event is represented by a filename. Each filename consists of the
 	following three fields:
@@ -165,7 +165,7 @@ subscribed_events
 extscan
 	This command is used to do a specific scan.
 
-	Path: /debugfs/libertas_wireless/ethX/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/
 
 	Usage: echo "SSID" > extscan
 
@@ -179,7 +179,7 @@ getscantable
 	Display the current contents of the driver scan table (ie. get the
 	scan results).
 
-	Path: /debugfs/libertas_wireless/ethX/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/
 
 	Usage:
 		cat getscantable
@@ -188,7 +188,7 @@ setuserscan
 	Initiate a customized scan and retrieve the results
 
 
-	Path: /debugfs/libertas_wireless/ethX/
+	Path: /sys/kernel/debug/libertas_wireless/ethX/
 
     Usage:
        echo "[ARGS]" > setuserscan
@@ -225,5 +225,29 @@ setuserscan
 
     All entries in the scan table (not just the new scan data when keep=1)
     will be displayed upon completion by use of the getscantable ioctl.
+
+========================
+IWCONFIG COMMANDS
+========================
+power period
+
+	This command is used to configure the station in deep sleep mode /
+	auto deep sleep mode.
+
+	The timer is implemented to monitor the activities (command, event,
+	etc.). When an activity is detected station will exit from deep
+	sleep mode automatically and restart the timer. At timer expiry
+	(no activity for defined time period) the deep sleep mode is entered
+	automatically.
+
+	Note: this command is for SDIO interface only.
+
+	Usage:
+	To enable deep sleep mode do:
+		iwconfig wlan0 power period 0
+	To enable auto deep sleep mode with idle time period 5 seconds do:
+		iwconfig wlan0 power period 5
+	To disable deep sleep/auto deep sleep mode do:
+		iwconfig wlan0 power period -1
 
 ==============================================================================

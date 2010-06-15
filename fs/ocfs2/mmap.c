@@ -25,7 +25,6 @@
 
 #include <linux/fs.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/highmem.h>
 #include <linux/pagemap.h>
 #include <linux/uio.h>
@@ -202,7 +201,7 @@ out:
 	return ret;
 }
 
-static struct vm_operations_struct ocfs2_file_vm_ops = {
+static const struct vm_operations_struct ocfs2_file_vm_ops = {
 	.fault		= ocfs2_fault,
 	.page_mkwrite	= ocfs2_page_mkwrite,
 };

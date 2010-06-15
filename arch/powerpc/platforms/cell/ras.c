@@ -11,6 +11,7 @@
 
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/smp.h>
 #include <linux/reboot.h>
 #include <linux/kexec.h>
@@ -122,8 +123,8 @@ static int __init cbe_ptcal_enable_on_node(int nid, int order)
 
 	area->nid = nid;
 	area->order = order;
-	area->pages = alloc_pages_node(area->nid, GFP_KERNEL | GFP_THISNODE,
-					area->order);
+	area->pages = alloc_pages_exact_node(area->nid, GFP_KERNEL|GFP_THISNODE,
+						area->order);
 
 	if (!area->pages) {
 		printk(KERN_WARNING "%s: no page on node %d\n",
@@ -255,7 +256,7 @@ static int __init cbe_sysreset_init(void)
 {
 	struct cbe_pmd_regs __iomem *regs;
 
-	sysreset_hack = machine_is_compatible("IBM,CBPLUS-1.0");
+	sysreset_hack = of_machine_is_compatible("IBM,CBPLUS-1.0");
 	if (!sysreset_hack)
 		return 0;
 

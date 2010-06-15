@@ -47,6 +47,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/smp_lock.h>
+#include <linux/slab.h>
 
 #include <asm/uaccess.h>
 #include <asm/ioctls.h>
@@ -867,7 +868,7 @@ static int viotape_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	int j;
 	struct device_node *node = vdev->dev.archdata.of_node;
 
-	if (i > VIOTAPE_MAX_TAPE)
+	if (i >= VIOTAPE_MAX_TAPE)
 		return -ENODEV;
 	if (!node)
 		return -ENODEV;

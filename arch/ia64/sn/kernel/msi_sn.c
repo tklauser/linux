@@ -11,6 +11,7 @@
 #include <linux/pci.h>
 #include <linux/cpumask.h>
 #include <linux/msi.h>
+#include <linux/slab.h>
 
 #include <asm/sn/addrs.h>
 #include <asm/sn/intr.h>
@@ -151,7 +152,7 @@ int sn_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *entry)
 }
 
 #ifdef CONFIG_SMP
-static void sn_set_msi_irq_affinity(unsigned int irq,
+static int sn_set_msi_irq_affinity(unsigned int irq,
 				    const struct cpumask *cpu_mask)
 {
 	struct msi_msg msg;
@@ -168,7 +169,7 @@ static void sn_set_msi_irq_affinity(unsigned int irq,
 	cpu = cpumask_first(cpu_mask);
 	sn_irq_info = sn_msi_info[irq].sn_irq_info;
 	if (sn_irq_info == NULL || sn_irq_info->irq_int_bit >= 0)
-		return;
+		return -1;
 
 	/*
 	 * Release XIO resources for the old MSI PCI address
@@ -189,7 +190,7 @@ static void sn_set_msi_irq_affinity(unsigned int irq,
 	new_irq_info = sn_retarget_vector(sn_irq_info, nasid, slice);
 	sn_msi_info[irq].sn_irq_info = new_irq_info;
 	if (new_irq_info == NULL)
-		return;
+		return -1;
 
 	/*
 	 * Map the xio address into bus space
@@ -206,6 +207,8 @@ static void sn_set_msi_irq_affinity(unsigned int irq,
 
 	write_msi_msg(irq, &msg);
 	cpumask_copy(irq_desc[irq].affinity, cpu_mask);
+
+	return 0;
 }
 #endif /* CONFIG_SMP */
 

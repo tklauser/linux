@@ -27,7 +27,7 @@ struct ext2_inode_info {
 	/*
 	 * i_block_group is the number of the block group which contains
 	 * this file's inode.  Constant across the lifetime of the inode,
-	 * it is ued for making block allocation decisions - we try to
+	 * it is used for making block allocation decisions - we try to
 	 * place a file's data blocks near its inode block, and new inodes
 	 * near to their parent directory's inode.
 	 */
@@ -46,10 +46,6 @@ struct ext2_inode_info {
 	 * EAs.
 	 */
 	struct rw_semaphore xattr_sem;
-#endif
-#ifdef CONFIG_EXT2_FS_POSIX_ACL
-	struct posix_acl	*i_acl;
-	struct posix_acl	*i_default_acl;
 #endif
 	rwlock_t i_meta_lock;
 
@@ -111,10 +107,7 @@ extern struct ext2_dir_entry_2 * ext2_find_entry (struct inode *,struct qstr *, 
 extern int ext2_delete_entry (struct ext2_dir_entry_2 *, struct page *);
 extern int ext2_empty_dir (struct inode *);
 extern struct ext2_dir_entry_2 * ext2_dotdot (struct inode *, struct page **);
-extern void ext2_set_link(struct inode *, struct ext2_dir_entry_2 *, struct page *, struct inode *);
-
-/* fsync.c */
-extern int ext2_sync_file (struct file *, struct dentry *, int);
+extern void ext2_set_link(struct inode *, struct ext2_dir_entry_2 *, struct page *, struct inode *, int);
 
 /* ialloc.c */
 extern struct inode * ext2_new_inode (struct inode *, int);
@@ -125,7 +118,7 @@ extern unsigned long ext2_count_free (struct buffer_head *, unsigned);
 
 /* inode.c */
 extern struct inode *ext2_iget (struct super_block *, unsigned long);
-extern int ext2_write_inode (struct inode *, int);
+extern int ext2_write_inode (struct inode *, struct writeback_control *);
 extern void ext2_delete_inode (struct inode *);
 extern int ext2_sync_inode (struct inode *);
 extern int ext2_get_block(struct inode *, sector_t, struct buffer_head *, int);
@@ -149,7 +142,7 @@ struct dentry *ext2_get_parent(struct dentry *child);
 /* super.c */
 extern void ext2_error (struct super_block *, const char *, const char *, ...)
 	__attribute__ ((format (printf, 3, 4)));
-extern void ext2_warning (struct super_block *, const char *, const char *, ...)
+extern void ext2_msg(struct super_block *, const char *, const char *, ...)
 	__attribute__ ((format (printf, 3, 4)));
 extern void ext2_update_dynamic_rev (struct super_block *sb);
 extern void ext2_write_super (struct super_block *);
@@ -162,6 +155,7 @@ extern void ext2_write_super (struct super_block *);
 extern const struct file_operations ext2_dir_operations;
 
 /* file.c */
+extern int ext2_fsync(struct file *file, struct dentry *dentry, int datasync);
 extern const struct inode_operations ext2_file_inode_operations;
 extern const struct file_operations ext2_file_operations;
 extern const struct file_operations ext2_xip_file_operations;

@@ -186,19 +186,19 @@ static int mxb_probe(struct saa7146_dev *dev)
 	}
 
 	mxb->saa7111a = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"saa7115", "saa7111", I2C_SAA7111A);
+			"saa7115", "saa7111", I2C_SAA7111A, NULL);
 	mxb->tea6420_1 = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"tea6420", "tea6420", I2C_TEA6420_1);
+			"tea6420", "tea6420", I2C_TEA6420_1, NULL);
 	mxb->tea6420_2 = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"tea6420", "tea6420", I2C_TEA6420_2);
+			"tea6420", "tea6420", I2C_TEA6420_2, NULL);
 	mxb->tea6415c = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"tea6415c", "tea6415c", I2C_TEA6415C);
+			"tea6415c", "tea6415c", I2C_TEA6415C, NULL);
 	mxb->tda9840 = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"tda9840", "tda9840", I2C_TDA9840);
+			"tda9840", "tda9840", I2C_TDA9840, NULL);
 	mxb->tuner = v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"tuner", "tuner", I2C_TUNER);
+			"tuner", "tuner", I2C_TUNER, NULL);
 	if (v4l2_i2c_new_subdev(&dev->v4l2_dev, &mxb->i2c_adapter,
-			"saa5246a", "saa5246a", I2C_SAA5246A)) {
+			"saa5246a", "saa5246a", I2C_SAA5246A, NULL)) {
 		printk(KERN_INFO "mxb: found teletext decoder\n");
 	}
 
@@ -294,7 +294,7 @@ static int mxb_init_done(struct saa7146_dev* dev)
 	/* select tuner-output on saa7111a */
 	i = 0;
 	saa7111a_call(mxb, video, s_routing, SAA7115_COMPOSITE0,
-		SAA7111_FMT_CCIR | SAA7111_VBI_BYPASS, 0);
+		SAA7111_FMT_CCIR, 0);
 
 	/* select a tuner type */
 	tun_setup.mode_mask = T_ANALOG_TV;
@@ -453,7 +453,7 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *vc)
 static int vidioc_enum_input(struct file *file, void *fh, struct v4l2_input *i)
 {
 	DEB_EE(("VIDIOC_ENUMINPUT %d.\n", i->index));
-	if (i->index < 0 || i->index >= MXB_INPUTS)
+	if (i->index >= MXB_INPUTS)
 		return -EINVAL;
 	memcpy(i, &mxb_inputs[i->index], sizeof(struct v4l2_input));
 	return 0;
@@ -478,7 +478,7 @@ static int vidioc_s_input(struct file *file, void *fh, unsigned int input)
 
 	DEB_EE(("VIDIOC_S_INPUT %d.\n", input));
 
-	if (input < 0 || input >= MXB_INPUTS)
+	if (input >= MXB_INPUTS)
 		return -EINVAL;
 
 	mxb->cur_input = input;
@@ -518,8 +518,8 @@ static int vidioc_s_input(struct file *file, void *fh, unsigned int input)
 		return err;
 
 	/* switch video in saa7111a */
-	if (saa7111a_call(mxb, video, s_routing, i, 0, 0))
-		printk(KERN_ERR "VIDIOC_S_INPUT: could not address saa7111a #1.\n");
+	if (saa7111a_call(mxb, video, s_routing, i, SAA7111_FMT_CCIR, 0))
+		printk(KERN_ERR "VIDIOC_S_INPUT: could not address saa7111a.\n");
 
 	/* switch the audio-source only if necessary */
 	if (0 == mxb->cur_mute)
@@ -616,7 +616,7 @@ static int vidioc_g_audio(struct file *file, void *fh, struct v4l2_audio *a)
 	struct saa7146_dev *dev = ((struct saa7146_fh *)fh)->dev;
 	struct mxb *mxb = (struct mxb *)dev->ext_priv;
 
-	if (a->index < 0 || a->index > MXB_INPUTS) {
+	if (a->index > MXB_INPUTS) {
 		DEB_D(("VIDIOC_G_AUDIO %d out of range.\n", a->index));
 		return -EINVAL;
 	}
@@ -695,14 +695,17 @@ static struct saa7146_ext_vv vv_data;
 /* this function only gets called when the probing was successful */
 static int mxb_attach(struct saa7146_dev *dev, struct saa7146_pci_extension_data *info)
 {
-	struct mxb *mxb = (struct mxb *)dev->ext_priv;
+	struct mxb *mxb;
 
 	DEB_EE(("dev:%p\n", dev));
 
-	/* checking for i2c-devices can be omitted here, because we
-	   already did this in "mxb_vl42_probe" */
-
 	saa7146_vv_init(dev, &vv_data);
+	if (mxb_probe(dev)) {
+		saa7146_vv_release(dev);
+		return -1;
+	}
+	mxb = (struct mxb *)dev->ext_priv;
+
 	vv_data.ops.vidioc_queryctrl = vidioc_queryctrl;
 	vv_data.ops.vidioc_g_ctrl = vidioc_g_ctrl;
 	vv_data.ops.vidioc_s_ctrl = vidioc_s_ctrl;
@@ -722,6 +725,7 @@ static int mxb_attach(struct saa7146_dev *dev, struct saa7146_pci_extension_data
 	vv_data.ops.vidioc_default = vidioc_default;
 	if (saa7146_register_device(&mxb->video_dev, dev, "mxb", VFL_TYPE_GRABBER)) {
 		ERR(("cannot register capture v4l2 device. skipping.\n"));
+		saa7146_vv_release(dev);
 		return -1;
 	}
 
@@ -842,7 +846,6 @@ static struct saa7146_extension extension = {
 	.pci_tbl	= &pci_tbl[0],
 	.module		= THIS_MODULE,
 
-	.probe		= mxb_probe,
 	.attach		= mxb_attach,
 	.detach		= mxb_detach,
 

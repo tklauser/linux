@@ -169,10 +169,12 @@ config USB_NET_CDCETHER
 	  The Linux-USB CDC Ethernet Gadget driver is an open implementation.
  	  This driver should work with at least the following devices:
 
+	    * Dell Wireless 5530 HSPA
  	    * Ericsson PipeRider (all variants)
+	    * Ericsson Mobile Broadband Module (all variants)
  	    * Motorola (DM100 and SB4100)
  	    * Broadcom Cable Modem (reference design)
- 	    * Toshiba PCX1100U
+	    * Toshiba (PCX1100U and F3507g/F3607gw)
 	    * ...
 
 	  This driver creates an interface named "ethX", where X depends on
@@ -201,6 +203,14 @@ config USB_NET_DM9601
 	help
 	  This option adds support for Davicom DM9601 based USB 1.1
 	  10/100 Ethernet adapters.
+
+config USB_NET_SMSC75XX
+	tristate "SMSC LAN75XX based USB 2.0 gigabit ethernet devices"
+	depends on USB_USBNET
+	select CRC32
+	help
+	  This option adds support for SMSC LAN95XX based USB 2.0
+	  Gigabit Ethernet adapters.
 
 config USB_NET_SMSC95XX
 	tristate "SMSC LAN95XX based USB 2.0 10/100 ethernet devices"
@@ -358,5 +368,42 @@ config USB_HSO
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called hso.
+
+config USB_NET_INT51X1
+	tristate "Intellon PLC based usb adapter"
+	depends on USB_USBNET
+	help
+	  Choose this option if you're using a 14Mb USB-based PLC
+	  (Powerline Communications) solution with an Intellon
+	  INT51x1/INT5200 chip, like the "devolo dLan duo".
+
+config USB_CDC_PHONET
+	tristate "CDC Phonet support"
+	depends on PHONET
+	help
+	  Choose this option to support the Phonet interface to a Nokia
+	  cellular modem, as found on most Nokia handsets with the
+	  "PC suite" USB profile.
+
+config USB_IPHETH
+	tristate "Apple iPhone USB Ethernet driver"
+	default n
+	---help---
+	  Module used to share Internet connection (tethering) from your
+	  iPhone (Original, 3G and 3GS) to your system.
+	  Note that you need userspace libraries and programs that are needed
+	  to pair your device with your system and that understand the iPhone
+	  protocol.
+
+	  For more information: http://giagio.com/wiki/moin.cgi/iPhoneEthernetDriver
+
+config USB_SIERRA_NET
+	tristate "USB-to-WWAN Driver for Sierra Wireless modems"
+	depends on USB_USBNET
+	help
+	  Choose this option if you have a Sierra Wireless USB-to-WWAN device.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called sierra_net.
 
 endmenu

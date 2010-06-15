@@ -197,6 +197,8 @@ static inline pte_t __mk_pte(void * page, pgprot_t pgprot)
 static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 { pte_val(pte) = (pte_val(pte) & _PAGE_CHG_MASK) | pgprot_val(newprot); return pte; }
 
+#define pgprot_noncached(prot) __pgprot((pgprot_val(prot) | _PAGE_NO_CACHE))
+
 
 /* pte_val refers to a page in the 0x4xxxxxxx physical DRAM interval
  * __pte_page(pte_val) refers to the "virtual" DRAM interval
@@ -268,7 +270,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD]; /* defined in head.S */
  * Actually I am not sure on what this could be used for.
  */
 static inline void update_mmu_cache(struct vm_area_struct * vma,
-	unsigned long address, pte_t pte)
+	unsigned long address, pte_t *ptep)
 {
 }
 

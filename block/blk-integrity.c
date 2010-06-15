@@ -24,6 +24,7 @@
 #include <linux/mempool.h>
 #include <linux/bio.h>
 #include <linux/scatterlist.h>
+#include <linux/slab.h>
 
 #include "blk.h"
 
@@ -278,7 +279,7 @@ static struct attribute *integrity_attrs[] = {
 	NULL,
 };
 
-static struct sysfs_ops integrity_ops = {
+static const struct sysfs_ops integrity_ops = {
 	.show	= &integrity_attr_show,
 	.store	= &integrity_attr_store,
 };
@@ -340,7 +341,7 @@ int blk_integrity_register(struct gendisk *disk, struct blk_integrity *template)
 		kobject_uevent(&bi->kobj, KOBJ_ADD);
 
 		bi->flags |= INTEGRITY_FLAG_READ | INTEGRITY_FLAG_WRITE;
-		bi->sector_size = disk->queue->hardsect_size;
+		bi->sector_size = queue_logical_block_size(disk->queue);
 		disk->integrity = bi;
 	} else
 		bi = disk->integrity;
@@ -379,6 +380,7 @@ void blk_integrity_unregister(struct gendisk *disk)
 
 	kobject_uevent(&bi->kobj, KOBJ_REMOVE);
 	kobject_del(&bi->kobj);
+	kobject_put(&bi->kobj);
 	kmem_cache_free(integrity_cachep, bi);
 	disk->integrity = NULL;
 }

@@ -22,6 +22,7 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/string.h>
+#include <linux/gfp.h>
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/stddef.h>
@@ -32,6 +33,7 @@
 #include <linux/pagemap.h>
 #include <linux/suspend.h>
 #include <linux/lmb.h>
+#include <linux/hugetlb.h>
 
 #include <asm/pgalloc.h>
 #include <asm/prom.h>
@@ -47,6 +49,7 @@
 #include <asm/sparsemem.h>
 #include <asm/vdso.h>
 #include <asm/fixmap.h>
+#include <asm/swiotlb.h>
 
 #include "mmu_decl.h"
 
@@ -143,8 +146,8 @@ int arch_add_memory(int nid, u64 start, u64 size)
  * memory regions, find holes and callback for contiguous regions.
  */
 int
-walk_memory_resource(unsigned long start_pfn, unsigned long nr_pages, void *arg,
-			int (*func)(unsigned long, unsigned long, void *))
+walk_system_ram_range(unsigned long start_pfn, unsigned long nr_pages,
+		void *arg, int (*func)(unsigned long, unsigned long, void *))
 {
 	struct lmb_property res;
 	unsigned long pfn, len;
@@ -166,7 +169,7 @@ walk_memory_resource(unsigned long start_pfn, unsigned long nr_pages, void *arg,
 	}
 	return ret;
 }
-EXPORT_SYMBOL_GPL(walk_memory_resource);
+EXPORT_SYMBOL_GPL(walk_system_ram_range);
 
 /*
  * Initialize the bootmem system and give it all the memory we
@@ -319,6 +322,11 @@ void __init mem_init(void)
 	struct page *page;
 	unsigned long reservedpages = 0, codesize, initsize, datasize, bsssize;
 
+#ifdef CONFIG_SWIOTLB
+	if (ppc_swiotlb_enable)
+		swiotlb_init(1);
+#endif
+
 	num_physpages = lmb.memory.size >> PAGE_SHIFT;
 	high_memory = (void *) __va(max_low_pfn * PAGE_SIZE);
 
@@ -372,7 +380,7 @@ void __init mem_init(void)
 
 	printk(KERN_INFO "Memory: %luk/%luk available (%luk kernel code, "
 	       "%luk reserved, %luk data, %luk bss, %luk init)\n",
-		(unsigned long)nr_free_pages() << (PAGE_SHIFT-10),
+		nr_free_pages() << (PAGE_SHIFT-10),
 		num_physpages << (PAGE_SHIFT-10),
 		codesize >> 10,
 		reservedpages << (PAGE_SHIFT-10),
@@ -417,18 +425,26 @@ EXPORT_SYMBOL(flush_dcache_page);
 
 void flush_dcache_icache_page(struct page *page)
 {
+#ifdef CONFIG_HUGETLB_PAGE
+	if (PageCompound(page)) {
+		flush_dcache_icache_hugepage(page);
+		return;
+	}
+#endif
 #ifdef CONFIG_BOOKE
-	void *start = kmap_atomic(page, KM_PPC_SYNC_ICACHE);
-	__flush_dcache_icache(start);
-	kunmap_atomic(start, KM_PPC_SYNC_ICACHE);
+	{
+		void *start = kmap_atomic(page, KM_PPC_SYNC_ICACHE);
+		__flush_dcache_icache(start);
+		kunmap_atomic(start, KM_PPC_SYNC_ICACHE);
+	}
 #elif defined(CONFIG_8xx) || defined(CONFIG_PPC64)
 	/* On 8xx there is no need to kmap since highmem is not supported */
 	__flush_dcache_icache(page_address(page)); 
 #else
 	__flush_dcache_icache_phys(page_to_pfn(page) << PAGE_SHIFT);
 #endif
-
 }
+
 void clear_user_page(void *page, unsigned long vaddr, struct page *pg)
 {
 	clear_page(page);
@@ -485,13 +501,13 @@ EXPORT_SYMBOL(flush_icache_user_range);
  * This must always be called with the pte lock held.
  */
 void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
-		      pte_t pte)
+		      pte_t *ptep)
 {
 #ifdef CONFIG_PPC_STD_MMU
 	unsigned long access = 0, trap;
 
 	/* We only want HPTEs for linux PTEs that have _PAGE_ACCESSED set */
-	if (!pte_young(pte) || address >= TASK_SIZE)
+	if (!pte_young(*ptep) || address >= TASK_SIZE)
 		return;
 
 	/* We try to figure out if we are coming from an instruction

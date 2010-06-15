@@ -627,6 +627,39 @@ struct els_entry_24xx {
 	uint32_t rx_len;		/* Data segment 1 length. */
 };
 
+struct els_sts_entry_24xx {
+	uint8_t entry_type;		/* Entry type. */
+	uint8_t entry_count;		/* Entry count. */
+	uint8_t sys_define;		/* System Defined. */
+	uint8_t entry_status;		/* Entry Status. */
+
+	uint32_t handle;		/* System handle. */
+
+	uint16_t comp_status;
+
+	uint16_t nport_handle;		/* N_PORT handle. */
+
+	uint16_t reserved_1;
+
+	uint8_t vp_index;
+	uint8_t sof_type;
+
+	uint32_t rx_xchg_address;	/* Receive exchange address. */
+	uint16_t reserved_2;
+
+	uint8_t opcode;
+	uint8_t reserved_3;
+
+	uint8_t port_id[3];
+	uint8_t reserved_4;
+
+	uint16_t reserved_5;
+
+	uint16_t control_flags;		/* Control flags. */
+	uint32_t total_byte_count;
+	uint32_t error_subcode_1;
+	uint32_t error_subcode_2;
+};
 /*
  * ISP queue - Mailbox Command entry structure definition.
  */
@@ -878,7 +911,6 @@ struct device_reg_24xx {
 					/* HCCR statuses. */
 #define HCCRX_HOST_INT		BIT_6	/* Host to RISC interrupt bit. */
 #define HCCRX_RISC_RESET	BIT_5	/* RISC Reset mode bit. */
-#define HCCRX_RISC_PAUSE	BIT_4	/* RISC Pause mode bit. */
 					/* HCCR commands. */
 					/* NOOP. */
 #define HCCRX_NOOP		0x00000000
@@ -1127,7 +1159,7 @@ struct vp_config_entry_24xx {
 	uint16_t id;
 	uint16_t reserved_4;
 	uint16_t hopct;
-	uint8_t reserved_5;
+	uint8_t reserved_5[2];
 };
 
 #define VP_RPT_ID_IOCB_TYPE	0x32	/* Report ID Acquisition entry. */
@@ -1241,6 +1273,7 @@ struct qla_flt_header {
 #define FLT_REG_HW_EVENT_1	0x1f
 #define FLT_REG_NPIV_CONF_0	0x29
 #define FLT_REG_NPIV_CONF_1	0x2a
+#define FLT_REG_GOLD_FW		0x2f
 
 struct qla_flt_region {
 	uint32_t code;
@@ -1405,6 +1438,8 @@ struct access_chip_rsp_84xx {
 #define MBC_IDC_ACK		0x101
 #define MBC_RESTART_MPI_FW	0x3d
 #define MBC_FLASH_ACCESS_CTRL	0x3e	/* Control flash access. */
+#define MBC_GET_XGMAC_STATS	0x7a
+#define MBC_GET_DCBX_PARAMS	0x51
 
 /* Flash access control option field bit definitions */
 #define FAC_OPT_FORCE_SEMAPHORE		BIT_15
@@ -1557,10 +1592,22 @@ struct nvram_81xx {
 
 	/* Offset 384. */
 	uint8_t reserved_21[16];
-	uint16_t reserved_22[8];
+	uint16_t reserved_22[3];
+
+	/*
+	 * BIT 0 = Extended BB credits for LR
+	 * BIT 1 = Virtual Fabric Enable
+	 * BIT 2 = Enhanced Features Unused
+	 * BIT 3-7 = Enhanced Features Reserved
+	 */
+	/* Enhanced Features */
+	uint8_t enhanced_features;
+
+	uint8_t reserved_23;
+	uint16_t reserved_24[4];
 
 	/* Offset 416. */
-	uint16_t reserved_23[32];
+	uint16_t reserved_25[32];
 
 	/* Offset 480. */
 	uint8_t model_name[16];
@@ -1568,7 +1615,7 @@ struct nvram_81xx {
 	/* Offset 496. */
 	uint16_t feature_mask_l;
 	uint16_t feature_mask_h;
-	uint16_t reserved_24[2];
+	uint16_t reserved_26[2];
 
 	uint16_t subsystem_vendor_id;
 	uint16_t subsystem_device_id;
@@ -1711,7 +1758,7 @@ struct ex_init_cb_81xx {
 #define FA_VPD0_ADDR_81		0xD0000
 #define FA_VPD1_ADDR_81		0xD0400
 #define FA_NVRAM0_ADDR_81	0xD0080
-#define FA_NVRAM1_ADDR_81	0xD0480
+#define FA_NVRAM1_ADDR_81	0xD0180
 #define FA_FEATURE_ADDR_81	0xD4000
 #define FA_FLASH_DESCR_ADDR_81	0xD8000
 #define FA_FLASH_LAYOUT_ADDR_81	0xD8400

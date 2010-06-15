@@ -20,6 +20,7 @@
 #include <linux/i2c.h>
 #include <linux/videodev2.h>
 #include <linux/ioctl.h>
+#include <linux/slab.h>
 
 #include "wis-i2c.h"
 
@@ -111,7 +112,8 @@ static int wis_tw9903_command(struct i2c_client *client,
 		i2c_smbus_write_byte_data(client, 0x02, 0x40 | (*input << 1));
 		break;
 	}
-#if 0   /* The scaler on this thing seems to be horribly broken */
+#if 0
+	/* The scaler on this thing seems to be horribly broken */
 	case DECODER_SET_RESOLUTION:
 	{
 		struct video_decoder_resolution *res = arg;
@@ -308,7 +310,7 @@ static int wis_tw9903_remove(struct i2c_client *client)
 	return 0;
 }
 
-static struct i2c_device_id wis_tw9903_id[] = {
+static const struct i2c_device_id wis_tw9903_id[] = {
 	{ "wis_tw9903", 0 },
 	{ }
 };

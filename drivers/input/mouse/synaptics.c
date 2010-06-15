@@ -24,9 +24,11 @@
  */
 
 #include <linux/module.h>
+#include <linux/dmi.h>
 #include <linux/input.h>
 #include <linux/serio.h>
 #include <linux/libps2.h>
+#include <linux/slab.h>
 #include "psmouse.h"
 #include "synaptics.h"
 
@@ -60,7 +62,7 @@ static int synaptics_mode_cmd(struct psmouse *psmouse, unsigned char mode)
 	return 0;
 }
 
-int synaptics_detect(struct psmouse *psmouse, int set_properties)
+int synaptics_detect(struct psmouse *psmouse, bool set_properties)
 {
 	struct ps2dev *ps2dev = &psmouse->ps2dev;
 	unsigned char param[4];
@@ -135,7 +137,8 @@ static int synaptics_capability(struct psmouse *psmouse)
 	if (synaptics_send_cmd(psmouse, SYN_QUE_CAPABILITIES, cap))
 		return -1;
 	priv->capabilities = (cap[0] << 16) | (cap[1] << 8) | cap[2];
-	priv->ext_cap = 0;
+	priv->ext_cap = priv->ext_cap_0c = 0;
+
 	if (!SYN_CAP_VALID(priv->capabilities))
 		return -1;
 
@@ -148,7 +151,7 @@ static int synaptics_capability(struct psmouse *psmouse)
 	if (SYN_EXT_CAP_REQUESTS(priv->capabilities) >= 1) {
 		if (synaptics_send_cmd(psmouse, SYN_QUE_EXT_CAPAB, cap)) {
 			printk(KERN_ERR "Synaptics claims to have extended capabilities,"
-			       " but I'm not able to read them.");
+			       " but I'm not able to read them.\n");
 		} else {
 			priv->ext_cap = (cap[0] << 16) | (cap[1] << 8) | cap[2];
 
@@ -160,6 +163,16 @@ static int synaptics_capability(struct psmouse *psmouse)
 				priv->ext_cap &= 0xff0fff;
 		}
 	}
+
+	if (SYN_EXT_CAP_REQUESTS(priv->capabilities) >= 4) {
+		if (synaptics_send_cmd(psmouse, SYN_QUE_EXT_CAPAB_0C, cap)) {
+			printk(KERN_ERR "Synaptics claims to have extended capability 0x0c,"
+			       " but I'm not able to read it.\n");
+		} else {
+			priv->ext_cap_0c = (cap[0] << 16) | (cap[1] << 8) | cap[2];
+		}
+	}
+
 	return 0;
 }
 
@@ -180,6 +193,29 @@ static int synaptics_identify(struct psmouse *psmouse)
 	return -1;
 }
 
+/*
+ * Read touchpad resolution
+ * Resolution is left zero if touchpad does not support the query
+ */
+static int synaptics_resolution(struct psmouse *psmouse)
+{
+	struct synaptics_data *priv = psmouse->private;
+	unsigned char res[3];
+
+	if (SYN_ID_MAJOR(priv->identity) < 4)
+		return 0;
+
+	if (synaptics_send_cmd(psmouse, SYN_QUE_RESOLUTION, res))
+		return 0;
+
+	if ((res[0] != 0) && (res[1] & 0x80) && (res[2] != 0)) {
+		priv->x_res = res[0]; /* x resolution in units/mm */
+		priv->y_res = res[2]; /* y resolution in units/mm */
+	}
+
+	return 0;
+}
+
 static int synaptics_query_hardware(struct psmouse *psmouse)
 {
 	if (synaptics_identify(psmouse))
@@ -187,6 +223,8 @@ static int synaptics_query_hardware(struct psmouse *psmouse)
 	if (synaptics_model_id(psmouse))
 		return -1;
 	if (synaptics_capability(psmouse))
+		return -1;
+	if (synaptics_resolution(psmouse))
 		return -1;
 
 	return 0;
@@ -321,7 +359,15 @@ static void synaptics_parse_hw_state(unsigned char buf[], struct synaptics_data 
 		hw->left  = (buf[0] & 0x01) ? 1 : 0;
 		hw->right = (buf[0] & 0x02) ? 1 : 0;
 
-		if (SYN_CAP_MIDDLE_BUTTON(priv->capabilities)) {
+		if (SYN_CAP_CLICKPAD(priv->ext_cap_0c)) {
+			/*
+			 * Clickpad's button is transmitted as middle button,
+			 * however, since it is primary button, we will report
+			 * it as BTN_LEFT.
+			 */
+			hw->left = ((buf[0] ^ buf[3]) & 0x01) ? 1 : 0;
+
+		} else if (SYN_CAP_MIDDLE_BUTTON(priv->capabilities)) {
 			hw->middle = ((buf[0] ^ buf[3]) & 0x01) ? 1 : 0;
 			if (hw->w == 2)
 				hw->scroll = (signed char)(buf[1]);
@@ -531,38 +577,47 @@ static void set_input_params(struct input_dev *dev, struct synaptics_data *priv)
 {
 	int i;
 
-	set_bit(EV_ABS, dev->evbit);
+	__set_bit(EV_ABS, dev->evbit);
 	input_set_abs_params(dev, ABS_X, XMIN_NOMINAL, XMAX_NOMINAL, 0, 0);
 	input_set_abs_params(dev, ABS_Y, YMIN_NOMINAL, YMAX_NOMINAL, 0, 0);
 	input_set_abs_params(dev, ABS_PRESSURE, 0, 255, 0, 0);
-	set_bit(ABS_TOOL_WIDTH, dev->absbit);
+	__set_bit(ABS_TOOL_WIDTH, dev->absbit);
 
-	set_bit(EV_KEY, dev->evbit);
-	set_bit(BTN_TOUCH, dev->keybit);
-	set_bit(BTN_TOOL_FINGER, dev->keybit);
-	set_bit(BTN_LEFT, dev->keybit);
-	set_bit(BTN_RIGHT, dev->keybit);
+	__set_bit(EV_KEY, dev->evbit);
+	__set_bit(BTN_TOUCH, dev->keybit);
+	__set_bit(BTN_TOOL_FINGER, dev->keybit);
+	__set_bit(BTN_LEFT, dev->keybit);
+	__set_bit(BTN_RIGHT, dev->keybit);
 
 	if (SYN_CAP_MULTIFINGER(priv->capabilities)) {
-		set_bit(BTN_TOOL_DOUBLETAP, dev->keybit);
-		set_bit(BTN_TOOL_TRIPLETAP, dev->keybit);
+		__set_bit(BTN_TOOL_DOUBLETAP, dev->keybit);
+		__set_bit(BTN_TOOL_TRIPLETAP, dev->keybit);
 	}
 
 	if (SYN_CAP_MIDDLE_BUTTON(priv->capabilities))
-		set_bit(BTN_MIDDLE, dev->keybit);
+		__set_bit(BTN_MIDDLE, dev->keybit);
 
 	if (SYN_CAP_FOUR_BUTTON(priv->capabilities) ||
 	    SYN_CAP_MIDDLE_BUTTON(priv->capabilities)) {
-		set_bit(BTN_FORWARD, dev->keybit);
-		set_bit(BTN_BACK, dev->keybit);
+		__set_bit(BTN_FORWARD, dev->keybit);
+		__set_bit(BTN_BACK, dev->keybit);
 	}
 
 	for (i = 0; i < SYN_CAP_MULTI_BUTTON_NO(priv->ext_cap); i++)
-		set_bit(BTN_0 + i, dev->keybit);
+		__set_bit(BTN_0 + i, dev->keybit);
 
-	clear_bit(EV_REL, dev->evbit);
-	clear_bit(REL_X, dev->relbit);
-	clear_bit(REL_Y, dev->relbit);
+	__clear_bit(EV_REL, dev->evbit);
+	__clear_bit(REL_X, dev->relbit);
+	__clear_bit(REL_Y, dev->relbit);
+
+	dev->absres[ABS_X] = priv->x_res;
+	dev->absres[ABS_Y] = priv->y_res;
+
+	if (SYN_CAP_CLICKPAD(priv->ext_cap_0c)) {
+		/* Clickpads report only left button */
+		__clear_bit(BTN_RIGHT, dev->keybit);
+		__clear_bit(BTN_MIDDLE, dev->keybit);
+	}
 }
 
 static void synaptics_disconnect(struct psmouse *psmouse)
@@ -601,33 +656,49 @@ static int synaptics_reconnect(struct psmouse *psmouse)
 	return 0;
 }
 
-#if defined(__i386__)
-#include <linux/dmi.h>
-static const struct dmi_system_id toshiba_dmi_table[] = {
+static bool impaired_toshiba_kbc;
+
+static const struct dmi_system_id __initconst toshiba_dmi_table[] = {
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
 	{
-		.ident = "Toshiba Satellite",
+		/* Toshiba Satellite */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Satellite"),
 		},
 	},
 	{
-		.ident = "Toshiba Dynabook",
+		/* Toshiba Dynabook */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "dynabook"),
 		},
 	},
 	{
-		.ident = "Toshiba Portege M300",
+		/* Toshiba Portege M300 */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "PORTEGE M300"),
 		},
+
+	},
+	{
+		/* Toshiba Portege M300 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Portable PC"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "Version 1.0"),
+		},
+
 	},
 	{ }
-};
 #endif
+};
+
+void __init synaptics_module_init(void)
+{
+	impaired_toshiba_kbc = dmi_check_system(toshiba_dmi_table);
+}
 
 int synaptics_init(struct psmouse *psmouse)
 {
@@ -651,10 +722,10 @@ int synaptics_init(struct psmouse *psmouse)
 
 	priv->pkt_type = SYN_MODEL_NEWABS(priv->model_id) ? SYN_NEWABS : SYN_OLDABS;
 
-	printk(KERN_INFO "Synaptics Touchpad, model: %ld, fw: %ld.%ld, id: %#lx, caps: %#lx/%#lx\n",
+	printk(KERN_INFO "Synaptics Touchpad, model: %ld, fw: %ld.%ld, id: %#lx, caps: %#lx/%#lx/%#lx\n",
 		SYN_ID_MODEL(priv->identity),
 		SYN_ID_MAJOR(priv->identity), SYN_ID_MINOR(priv->identity),
-		priv->model_id, priv->capabilities, priv->ext_cap);
+		priv->model_id, priv->capabilities, priv->ext_cap, priv->ext_cap_0c);
 
 	set_input_params(psmouse->dev, priv);
 
@@ -680,18 +751,16 @@ int synaptics_init(struct psmouse *psmouse)
 	if (SYN_CAP_PASS_THROUGH(priv->capabilities))
 		synaptics_pt_create(psmouse);
 
-#if defined(__i386__)
 	/*
 	 * Toshiba's KBC seems to have trouble handling data from
 	 * Synaptics as full rate, switch to lower rate which is roughly
 	 * thye same as rate of standard PS/2 mouse.
 	 */
-	if (psmouse->rate >= 80 && dmi_check_system(toshiba_dmi_table)) {
+	if (psmouse->rate >= 80 && impaired_toshiba_kbc) {
 		printk(KERN_INFO "synaptics: Toshiba %s detected, limiting rate to 40pps.\n",
 			dmi_get_system_info(DMI_PRODUCT_NAME));
 		psmouse->rate = 40;
 	}
-#endif
 
 	return 0;
 
@@ -700,11 +769,25 @@ int synaptics_init(struct psmouse *psmouse)
 	return -1;
 }
 
+bool synaptics_supported(void)
+{
+	return true;
+}
+
 #else /* CONFIG_MOUSE_PS2_SYNAPTICS */
+
+void __init synaptics_module_init(void)
+{
+}
 
 int synaptics_init(struct psmouse *psmouse)
 {
 	return -ENOSYS;
+}
+
+bool synaptics_supported(void)
+{
+	return false;
 }
 
 #endif /* CONFIG_MOUSE_PS2_SYNAPTICS */

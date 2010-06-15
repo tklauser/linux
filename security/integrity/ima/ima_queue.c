@@ -20,6 +20,7 @@
  */
 #include <linux/module.h>
 #include <linux/rculist.h>
+#include <linux/slab.h>
 #include "ima.h"
 
 LIST_HEAD(ima_measurements);	/* list of all measurements */
@@ -134,7 +135,8 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 	}
 out:
 	mutex_unlock(&ima_extend_list_mutex);
-	integrity_audit_msg(AUDIT_INTEGRITY_PCR, inode, entry->template_name,
+	integrity_audit_msg(AUDIT_INTEGRITY_PCR, inode,
+			    entry->template.file_name,
 			    op, audit_cause, result, audit_info);
 	return result;
 }

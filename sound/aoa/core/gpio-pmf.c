@@ -6,6 +6,7 @@
  * GPL v2, can be found in COPYING.
  */
 
+#include <linux/slab.h>
 #include <asm/pmac_feature.h>
 #include <asm/pmac_pfunc.h>
 #include "../aoa.h"
@@ -182,6 +183,10 @@ static int pmf_set_notify(struct gpio_runtime *rt,
 	if (!old && notify) {
 		irq_client = kzalloc(sizeof(struct pmf_irq_client),
 				     GFP_KERNEL);
+		if (!irq_client) {
+			err = -ENOMEM;
+			goto out_unlock;
+		}
 		irq_client->data = notif;
 		irq_client->handler = pmf_handle_notify_irq;
 		irq_client->owner = THIS_MODULE;

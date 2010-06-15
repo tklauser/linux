@@ -23,7 +23,6 @@
 #include <linux/netfilter/nf_conntrack_dccp.h>
 #include <linux/netfilter/nf_conntrack_sctp.h>
 #include <linux/netfilter/nf_conntrack_proto_gre.h>
-#include <net/netfilter/ipv4/nf_conntrack_icmp.h>
 #include <net/netfilter/ipv6/nf_conntrack_icmpv6.h>
 
 #include <net/netfilter/nf_conntrack_tuple.h>
@@ -34,8 +33,6 @@ union nf_conntrack_proto {
 	struct nf_ct_dccp dccp;
 	struct ip_ct_sctp sctp;
 	struct ip_ct_tcp tcp;
-	struct ip_ct_icmp icmp;
-	struct nf_ct_icmpv6 icmpv6;
 	struct nf_ct_gre gre;
 };
 
@@ -73,7 +70,7 @@ union nf_conntrack_help {
 struct nf_conntrack_helper;
 
 /* Must be kept in sync with the classes defined by helpers */
-#define NF_CT_MAX_EXPECT_CLASSES	3
+#define NF_CT_MAX_EXPECT_CLASSES	4
 
 /* nf_conn feature for connections that have a helper */
 struct nf_conn_help {
@@ -95,6 +92,8 @@ struct nf_conn {
 	/* Usage count in here is 1 for hash table/destruct timer, 1 per skb,
            plus 1 for any connection(s) we are `master' for */
 	struct nf_conntrack ct_general;
+
+	spinlock_t lock;
 
 	/* XXX should I move this to the tail ? - Y.K */
 	/* These are my tuples; original and reply */
@@ -143,6 +142,8 @@ static inline u_int8_t nf_ct_protonum(const struct nf_conn *ct)
 {
 	return ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.dst.protonum;
 }
+
+#define nf_ct_tuple(ct, dir) (&(ct)->tuplehash[dir].tuple)
 
 /* get master conntrack via master expectation */
 #define master_ct(conntr) (conntr->master)
@@ -197,11 +198,14 @@ extern void *nf_ct_alloc_hashtable(unsigned int *sizep, int *vmalloced, int null
 extern void nf_ct_free_hashtable(void *hash, int vmalloced, unsigned int size);
 
 extern struct nf_conntrack_tuple_hash *
-__nf_conntrack_find(struct net *net, const struct nf_conntrack_tuple *tuple);
+__nf_conntrack_find(struct net *net, u16 zone,
+		    const struct nf_conntrack_tuple *tuple);
 
 extern void nf_conntrack_hash_insert(struct nf_conn *ct);
+extern void nf_ct_delete_from_lists(struct nf_conn *ct);
+extern void nf_ct_insert_dying_list(struct nf_conn *ct);
 
-extern void nf_conntrack_flush(struct net *net, u32 pid, int report);
+extern void nf_conntrack_flush_report(struct net *net, u32 pid, int report);
 
 extern bool nf_ct_get_tuplepr(const struct sk_buff *skb,
 			      unsigned int nhoff, u_int16_t l3num,
@@ -252,11 +256,9 @@ static inline bool nf_ct_kill(struct nf_conn *ct)
 }
 
 /* These are for NAT.  Icky. */
-/* Update TCP window tracking data when NAT mangles the packet */
-extern void nf_conntrack_tcp_update(const struct sk_buff *skb,
-				    unsigned int dataoff,
-				    struct nf_conn *ct,
-				    int dir);
+extern s16 (*nf_ct_nat_offset)(const struct nf_conn *ct,
+			       enum ip_conntrack_dir dir,
+			       u32 seq);
 
 /* Fake conntrack entry for untracked connections */
 extern struct nf_conn nf_conntrack_untracked;
@@ -266,10 +268,15 @@ extern void
 nf_ct_iterate_cleanup(struct net *net, int (*iter)(struct nf_conn *i, void *data), void *data);
 extern void nf_conntrack_free(struct nf_conn *ct);
 extern struct nf_conn *
-nf_conntrack_alloc(struct net *net,
+nf_conntrack_alloc(struct net *net, u16 zone,
 		   const struct nf_conntrack_tuple *orig,
 		   const struct nf_conntrack_tuple *repl,
 		   gfp_t gfp);
+
+static inline int nf_ct_is_template(const struct nf_conn *ct)
+{
+	return test_bit(IPS_TEMPLATE_BIT, &ct->status);
+}
 
 /* It's confirmed if it is, or has been in the hash table. */
 static inline int nf_ct_is_confirmed(struct nf_conn *ct)
@@ -292,11 +299,11 @@ extern unsigned int nf_conntrack_htable_size;
 extern unsigned int nf_conntrack_max;
 
 #define NF_CT_STAT_INC(net, count)	\
-	(per_cpu_ptr((net)->ct.stat, raw_smp_processor_id())->count++)
+	__this_cpu_inc((net)->ct.stat->count)
 #define NF_CT_STAT_INC_ATOMIC(net, count)		\
 do {							\
 	local_bh_disable();				\
-	per_cpu_ptr((net)->ct.stat, raw_smp_processor_id())->count++;	\
+	__this_cpu_inc((net)->ct.stat->count);		\
 	local_bh_enable();				\
 } while (0)
 

@@ -35,7 +35,7 @@
 #include <linux/dmi.h>
 #include <linux/mutex.h>
 #include <linux/hwmon-sysfs.h>
-#include <asm/io.h>
+#include <linux/io.h>
 #include <linux/leds.h>
 #include <linux/hwmon.h>
 #include <linux/workqueue.h>
@@ -142,6 +142,12 @@ static const char *temperature_sensors_sets[][41] = {
 	  "TM1S", "TM2P", "TM2S", "TM3S", "TM8P", "TM8S", "TM9P", "TM9S",
 	  "TN0C", "TN0D", "TN0H", "TS0C", "Tp0C", "Tp1C", "Tv0S", "Tv1S",
 	  NULL },
+/* Set 17: iMac 9,1 */
+	{ "TA0P", "TC0D", "TC0H", "TC0P", "TG0D", "TG0H", "TH0P", "TL0P",
+	  "TN0D", "TN0H", "TN0P", "TO0P", "Tm0P", "Tp0P", NULL },
+/* Set 18: MacBook Pro 2,2 */
+	{ "TB0T", "TC0D", "TC0P", "TG0H", "TG0P", "TG0T", "TM0P", "TTF0",
+	  "Th0H", "Th1H", "Tm0P", "Ts0P", NULL },
 };
 
 /* List of keys used to read/write fan speeds */
@@ -178,6 +184,8 @@ static const int debug;
 static struct platform_device *pdev;
 static s16 rest_x;
 static s16 rest_y;
+static u8 backlight_state[2];
+
 static struct device *hwmon_dev;
 static struct input_polled_dev *applesmc_idev;
 
@@ -186,6 +194,9 @@ static unsigned int applesmc_accelerometer;
 
 /* Indicates whether this computer has light sensors and keyboard backlight. */
 static unsigned int applesmc_light;
+
+/* The number of fans handled by the driver */
+static unsigned int fans_handled;
 
 /* Indicates which temperature sensors set to use. */
 static unsigned int applesmc_temperature_set;
@@ -497,17 +508,36 @@ static int applesmc_probe(struct platform_device *dev)
 	return 0;
 }
 
-static int applesmc_resume(struct platform_device *dev)
+/* Synchronize device with memorized backlight state */
+static int applesmc_pm_resume(struct device *dev)
 {
-	return applesmc_device_init();
+	mutex_lock(&applesmc_lock);
+	if (applesmc_light)
+		applesmc_write_key(BACKLIGHT_KEY, backlight_state, 2);
+	mutex_unlock(&applesmc_lock);
+	return 0;
 }
+
+/* Reinitialize device on resume from hibernation */
+static int applesmc_pm_restore(struct device *dev)
+{
+	int ret = applesmc_device_init();
+	if (ret)
+		return ret;
+	return applesmc_pm_resume(dev);
+}
+
+static const struct dev_pm_ops applesmc_pm_ops = {
+	.resume = applesmc_pm_resume,
+	.restore = applesmc_pm_restore,
+};
 
 static struct platform_driver applesmc_driver = {
 	.probe = applesmc_probe,
-	.resume = applesmc_resume,
 	.driver	= {
 		.name = "applesmc",
 		.owner = THIS_MODULE,
+		.pm = &applesmc_pm_ops,
 	},
 };
 
@@ -804,17 +834,10 @@ static ssize_t applesmc_calibrate_store(struct device *dev,
 	return count;
 }
 
-/* Store the next backlight value to be written by the work */
-static unsigned int backlight_value;
-
 static void applesmc_backlight_set(struct work_struct *work)
 {
-	u8 buffer[2];
-
 	mutex_lock(&applesmc_lock);
-	buffer[0] = backlight_value;
-	buffer[1] = 0x00;
-	applesmc_write_key(BACKLIGHT_KEY, buffer, 2);
+	applesmc_write_key(BACKLIGHT_KEY, backlight_state, 2);
 	mutex_unlock(&applesmc_lock);
 }
 static DECLARE_WORK(backlight_work, &applesmc_backlight_set);
@@ -824,7 +847,7 @@ static void applesmc_brightness_set(struct led_classdev *led_cdev,
 {
 	int ret;
 
-	backlight_value = value;
+	backlight_state[0] = value;
 	ret = queue_work(applesmc_led_wq, &backlight_work);
 
 	if (debug && (!ret))
@@ -1336,6 +1359,10 @@ static __initdata struct dmi_match_data applesmc_dmi_data[] = {
 	{ .accelerometer = 1, .light = 1, .temperature_set = 15 },
 /* MacPro3,1: temperature set 16 */
 	{ .accelerometer = 0, .light = 0, .temperature_set = 16 },
+/* iMac 9,1: light sensor only, temperature set 17 */
+	{ .accelerometer = 0, .light = 0, .temperature_set = 17 },
+/* MacBook Pro 2,2: accelerometer, backlight and temperature set 18 */
+	{ .accelerometer = 1, .light = 1, .temperature_set = 18 },
 };
 
 /* Note that DMI_MATCH(...,"MacBook") will match "MacBookPro1,1".
@@ -1361,6 +1388,10 @@ static __initdata struct dmi_system_id applesmc_whitelist[] = {
 	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple"),
 	  DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro3") },
 		&applesmc_dmi_data[9]},
+	{ applesmc_dmi_match, "Apple MacBook Pro 2,2", {
+	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple Computer, Inc."),
+	  DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro2,2") },
+		&applesmc_dmi_data[18]},
 	{ applesmc_dmi_match, "Apple MacBook Pro", {
 	  DMI_MATCH(DMI_BOARD_VENDOR,"Apple"),
 	  DMI_MATCH(DMI_PRODUCT_NAME,"MacBookPro") },
@@ -1401,6 +1432,10 @@ static __initdata struct dmi_system_id applesmc_whitelist[] = {
 	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple"),
 	  DMI_MATCH(DMI_PRODUCT_NAME, "MacPro") },
 		&applesmc_dmi_data[4]},
+	{ applesmc_dmi_match, "Apple iMac 9,1", {
+	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
+	  DMI_MATCH(DMI_PRODUCT_NAME, "iMac9,1") },
+		&applesmc_dmi_data[17]},
 	{ applesmc_dmi_match, "Apple iMac 8", {
 	  DMI_MATCH(DMI_BOARD_VENDOR, "Apple"),
 	  DMI_MATCH(DMI_PRODUCT_NAME, "iMac8") },
@@ -1460,39 +1495,24 @@ static int __init applesmc_init(void)
 
 	/* create fan files */
 	count = applesmc_get_fan_count();
-	if (count < 0) {
+	if (count < 0)
 		printk(KERN_ERR "applesmc: Cannot get the number of fans.\n");
-	} else {
+	else
 		printk(KERN_INFO "applesmc: %d fans found.\n", count);
 
-		switch (count) {
-		default:
-			printk(KERN_WARNING "applesmc: More than 4 fans found,"
-					" but at most 4 fans are supported"
-						" by the driver.\n");
-		case 4:
-			ret = sysfs_create_group(&pdev->dev.kobj,
-						 &fan_attribute_groups[3]);
-			if (ret)
-				goto out_key_enumeration;
-		case 3:
-			ret = sysfs_create_group(&pdev->dev.kobj,
-						 &fan_attribute_groups[2]);
-			if (ret)
-				goto out_key_enumeration;
-		case 2:
-			ret = sysfs_create_group(&pdev->dev.kobj,
-						 &fan_attribute_groups[1]);
-			if (ret)
-				goto out_key_enumeration;
-		case 1:
-			ret = sysfs_create_group(&pdev->dev.kobj,
-						 &fan_attribute_groups[0]);
-			if (ret)
-				goto out_fan_1;
-		case 0:
-			;
-		}
+	if (count > 4) {
+		count = 4;
+		printk(KERN_WARNING "applesmc: More than 4 fans found,"
+		       " but at most 4 fans are supported"
+		       " by the driver.\n");
+	}
+
+	while (fans_handled < count) {
+		ret = sysfs_create_group(&pdev->dev.kobj,
+					 &fan_attribute_groups[fans_handled]);
+		if (ret)
+			goto out_fans;
+		fans_handled++;
 	}
 
 	for (i = 0;
@@ -1561,10 +1581,10 @@ out_accelerometer:
 		applesmc_release_accelerometer();
 out_temperature:
 	sysfs_remove_group(&pdev->dev.kobj, &temperature_attributes_group);
-	sysfs_remove_group(&pdev->dev.kobj, &fan_attribute_groups[0]);
-out_fan_1:
-	sysfs_remove_group(&pdev->dev.kobj, &fan_attribute_groups[1]);
-out_key_enumeration:
+out_fans:
+	while (fans_handled)
+		sysfs_remove_group(&pdev->dev.kobj,
+				   &fan_attribute_groups[--fans_handled]);
 	sysfs_remove_group(&pdev->dev.kobj, &key_enumeration_group);
 out_name:
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_name.attr);
@@ -1590,8 +1610,9 @@ static void __exit applesmc_exit(void)
 	if (applesmc_accelerometer)
 		applesmc_release_accelerometer();
 	sysfs_remove_group(&pdev->dev.kobj, &temperature_attributes_group);
-	sysfs_remove_group(&pdev->dev.kobj, &fan_attribute_groups[0]);
-	sysfs_remove_group(&pdev->dev.kobj, &fan_attribute_groups[1]);
+	while (fans_handled)
+		sysfs_remove_group(&pdev->dev.kobj,
+				   &fan_attribute_groups[--fans_handled]);
 	sysfs_remove_group(&pdev->dev.kobj, &key_enumeration_group);
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_name.attr);
 	platform_device_unregister(pdev);

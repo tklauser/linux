@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/suspend.h>
 #include <linux/errno.h>
+#include <linux/slab.h>
 
 #include <mach/pm.h>
 
@@ -79,7 +80,7 @@ static int pxa_pm_valid(suspend_state_t state)
 	return -EINVAL;
 }
 
-static int pxa_pm_prepare(void)
+int pxa_pm_prepare(void)
 {
 	int ret = 0;
 
@@ -89,7 +90,7 @@ static int pxa_pm_prepare(void)
 	return ret;
 }
 
-static void pxa_pm_finish(void)
+void pxa_pm_finish(void)
 {
 	if (pxa_cpu_pm_fns && pxa_cpu_pm_fns->finish)
 		pxa_cpu_pm_fns->finish();

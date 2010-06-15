@@ -29,13 +29,11 @@
 #include <linux/kernel.h>	/* printk(), and other useful stuff */
 #include <linux/sched.h>	/* for jiffies, HZ, etc. */
 #include <linux/string.h>	/* inline memset(), etc. */
-#include <linux/ptrace.h>
 #include <linux/errno.h>	/* return codes */
 #include <linux/ioport.h>	/* request_region(), release_region() */
 #include <linux/interrupt.h>
 #include <linux/delay.h>
-#include <linux/inet.h>
-#include <linux/netdevice.h>	/* struct device, and other headers */
+#include <linux/netdevice.h>	/* struct net_device, and other headers */
 #include <linux/etherdevice.h>	/* eth_type_trans */
 #include <linux/skbuff.h>
 #include <linux/ethtool.h>
@@ -46,9 +44,6 @@
 #include <linux/pm.h>		/* pm_message_t */
 #include <linux/platform_device.h>
 
-#include <asm/irq.h>		/* For NR_IRQS only. */
-#include <asm/pgtable.h>
-#include <asm/page.h>
 #include <asm/cacheflush.h>
 
 #include <asm/processor.h>	/* Processor type for cache alignment. */
@@ -56,12 +51,11 @@
 #include <asm/io.h>		/* I/O functions */
 #include <asm/uaccess.h>	/* User space memory access functions */
 
-#include "altera_tse.h"    
-
+#include "altera_tse.h"
 
 static const char version[] =
     "Altera Triple Speed MAC IP Driver(v8.0) "
-    "developed by SLS,August-2008," "--Linux 2.6.27-rc3\n";
+    "developed by SLS,August-2008\n";
 
 /* DEBUG flags */
 //#define DEBUG_INFO     1  
@@ -105,51 +99,129 @@ static const char version[] =
 #define my_flush_dcache_range(x,y) flush_cache_all()
 #endif
 
-static void sgdma_config(struct alt_tse_private *tse_priv);
+/*
+ * MDIO specific functions
+ */
 
-static void alt_sgdma_construct_descriptor_burst(volatile struct
-						 alt_sgdma_descriptor *desc,
-						 volatile struct
-						 alt_sgdma_descriptor *next,
-						 unsigned int *read_addr,
-						 unsigned int *write_addr,
-						 unsigned short length_or_eop,
-						 int generate_eop,
-						 int read_fixed,
-						 int write_fixed_or_sop,
-						 int read_burst,
-						 int write_burst,
-						 unsigned char atlantic_channel);
+static int altera_tse_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
+{
+	alt_tse_mac *mac_dev;
+	unsigned int *mdio_regs;
+	unsigned int data;
 
-static int sgdma_async_read(struct alt_tse_private *tse_priv,
-	volatile struct alt_sgdma_descriptor *rx_desc);
+	mac_dev = (alt_tse_mac *) bus->priv;
 
-static int sgdma_async_write(struct alt_tse_private *tse_priv,
-			    volatile struct alt_sgdma_descriptor *tx_desc);
+	/* set MDIO address */
+	writel(mii_id, &mac_dev->mdio_phy0_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
 
-static int tse_sgdma_add_buffer(struct net_device *dev);
-static unsigned int sgdma_read_init(struct net_device *dev); 
-static int tse_poll(struct napi_struct *napi, int budget);
-static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs);
+	/* get the data */
+	data = readl(&mdio_regs[regnum]);
 
-#ifdef CONFIG_NET_POLL_CONTROLLER                                        
-static void tse_net_poll_controller(struct net_device *dev);
-#endif
+	return data & 0xffff;
+}
 
-static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev);
-static int init_phy(struct net_device *dev);
-static void adjust_link(struct net_device *dev);
-static int init_mac(struct net_device *dev);
-static int tse_change_mtu(struct net_device *dev, int new_mtu);
-static struct net_device_stats *tse_get_statistics(struct net_device *dev);
+static int altera_tse_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u16 value)
+{
+	alt_tse_mac *mac_dev;
+	unsigned int *mdio_regs;
+	unsigned int data;
 
-static void tse_set_hash_table(struct net_device *dev, int count,
-			       struct dev_mc_list *addrs);
+	mac_dev = (alt_tse_mac *) bus->priv;
 
-static void tse_set_multicast_list(struct net_device *dev);
-int tse_set_hw_address(struct net_device *dev, void *port);
-static int tse_open(struct net_device *dev);
-static int tse_shutdown(struct net_device *dev);
+	/* set MDIO address */
+	writel(mii_id, &mac_dev->mdio_phy0_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
+
+	/* get the data */
+	data = (unsigned int) value;
+
+	writel(data, &mdio_regs[regnum]);
+
+	return 0;
+}
+
+static int altera_tse_mdio_irqs[] = {
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+	PHY_POLL,
+};
+
+int altera_tse_mdio_register(struct alt_tse_private *tse_priv)
+{
+	struct mii_bus *mdio_bus;
+	int ret;
+	int i;
+
+	mdio_bus = mdiobus_alloc();
+	if (!mdio_bus)
+		return -ENOMEM;
+
+	mdio_bus->name = "Altera TSE MII Bus";
+	mdio_bus->read = &altera_tse_mdio_read;
+	mdio_bus->write = &altera_tse_mdio_write;
+	snprintf(mdio_bus->id, MII_BUS_ID_SIZE, "%u", tse_priv->tse_config->mii_id);
+
+	mdio_bus->irq = altera_tse_mdio_irqs;
+	mdio_bus->priv = (void *) tse_priv->mac_dev;
+
+	ret = mdiobus_register(mdio_bus);
+	if (ret) {
+		printk(KERN_ERR "%s: Cannot register as MDIO bus\n",
+				mdio_bus->name);
+		mdiobus_free(mdio_bus);
+		return ret;
+	}
+
+	/* report available PHYs */
+	for (i = 31; i >= 0; i--) {
+		u32 phy_id;
+		u32 phy_id_bottom;
+		u32 phy_id_top;
+		int r;
+
+		r = get_phy_id(mdio_bus, i, &phy_id);
+		phy_id_top = (phy_id >> 16) & 0xffff;
+		phy_id_bottom = (phy_id) & 0xffff;
+		if (r)
+			return r;
+
+		if (phy_id_top != phy_id_bottom)
+			printk(KERN_INFO "Found PHY with ID=0x%x at address=0x%x\n",
+				phy_id, i);
+	}
+
+	return ret;
+}
 
 /*******************************************************************************
 *	SGDMA Control Stuff
@@ -408,28 +480,26 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 
 }
 
-/* Init and setup SGDMA Descriptor chain.
-* arg1     :TSE private data structure
-* return    SUCCESS
-*/
-static unsigned int sgdma_read_init(struct net_device *dev)                       
+/* Init and setup SGDMA descriptor chain */
+static int sgdma_read_init(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	int rx_loop;
-	
+	int ret;
+
 	for (rx_loop = 0; rx_loop < ALT_TSE_RX_SGDMA_DESC_COUNT; rx_loop++) {
-		//Should do some checking here.
-		tse_sgdma_add_buffer(dev);
+		ret = tse_sgdma_add_buffer(dev);
+		if (ret)
+			return ret;
 	}
 	sgdma_async_read(tse_priv,
 			 &tse_priv->sgdma_rx_desc[tse_priv->
 						  rx_sgdma_descriptor_tail]);
 	if (netif_msg_rx_status(tse_priv))
-		printk(KERN_WARNING "%s :Read init is completed\n", dev->name);
-	
-	return SUCCESS;
-}
+		printk(KERN_INFO "%s: Read init is completed\n", dev->name);
 
+	return 0;
+}
 
 /*******************************************************************************
 * actual ethernet stuff
@@ -485,11 +555,11 @@ static int tse_poll(struct napi_struct *napi, int budget)
 		    NULL;
 
 		rx_bytes = temp_desc_pointer->actual_bytes_transferred;
-		rx_bytes -= ALIGNED_BYTES;
-		
+		rx_bytes -= NET_IP_ALIGN;
+
 		//process packet
 		/* Align IP header to 32 bits */
-		skb_reserve(skb, ALIGNED_BYTES);
+		skb_reserve(skb, NET_IP_ALIGN);
 		skb_Rxbuffer = skb_put(skb, rx_bytes);
 		skb->protocol = eth_type_trans(skb, dev);
 
@@ -718,8 +788,8 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 //	offset = aligned_tx_buffer & 0x3;
 	if ((unsigned int)skb->data & 0x2) {
 		req_tx_shift_16 = 0x1;
-		aligned_tx_buffer -= ALIGNED_BYTES;
-		len += ALIGNED_BYTES;
+		aligned_tx_buffer -= NET_IP_ALIGN;
+		len += NET_IP_ALIGN;
 	} else {
 		req_tx_shift_16 = 0x0;
 	}
@@ -737,14 +807,14 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 //	aligned_tx_buffer = (unsigned int)skb->data;
 //	len = skb->len;
 //	if (aligned_tx_buffer & 0x2) {
-//		aligned_tx_buffer -= ALIGNED_BYTES;
-//		len += ALIGNED_BYTES;
+//		aligned_tx_buffer -= NET_IP_ALIGN;
+//		len += NET_IP_ALIGN;
 //	} else {
-//		new_skb = alloc_skb(skb->len + ALIGNED_BYTES, GFP_KERNEL);
-//		skb_reserve(new_skb, ALIGNED_BYTES);
+//		new_skb = alloc_skb(skb->len + NET_IP_ALIGN, GFP_KERNEL);
+//		skb_reserve(new_skb, NET_IP_ALIGN);
 //		memcpy(new_skb->data, skb->data,  skb->len);
-//		aligned_tx_buffer = (unsigned int)new_skb->data - ALIGNED_BYTES;
-//		len = skb->len + ALIGNED_BYTES;
+//		aligned_tx_buffer = (unsigned int)new_skb->data - NET_IP_ALIGN;
+//		len = skb->len + NET_IP_ALIGN;
 //		dev_kfree_skb(skb);
 //		skb = new_skb;
 //	}       
@@ -829,60 +899,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	return SUCCESS;
 }            
 
-
-/*******************************************************************************
-* Phy init
-*	Using shared PHY control interface
-*
-*******************************************************************************/
-/* Initializes driver's PHY state, and attaches to the PHY.
- * Returns 0 on success.
- */
-static int init_phy(struct net_device *dev)
-{
-	struct alt_tse_private *tse_priv = netdev_priv(dev); 
-	struct alt_tse_config * tse_config = tse_priv->tse_config;
-	struct phy_device *phydev;
-	char phy_id[BUS_ID_SIZE];
-	char mii_id[MII_BUS_ID_SIZE];
-	
-	phy_interface_t interface;
-//	unsigned int phy_addr;
-	
-	
-	//hard code for now
-	interface = tse_config->interface;              
-	
-	tse_priv->oldlink = 0;
-	tse_priv->oldspeed = 0;
-	tse_priv->oldduplex = -1;	
-	
-	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id); 
-	snprintf(phy_id, BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
-	
-	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
-	
-	if (IS_ERR(phydev)) {
-		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
-		return PTR_ERR(phydev);
-	}
-
-	phydev->supported &= tse_config->tse_supported_modes;
-	phydev->advertising = phydev->supported;  
-
-	if (tse_config->autoneg == AUTONEG_DISABLE)
-	{
-		phydev->autoneg = tse_config->autoneg;
-		phydev->speed = tse_config->speed;
-		phydev->duplex = tse_config->duplex;
-	}
-	
-	tse_priv->phydev = phydev;
-	
-	return 0;
-}                           
-
-
 /* Called every time the controller might need to be made
  * aware of new link state.  The PHY code conveys this                                  
  * information through variables in the phydev structure, and this
@@ -965,6 +981,54 @@ static void adjust_link(struct net_device *dev)
 
 	spin_unlock_irqrestore(&tse_priv->tx_lock, flags);
 
+}
+
+/*******************************************************************************
+* Phy init
+*	Using shared PHY control interface
+*
+*******************************************************************************/
+/* Initializes driver's PHY state, and attaches to the PHY.
+ * Returns 0 on success.
+ */
+static int init_phy(struct net_device *dev)
+{
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
+	struct alt_tse_config * tse_config = tse_priv->tse_config;
+	struct phy_device *phydev;
+	char phy_id[MII_BUS_ID_SIZE];
+	char mii_id[MII_BUS_ID_SIZE];
+	phy_interface_t interface;
+
+	/* hard code for now */
+	interface = tse_config->interface;
+
+	tse_priv->oldlink = 0;
+	tse_priv->oldspeed = 0;
+	tse_priv->oldduplex = -1;
+
+	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
+	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
+
+	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
+
+	if (IS_ERR(phydev)) {
+		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
+		return PTR_ERR(phydev);
+	}
+
+	phydev->supported &= tse_config->tse_supported_modes;
+	phydev->advertising = phydev->supported;
+
+	if (tse_config->autoneg == AUTONEG_DISABLE) {
+		phydev->autoneg = tse_config->autoneg;
+		phydev->speed = tse_config->speed;
+		phydev->duplex = tse_config->duplex;
+	}
+
+	tse_priv->phydev = phydev;
+
+	return 0;
 }
 
 /*******************************************************************************
@@ -1121,6 +1185,7 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int free_loop;
+	int ret;
 
 	if ((new_mtu > (tse_priv->tse_tx_depth * ALT_TSE_MAC_FIFO_WIDTH)) ||
 	    (new_mtu > (tse_priv->tse_rx_depth * ALT_TSE_MAC_FIFO_WIDTH))) {
@@ -1150,13 +1215,16 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 	}
 
 	/* Prepare RX SGDMA to receive packets */
-	sgdma_read_init(dev);
+	ret = sgdma_read_init(dev);
+	if (ret)
+		goto out;
 
 	printk("TSE: new mtu is %d \n", new_mtu);
 
+out:
 	spin_unlock(&tse_priv->rx_lock);
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -1287,10 +1355,13 @@ static void tse_set_multicast_list(struct net_device *dev)
 * arg2    : address passed from upper layer
 * return : 0
 */
-int tse_set_hw_address(struct net_device *dev, void *port)
+static int tse_set_hw_address(struct net_device *dev, void *port)
 {
 	struct sockaddr *addr = port;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
+
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
 
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
 
@@ -1328,18 +1399,11 @@ int tse_set_hw_address(struct net_device *dev, void *port)
 	tse_priv->mac_dev->supp_mac_addr_3_1 = tse_priv->mac_dev->mac_addr_1;
 
 	if (netif_msg_hw(tse_priv))
-		printk(KERN_INFO "%s :Set Mac Address %2x:%2x:%2x:%2x:%2x:%2x\n", 
-			dev->name,
-			dev->dev_addr[0],
-			dev->dev_addr[1],
-			dev->dev_addr[2],
-			dev->dev_addr[3], dev->dev_addr[4], dev->dev_addr[5]);
-	//PRINTK1("read add mac_0 = 0x%x\n", tse_priv->mac_dev->mac_addr_0);
-	//PRINTK1("read add mac_1 = 0x%x\n", tse_priv->mac_dev->mac_addr_1);
+		printk(KERN_INFO "%s :Set MAC address %pM\n", dev->name,
+		       dev->dev_addr);
+
 	return 0;
 }
-
-
 
 /*******************************************************************************
 * Driver Open, shutdown, probe functions
@@ -1356,7 +1420,6 @@ int tse_set_hw_address(struct net_device *dev, void *port)
 static int tse_open(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	int status;
 	int retval = 0;
 
 	/* start NAPI */
@@ -1382,8 +1445,11 @@ static int tse_open(struct net_device *dev)
 	sgdma_config(tse_priv);
 
 	/* Prepare RX SGDMA to receive packets */
-	status = sgdma_read_init(dev);
-
+	retval = sgdma_read_init(dev);
+	if (retval) {
+		napi_disable(&tse_priv->napi);
+		return retval;
+	}
 
 	/* Register RX SGDMA interrupt */
 	retval =
@@ -1433,7 +1499,6 @@ static int tse_open(struct net_device *dev)
 
 	/* Start network queue */     	
 	netif_start_queue(dev);
-	tse_priv->tse_up = 1;
 	//tasklet_init(&tse_priv->tse_rx_tasklet, tse_sgdma_rx, (unsigned long)dev);
 	return SUCCESS;
 }
@@ -1515,11 +1580,9 @@ static int tse_shutdown(struct net_device *dev)
 
 	phy_disconnect(tse_priv->phydev);
 	tse_priv->phydev = NULL;
-	
+
 	netif_stop_queue(dev);
-	
-	tse_priv->tse_up = 0;
-	
+
 	return SUCCESS;
 }
 
@@ -1612,7 +1675,7 @@ static int __devinit alt_tse_probe(struct platform_device *pdev)
 
 	dev = alloc_etherdev(sizeof(struct alt_tse_private));
 	if (!dev) {
-		printk(KERN_ERR "%s: Etherdev alloc failed, aborting.\n", dev->name);
+		printk(KERN_ERR "Could not allocate network device\n");
 		return -ENODEV;
 	}
 	//printk("\n\nTSE DEV NAME : %s", dev->name);
@@ -1754,6 +1817,10 @@ static int __devinit alt_tse_probe(struct platform_device *pdev)
 	}
 
 	tse_priv->tse_config = tse_config;
+
+	ret = altera_tse_mdio_register(tse_priv);
+	if (ret)
+		goto out_desc_mem;
 
 	/* Probe ethernet device */
 	tse_dev_probe(dev);

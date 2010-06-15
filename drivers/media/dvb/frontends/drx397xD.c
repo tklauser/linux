@@ -26,6 +26,7 @@
 #include <linux/delay.h>
 #include <linux/string.h>
 #include <linux/firmware.h>
+#include <linux/slab.h>
 #include <asm/div64.h>
 
 #include "dvb_frontend.h"
@@ -81,7 +82,7 @@ static struct {
 #include "drx397xD_fw.h"
 };
 
-/* use only with writer lock aquired */
+/* use only with writer lock acquired */
 static void _drx_release_fw(struct drx397xD_state *s, enum fw_ix ix)
 {
 	memset(&fw[ix].data[0], 0, sizeof(fw[0].data));
@@ -123,10 +124,10 @@ static int drx_load_fw(struct drx397xD_state *s, enum fw_ix ix)
 	}
 	memset(&fw[ix].data[0], 0, sizeof(fw[0].data));
 
-	if (request_firmware(&fw[ix].file, fw[ix].name, &s->i2c->dev) != 0) {
+	rc = request_firmware(&fw[ix].file, fw[ix].name, s->i2c->dev.parent);
+	if (rc != 0) {
 		printk(KERN_ERR "%s: Firmware \"%s\" not available\n",
 		       mod_name, fw[ix].name);
-		rc = -ENOENT;
 		goto exit_err;
 	}
 

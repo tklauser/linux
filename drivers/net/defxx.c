@@ -300,7 +300,8 @@ static int		dfx_rcv_init(DFX_board_t *bp, int get_buffers);
 static void		dfx_rcv_queue_process(DFX_board_t *bp);
 static void		dfx_rcv_flush(DFX_board_t *bp);
 
-static int		dfx_xmt_queue_pkt(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t dfx_xmt_queue_pkt(struct sk_buff *skb,
+				     struct net_device *dev);
 static int		dfx_xmt_done(DFX_board_t *bp);
 static void		dfx_xmt_flush(DFX_board_t *bp);
 
@@ -1051,12 +1052,9 @@ static int __devinit dfx_driver_init(struct net_device *dev,
 		board_name = "DEFEA";
 	if (dfx_bus_pci)
 		board_name = "DEFPA";
-	pr_info("%s: %s at %saddr = 0x%llx, IRQ = %d, "
-		"Hardware addr = %02X-%02X-%02X-%02X-%02X-%02X\n",
+	pr_info("%s: %s at %saddr = 0x%llx, IRQ = %d, Hardware addr = %pMF\n",
 		print_name, board_name, dfx_use_mmio ? "" : "I/O ",
-		(long long)bar_start, dev->irq,
-		dev->dev_addr[0], dev->dev_addr[1], dev->dev_addr[2],
-		dev->dev_addr[3], dev->dev_addr[4], dev->dev_addr[5]);
+		(long long)bar_start, dev->irq, dev->dev_addr);
 
 	/*
 	 * Get memory for descriptor block, consumer block, and other buffers
@@ -2229,7 +2227,7 @@ static void dfx_ctl_set_multicast_list(struct net_device *dev)
 		 *		 perfect filtering will be used.
 		 */
 
-		if (dev->mc_count > (PI_CMD_ADDR_FILTER_K_SIZE - bp->uc_count))
+		if (netdev_mc_count(dev) > (PI_CMD_ADDR_FILTER_K_SIZE - bp->uc_count))
 			{
 			bp->group_prom	= PI_FSTATE_K_PASS;		/* Enable LLC group prom mode */
 			bp->mc_count	= 0;					/* Don't add mc addrs to CAM */
@@ -2237,17 +2235,16 @@ static void dfx_ctl_set_multicast_list(struct net_device *dev)
 		else
 			{
 			bp->group_prom	= PI_FSTATE_K_BLOCK;	/* Disable LLC group prom mode */
-			bp->mc_count	= dev->mc_count;		/* Add mc addrs to CAM */
+			bp->mc_count	= netdev_mc_count(dev);		/* Add mc addrs to CAM */
 			}
 
 		/* Copy addresses to multicast address table, then update adapter CAM */
 
-		dmi = dev->mc_list;				/* point to first multicast addr */
-		for (i=0; i < bp->mc_count; i++)
-			{
-			memcpy(&bp->mc_table[i*FDDI_K_ALEN], dmi->dmi_addr, FDDI_K_ALEN);
-			dmi = dmi->next;			/* point to next multicast addr */
-			}
+		i = 0;
+		netdev_for_each_mc_addr(dmi, dev)
+			memcpy(&bp->mc_table[i++ * FDDI_K_ALEN],
+			       dmi->dmi_addr, FDDI_K_ALEN);
+
 		if (dfx_ctl_update_cam(bp) != DFX_K_SUCCESS)
 			{
 			DBG_printk("%s: Could not update multicast address table!\n", dev->name);
@@ -3188,11 +3185,8 @@ static void dfx_rcv_queue_process(
  *   None
  */
 
-static int dfx_xmt_queue_pkt(
-	struct sk_buff	*skb,
-	struct net_device	*dev
-	)
-
+static netdev_tx_t dfx_xmt_queue_pkt(struct sk_buff *skb,
+				     struct net_device *dev)
 	{
 	DFX_board_t		*bp = netdev_priv(dev);
 	u8			prod;				/* local transmit producer index */
@@ -3218,7 +3212,7 @@ static int dfx_xmt_queue_pkt(
 		bp->xmt_length_errors++;		/* bump error counter */
 		netif_wake_queue(dev);
 		dev_kfree_skb(skb);
-		return(0);				/* return "success" */
+		return NETDEV_TX_OK;			/* return "success" */
 	}
 	/*
 	 * See if adapter link is available, if not, free buffer
@@ -3241,7 +3235,7 @@ static int dfx_xmt_queue_pkt(
 			bp->xmt_discards++;					/* bump error counter */
 			dev_kfree_skb(skb);		/* free sk_buff now */
 			netif_wake_queue(dev);
-			return(0);							/* return "success" */
+			return NETDEV_TX_OK;		/* return "success" */
 			}
 		}
 
@@ -3318,7 +3312,7 @@ static int dfx_xmt_queue_pkt(
 	{
 		skb_pull(skb,3);
 		spin_unlock_irqrestore(&bp->lock, flags);
-		return(1);			/* requeue packet for later */
+		return NETDEV_TX_BUSY;	/* requeue packet for later */
 	}
 
 	/*
@@ -3345,7 +3339,7 @@ static int dfx_xmt_queue_pkt(
 	dfx_port_write_long(bp, PI_PDQ_K_REG_TYPE_2_PROD, bp->rcv_xmt_reg.lword);
 	spin_unlock_irqrestore(&bp->lock, flags);
 	netif_wake_queue(dev);
-	return(0);							/* packet queued to adapter */
+	return NETDEV_TX_OK;	/* packet queued to adapter */
 	}
 
 
@@ -3633,7 +3627,7 @@ static int __devinit dfx_pci_register(struct pci_dev *,
 				      const struct pci_device_id *);
 static void __devexit dfx_pci_unregister(struct pci_dev *);
 
-static struct pci_device_id dfx_pci_table[] = {
+static DEFINE_PCI_DEVICE_TABLE(dfx_pci_table) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_DEC, PCI_DEVICE_ID_DEC_FDDI) },
 	{ }
 };

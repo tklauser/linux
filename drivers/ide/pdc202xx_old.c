@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1998-2002		Andre Hedrick <andre@linux-ide.org>
  *  Copyright (C) 2006-2007, 2009	MontaVista Software, Inc.
- *  Copyright (C) 2007			Bartlomiej Zolnierkiewicz
+ *  Copyright (C) 2007-2010		Bartlomiej Zolnierkiewicz
  *
  *  Portions Copyright (C) 1999 Promise Technology, Inc.
  *  Author: Frank Tiernan (frankt@promise.com)
@@ -21,41 +21,14 @@
 
 #define DRV_NAME "pdc202xx_old"
 
-#define PDC202XX_DEBUG_DRIVE_INFO	0
-
-static const char *pdc_quirk_drives[] = {
-	"QUANTUM FIREBALLlct08 08",
-	"QUANTUM FIREBALLP KA6.4",
-	"QUANTUM FIREBALLP KA9.1",
-	"QUANTUM FIREBALLP LM20.4",
-	"QUANTUM FIREBALLP KX13.6",
-	"QUANTUM FIREBALLP KX20.5",
-	"QUANTUM FIREBALLP KX27.3",
-	"QUANTUM FIREBALLP LM20.5",
-	NULL
-};
-
-static void pdc_old_disable_66MHz_clock(ide_hwif_t *);
-
-static void pdc202xx_set_mode(ide_drive_t *drive, const u8 speed)
+static void pdc202xx_set_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	ide_hwif_t *hwif	= drive->hwif;
 	struct pci_dev *dev	= to_pci_dev(hwif->dev);
 	u8 drive_pci		= 0x60 + (drive->dn << 2);
+	const u8 speed		= drive->dma_mode;
 
 	u8			AP = 0, BP = 0, CP = 0;
 	u8			TA = 0, TB = 0, TC = 0;
-
-#if PDC202XX_DEBUG_DRIVE_INFO
-	u32			drive_conf = 0;
-	pci_read_config_dword(dev, drive_pci, &drive_conf);
-#endif
-
-	/*
-	 * TODO: do this once per channel
-	 */
-	if (dev->device != PCI_DEVICE_ID_PROMISE_20246)
-		pdc_old_disable_66MHz_clock(hwif);
 
 	pci_read_config_byte(dev, drive_pci,     &AP);
 	pci_read_config_byte(dev, drive_pci + 1, &BP);
@@ -85,7 +58,7 @@ static void pdc202xx_set_mode(ide_drive_t *drive, const u8 speed)
 		 * Prefetch_EN / IORDY_EN / PA[3:0] bits of register A
 		 */
 		AP &= ~0x3f;
-		if (ata_id_iordy_disable(drive->id))
+		if (ide_pio_need_iordy(drive, speed - XFER_PIO_0))
 			AP |= 0x20;	/* set IORDY_EN bit */
 		if (drive->media == ide_disk)
 			AP |= 0x10;	/* set Prefetch_EN bit */
@@ -101,19 +74,33 @@ static void pdc202xx_set_mode(ide_drive_t *drive, const u8 speed)
 		pci_write_config_byte(dev, drive_pci + 1, BP | TB);
 		pci_write_config_byte(dev, drive_pci + 2, CP | TC);
 	}
-
-#if PDC202XX_DEBUG_DRIVE_INFO
-	printk(KERN_DEBUG "%s: %s drive%d 0x%08x ",
-		drive->name, ide_xfer_verbose(speed),
-		drive->dn, drive_conf);
-	pci_read_config_dword(dev, drive_pci, &drive_conf);
-	printk("0x%08x\n", drive_conf);
-#endif
 }
 
-static void pdc202xx_set_pio_mode(ide_drive_t *drive, const u8 pio)
+static void pdc202xx_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	pdc202xx_set_mode(drive, XFER_PIO_0 + pio);
+	drive->dma_mode = drive->pio_mode;
+	pdc202xx_set_mode(hwif, drive);
+}
+
+static int pdc202xx_test_irq(ide_hwif_t *hwif)
+{
+	struct pci_dev *dev	= to_pci_dev(hwif->dev);
+	unsigned long high_16	= pci_resource_start(dev, 4);
+	u8 sc1d			= inb(high_16 + 0x1d);
+
+	if (hwif->channel) {
+		/*
+		 * bit 7: error, bit 6: interrupting,
+		 * bit 5: FIFO full, bit 4: FIFO empty
+		 */
+		return ((sc1d & 0x50) == 0x50) ? 1 : 0;
+	} else	{
+		/*
+		 * bit 3: error, bit 2: interrupting,
+		 * bit 1: FIFO full, bit 0: FIFO empty
+		 */
+		return ((sc1d & 0x05) == 0x05) ? 1 : 0;
+	}
 }
 
 static u8 pdc2026x_cable_detect(ide_hwif_t *hwif)
@@ -151,17 +138,9 @@ static void pdc_old_disable_66MHz_clock(ide_hwif_t *hwif)
 	outb(clock & ~(hwif->channel ? 0x08 : 0x02), clock_reg);
 }
 
-static void pdc202xx_quirkproc(ide_drive_t *drive)
+static void pdc2026x_init_hwif(ide_hwif_t *hwif)
 {
-	const char **list, *m = (char *)&drive->id[ATA_ID_PROD];
-
-	for (list = pdc_quirk_drives; *list != NULL; list++)
-		if (strstr(m, *list) != NULL) {
-			drive->quirk_list = 2;
-			return;
-		}
-
-	drive->quirk_list = 0;
+	pdc_old_disable_66MHz_clock(hwif);
 }
 
 static void pdc202xx_dma_start(ide_drive_t *drive)
@@ -177,7 +156,7 @@ static void pdc202xx_dma_start(ide_drive_t *drive)
 		u8 clock = inb(high_16 + 0x11);
 
 		outb(clock | (hwif->channel ? 0x08 : 0x02), high_16 + 0x11);
-		word_count = (rq->nr_sectors << 8);
+		word_count = (blk_rq_sectors(rq) << 8);
 		word_count = (rq_data_dir(rq) == READ) ?
 					word_count | 0x05000000 :
 					word_count | 0x06000000;
@@ -201,52 +180,6 @@ static int pdc202xx_dma_end(ide_drive_t *drive)
 	if (drive->current_speed > XFER_UDMA_2)
 		pdc_old_disable_66MHz_clock(drive->hwif);
 	return ide_dma_end(drive);
-}
-
-static int pdc202xx_dma_test_irq(ide_drive_t *drive)
-{
-	ide_hwif_t *hwif	= drive->hwif;
-	unsigned long high_16	= hwif->extra_base - 16;
-	u8 dma_stat		= inb(hwif->dma_base + ATA_DMA_STATUS);
-	u8 sc1d			= inb(high_16 + 0x001d);
-
-	if (hwif->channel) {
-		/* bit7: Error, bit6: Interrupting, bit5: FIFO Full, bit4: FIFO Empty */
-		if ((sc1d & 0x50) == 0x50)
-			goto somebody_else;
-		else if ((sc1d & 0x40) == 0x40)
-			return (dma_stat & 4) == 4;
-	} else {
-		/* bit3: Error, bit2: Interrupting, bit1: FIFO Full, bit0: FIFO Empty */
-		if ((sc1d & 0x05) == 0x05)
-			goto somebody_else;
-		else if ((sc1d & 0x04) == 0x04)
-			return (dma_stat & 4) == 4;
-	}
-somebody_else:
-	return (dma_stat & 4) == 4;	/* return 1 if INTR asserted */
-}
-
-static void pdc202xx_reset(ide_drive_t *drive)
-{
-	ide_hwif_t *hwif	= drive->hwif;
-	unsigned long high_16	= hwif->extra_base - 16;
-	u8 udma_speed_flag	= inb(high_16 | 0x001f);
-
-	printk(KERN_WARNING "PDC202xx: software reset...\n");
-
-	outb(udma_speed_flag | 0x10, high_16 | 0x001f);
-	mdelay(100);
-	outb(udma_speed_flag & ~0x10, high_16 | 0x001f);
-	mdelay(2000);	/* 2 seconds ?! */
-
-	ide_set_max_pio(drive);
-}
-
-static void pdc202xx_dma_lost_irq(ide_drive_t *drive)
-{
-	pdc202xx_reset(drive);
-	ide_dma_lost_irq(drive);
 }
 
 static int init_chipset_pdc202xx(struct pci_dev *dev)
@@ -302,26 +235,13 @@ static void __devinit pdc202ata4_fixup_irq(struct pci_dev *dev,
 static const struct ide_port_ops pdc20246_port_ops = {
 	.set_pio_mode		= pdc202xx_set_pio_mode,
 	.set_dma_mode		= pdc202xx_set_mode,
-	.quirkproc		= pdc202xx_quirkproc,
+	.test_irq		= pdc202xx_test_irq,
 };
 
 static const struct ide_port_ops pdc2026x_port_ops = {
 	.set_pio_mode		= pdc202xx_set_pio_mode,
 	.set_dma_mode		= pdc202xx_set_mode,
-	.quirkproc		= pdc202xx_quirkproc,
-	.resetproc		= pdc202xx_reset,
 	.cable_detect		= pdc2026x_cable_detect,
-};
-
-static const struct ide_dma_ops pdc20246_dma_ops = {
-	.dma_host_set		= ide_dma_host_set,
-	.dma_setup		= ide_dma_setup,
-	.dma_start		= ide_dma_start,
-	.dma_end		= ide_dma_end,
-	.dma_test_irq		= pdc202xx_dma_test_irq,
-	.dma_lost_irq		= ide_dma_lost_irq,
-	.dma_timer_expiry	= ide_dma_sff_timer_expiry,
-	.dma_sff_read_status	= ide_dma_sff_read_status,
 };
 
 static const struct ide_dma_ops pdc2026x_dma_ops = {
@@ -329,10 +249,9 @@ static const struct ide_dma_ops pdc2026x_dma_ops = {
 	.dma_setup		= ide_dma_setup,
 	.dma_start		= pdc202xx_dma_start,
 	.dma_end		= pdc202xx_dma_end,
-	.dma_test_irq		= pdc202xx_dma_test_irq,
-	.dma_lost_irq		= pdc202xx_dma_lost_irq,
+	.dma_test_irq		= ide_dma_test_irq,
+	.dma_lost_irq		= ide_dma_lost_irq,
 	.dma_timer_expiry	= ide_dma_sff_timer_expiry,
-	.dma_clear		= pdc202xx_reset,
 	.dma_sff_read_status	= ide_dma_sff_read_status,
 };
 
@@ -340,6 +259,7 @@ static const struct ide_dma_ops pdc2026x_dma_ops = {
 	{ \
 		.name		= DRV_NAME, \
 		.init_chipset	= init_chipset_pdc202xx, \
+		.init_hwif	= pdc2026x_init_hwif, \
 		.port_ops	= &pdc2026x_port_ops, \
 		.dma_ops	= &pdc2026x_dma_ops, \
 		.host_flags	= IDE_HFLAGS_PDC202XX, \
@@ -354,7 +274,7 @@ static const struct ide_port_info pdc202xx_chipsets[] __devinitdata = {
 		.name		= DRV_NAME,
 		.init_chipset	= init_chipset_pdc202xx,
 		.port_ops	= &pdc20246_port_ops,
-		.dma_ops	= &pdc20246_dma_ops,
+		.dma_ops	= &sff_dma_ops,
 		.host_flags	= IDE_HFLAGS_PDC202XX,
 		.pio_mask	= ATA_PIO4,
 		.mwdma_mask	= ATA_MWDMA2,
@@ -435,6 +355,6 @@ static void __exit pdc202xx_ide_exit(void)
 module_init(pdc202xx_ide_init);
 module_exit(pdc202xx_ide_exit);
 
-MODULE_AUTHOR("Andre Hedrick, Frank Tiernan");
+MODULE_AUTHOR("Andre Hedrick, Frank Tiernan, Bartlomiej Zolnierkiewicz");
 MODULE_DESCRIPTION("PCI driver module for older Promise IDE");
 MODULE_LICENSE("GPL");

@@ -17,10 +17,10 @@ struct linux_binprm;
 extern int ima_bprm_check(struct linux_binprm *bprm);
 extern int ima_inode_alloc(struct inode *inode);
 extern void ima_inode_free(struct inode *inode);
-extern int ima_path_check(struct path *path, int mask);
+extern int ima_file_check(struct file *file, int mask);
 extern void ima_file_free(struct file *file);
 extern int ima_file_mmap(struct file *file, unsigned long prot);
-extern void ima_shm_check(struct file *file);
+extern void ima_counts_get(struct file *file);
 
 #else
 static inline int ima_bprm_check(struct linux_binprm *bprm)
@@ -38,7 +38,7 @@ static inline void ima_inode_free(struct inode *inode)
 	return;
 }
 
-static inline int ima_path_check(struct path *path, int mask)
+static inline int ima_file_check(struct file *file, int mask)
 {
 	return 0;
 }
@@ -53,9 +53,10 @@ static inline int ima_file_mmap(struct file *file, unsigned long prot)
 	return 0;
 }
 
-static inline void ima_shm_check(struct file *file)
+static inline void ima_counts_get(struct file *file)
 {
 	return;
 }
+
 #endif /* CONFIG_IMA_H */
 #endif /* _LINUX_IMA_H */

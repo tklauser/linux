@@ -337,10 +337,9 @@ static int rdma_set_ctxt_sge(struct svcxprt_rdma *xprt,
 
 static int rdma_read_max_sge(struct svcxprt_rdma *xprt, int sge_count)
 {
-	if ((RDMA_TRANSPORT_IWARP ==
-	     rdma_node_get_transport(xprt->sc_cm_id->
-				     device->node_type))
-	    && sge_count > 1)
+	if ((rdma_node_get_transport(xprt->sc_cm_id->device->node_type) ==
+	     RDMA_TRANSPORT_IWARP) &&
+	    sge_count > 1)
 		return 1;
 	else
 		return min_t(int, sge_count, xprt->sc_max_sge);
@@ -397,13 +396,13 @@ static int rdma_read_xdr(struct svcxprt_rdma *xprt,
 	if (!ch)
 		return 0;
 
-	/* Allocate temporary reply and chunk maps */
-	rpl_map = svc_rdma_get_req_map();
-	chl_map = svc_rdma_get_req_map();
-
 	svc_rdma_rcl_chunk_counts(ch, &ch_count, &byte_count);
 	if (ch_count > RPCSVC_MAXPAGES)
 		return -EINVAL;
+
+	/* Allocate temporary reply and chunk maps */
+	rpl_map = svc_rdma_get_req_map();
+	chl_map = svc_rdma_get_req_map();
 
 	if (!xprt->sc_frmr_pg_list_len)
 		sge_count = map_read_chunks(xprt, rqstp, hdr_ctxt, rmsgp,

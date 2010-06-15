@@ -22,6 +22,7 @@
 #include <linux/delayacct.h>
 #include <linux/cpumask.h>
 #include <linux/percpu.h>
+#include <linux/slab.h>
 #include <linux/cgroupstats.h>
 #include <linux/cgroup.h>
 #include <linux/fs.h>
@@ -46,15 +47,13 @@ static struct genl_family family = {
 	.maxattr	= TASKSTATS_CMD_ATTR_MAX,
 };
 
-static struct nla_policy taskstats_cmd_get_policy[TASKSTATS_CMD_ATTR_MAX+1]
-__read_mostly = {
+static const struct nla_policy taskstats_cmd_get_policy[TASKSTATS_CMD_ATTR_MAX+1] = {
 	[TASKSTATS_CMD_ATTR_PID]  = { .type = NLA_U32 },
 	[TASKSTATS_CMD_ATTR_TGID] = { .type = NLA_U32 },
 	[TASKSTATS_CMD_ATTR_REGISTER_CPUMASK] = { .type = NLA_STRING },
 	[TASKSTATS_CMD_ATTR_DEREGISTER_CPUMASK] = { .type = NLA_STRING },};
 
-static struct nla_policy
-cgroupstats_cmd_get_policy[CGROUPSTATS_CMD_ATTR_MAX+1] __read_mostly = {
+static const struct nla_policy cgroupstats_cmd_get_policy[CGROUPSTATS_CMD_ATTR_MAX+1] = {
 	[CGROUPSTATS_CMD_ATTR_FD] = { .type = NLA_U32 },
 };
 
@@ -108,7 +107,7 @@ static int prepare_reply(struct genl_info *info, u8 cmd, struct sk_buff **skbp,
 /*
  * Send taskstats data in @skb to listener with nl_pid @pid
  */
-static int send_reply(struct sk_buff *skb, pid_t pid)
+static int send_reply(struct sk_buff *skb, struct genl_info *info)
 {
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(skb));
 	void *reply = genlmsg_data(genlhdr);
@@ -120,7 +119,7 @@ static int send_reply(struct sk_buff *skb, pid_t pid)
 		return rc;
 	}
 
-	return genlmsg_unicast(skb, pid);
+	return genlmsg_reply(skb, info);
 }
 
 /*
@@ -150,7 +149,7 @@ static void send_cpu_listeners(struct sk_buff *skb,
 			if (!skb_next)
 				break;
 		}
-		rc = genlmsg_unicast(skb_cur, s->pid);
+		rc = genlmsg_unicast(&init_net, skb_cur, s->pid);
 		if (rc == -ECONNREFUSED) {
 			s->valid = 0;
 			delcount++;
@@ -418,7 +417,7 @@ static int cgroupstats_user_cmd(struct sk_buff *skb, struct genl_info *info)
 		goto err;
 	}
 
-	rc = send_reply(rep_skb, info->snd_pid);
+	rc = send_reply(rep_skb, info);
 
 err:
 	fput_light(file, fput_needed);
@@ -487,7 +486,7 @@ free_return_rc:
 	} else
 		goto err;
 
-	return send_reply(rep_skb, info->snd_pid);
+	return send_reply(rep_skb, info);
 err:
 	nlmsg_free(rep_skb);
 	return rc;

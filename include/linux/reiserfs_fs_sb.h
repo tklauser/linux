@@ -7,6 +7,8 @@
 #ifdef __KERNEL__
 #include <linux/workqueue.h>
 #include <linux/rwsem.h>
+#include <linux/mutex.h>
+#include <linux/sched.h>
 #endif
 
 typedef enum {
@@ -355,6 +357,13 @@ struct reiserfs_sb_info {
 	struct reiserfs_journal *s_journal;	/* pointer to journal information */
 	unsigned short s_mount_state;	/* reiserfs state (valid, invalid) */
 
+	/* Serialize writers access, replace the old bkl */
+	struct mutex lock;
+	/* Owner of the lock (can be recursive) */
+	struct task_struct *lock_owner;
+	/* Depth of the lock, start from -1 like the bkl */
+	int lock_depth;
+
 	/* Comment? -Hans */
 	void (*end_io_handler) (struct buffer_head *, int);
 	hashf_t s_hash_function;	/* pointer to function which is used
@@ -408,6 +417,17 @@ struct reiserfs_sb_info {
 	char *s_qf_names[MAXQUOTAS];
 	int s_jquota_fmt;
 #endif
+#ifdef CONFIG_REISERFS_CHECK
+
+	struct tree_balance *cur_tb;	/*
+					 * Detects whether more than one
+					 * copy of tb exists per superblock
+					 * as a means of checking whether
+					 * do_balance is executing concurrently
+					 * against another tree reader/writer
+					 * on a same mount point.
+					 */
+#endif
 };
 
 /* Definitions of reiserfs on-disk properties: */
@@ -453,6 +473,7 @@ enum reiserfs_mount_options {
 	REISERFS_ATTRS,
 	REISERFS_XATTRS_USER,
 	REISERFS_POSIXACL,
+	REISERFS_EXPOSE_PRIVROOT,
 	REISERFS_BARRIER_NONE,
 	REISERFS_BARRIER_FLUSH,
 
@@ -490,6 +511,7 @@ enum reiserfs_mount_options {
 #define reiserfs_data_writeback(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_DATA_WRITEBACK))
 #define reiserfs_xattrs_user(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_XATTRS_USER))
 #define reiserfs_posixacl(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_POSIXACL))
+#define reiserfs_expose_privroot(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_EXPOSE_PRIVROOT))
 #define reiserfs_xattrs_optional(s) (reiserfs_xattrs_user(s) || reiserfs_posixacl(s))
 #define reiserfs_barrier_none(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_BARRIER_NONE))
 #define reiserfs_barrier_flush(s) (REISERFS_SB(s)->s_mount_opt & (1 << REISERFS_BARRIER_FLUSH))

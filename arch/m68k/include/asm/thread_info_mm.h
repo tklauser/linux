@@ -1,8 +1,14 @@
 #ifndef _ASM_M68K_THREAD_INFO_H
 #define _ASM_M68K_THREAD_INFO_H
 
+#ifndef ASM_OFFSETS_C
+#include <asm/asm-offsets.h>
+#endif
 #include <asm/types.h>
 #include <asm/page.h>
+
+#ifndef __ASSEMBLY__
+#include <asm/current.h>
 
 struct thread_info {
 	struct task_struct	*task;		/* main task structure */
@@ -10,8 +16,10 @@ struct thread_info {
 	struct exec_domain	*exec_domain;	/* execution domain */
 	int			preempt_count;	/* 0 => preemptable, <0 => BUG */
 	__u32 cpu; /* should always be 0 on m68k */
+	unsigned long		tp_value;	/* thread pointer */
 	struct restart_block    restart_block;
 };
+#endif /* __ASSEMBLY__ */
 
 #define PREEMPT_ACTIVE		0x4000000
 
@@ -19,6 +27,7 @@ struct thread_info {
 {						\
 	.task		= &tsk,			\
 	.exec_domain	= &default_exec_domain,	\
+	.preempt_count	= INIT_PREEMPT_COUNT,	\
 	.restart_block = {			\
 		.fn = do_no_restart_syscall,	\
 	},					\
@@ -30,7 +39,12 @@ struct thread_info {
 #define init_thread_info	(init_task.thread.info)
 #define init_stack		(init_thread_union.stack)
 
-#define task_thread_info(tsk)	(&(tsk)->thread.info)
+#ifdef ASM_OFFSETS_C
+#define task_thread_info(tsk)	((struct thread_info *) NULL)
+#else
+#define task_thread_info(tsk)	((struct thread_info *)((char *)tsk+TASK_TINFO))
+#endif
+
 #define task_stack_page(tsk)	((tsk)->stack)
 #define current_thread_info()	task_thread_info(current)
 

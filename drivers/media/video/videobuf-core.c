@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 
@@ -109,7 +110,7 @@ EXPORT_SYMBOL_GPL(videobuf_queue_to_vmalloc);
 
 
 void videobuf_queue_core_init(struct videobuf_queue *q,
-			 struct videobuf_queue_ops *ops,
+			 const struct videobuf_queue_ops *ops,
 			 struct device *dev,
 			 spinlock_t *irqlock,
 			 enum v4l2_buf_type type,
@@ -118,6 +119,7 @@ void videobuf_queue_core_init(struct videobuf_queue *q,
 			 void *priv,
 			 struct videobuf_qtype_ops *int_ops)
 {
+	BUG_ON(!q);
 	memset(q, 0, sizeof(*q));
 	q->irqlock   = irqlock;
 	q->dev       = dev;
@@ -358,7 +360,7 @@ int __videobuf_mmap_setup(struct videobuf_queue *q,
 		q->bufs[i]->bsize  = bsize;
 		switch (memory) {
 		case V4L2_MEMORY_MMAP:
-			q->bufs[i]->boff  = bsize * i;
+			q->bufs[i]->boff = PAGE_ALIGN(bsize) * i;
 			break;
 		case V4L2_MEMORY_USERPTR:
 		case V4L2_MEMORY_OVERLAY:
@@ -428,9 +430,9 @@ int videobuf_reqbufs(struct videobuf_queue *q,
 		count = VIDEO_MAX_FRAME;
 	size = 0;
 	q->ops->buf_setup(q, &count, &size);
-	size = PAGE_ALIGN(size);
-	dprintk(1, "reqbufs: bufs=%d, size=0x%x [%d pages total]\n",
-		count, size, (count*size)>>PAGE_SHIFT);
+	dprintk(1, "reqbufs: bufs=%d, size=0x%x [%u pages total]\n",
+		count, size,
+		(unsigned int)((count*PAGE_ALIGN(size))>>PAGE_SHIFT) );
 
 	retval = __videobuf_mmap_setup(q, count, size, req->memory);
 	if (retval < 0) {
@@ -439,6 +441,7 @@ int videobuf_reqbufs(struct videobuf_queue *q,
 	}
 
 	req->count = retval;
+	retval = 0;
 
  done:
 	mutex_unlock(&q->vb_lock);
@@ -454,7 +457,7 @@ int videobuf_querybuf(struct videobuf_queue *q, struct v4l2_buffer *b)
 		dprintk(1, "querybuf: Wrong type.\n");
 		goto done;
 	}
-	if (unlikely(b->index < 0 || b->index >= VIDEO_MAX_FRAME)) {
+	if (unlikely(b->index >= VIDEO_MAX_FRAME)) {
 		dprintk(1, "querybuf: index out of range.\n");
 		goto done;
 	}
@@ -495,7 +498,7 @@ int videobuf_qbuf(struct videobuf_queue *q,
 		dprintk(1, "qbuf: Wrong type.\n");
 		goto done;
 	}
-	if (b->index < 0 || b->index >= VIDEO_MAX_FRAME) {
+	if (b->index >= VIDEO_MAX_FRAME) {
 		dprintk(1, "qbuf: index out of range.\n");
 		goto done;
 	}
@@ -1096,7 +1099,7 @@ int videobuf_cgmbuf(struct videobuf_queue *q,
 	mbuf->size   = 0;
 	for (i = 0; i < mbuf->frames; i++) {
 		mbuf->offsets[i]  = q->bufs[i]->boff;
-		mbuf->size       += q->bufs[i]->bsize;
+		mbuf->size       += PAGE_ALIGN(q->bufs[i]->bsize);
 	}
 
 	return 0;

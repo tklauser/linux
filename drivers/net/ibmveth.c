@@ -49,6 +49,7 @@
 #include <linux/proc_fs.h>
 #include <linux/in.h>
 #include <linux/ip.h>
+#include <linux/slab.h>
 #include <net/net_namespace.h>
 #include <asm/hvcall.h>
 #include <asm/atomic.h>
@@ -625,7 +626,7 @@ static int ibmveth_open(struct net_device *netdev)
 	}
 
 	ibmveth_debug_printk("registering irq 0x%x\n", netdev->irq);
-	if((rc = request_irq(netdev->irq, &ibmveth_interrupt, 0, netdev->name, netdev)) != 0) {
+	if((rc = request_irq(netdev->irq, ibmveth_interrupt, 0, netdev->name, netdev)) != 0) {
 		ibmveth_error_printk("unable to request irq 0x%x, rc %d\n", netdev->irq, rc);
 		do {
 			rc = h_free_logical_lan(adapter->vdev->unit_address);
@@ -887,7 +888,8 @@ static int ibmveth_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 
 #define page_offset(v) ((unsigned long)(v) & ((1 << 12) - 1))
 
-static int ibmveth_start_xmit(struct sk_buff *skb, struct net_device *netdev)
+static netdev_tx_t ibmveth_start_xmit(struct sk_buff *skb,
+				      struct net_device *netdev)
 {
 	struct ibmveth_adapter *adapter = netdev_priv(netdev);
 	union ibmveth_buf_desc desc;
@@ -971,7 +973,7 @@ out:	spin_lock_irqsave(&adapter->stats_lock, flags);
 	spin_unlock_irqrestore(&adapter->stats_lock, flags);
 
 	dev_kfree_skb(skb);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static int ibmveth_poll(struct napi_struct *napi, int budget)
@@ -1061,7 +1063,8 @@ static void ibmveth_set_multicast_list(struct net_device *netdev)
 	struct ibmveth_adapter *adapter = netdev_priv(netdev);
 	unsigned long lpar_rc;
 
-	if((netdev->flags & IFF_PROMISC) || (netdev->mc_count > adapter->mcastFilterSize)) {
+	if ((netdev->flags & IFF_PROMISC) ||
+	    (netdev_mc_count(netdev) > adapter->mcastFilterSize)) {
 		lpar_rc = h_multicast_ctrl(adapter->vdev->unit_address,
 					   IbmVethMcastEnableRecv |
 					   IbmVethMcastDisableFiltering,
@@ -1070,8 +1073,7 @@ static void ibmveth_set_multicast_list(struct net_device *netdev)
 			ibmveth_error_printk("h_multicast_ctrl rc=%ld when entering promisc mode\n", lpar_rc);
 		}
 	} else {
-		struct dev_mc_list *mclist = netdev->mc_list;
-		int i;
+		struct dev_mc_list *mclist;
 		/* clear the filter table & disable filtering */
 		lpar_rc = h_multicast_ctrl(adapter->vdev->unit_address,
 					   IbmVethMcastEnableRecv |
@@ -1082,7 +1084,7 @@ static void ibmveth_set_multicast_list(struct net_device *netdev)
 			ibmveth_error_printk("h_multicast_ctrl rc=%ld when attempting to clear filter table\n", lpar_rc);
 		}
 		/* add the addresses to the filter table */
-		for(i = 0; i < netdev->mc_count; ++i, mclist = mclist->next) {
+		netdev_for_each_mc_addr(mclist, netdev) {
 			// add the multicast address to the filter table
 			unsigned long mcast_addr = 0;
 			memcpy(((char *)&mcast_addr)+2, mclist->dmi_addr, 6);
@@ -1203,6 +1205,20 @@ static unsigned long ibmveth_get_desired_dma(struct vio_dev *vdev)
 	return ret;
 }
 
+static const struct net_device_ops ibmveth_netdev_ops = {
+	.ndo_open		= ibmveth_open,
+	.ndo_stop		= ibmveth_close,
+	.ndo_start_xmit		= ibmveth_start_xmit,
+	.ndo_set_multicast_list	= ibmveth_set_multicast_list,
+	.ndo_do_ioctl		= ibmveth_ioctl,
+	.ndo_change_mtu		= ibmveth_change_mtu,
+	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_set_mac_address	= eth_mac_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller	= ibmveth_poll_controller,
+#endif
+};
+
 static int __devinit ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 {
 	int rc, i;
@@ -1241,7 +1257,7 @@ static int __devinit ibmveth_probe(struct vio_dev *dev, const struct vio_device_
 		return -ENOMEM;
 
 	adapter = netdev_priv(netdev);
-	dev->dev.driver_data = netdev;
+	dev_set_drvdata(&dev->dev, netdev);
 
 	adapter->vdev = dev;
 	adapter->netdev = netdev;
@@ -1265,21 +1281,13 @@ static int __devinit ibmveth_probe(struct vio_dev *dev, const struct vio_device_
 	memcpy(&adapter->mac_addr, mac_addr_p, 6);
 
 	netdev->irq = dev->irq;
-	netdev->open               = ibmveth_open;
-	netdev->stop               = ibmveth_close;
-	netdev->hard_start_xmit    = ibmveth_start_xmit;
-	netdev->set_multicast_list = ibmveth_set_multicast_list;
-	netdev->do_ioctl           = ibmveth_ioctl;
-	netdev->ethtool_ops           = &netdev_ethtool_ops;
-	netdev->change_mtu         = ibmveth_change_mtu;
+	netdev->netdev_ops = &ibmveth_netdev_ops;
+	netdev->ethtool_ops = &netdev_ethtool_ops;
 	SET_NETDEV_DEV(netdev, &dev->dev);
-#ifdef CONFIG_NET_POLL_CONTROLLER
-	netdev->poll_controller = ibmveth_poll_controller;
-#endif
  	netdev->features |= NETIF_F_LLTX;
 	spin_lock_init(&adapter->stats_lock);
 
-	memcpy(&netdev->dev_addr, &adapter->mac_addr, netdev->addr_len);
+	memcpy(netdev->dev_addr, &adapter->mac_addr, netdev->addr_len);
 
 	for(i = 0; i<IbmVethNumBufferPools; i++) {
 		struct kobject *kobj = &adapter->rx_buff_pool[i].kobj;
@@ -1335,7 +1343,7 @@ static int __devinit ibmveth_probe(struct vio_dev *dev, const struct vio_device_
 
 static int __devexit ibmveth_remove(struct vio_dev *dev)
 {
-	struct net_device *netdev = dev->dev.driver_data;
+	struct net_device *netdev = dev_get_drvdata(&dev->dev);
 	struct ibmveth_adapter *adapter = netdev_priv(netdev);
 	int i;
 
@@ -1368,8 +1376,8 @@ static void ibmveth_proc_unregister_driver(void)
 static int ibmveth_show(struct seq_file *seq, void *v)
 {
 	struct ibmveth_adapter *adapter = seq->private;
-	char *current_mac = ((char*) &adapter->netdev->dev_addr);
-	char *firmware_mac = ((char*) &adapter->mac_addr) ;
+	char *current_mac = (char *) adapter->netdev->dev_addr;
+	char *firmware_mac = (char *) &adapter->mac_addr;
 
 	seq_printf(seq, "%s %s\n\n", ibmveth_driver_string, ibmveth_driver_version);
 
@@ -1468,8 +1476,8 @@ const char * buf, size_t count)
 	struct ibmveth_buff_pool *pool = container_of(kobj,
 						      struct ibmveth_buff_pool,
 						      kobj);
-	struct net_device *netdev =
-	    container_of(kobj->parent, struct device, kobj)->driver_data;
+	struct net_device *netdev = dev_get_drvdata(
+	    container_of(kobj->parent, struct device, kobj));
 	struct ibmveth_adapter *adapter = netdev_priv(netdev);
 	long value = simple_strtol(buf, NULL, 10);
 	long rc;
@@ -1570,7 +1578,7 @@ static struct attribute * veth_pool_attrs[] = {
 	NULL,
 };
 
-static struct sysfs_ops veth_pool_ops = {
+static const struct sysfs_ops veth_pool_ops = {
 	.show   = veth_pool_show,
 	.store  = veth_pool_store,
 };

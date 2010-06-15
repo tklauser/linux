@@ -22,6 +22,7 @@
 #include <linux/notifier.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
+#include <linux/mtd/physmap.h>
 #include <linux/types.h>
 #include <linux/i2c.h>
 #include <linux/errno.h>
@@ -29,19 +30,19 @@
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
-#include <asm/mach/flash.h>
 #include <asm/mach/map.h>
 
 #include <mach/gpio.h>
-#include <mach/mux.h>
-#include <mach/dma.h>
-#include <mach/irda.h>
-#include <mach/usb.h>
-#include <mach/tc.h>
-#include <mach/board.h>
-#include <mach/common.h>
-#include <mach/keypad.h>
-#include <mach/board-sx1.h>
+#include <plat/flash.h>
+#include <plat/mux.h>
+#include <plat/dma.h>
+#include <plat/irda.h>
+#include <plat/usb.h>
+#include <plat/tc.h>
+#include <plat/board.h>
+#include <plat/common.h>
+#include <plat/keypad.h>
+#include <plat/board-sx1.h>
 
 /* Write to I2C device */
 int sx1_i2c_write_byte(u8 devaddr, u8 regoffset, u8 value)
@@ -287,9 +288,9 @@ static struct mtd_partition sx1_partitions[] = {
 	}
 };
 
-static struct flash_platform_data sx1_flash_data = {
-	.map_name	= "cfi_probe",
+static struct physmap_flash_data sx1_flash_data = {
 	.width		= 2,
+	.set_vpp	= omap1_set_vpp,
 	.parts		= sx1_partitions,
 	.nr_parts	= ARRAY_SIZE(sx1_partitions),
 };
@@ -310,7 +311,7 @@ static struct resource sx1_old_flash_resource[] = {
 };
 
 static struct platform_device sx1_flash_device = {
-	.name		= "omapflash",
+	.name		= "physmap-flash",
 	.id		= 0,
 	.dev		= {
 		.platform_data	= &sx1_flash_data,
@@ -327,7 +328,7 @@ static struct resource sx1_new_flash_resource = {
 };
 
 static struct platform_device sx1_flash_device = {
-	.name		= "omapflash",
+	.name		= "physmap-flash",
 	.id		= 0,
 	.dev		= {
 		.platform_data	= &sx1_flash_data,
@@ -369,19 +370,22 @@ static struct platform_device *sx1_devices[] __initdata = {
 };
 /*-----------------------------------------*/
 
-static struct omap_uart_config sx1_uart_config __initdata = {
-	.enabled_uarts = ((1 << 0) | (1 << 1) | (1 << 2)),
-};
-
 static struct omap_board_config_kernel sx1_config[] __initdata = {
 	{ OMAP_TAG_LCD,	&sx1_lcd_config },
-	{ OMAP_TAG_UART,	&sx1_uart_config },
 };
 
 /*-----------------------------------------*/
 
 static void __init omap_sx1_init(void)
 {
+	/* mux pins for uarts */
+	omap_cfg_reg(UART1_TX);
+	omap_cfg_reg(UART1_RTS);
+	omap_cfg_reg(UART2_TX);
+	omap_cfg_reg(UART2_RTS);
+	omap_cfg_reg(UART3_TX);
+	omap_cfg_reg(UART3_RX);
+
 	platform_add_devices(sx1_devices, ARRAY_SIZE(sx1_devices));
 
 	omap_board_config = sx1_config;

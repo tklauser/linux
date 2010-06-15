@@ -12,6 +12,7 @@
 #include <linux/mm.h>
 #include <linux/err.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/vmstat.h>
 #include <linux/sched.h>
@@ -139,7 +140,8 @@ static void refresh_zone_stat_thresholds(void)
 		threshold = calculate_threshold(zone);
 
 		for_each_online_cpu(cpu)
-			zone_pcp(zone, cpu)->stat_threshold = threshold;
+			per_cpu_ptr(zone->pageset, cpu)->stat_threshold
+							= threshold;
 	}
 }
 
@@ -149,7 +151,8 @@ static void refresh_zone_stat_thresholds(void)
 void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 				int delta)
 {
-	struct per_cpu_pageset *pcp = zone_pcp(zone, smp_processor_id());
+	struct per_cpu_pageset *pcp = this_cpu_ptr(zone->pageset);
+
 	s8 *p = pcp->vm_stat_diff + item;
 	long x;
 
@@ -202,7 +205,7 @@ EXPORT_SYMBOL(mod_zone_page_state);
  */
 void __inc_zone_state(struct zone *zone, enum zone_stat_item item)
 {
-	struct per_cpu_pageset *pcp = zone_pcp(zone, smp_processor_id());
+	struct per_cpu_pageset *pcp = this_cpu_ptr(zone->pageset);
 	s8 *p = pcp->vm_stat_diff + item;
 
 	(*p)++;
@@ -223,7 +226,7 @@ EXPORT_SYMBOL(__inc_zone_page_state);
 
 void __dec_zone_state(struct zone *zone, enum zone_stat_item item)
 {
-	struct per_cpu_pageset *pcp = zone_pcp(zone, smp_processor_id());
+	struct per_cpu_pageset *pcp = this_cpu_ptr(zone->pageset);
 	s8 *p = pcp->vm_stat_diff + item;
 
 	(*p)--;
@@ -300,7 +303,7 @@ void refresh_cpu_vm_stats(int cpu)
 	for_each_populated_zone(zone) {
 		struct per_cpu_pageset *p;
 
-		p = zone_pcp(zone, cpu);
+		p = per_cpu_ptr(zone->pageset, cpu);
 
 		for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++)
 			if (p->vm_stat_diff[i]) {
@@ -629,10 +632,8 @@ static const char * const vmstat_text[] = {
 	"nr_active_anon",
 	"nr_inactive_file",
 	"nr_active_file",
-#ifdef CONFIG_UNEVICTABLE_LRU
 	"nr_unevictable",
 	"nr_mlock",
-#endif
 	"nr_anon_pages",
 	"nr_mapped",
 	"nr_file_pages",
@@ -641,11 +642,14 @@ static const char * const vmstat_text[] = {
 	"nr_slab_reclaimable",
 	"nr_slab_unreclaimable",
 	"nr_page_table_pages",
+	"nr_kernel_stack",
 	"nr_unstable",
 	"nr_bounce",
 	"nr_vmscan_write",
 	"nr_writeback_temp",
-
+	"nr_isolated_anon",
+	"nr_isolated_file",
+	"nr_shmem",
 #ifdef CONFIG_NUMA
 	"numa_hit",
 	"numa_miss",
@@ -675,10 +679,16 @@ static const char * const vmstat_text[] = {
 	TEXTS_FOR_ZONES("pgscan_kswapd")
 	TEXTS_FOR_ZONES("pgscan_direct")
 
+#ifdef CONFIG_NUMA
+	"zone_reclaim_failed",
+#endif
 	"pginodesteal",
 	"slabs_scanned",
 	"kswapd_steal",
 	"kswapd_inodesteal",
+	"kswapd_low_wmark_hit_quickly",
+	"kswapd_high_wmark_hit_quickly",
+	"kswapd_skip_congestion_wait",
 	"pageoutrun",
 	"allocstall",
 
@@ -687,7 +697,6 @@ static const char * const vmstat_text[] = {
 	"htlb_buddy_alloc_success",
 	"htlb_buddy_alloc_fail",
 #endif
-#ifdef CONFIG_UNEVICTABLE_LRU
 	"unevictable_pgs_culled",
 	"unevictable_pgs_scanned",
 	"unevictable_pgs_rescued",
@@ -696,7 +705,6 @@ static const char * const vmstat_text[] = {
 	"unevictable_pgs_cleared",
 	"unevictable_pgs_stranded",
 	"unevictable_pgs_mlockfreed",
-#endif
 #endif
 };
 
@@ -710,18 +718,14 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 		   "\n        min      %lu"
 		   "\n        low      %lu"
 		   "\n        high     %lu"
-		   "\n        scanned  %lu (aa: %lu ia: %lu af: %lu if: %lu)"
+		   "\n        scanned  %lu"
 		   "\n        spanned  %lu"
 		   "\n        present  %lu",
 		   zone_page_state(zone, NR_FREE_PAGES),
-		   zone->pages_min,
-		   zone->pages_low,
-		   zone->pages_high,
+		   min_wmark_pages(zone),
+		   low_wmark_pages(zone),
+		   high_wmark_pages(zone),
 		   zone->pages_scanned,
-		   zone->lru[LRU_ACTIVE_ANON].nr_scan,
-		   zone->lru[LRU_INACTIVE_ANON].nr_scan,
-		   zone->lru[LRU_ACTIVE_FILE].nr_scan,
-		   zone->lru[LRU_INACTIVE_FILE].nr_scan,
 		   zone->spanned_pages,
 		   zone->present_pages);
 
@@ -740,7 +744,7 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 	for_each_online_cpu(i) {
 		struct per_cpu_pageset *pageset;
 
-		pageset = zone_pcp(zone, i);
+		pageset = per_cpu_ptr(zone->pageset, i);
 		seq_printf(m,
 			   "\n    cpu: %i"
 			   "\n              count: %i"
@@ -760,7 +764,7 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 		   "\n  prev_priority:     %i"
 		   "\n  start_pfn:         %lu"
 		   "\n  inactive_ratio:    %u",
-			   zone_is_all_unreclaimable(zone),
+		   zone->all_unreclaimable,
 		   zone->prev_priority,
 		   zone->zone_start_pfn,
 		   zone->inactive_ratio);
@@ -885,11 +889,10 @@ static void vmstat_update(struct work_struct *w)
 
 static void __cpuinit start_cpu_timer(int cpu)
 {
-	struct delayed_work *vmstat_work = &per_cpu(vmstat_work, cpu);
+	struct delayed_work *work = &per_cpu(vmstat_work, cpu);
 
-	INIT_DELAYED_WORK_DEFERRABLE(vmstat_work, vmstat_update);
-	schedule_delayed_work_on(cpu, vmstat_work,
-				 __round_jiffies_relative(HZ, cpu));
+	INIT_DELAYED_WORK_DEFERRABLE(work, vmstat_update);
+	schedule_delayed_work_on(cpu, work, __round_jiffies_relative(HZ, cpu));
 }
 
 /*
@@ -906,6 +909,7 @@ static int __cpuinit vmstat_cpuup_callback(struct notifier_block *nfb,
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
 		start_cpu_timer(cpu);
+		node_set_state(cpu_to_node(cpu), N_CPU);
 		break;
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:

@@ -1,3 +1,27 @@
+config BF542
+	def_bool y
+	depends on BF542_std || BF542M
+config BF544
+	def_bool y
+	depends on BF544_std || BF544M
+config BF547
+	def_bool y
+	depends on BF547_std || BF547M
+config BF548
+	def_bool y
+	depends on BF548_std || BF548M
+config BF549
+	def_bool y
+	depends on BF549_std || BF549M
+
+config BF54xM
+	def_bool y
+	depends on (BF542M || BF544M || BF547M || BF548M || BF549M)
+
+config BF54x
+	def_bool y
+	depends on (BF542 || BF544 || BF547 || BF548 || BF549)
+
 if (BF54x)
 
 source "arch/blackfin/mach-bf548/boards/Kconfig"
@@ -10,6 +34,13 @@ config DEB_DMA_URGENT
 	default y
 	help
 	  Treat any DEB1, DEB2 and DEB3 request as Urgent
+
+config BF548_ATAPI_ALTERNATIVE_PORT
+	bool "BF548 ATAPI alternative port via GPIO"
+	help
+	  BF548 ATAPI data and address PINs can be routed through
+	  async address or GPIO port F and G. Select y to route it
+	  to GPIO.
 
 comment "Interrupt Priority Assignment"
 menu "Priority"
@@ -250,6 +281,7 @@ config IRQ_OTPSEC
 	default 11
 config IRQ_TIMER0
 	int "IRQ_TIMER0"
+	default 7 if TICKSOURCE_GPTMR0
 	default 8
 config IRQ_TIMER1
 	int "IRQ_TIMER1"

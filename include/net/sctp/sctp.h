@@ -128,6 +128,7 @@ extern int sctp_register_pf(struct sctp_pf *, sa_family_t);
 int sctp_backlog_rcv(struct sock *sk, struct sk_buff *skb);
 int sctp_inet_listen(struct socket *sock, int backlog);
 void sctp_write_space(struct sock *sk);
+void sctp_data_ready(struct sock *sk, int len);
 unsigned int sctp_poll(struct file *file, struct socket *sock,
 		poll_table *wait);
 void sctp_sock_rfree(struct sk_buff *skb);
@@ -227,8 +228,7 @@ DECLARE_SNMP_STAT(struct sctp_mib, sctp_statistics);
 #endif /* !TEST_FRAME */
 
 /* sctp mib definitions */
-enum
-{
+enum {
 	SCTP_MIB_NUM = 0,
 	SCTP_MIB_CURRESTAB,			/* CurrEstab */
 	SCTP_MIB_ACTIVEESTABS,			/* ActiveEstabs */
@@ -448,6 +448,7 @@ static inline void sctp_skb_set_owner_r(struct sk_buff *skb, struct sock *sk)
 {
 	struct sctp_ulpevent *event = sctp_skb2event(skb);
 
+	skb_orphan(skb);
 	skb->sk = sk;
 	skb->destructor = sctp_sock_rfree;
 	atomic_add(event->rmem_len, &sk->sk_rmem_alloc);
@@ -485,15 +486,16 @@ static inline __s32 sctp_jitter(__u32 rto)
 }
 
 /* Break down data chunks at this point.  */
-static inline int sctp_frag_point(const struct sctp_sock *sp, int pmtu)
+static inline int sctp_frag_point(const struct sctp_association *asoc, int pmtu)
 {
+	struct sctp_sock *sp = sctp_sk(asoc->base.sk);
 	int frag = pmtu;
 
 	frag -= sp->pf->af->net_header_len;
 	frag -= sizeof(struct sctphdr) + sizeof(struct sctp_data_chunk);
 
-	if (sp->user_frag)
-		frag = min_t(int, frag, sp->user_frag);
+	if (asoc->user_frag)
+		frag = min_t(int, frag, asoc->user_frag);
 
 	frag = min_t(int, frag, SCTP_MAX_CHUNK_LEN);
 

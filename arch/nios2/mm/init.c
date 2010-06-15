@@ -55,7 +55,6 @@
 
 #define DEBUG
 
-extern void die_if_kernel(char *,struct pt_regs *,long);
 extern void free_initmem(void);
 
 /*

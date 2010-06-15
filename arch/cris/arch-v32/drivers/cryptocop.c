@@ -628,9 +628,9 @@ static int create_output_descriptors(struct cryptocop_operation *operation, int 
 		cdesc->dma_descr->buf = (char*)virt_to_phys(operation->tfrm_op.indata[*iniov_ix].iov_base + *iniov_offset);
 		cdesc->dma_descr->after = cdesc->dma_descr->buf + dlength;
 
+		assert(desc_len >= dlength);
 		desc_len -= dlength;
 		*iniov_offset += dlength;
-		assert(desc_len >= 0);
 		if (*iniov_offset >= operation->tfrm_op.indata[*iniov_ix].iov_len) {
 			*iniov_offset = 0;
 			++(*iniov_ix);
@@ -1395,7 +1395,7 @@ static int create_md5_pad(int alloc_flag, unsigned long long hashed_length, char
 	if (padlen < MD5_MIN_PAD_LENGTH) padlen += MD5_BLOCK_LENGTH;
 
 	p = kmalloc(padlen, alloc_flag);
-	if (!pad) return -ENOMEM;
+	if (!p) return -ENOMEM;
 
 	*p = 0x80;
 	memset(p+1, 0, padlen - 1);
@@ -1427,7 +1427,7 @@ static int create_sha1_pad(int alloc_flag, unsigned long long hashed_length, cha
 	if (padlen < SHA1_MIN_PAD_LENGTH) padlen += SHA1_BLOCK_LENGTH;
 
 	p = kmalloc(padlen, alloc_flag);
-	if (!pad) return -ENOMEM;
+	if (!p) return -ENOMEM;
 
 	*p = 0x80;
 	memset(p+1, 0, padlen - 1);

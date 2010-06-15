@@ -4,7 +4,7 @@
 
 menuconfig DMADEVICES
 	bool "DMA Engine support"
-	depends on !HIGHMEM64G && HAS_DMA
+	depends on HAS_DMA
 	help
 	  DMA engines can do asynchronous data transfers without
 	  involving the host CPU.  Currently, this framework can be
@@ -13,15 +13,37 @@ menuconfig DMADEVICES
 	  DMA Device drivers supported by the configured arch, it may
 	  be empty in some cases.
 
+config DMADEVICES_DEBUG
+        bool "DMA Engine debugging"
+        depends on DMADEVICES != n
+        help
+          This is an option for use by developers; most people should
+          say N here.  This enables DMA engine core and driver debugging.
+
+config DMADEVICES_VDEBUG
+        bool "DMA Engine verbose debugging"
+        depends on DMADEVICES_DEBUG != n
+        help
+          This is an option for use by developers; most people should
+          say N here.  This enables deeper (more verbose) debugging of
+          the DMA engine core and drivers.
+
+
 if DMADEVICES
 
 comment "DMA Devices"
+
+config ASYNC_TX_DISABLE_CHANNEL_SWITCH
+	bool
 
 config INTEL_IOATDMA
 	tristate "Intel I/OAT DMA support"
 	depends on PCI && X86
 	select DMA_ENGINE
 	select DCA
+	select ASYNC_TX_DISABLE_CHANNEL_SWITCH
+	select ASYNC_TX_DISABLE_PQ_VAL_DMA
+	select ASYNC_TX_DISABLE_XOR_VAL_DMA
 	help
 	  Enable support for the Intel(R) I/OAT DMA engine present
 	  in recent Intel Xeon chipsets.
@@ -46,6 +68,14 @@ config DW_DMAC
 	  Support the Synopsys DesignWare AHB DMA controller.  This
 	  can be integrated in chips such as the Atmel AT32ap7000.
 
+config AT_HDMAC
+	tristate "Atmel AHB DMA support"
+	depends on ARCH_AT91SAM9RL || ARCH_AT91SAM9G45
+	select DMA_ENGINE
+	help
+	  Support the Atmel AHB DMA controller.  This can be integrated in
+	  chips such as the Atmel AT91SAM9RL.
+
 config FSL_DMA
 	tristate "Freescale Elo and Elo Plus DMA support"
 	depends on FSL_SOC
@@ -54,6 +84,13 @@ config FSL_DMA
 	  Enable support for the Freescale Elo and Elo Plus DMA controllers.
 	  The Elo is the DMA controller on some 82xx and 83xx parts, and the
 	  Elo Plus is the DMA controller on 85xx and 86xx parts.
+
+config MPC512X_DMA
+	tristate "Freescale MPC512x built-in DMA engine support"
+	depends on PPC_MPC512x
+	select DMA_ENGINE
+	---help---
+	  Enable support for the Freescale MPC512x built-in DMA engine.
 
 config MV_XOR
 	bool "Marvell XOR engine support"
@@ -80,6 +117,40 @@ config MX3_IPU_IRQS
 	  Out of 137 interrupt sources on i.MX31 IPU only very few are used.
 	  To avoid bloating the irq_desc[] array we allocate a sufficient
 	  number of IRQ slots and map them dynamically to specific sources.
+
+config TXX9_DMAC
+	tristate "Toshiba TXx9 SoC DMA support"
+	depends on MACH_TX49XX || MACH_TX39XX
+	select DMA_ENGINE
+	help
+	  Support the TXx9 SoC internal DMA controller.  This can be
+	  integrated in chips such as the Toshiba TX4927/38/39.
+
+config SH_DMAE
+	tristate "Renesas SuperH DMAC support"
+	depends on SUPERH && SH_DMA
+	depends on !SH_DMA_API
+	select DMA_ENGINE
+	help
+	  Enable support for the Renesas SuperH DMA controllers.
+
+config COH901318
+	bool "ST-Ericsson COH901318 DMA support"
+	select DMA_ENGINE
+	depends on ARCH_U300
+	help
+	  Enable support for ST-Ericsson COH 901 318 DMA.
+
+config AMCC_PPC440SPE_ADMA
+	tristate "AMCC PPC440SPe ADMA support"
+	depends on 440SPe || 440SP
+	select DMA_ENGINE
+	select ARCH_HAS_ASYNC_TX_FIND_CHANNEL
+	help
+	  Enable support for the AMCC PPC440SPe RAID engines.
+
+config ARCH_HAS_ASYNC_TX_FIND_CHANNEL
+	bool
 
 config DMA_ENGINE
 	bool

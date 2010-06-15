@@ -393,11 +393,13 @@ acpi_system_write_wakeup_device(struct file *file,
 	struct list_head *node, *next;
 	char strbuf[5];
 	char str[5] = "";
-	int len = count;
+	unsigned int len = count;
 	struct acpi_device *found_dev = NULL;
 
 	if (len > 4)
 		len = 4;
+	if (len < 0)
+		return -EFAULT;
 
 	if (copy_from_user(strbuf, buffer, len))
 		return -EFAULT;
@@ -433,7 +435,7 @@ acpi_system_write_wakeup_device(struct file *file,
 				found_dev->wakeup.gpe_device)) {
 				printk(KERN_WARNING
 				       "ACPI: '%s' and '%s' have the same GPE, "
-				       "can't disable/enable one seperately\n",
+				       "can't disable/enable one separately\n",
 				       dev->pnp.bus_id, found_dev->pnp.bus_id);
 				dev->wakeup.state.enabled =
 				    found_dev->wakeup.state.enabled;

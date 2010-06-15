@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/tty.h>
+#include <linux/slab.h>
 #include <linux/tty_driver.h>
 #include <linux/tty_flip.h>
 #include <linux/module.h>
@@ -21,7 +22,7 @@
 
 static int debug;
 
-static struct usb_device_id id_table[] = {
+static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(0x05e0, 0x0600) },
 	{ },
 };
@@ -51,7 +52,6 @@ static void symbol_int_callback(struct urb *urb)
 	int status = urb->status;
 	struct tty_struct *tty;
 	int result;
-	int available_room = 0;
 	int data_length;
 
 	dbg("%s - port %d", __func__, port->number);
@@ -89,18 +89,13 @@ static void symbol_int_callback(struct urb *urb)
 		 */
 		tty = tty_port_tty_get(&port->port);
 		if (tty) {
-			available_room = tty_buffer_request_room(tty,
-							data_length);
-			if (available_room) {
-				tty_insert_flip_string(tty, &data[1],
-						       available_room);
-				tty_flip_buffer_push(tty);
-			}
+			tty_insert_flip_string(tty, &data[1], data_length);
+			tty_flip_buffer_push(tty);
 			tty_kref_put(tty);
 		}
 	} else {
 		dev_dbg(&priv->udev->dev,
-			"Improper ammount of data received from the device, "
+			"Improper amount of data received from the device, "
 			"%d bytes", urb->actual_length);
 	}
 
@@ -124,8 +119,7 @@ exit:
 	spin_unlock(&priv->lock);
 }
 
-static int symbol_open(struct tty_struct *tty, struct usb_serial_port *port,
-			struct file *filp)
+static int symbol_open(struct tty_struct *tty, struct usb_serial_port *port)
 {
 	struct symbol_private *priv = usb_get_serial_data(port->serial);
 	unsigned long flags;
@@ -152,8 +146,7 @@ static int symbol_open(struct tty_struct *tty, struct usb_serial_port *port,
 	return result;
 }
 
-static void symbol_close(struct tty_struct *tty, struct usb_serial_port *port,
-			  struct file *filp)
+static void symbol_close(struct usb_serial_port *port)
 {
 	struct symbol_private *priv = usb_get_serial_data(port->serial);
 
@@ -167,34 +160,36 @@ static void symbol_throttle(struct tty_struct *tty)
 {
 	struct usb_serial_port *port = tty->driver_data;
 	struct symbol_private *priv = usb_get_serial_data(port->serial);
-	unsigned long flags;
 
 	dbg("%s - port %d", __func__, port->number);
-	spin_lock_irqsave(&priv->lock, flags);
+	spin_lock_irq(&priv->lock);
 	priv->throttled = true;
-	spin_unlock_irqrestore(&priv->lock, flags);
+	spin_unlock_irq(&priv->lock);
 }
 
 static void symbol_unthrottle(struct tty_struct *tty)
 {
 	struct usb_serial_port *port = tty->driver_data;
 	struct symbol_private *priv = usb_get_serial_data(port->serial);
-	unsigned long flags;
 	int result;
+	bool was_throttled;
 
 	dbg("%s - port %d", __func__, port->number);
 
-	spin_lock_irqsave(&priv->lock, flags);
+	spin_lock_irq(&priv->lock);
 	priv->throttled = false;
+	was_throttled = priv->actually_throttled;
 	priv->actually_throttled = false;
-	spin_unlock_irqrestore(&priv->lock, flags);
+	spin_unlock_irq(&priv->lock);
 
 	priv->int_urb->dev = port->serial->dev;
-	result = usb_submit_urb(priv->int_urb, GFP_ATOMIC);
-	if (result)
-		dev_err(&port->dev,
-			"%s - failed submitting read urb, error %d\n",
+	if (was_throttled) {
+		result = usb_submit_urb(priv->int_urb, GFP_KERNEL);
+		if (result)
+			dev_err(&port->dev,
+				"%s - failed submitting read urb, error %d\n",
 							__func__, result);
+	}
 }
 
 static int symbol_startup(struct usb_serial *serial)
@@ -268,7 +263,7 @@ error:
 	return retval;
 }
 
-static void symbol_shutdown(struct usb_serial *serial)
+static void symbol_disconnect(struct usb_serial *serial)
 {
 	struct symbol_private *priv = usb_get_serial_data(serial);
 
@@ -276,9 +271,16 @@ static void symbol_shutdown(struct usb_serial *serial)
 
 	usb_kill_urb(priv->int_urb);
 	usb_free_urb(priv->int_urb);
+}
+
+static void symbol_release(struct usb_serial *serial)
+{
+	struct symbol_private *priv = usb_get_serial_data(serial);
+
+	dbg("%s", __func__);
+
 	kfree(priv->int_buffer);
 	kfree(priv);
-	usb_set_serial_data(serial, NULL);
 }
 
 static struct usb_driver symbol_driver = {
@@ -300,7 +302,8 @@ static struct usb_serial_driver symbol_device = {
 	.attach =		symbol_startup,
 	.open =			symbol_open,
 	.close =		symbol_close,
-	.shutdown =		symbol_shutdown,
+	.disconnect =		symbol_disconnect,
+	.release =		symbol_release,
 	.throttle = 		symbol_throttle,
 	.unthrottle =		symbol_unthrottle,
 };

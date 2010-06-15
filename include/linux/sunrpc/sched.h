@@ -130,12 +130,14 @@ struct rpc_task_setup {
 #define RPC_TASK_DYNAMIC	0x0080		/* task was kmalloc'ed */
 #define RPC_TASK_KILLED		0x0100		/* task was killed */
 #define RPC_TASK_SOFT		0x0200		/* Use soft timeouts */
+#define RPC_TASK_SOFTCONN	0x0400		/* Fail if can't connect */
 
 #define RPC_IS_ASYNC(t)		((t)->tk_flags & RPC_TASK_ASYNC)
 #define RPC_IS_SWAPPER(t)	((t)->tk_flags & RPC_TASK_SWAPPER)
 #define RPC_DO_ROOTOVERRIDE(t)	((t)->tk_flags & RPC_TASK_ROOTCREDS)
 #define RPC_ASSASSINATED(t)	((t)->tk_flags & RPC_TASK_KILLED)
 #define RPC_IS_SOFT(t)		((t)->tk_flags & RPC_TASK_SOFT)
+#define RPC_IS_SOFTCONN(t)	((t)->tk_flags & RPC_TASK_SOFTCONN)
 
 #define RPC_TASK_RUNNING	0
 #define RPC_TASK_QUEUED		1
@@ -171,7 +173,8 @@ struct rpc_task_setup {
 #define RPC_PRIORITY_LOW	(-1)
 #define RPC_PRIORITY_NORMAL	(0)
 #define RPC_PRIORITY_HIGH	(1)
-#define RPC_NR_PRIORITY		(1 + RPC_PRIORITY_HIGH - RPC_PRIORITY_LOW)
+#define RPC_PRIORITY_PRIVILEGED	(2)
+#define RPC_NR_PRIORITY		(1 + RPC_PRIORITY_PRIVILEGED - RPC_PRIORITY_LOW)
 
 struct rpc_timer {
 	struct timer_list timer;
@@ -210,6 +213,8 @@ struct rpc_wait_queue {
  */
 struct rpc_task *rpc_new_task(const struct rpc_task_setup *);
 struct rpc_task *rpc_run_task(const struct rpc_task_setup *);
+struct rpc_task *rpc_run_bc_task(struct rpc_rqst *req,
+				const struct rpc_call_ops *ops);
 void		rpc_put_task(struct rpc_task *);
 void		rpc_exit_task(struct rpc_task *);
 void		rpc_release_calldata(const struct rpc_call_ops *, void *);
@@ -225,6 +230,7 @@ void		rpc_wake_up_queued_task(struct rpc_wait_queue *,
 void		rpc_wake_up(struct rpc_wait_queue *);
 struct rpc_task *rpc_wake_up_next(struct rpc_wait_queue *);
 void		rpc_wake_up_status(struct rpc_wait_queue *, int);
+int		rpc_queue_empty(struct rpc_wait_queue *);
 void		rpc_delay(struct rpc_task *, unsigned long);
 void *		rpc_malloc(struct rpc_task *, size_t);
 void		rpc_free(void *);
@@ -237,6 +243,7 @@ void		rpc_show_tasks(void);
 int		rpc_init_mempool(void);
 void		rpc_destroy_mempool(void);
 extern struct workqueue_struct *rpciod_workqueue;
+void		rpc_prepare_task(struct rpc_task *task);
 
 static inline void rpc_exit(struct rpc_task *task, int status)
 {
@@ -247,6 +254,16 @@ static inline void rpc_exit(struct rpc_task *task, int status)
 static inline int rpc_wait_for_completion_task(struct rpc_task *task)
 {
 	return __rpc_wait_for_completion_task(task, NULL);
+}
+
+static inline void rpc_task_set_priority(struct rpc_task *task, unsigned char prio)
+{
+	task->tk_priority = prio - RPC_PRIORITY_LOW;
+}
+
+static inline int rpc_task_has_priority(struct rpc_task *task, unsigned char prio)
+{
+	return (task->tk_priority + RPC_PRIORITY_LOW == prio);
 }
 
 #ifdef RPC_DEBUG

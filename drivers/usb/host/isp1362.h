@@ -69,16 +69,6 @@ static inline void delayed_insw(unsigned int addr, void *buf, int len)
 	}
 }
 
-#elif defined(CONFIG_NIOS2)
-
-#include <linux/io.h>
-#define USE_32BIT		0
-#define MAX_ROOT_PORTS		2
-#define USE_PLATFORM_DELAY	0
-#define USE_NDELAY		1
-#define DUMMY_DELAY_ACCESS	do {} while(0)
-#define __test_bit(nr, addr)	test_bit((nr), (addr))
-
 #else
 
 #define MAX_ROOT_PORTS		2
@@ -171,8 +161,8 @@ ISP1362_REG(HCRHPORT2,	0x16,	REG_WIDTH_32,	REG_ACCESS_RW);
 ISP1362_REG(HCHWCFG,	0x20,	REG_WIDTH_16,	REG_ACCESS_RW);
 #define HCHWCFG_DISABLE_SUSPEND	(1 << 15)
 #define HCHWCFG_GLOBAL_PWRDOWN	(1 << 14)
-#define HCHWCFG_PULLDOWN_DS1	(1 << 13)
-#define HCHWCFG_PULLDOWN_DS2	(1 << 12)
+#define HCHWCFG_PULLDOWN_DS2	(1 << 13)
+#define HCHWCFG_PULLDOWN_DS1	(1 << 12)
 #define HCHWCFG_CLKNOTSTOP	(1 << 11)
 #define HCHWCFG_ANALOG_OC	(1 << 10)
 #define HCHWCFG_ONEINT		(1 << 9)
@@ -544,8 +534,8 @@ struct isp1362_hcd {
 
 	/* periodic schedule: isochronous */
 	struct list_head	isoc;
-	int			istl_flip:1;
-	int			irq_active:1;
+	unsigned int		istl_flip:1;
+	unsigned int		irq_active:1;
 
 	/* Schedules for the current frame */
 	struct isp1362_ep_queue atl_queue;

@@ -29,7 +29,7 @@
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
 #include <mach/gpio.h>
-#include <mach/mcbsp.h>
+#include <plat/mcbsp.h>
 
 #include "omap-mcbsp.h"
 #include "omap-pcm.h"
@@ -83,7 +83,7 @@ static struct snd_soc_dai_link overo_dai = {
 	.name = "TWL4030",
 	.stream_name = "TWL4030",
 	.cpu_dai = &omap_mcbsp_dai[0],
-	.codec_dai = &twl4030_dai,
+	.codec_dai = &twl4030_dai[TWL4030_DAI_HIFI],
 	.ops = &overo_ops,
 };
 
@@ -107,8 +107,8 @@ static int __init overo_soc_init(void)
 {
 	int ret;
 
-	if (!machine_is_overo()) {
-		pr_debug("Not Overo!\n");
+	if (!(machine_is_overo() || machine_is_cm_t35())) {
+		pr_debug("Incomatible machine!\n");
 		return -ENODEV;
 	}
 	printk(KERN_INFO "overo SoC init\n");

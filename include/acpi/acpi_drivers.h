@@ -57,8 +57,7 @@
  */
 
 #define ACPI_POWER_HID			"LNXPOWER"
-#define ACPI_PROCESSOR_OBJECT_HID	"ACPI_CPU"
-#define ACPI_PROCESSOR_HID		"ACPI0007"
+#define ACPI_PROCESSOR_OBJECT_HID	"LNXCPU"
 #define ACPI_SYSTEM_HID			"LNXSYSTM"
 #define ACPI_THERMAL_HID		"LNXTHERM"
 #define ACPI_BUTTON_HID_POWERF		"LNXPWRBN"
@@ -66,6 +65,8 @@
 #define ACPI_VIDEO_HID			"LNXVIDEO"
 #define ACPI_BAY_HID			"LNXIOBAY"
 #define ACPI_DOCK_HID			"LNXDOCK"
+/* Quirk for broken IBM BIOSes */
+#define ACPI_SMBUS_IBM_HID		"SMBUSIBM"
 
 /*
  * For fixed hardware buttons, we fabricate acpi_devices with HID
@@ -91,22 +92,21 @@ int acpi_pci_link_free_irq(acpi_handle handle);
 
 /* ACPI PCI Interrupt Routing (pci_irq.c) */
 
-int acpi_pci_irq_add_prt(acpi_handle handle, int segment, int bus);
-void acpi_pci_irq_del_prt(int segment, int bus);
+int acpi_pci_irq_add_prt(acpi_handle handle, struct pci_bus *bus);
+void acpi_pci_irq_del_prt(struct pci_bus *bus);
 
 /* ACPI PCI Device Binding (pci_bind.c) */
 
 struct pci_bus;
 
-acpi_status acpi_get_pci_id(acpi_handle handle, struct acpi_pci_id *id);
-int acpi_pci_bind(struct acpi_device *device);
-int acpi_pci_bind_root(struct acpi_device *device, struct acpi_pci_id *id,
-		       struct pci_bus *bus);
+struct pci_dev *acpi_get_pci_dev(acpi_handle);
+int acpi_pci_bind_root(struct acpi_device *device);
 
 /* Arch-defined function to add a bus to the system */
 
 struct pci_bus *pci_acpi_scan_root(struct acpi_device *device, int domain,
 				   int bus);
+void pci_acpi_crs_quirks(void);
 
 /* --------------------------------------------------------------------------
                                     Processor

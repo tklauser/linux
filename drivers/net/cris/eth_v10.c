@@ -18,7 +18,6 @@
 #include <linux/ptrace.h>
 #include <linux/ioport.h>
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/spinlock.h>
 #include <linux/errno.h>
@@ -768,10 +767,24 @@ e100_negotiate(struct net_device* dev)
 
 	e100_set_mdio_reg(dev, np->mii_if.phy_id, MII_ADVERTISE, data);
 
-	/* Renegotiate with link partner */
+	data = e100_get_mdio_reg(dev, np->mii_if.phy_id, MII_BMCR);
 	if (autoneg_normal) {
-	  data = e100_get_mdio_reg(dev, np->mii_if.phy_id, MII_BMCR);
-	data |= BMCR_ANENABLE | BMCR_ANRESTART;
+		/* Renegotiate with link partner */
+		data |= BMCR_ANENABLE | BMCR_ANRESTART;
+	} else {
+		/* Don't negotiate speed or duplex */
+		data &= ~(BMCR_ANENABLE | BMCR_ANRESTART);
+
+		/* Set speed and duplex static */
+		if (current_speed_selection == 10)
+			data &= ~BMCR_SPEED100;
+		else
+			data |= BMCR_SPEED100;
+
+		if (current_duplex != full)
+			data &= ~BMCR_FULLDPLX;
+		else
+			data |= BMCR_FULLDPLX;
 	}
 	e100_set_mdio_reg(dev, np->mii_if.phy_id, MII_BMCR, data);
 }
@@ -1108,7 +1121,7 @@ e100_send_packet(struct sk_buff *skb, struct net_device *dev)
 
 	spin_unlock_irqrestore(&np->lock, flags);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -1550,7 +1563,7 @@ static void
 set_multicast_list(struct net_device *dev)
 {
 	struct net_local *lp = netdev_priv(dev);
-	int num_addr = dev->mc_count;
+	int num_addr = netdev_mc_count(dev);
 	unsigned long int lo_bits;
 	unsigned long int hi_bits;
 
@@ -1582,13 +1595,12 @@ set_multicast_list(struct net_device *dev)
 	} else {
 		/* MC mode, receive normal and MC packets */
 		char hash_ix;
-		struct dev_mc_list *dmi = dev->mc_list;
-		int i;
+		struct dev_mc_list *dmi;
 		char *baddr;
 
 		lo_bits = 0x00000000ul;
 		hi_bits = 0x00000000ul;
-		for (i = 0; i < num_addr; i++) {
+		netdev_for_each_mc_addr(dmi, dev) {
 			/* Calculate the hash index for the GA registers */
 
 			hash_ix = 0;
@@ -1618,7 +1630,6 @@ set_multicast_list(struct net_device *dev)
 			} else {
 				lo_bits |= (1 << hash_ix);
 			}
-			dmi = dmi->next;
 		}
 		/* Disable individual receive */
 		SETS(network_rec_config_shadow, R_NETWORK_REC_CONFIG, individual, discard);

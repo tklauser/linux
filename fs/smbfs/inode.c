@@ -459,20 +459,16 @@ smb_show_options(struct seq_file *s, struct vfsmount *m)
 static void
 smb_unload_nls(struct smb_sb_info *server)
 {
-	if (server->remote_nls) {
-		unload_nls(server->remote_nls);
-		server->remote_nls = NULL;
-	}
-	if (server->local_nls) {
-		unload_nls(server->local_nls);
-		server->local_nls = NULL;
-	}
+	unload_nls(server->remote_nls);
+	unload_nls(server->local_nls);
 }
 
 static void
 smb_put_super(struct super_block *sb)
 {
 	struct smb_sb_info *server = SMB_SB(sb);
+
+	lock_kernel();
 
 	smb_lock_server(server);
 	server->state = CONN_INVALID;
@@ -483,12 +479,15 @@ smb_put_super(struct super_block *sb)
 	if (server->conn_pid)
 		kill_pid(server->conn_pid, SIGTERM, 1);
 
+	bdi_destroy(&server->bdi);
 	kfree(server->ops);
 	smb_unload_nls(server);
 	sb->s_fs_info = NULL;
 	smb_unlock_server(server);
 	put_pid(server->conn_pid);
 	kfree(server);
+
+	unlock_kernel();
 }
 
 static int smb_fill_super(struct super_block *sb, void *raw_data, int silent)
@@ -527,6 +526,11 @@ static int smb_fill_super(struct super_block *sb, void *raw_data, int silent)
 	if (!server)
 		goto out_no_server;
 	sb->s_fs_info = server;
+	
+	if (bdi_setup_and_register(&server->bdi, "smbfs", BDI_CAP_MAP_COPY))
+		goto out_bdi;
+
+	sb->s_bdi = &server->bdi;
 
 	server->super_block = sb;
 	server->mnt = NULL;
@@ -626,6 +630,8 @@ out_no_smbiod:
 out_bad_option:
 	kfree(mem);
 out_no_mem:
+	bdi_destroy(&server->bdi);
+out_bdi:
 	if (!server->mnt)
 		printk(KERN_ERR "smb_fill_super: allocation failure\n");
 	sb->s_fs_info = NULL;

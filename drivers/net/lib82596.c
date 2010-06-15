@@ -47,7 +47,7 @@
    TBD:
    * look at deferring rx frames rather than discarding (as per tulip)
    * handle tx ring full as per tulip
-   * performace test to tune rx_copybreak
+   * performance test to tune rx_copybreak
 
    Most of my modifications relate to the braindead big-endian
    implementation by Intel.  When the i596 is operating in
@@ -73,7 +73,6 @@
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/netdevice.h>
@@ -85,6 +84,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/io.h>
 #include <linux/irq.h>
+#include <linux/gfp.h>
 
 /* DEBUG flags
  */
@@ -470,11 +470,11 @@ static inline int init_rx_bufs(struct net_device *dev)
 
 	for (i = 0, rbd = dma->rbds; i < rx_ring_size; i++, rbd++) {
 		dma_addr_t dma_addr;
-		struct sk_buff *skb = netdev_alloc_skb(dev, PKT_BUF_SZ + 4);
+		struct sk_buff *skb;
 
+		skb = netdev_alloc_skb_ip_align(dev, PKT_BUF_SZ);
 		if (skb == NULL)
 			return -1;
-		skb_reserve(skb, 2);
 		dma_addr = dma_map_single(dev->dev.parent, skb->data,
 					  PKT_BUF_SZ, DMA_FROM_DEVICE);
 		rbd->v_next = rbd+1;
@@ -588,7 +588,7 @@ static int init_i596_mem(struct net_device *dev)
 			     "%s: i82596 initialization successful\n",
 			     dev->name));
 
-	if (request_irq(dev->irq, &i596_interrupt, 0, "i82596", dev)) {
+	if (request_irq(dev->irq, i596_interrupt, 0, "i82596", dev)) {
 		printk(KERN_ERR "%s: IRQ %d not free\n", dev->name, dev->irq);
 		goto failed;
 	}
@@ -697,12 +697,12 @@ static inline int i596_rx(struct net_device *dev)
 						 (dma_addr_t)SWAP32(rbd->b_data),
 						 PKT_BUF_SZ, DMA_FROM_DEVICE);
 				/* Get fresh skbuff to replace filled one. */
-				newskb = netdev_alloc_skb(dev, PKT_BUF_SZ + 4);
+				newskb = netdev_alloc_skb_ip_align(dev,
+								   PKT_BUF_SZ);
 				if (newskb == NULL) {
 					skb = NULL;	/* drop pkt */
 					goto memory_squeeze;
 				}
-				skb_reserve(newskb, 2);
 
 				/* Pass up the skb already on the Rx ring. */
 				skb_put(skb, pkt_len);
@@ -716,7 +716,7 @@ static inline int i596_rx(struct net_device *dev)
 				rbd->b_data = SWAP32(dma_addr);
 				DMA_WBACK_INV(dev, rbd, sizeof(struct i596_rbd));
 			} else
-				skb = netdev_alloc_skb(dev, pkt_len + 2);
+				skb = netdev_alloc_skb_ip_align(dev, pkt_len);
 memory_squeeze:
 			if (skb == NULL) {
 				/* XXX tulip.c can defer packets here!! */
@@ -730,7 +730,6 @@ memory_squeeze:
 					dma_sync_single_for_cpu(dev->dev.parent,
 								(dma_addr_t)SWAP32(rbd->b_data),
 								PKT_BUF_SZ, DMA_FROM_DEVICE);
-					skb_reserve(skb, 2);
 					memcpy(skb_put(skb, pkt_len), rbd->v_data, pkt_len);
 					dma_sync_single_for_device(dev->dev.parent,
 								   (dma_addr_t)SWAP32(rbd->b_data),
@@ -983,7 +982,7 @@ static int i596_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if (length < ETH_ZLEN) {
 		if (skb_padto(skb, ETH_ZLEN))
-			return 0;
+			return NETDEV_TX_OK;
 		length = ETH_ZLEN;
 	}
 
@@ -1028,7 +1027,7 @@ static int i596_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	netif_start_queue(dev);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void print_eth(unsigned char *add, char *str)
@@ -1036,6 +1035,19 @@ static void print_eth(unsigned char *add, char *str)
 	printk(KERN_DEBUG "i596 0x%p, %pM --> %pM %02X%02X, %s\n",
 	       add, add + 6, add, add[12], add[13], str);
 }
+static const struct net_device_ops i596_netdev_ops = {
+	.ndo_open		= i596_open,
+	.ndo_stop		= i596_close,
+	.ndo_start_xmit		= i596_start_xmit,
+	.ndo_set_multicast_list	= set_multicast_list,
+	.ndo_tx_timeout		= i596_tx_timeout,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_set_mac_address	= eth_mac_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller	= i596_poll_controller,
+#endif
+};
 
 static int __devinit i82596_probe(struct net_device *dev)
 {
@@ -1062,16 +1074,8 @@ static int __devinit i82596_probe(struct net_device *dev)
 		return -ENOMEM;
 	}
 
-	/* The 82596-specific entries in the device structure. */
-	dev->open = i596_open;
-	dev->stop = i596_close;
-	dev->hard_start_xmit = i596_start_xmit;
-	dev->set_multicast_list = set_multicast_list;
-	dev->tx_timeout = i596_tx_timeout;
+	dev->netdev_ops = &i596_netdev_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
-#ifdef CONFIG_NET_POLL_CONTROLLER
-	dev->poll_controller = i596_poll_controller;
-#endif
 
 	memset(dma, 0, sizeof(struct i596_dma));
 	lp->dma = dma;
@@ -1090,11 +1094,9 @@ static int __devinit i82596_probe(struct net_device *dev)
 		return i;
 	};
 
-	DEB(DEB_PROBE, printk(KERN_INFO "%s: 82596 at %#3lx,",
-			      dev->name, dev->base_addr));
-	for (i = 0; i < 6; i++)
-		DEB(DEB_PROBE, printk(" %2.2X", dev->dev_addr[i]));
-	DEB(DEB_PROBE, printk(" IRQ %d.\n", dev->irq));
+	DEB(DEB_PROBE, printk(KERN_INFO "%s: 82596 at %#3lx, %pM IRQ %d.\n",
+			      dev->name, dev->base_addr, dev->dev_addr,
+			      dev->irq));
 	DEB(DEB_INIT, printk(KERN_INFO
 			     "%s: dma at 0x%p (%d bytes), lp->scb at 0x%p\n",
 			     dev->name, dma, (int)sizeof(struct i596_dma),
@@ -1378,31 +1380,32 @@ static void set_multicast_list(struct net_device *dev)
 		}
 	}
 
-	cnt = dev->mc_count;
+	cnt = netdev_mc_count(dev);
 	if (cnt > MAX_MC_CNT) {
 		cnt = MAX_MC_CNT;
 		printk(KERN_NOTICE "%s: Only %d multicast addresses supported",
 			dev->name, cnt);
 	}
 
-	if (dev->mc_count > 0) {
+	if (!netdev_mc_empty(dev)) {
 		struct dev_mc_list *dmi;
 		unsigned char *cp;
 		struct mc_cmd *cmd;
 
 		cmd = &dma->mc_cmd;
 		cmd->cmd.command = SWAP16(CmdMulticastList);
-		cmd->mc_cnt = SWAP16(dev->mc_count * 6);
+		cmd->mc_cnt = SWAP16(netdev_mc_count(dev) * 6);
 		cp = cmd->mc_addrs;
-		for (dmi = dev->mc_list;
-		     cnt && dmi != NULL;
-		     dmi = dmi->next, cnt--, cp += 6) {
+		netdev_for_each_mc_addr(dmi, dev) {
+			if (!cnt--)
+				break;
 			memcpy(cp, dmi->dmi_addr, 6);
 			if (i596_debug > 1)
 				DEB(DEB_MULTI,
 				    printk(KERN_DEBUG
 					   "%s: Adding address %pM\n",
 					   dev->name, cp));
+			cp += 6;
 		}
 		DMA_WBACK_INV(dev, &dma->mc_cmd, sizeof(struct mc_cmd));
 		i596_add_cmd(dev, &cmd->cmd);

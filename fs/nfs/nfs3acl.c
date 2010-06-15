@@ -1,4 +1,5 @@
 #include <linux/fs.h>
+#include <linux/gfp.h>
 #include <linux/nfs.h>
 #include <linux/nfs3.h>
 #include <linux/nfs_fs.h>
@@ -207,8 +208,6 @@ struct posix_acl *nfs3_proc_getacl(struct inode *inode, int type)
 	status = nfs_revalidate_inode(server, inode);
 	if (status < 0)
 		return ERR_PTR(status);
-	if (NFS_I(inode)->cache_validity & NFS_INO_INVALID_ACL)
-		nfs_zap_acl_cache(inode);
 	acl = nfs3_get_cached_acl(inode, type);
 	if (acl != ERR_PTR(-EAGAIN))
 		return acl;

@@ -28,6 +28,7 @@
 #include "meta_io.h"
 #include "util.h"
 #include "dir.h"
+#include "trace_gfs2.h"
 
 #define PULL 1
 
@@ -120,7 +121,7 @@ __acquires(&sdp->sd_log_lock)
 			lock_buffer(bh);
 			if (test_clear_buffer_dirty(bh)) {
 				bh->b_end_io = end_buffer_write_sync;
-				submit_bh(WRITE, bh);
+				submit_bh(WRITE_SYNC_PLUG, bh);
 			} else {
 				unlock_buffer(bh);
 				brelse(bh);
@@ -313,6 +314,7 @@ int gfs2_log_reserve(struct gfs2_sbd *sdp, unsigned int blks)
 		gfs2_log_lock(sdp);
 	}
 	atomic_sub(blks, &sdp->sd_log_blks_free);
+	trace_gfs2_log_blocks(sdp, -blks);
 	gfs2_log_unlock(sdp);
 	mutex_unlock(&sdp->sd_log_reserve_mutex);
 
@@ -333,6 +335,7 @@ void gfs2_log_release(struct gfs2_sbd *sdp, unsigned int blks)
 
 	gfs2_log_lock(sdp);
 	atomic_add(blks, &sdp->sd_log_blks_free);
+	trace_gfs2_log_blocks(sdp, blks);
 	gfs2_assert_withdraw(sdp,
 			     atomic_read(&sdp->sd_log_blks_free) <= sdp->sd_jdesc->jd_blocks);
 	gfs2_log_unlock(sdp);
@@ -414,7 +417,7 @@ static unsigned int calc_reserved(struct gfs2_sbd *sdp)
 	databufhdrs_needed = (sdp->sd_log_commited_databuf +
 			      (dbuf_limit - 1)) / dbuf_limit;
 
-	if (sdp->sd_log_commited_revoke)
+	if (sdp->sd_log_commited_revoke > 0)
 		revokes = gfs2_struct2blk(sdp, sdp->sd_log_commited_revoke,
 					  sizeof(u64));
 
@@ -558,6 +561,7 @@ static void log_pull_tail(struct gfs2_sbd *sdp, unsigned int new_tail)
 
 	gfs2_log_lock(sdp);
 	atomic_add(dist, &sdp->sd_log_blks_free);
+	trace_gfs2_log_blocks(sdp, dist);
 	gfs2_assert_withdraw(sdp, atomic_read(&sdp->sd_log_blks_free) <= sdp->sd_jdesc->jd_blocks);
 	gfs2_log_unlock(sdp);
 
@@ -592,7 +596,9 @@ static void log_write_header(struct gfs2_sbd *sdp, u32 flags, int pull)
 	memset(lh, 0, sizeof(struct gfs2_log_header));
 	lh->lh_header.mh_magic = cpu_to_be32(GFS2_MAGIC);
 	lh->lh_header.mh_type = cpu_to_be32(GFS2_METATYPE_LH);
+	lh->lh_header.__pad0 = cpu_to_be64(0);
 	lh->lh_header.mh_format = cpu_to_be32(GFS2_FORMAT_LH);
+	lh->lh_header.mh_jid = cpu_to_be32(sdp->sd_jdesc->jd_jid);
 	lh->lh_sequence = cpu_to_be64(sdp->sd_log_sequence++);
 	lh->lh_flags = cpu_to_be32(flags);
 	lh->lh_tail = cpu_to_be32(tail);
@@ -604,7 +610,7 @@ static void log_write_header(struct gfs2_sbd *sdp, u32 flags, int pull)
 	if (test_bit(SDF_NOBARRIERS, &sdp->sd_flags))
 		goto skip_barrier;
 	get_bh(bh);
-	submit_bh(WRITE_BARRIER | (1 << BIO_RW_META), bh);
+	submit_bh(WRITE_SYNC | (1 << BIO_RW_BARRIER) | (1 << BIO_RW_META), bh);
 	wait_on_buffer(bh);
 	if (buffer_eopnotsupp(bh)) {
 		clear_buffer_eopnotsupp(bh);
@@ -664,7 +670,7 @@ static void gfs2_ordered_write(struct gfs2_sbd *sdp)
 		lock_buffer(bh);
 		if (buffer_mapped(bh) && test_clear_buffer_dirty(bh)) {
 			bh->b_end_io = end_buffer_write_sync;
-			submit_bh(WRITE, bh);
+			submit_bh(WRITE_SYNC_PLUG, bh);
 		} else {
 			unlock_buffer(bh);
 			brelse(bh);
@@ -715,6 +721,7 @@ void __gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl)
 		up_write(&sdp->sd_log_flush_lock);
 		return;
 	}
+	trace_gfs2_log_flush(sdp, 1);
 
 	ai = kzalloc(sizeof(struct gfs2_ail), GFP_NOFS | __GFP_NOFAIL);
 	INIT_LIST_HEAD(&ai->ai_ail1_list);
@@ -746,6 +753,7 @@ void __gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl)
 	else if (sdp->sd_log_tail != current_tail(sdp) && !sdp->sd_log_idle){
 		gfs2_log_lock(sdp);
 		atomic_dec(&sdp->sd_log_blks_free); /* Adjust for unreserved buffer */
+		trace_gfs2_log_blocks(sdp, -1);
 		gfs2_log_unlock(sdp);
 		log_write_header(sdp, 0, PULL);
 	}
@@ -763,8 +771,7 @@ void __gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl)
 		ai = NULL;
 	}
 	gfs2_log_unlock(sdp);
-
-	sdp->sd_vfs->s_dirt = 0;
+	trace_gfs2_log_flush(sdp, 0);
 	up_write(&sdp->sd_log_flush_lock);
 
 	kfree(ai);
@@ -783,11 +790,11 @@ static void log_refund(struct gfs2_sbd *sdp, struct gfs2_trans *tr)
 	gfs2_assert_withdraw(sdp, (((int)sdp->sd_log_commited_buf) >= 0) ||
 			     (((int)sdp->sd_log_commited_databuf) >= 0));
 	sdp->sd_log_commited_revoke += tr->tr_num_revoke - tr->tr_num_revoke_rm;
-	gfs2_assert_withdraw(sdp, ((int)sdp->sd_log_commited_revoke) >= 0);
 	reserved = calc_reserved(sdp);
 	gfs2_assert_withdraw(sdp, sdp->sd_log_blks_reserved + tr->tr_reserved >= reserved);
 	unused = sdp->sd_log_blks_reserved - reserved + tr->tr_reserved;
 	atomic_add(unused, &sdp->sd_log_blks_free);
+	trace_gfs2_log_blocks(sdp, unused);
 	gfs2_assert_withdraw(sdp, atomic_read(&sdp->sd_log_blks_free) <=
 			     sdp->sd_jdesc->jd_blocks);
 	sdp->sd_log_blks_reserved = reserved;
@@ -823,7 +830,6 @@ void gfs2_log_commit(struct gfs2_sbd *sdp, struct gfs2_trans *tr)
 	log_refund(sdp, tr);
 	buf_lo_incore_commit(sdp, tr);
 
-	sdp->sd_vfs->s_dirt = 1;
 	up_read(&sdp->sd_log_flush_lock);
 
 	gfs2_log_lock(sdp);

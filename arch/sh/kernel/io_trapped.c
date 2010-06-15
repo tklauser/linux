@@ -112,14 +112,15 @@ void __iomem *match_trapped_io_handler(struct list_head *list,
 	struct trapped_io *tiop;
 	struct resource *res;
 	int k, len;
+	unsigned long flags;
 
-	spin_lock_irq(&trapped_lock);
+	spin_lock_irqsave(&trapped_lock, flags);
 	list_for_each_entry(tiop, list, list) {
 		voffs = 0;
 		for (k = 0; k < tiop->num_resources; k++) {
 			res = tiop->resource + k;
 			if (res->start == offset) {
-				spin_unlock_irq(&trapped_lock);
+				spin_unlock_irqrestore(&trapped_lock, flags);
 				return tiop->virt_base + voffs;
 			}
 
@@ -127,7 +128,7 @@ void __iomem *match_trapped_io_handler(struct list_head *list,
 			voffs += roundup(len, PAGE_SIZE);
 		}
 	}
-	spin_unlock_irq(&trapped_lock);
+	spin_unlock_irqrestore(&trapped_lock, flags);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(match_trapped_io_handler);
@@ -183,31 +184,31 @@ static unsigned long long copy_word(unsigned long src_addr, int src_len,
 
 	switch (src_len) {
 	case 1:
-		tmp = ctrl_inb(src_addr);
+		tmp = __raw_readb(src_addr);
 		break;
 	case 2:
-		tmp = ctrl_inw(src_addr);
+		tmp = __raw_readw(src_addr);
 		break;
 	case 4:
-		tmp = ctrl_inl(src_addr);
+		tmp = __raw_readl(src_addr);
 		break;
 	case 8:
-		tmp = ctrl_inq(src_addr);
+		tmp = __raw_readq(src_addr);
 		break;
 	}
 
 	switch (dst_len) {
 	case 1:
-		ctrl_outb(tmp, dst_addr);
+		__raw_writeb(tmp, dst_addr);
 		break;
 	case 2:
-		ctrl_outw(tmp, dst_addr);
+		__raw_writew(tmp, dst_addr);
 		break;
 	case 4:
-		ctrl_outl(tmp, dst_addr);
+		__raw_writel(tmp, dst_addr);
 		break;
 	case 8:
-		ctrl_outq(tmp, dst_addr);
+		__raw_writeq(tmp, dst_addr);
 		break;
 	}
 
@@ -267,9 +268,11 @@ static struct mem_access trapped_io_access = {
 int handle_trapped_io(struct pt_regs *regs, unsigned long address)
 {
 	mm_segment_t oldfs;
-	opcode_t instruction;
+	insn_size_t instruction;
 	int tmp;
 
+	if (trapped_io_disable)
+		return 0;
 	if (!lookup_tiop(address))
 		return 0;
 
@@ -283,7 +286,8 @@ int handle_trapped_io(struct pt_regs *regs, unsigned long address)
 		return 0;
 	}
 
-	tmp = handle_unaligned_access(instruction, regs, &trapped_io_access);
+	tmp = handle_unaligned_access(instruction, regs,
+				      &trapped_io_access, 1);
 	set_fs(oldfs);
 	return tmp == 0;
 }

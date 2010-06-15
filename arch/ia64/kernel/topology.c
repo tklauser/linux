@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/node.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/bootmem.h>
 #include <linux/nodemask.h>
@@ -282,7 +283,7 @@ static ssize_t cache_show(struct kobject * kobj, struct attribute * attr, char *
 	return ret;
 }
 
-static struct sysfs_ops cache_sysfs_ops = {
+static const struct sysfs_ops cache_sysfs_ops = {
 	.show   = cache_show
 };
 
@@ -306,10 +307,10 @@ static void __cpuinit cpu_cache_sysfs_exit(unsigned int cpu)
 
 static int __cpuinit cpu_cache_sysfs_init(unsigned int cpu)
 {
-	u64 i, levels, unique_caches;
+	unsigned long i, levels, unique_caches;
 	pal_cache_config_info_t cci;
 	int j;
-	s64 status;
+	long status;
 	struct cache_info *this_cache;
 	int num_cache_leaves = 0;
 
@@ -372,6 +373,10 @@ static int __cpuinit cache_add_dev(struct sys_device * sys_dev)
 	retval = kobject_init_and_add(&all_cpu_cache_info[cpu].kobj,
 				      &cache_ktype_percpu_entry, &sys_dev->kobj,
 				      "%s", "cache");
+	if (unlikely(retval < 0)) {
+		cpu_cache_sysfs_exit(cpu);
+		return retval;
+	}
 
 	for (i = 0; i < all_cpu_cache_info[cpu].num_cache_leaves; i++) {
 		this_object = LEAF_KOBJECT_PTR(cpu,i);
@@ -385,7 +390,7 @@ static int __cpuinit cache_add_dev(struct sys_device * sys_dev)
 			}
 			kobject_put(&all_cpu_cache_info[cpu].kobj);
 			cpu_cache_sysfs_exit(cpu);
-			break;
+			return retval;
 		}
 		kobject_uevent(&(this_object->kobj), KOBJ_ADD);
 	}

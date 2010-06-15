@@ -16,8 +16,8 @@
  * PAGE_SHIFT determines the page size
  */
 #define PAGE_SHIFT	12
-#define PAGE_SIZE	(1UL << PAGE_SHIFT)
-#define PAGE_MASK       (~((1 << PAGE_SHIFT) - 1))
+#define PAGE_SIZE	4096
+#define PAGE_MASK	(~(PAGE_SIZE - 1))
 
 #ifndef __ASSEMBLY__
 
@@ -111,7 +111,7 @@ typedef struct page *pgtable_t;
 				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
 #define UNCAC_ADDR(addr) ((void *)((unsigned)(addr) | IO_REGION_BASE))
-#define CAC_ADDR(addr) ((void *)((unsigned)(addr) & ~IO_REGION_BASE | KERNEL_REGION_BASE))
+#define CAC_ADDR(addr) ((void *)(((unsigned)(addr) & ~IO_REGION_BASE) | KERNEL_REGION_BASE))
 
 #define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
 
@@ -123,6 +123,6 @@ typedef struct page *pgtable_t;
 #endif
 
 #include <asm-generic/memory_model.h>
-#include <asm-generic/page.h>
+#include <asm-generic/getorder.h>
 
 #endif /* _ASM_NIOS2_PAGE_H */

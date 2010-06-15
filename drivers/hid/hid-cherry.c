@@ -59,6 +59,7 @@ static int ch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 static const struct hid_device_id ch_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_CHERRY, USB_DEVICE_ID_CHERRY_CYMOTION) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_CHERRY, USB_DEVICE_ID_CHERRY_CYMOTION_SOLAR) },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, ch_devices);
@@ -70,12 +71,12 @@ static struct hid_driver ch_driver = {
 	.input_mapping = ch_input_mapping,
 };
 
-static int ch_init(void)
+static int __init ch_init(void)
 {
 	return hid_register_driver(&ch_driver);
 }
 
-static void ch_exit(void)
+static void __exit ch_exit(void)
 {
 	hid_unregister_driver(&ch_driver);
 }

@@ -35,6 +35,7 @@
 #include <linux/key.h>
 #include <linux/parser.h>
 #include <linux/fs_stack.h>
+#include <linux/slab.h>
 #include "ecryptfs_kernel.h"
 
 /**
@@ -129,11 +130,10 @@ int ecryptfs_init_persistent_file(struct dentry *ecryptfs_dentry)
 		lower_dentry = ecryptfs_dentry_to_lower(ecryptfs_dentry);
 		rc = ecryptfs_privileged_open(&inode_info->lower_file,
 					      lower_dentry, lower_mnt, cred);
-		if (rc || IS_ERR(inode_info->lower_file)) {
+		if (rc) {
 			printk(KERN_ERR "Error opening lower persistent file "
 			       "for lower_dentry [0x%p] and lower_mnt [0x%p]; "
 			       "rc = [%d]\n", lower_dentry, lower_mnt, rc);
-			rc = PTR_ERR(inode_info->lower_file);
 			inode_info->lower_file = NULL;
 		}
 	}
@@ -190,7 +190,7 @@ int ecryptfs_interpose(struct dentry *lower_dentry, struct dentry *dentry,
 		init_special_inode(inode, lower_inode->i_mode,
 				   lower_inode->i_rdev);
 	dentry->d_op = &ecryptfs_dops;
-	fsstack_copy_attr_all(inode, lower_inode, NULL);
+	fsstack_copy_attr_all(inode, lower_inode);
 	/* This size will be overwritten for real files w/ headers and
 	 * other metadata */
 	fsstack_copy_inode_size(inode, lower_inode);
@@ -497,17 +497,25 @@ struct kmem_cache *ecryptfs_sb_info_cache;
 static int
 ecryptfs_fill_super(struct super_block *sb, void *raw_data, int silent)
 {
+	struct ecryptfs_sb_info *esi;
 	int rc = 0;
 
 	/* Released in ecryptfs_put_super() */
 	ecryptfs_set_superblock_private(sb,
 					kmem_cache_zalloc(ecryptfs_sb_info_cache,
 							 GFP_KERNEL));
-	if (!ecryptfs_superblock_to_private(sb)) {
+	esi = ecryptfs_superblock_to_private(sb);
+	if (!esi) {
 		ecryptfs_printk(KERN_WARNING, "Out of memory\n");
 		rc = -ENOMEM;
 		goto out;
 	}
+
+	rc = bdi_setup_and_register(&esi->bdi, "ecryptfs", BDI_CAP_MAP_COPY);
+	if (rc)
+		goto out;
+
+	sb->s_bdi = &esi->bdi;
 	sb->s_op = &ecryptfs_sops;
 	/* Released through deactivate_super(sb) from get_sb_nodev */
 	sb->s_root = d_alloc(NULL, &(const struct qstr) {
@@ -586,8 +594,8 @@ out:
  *                        with as much information as it can before needing
  *                        the lower filesystem.
  * ecryptfs_read_super(): this accesses the lower filesystem and uses
- *                        ecryptfs_interpolate to perform most of the linking
- * ecryptfs_interpolate(): links the lower filesystem into ecryptfs
+ *                        ecryptfs_interpose to perform most of the linking
+ * ecryptfs_interpose(): links the lower filesystem into ecryptfs (inode.c)
  */
 static int ecryptfs_get_sb(struct file_system_type *fs_type, int flags,
 			const char *dev_name, void *raw_data,

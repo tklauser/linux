@@ -31,6 +31,7 @@
 #include <linux/seq_file.h>
 #include <linux/bitops.h>
 #include <linux/clocksource.h>
+#include <linux/slab.h>
 
 #include <asm/current.h>
 #include <asm/uaccess.h>
@@ -166,9 +167,8 @@ static irqreturn_t hpet_interrupt(int irq, void *data)
 		unsigned long m, t;
 
 		t = devp->hd_ireqfreq;
-		m = read_counter(&devp->hd_hpet->hpet_mc);
-		write_counter(t + m + devp->hd_hpets->hp_delta,
-			      &devp->hd_timer->hpet_compare);
+		m = read_counter(&devp->hd_timer->hpet_compare);
+		write_counter(t + m, &devp->hd_timer->hpet_compare);
 	}
 
 	if (devp->hd_flags & HPET_SHARED_IRQ)
@@ -216,15 +216,13 @@ static void hpet_timer_set_irq(struct hpet_dev *devp)
 	else
 		v &= ~0xffff;
 
-	for (irq = find_first_bit(&v, HPET_MAX_IRQ); irq < HPET_MAX_IRQ;
-		irq = find_next_bit(&v, HPET_MAX_IRQ, 1 + irq)) {
-
+	for_each_set_bit(irq, &v, HPET_MAX_IRQ) {
 		if (irq >= nr_irqs) {
 			irq = HPET_MAX_IRQ;
 			break;
 		}
 
-		gsi = acpi_register_gsi(irq, ACPI_LEVEL_SENSITIVE,
+		gsi = acpi_register_gsi(NULL, irq, ACPI_LEVEL_SENSITIVE,
 					ACPI_ACTIVE_LOW);
 		if (gsi > 0)
 			break;
@@ -504,21 +502,25 @@ static int hpet_ioctl_ieon(struct hpet_dev *devp)
 	g = v | Tn_32MODE_CNF_MASK | Tn_INT_ENB_CNF_MASK;
 
 	if (devp->hd_flags & HPET_PERIODIC) {
-		write_counter(t, &timer->hpet_compare);
 		g |= Tn_TYPE_CNF_MASK;
-		v |= Tn_TYPE_CNF_MASK;
-		writeq(v, &timer->hpet_config);
-		v |= Tn_VAL_SET_CNF_MASK;
+		v |= Tn_TYPE_CNF_MASK | Tn_VAL_SET_CNF_MASK;
 		writeq(v, &timer->hpet_config);
 		local_irq_save(flags);
 
-		/* NOTE:  what we modify here is a hidden accumulator
+		/*
+		 * NOTE: First we modify the hidden accumulator
 		 * register supported by periodic-capable comparators.
 		 * We never want to modify the (single) counter; that
-		 * would affect all the comparators.
+		 * would affect all the comparators. The value written
+		 * is the counter value when the first interrupt is due.
 		 */
 		m = read_counter(&hpet->hpet_mc);
 		write_counter(t + m + hpetp->hp_delta, &timer->hpet_compare);
+		/*
+		 * Then we modify the comparator, indicating the period
+		 * for subsequent interrupt.
+		 */
+		write_counter(t, &timer->hpet_compare);
 	} else {
 		local_irq_save(flags);
 		m = read_counter(&hpet->hpet_mc);
@@ -672,36 +674,33 @@ static int hpet_is_known(struct hpet_data *hdp)
 
 static ctl_table hpet_table[] = {
 	{
-	 .ctl_name = CTL_UNNUMBERED,
 	 .procname = "max-user-freq",
 	 .data = &hpet_max_freq,
 	 .maxlen = sizeof(int),
 	 .mode = 0644,
-	 .proc_handler = &proc_dointvec,
+	 .proc_handler = proc_dointvec,
 	 },
-	{.ctl_name = 0}
+	{}
 };
 
 static ctl_table hpet_root[] = {
 	{
-	 .ctl_name = CTL_UNNUMBERED,
 	 .procname = "hpet",
 	 .maxlen = 0,
 	 .mode = 0555,
 	 .child = hpet_table,
 	 },
-	{.ctl_name = 0}
+	{}
 };
 
 static ctl_table dev_root[] = {
 	{
-	 .ctl_name = CTL_DEV,
 	 .procname = "dev",
 	 .maxlen = 0,
 	 .mode = 0555,
 	 .child = hpet_root,
 	 },
-	{.ctl_name = 0}
+	{}
 };
 
 static struct ctl_table_header *sysctl_header;
@@ -939,7 +938,7 @@ static acpi_status hpet_resources(struct acpi_resource *res, void *data)
 		irqp = &res->data.extended_irq;
 
 		for (i = 0; i < irqp->interrupt_count; i++) {
-			irq = acpi_register_gsi(irqp->interrupts[i],
+			irq = acpi_register_gsi(NULL, irqp->interrupts[i],
 				      irqp->triggering, irqp->polarity);
 			if (irq < 0)
 				return AE_ERROR;

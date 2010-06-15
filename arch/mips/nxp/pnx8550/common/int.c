@@ -27,7 +27,6 @@
 #include <linux/init.h>
 #include <linux/irq.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 #include <linux/random.h>
@@ -172,7 +171,7 @@ static struct irqaction gic_action = {
 
 static struct irqaction timer_action = {
 	.handler =	no_action,
-	.flags =	IRQF_DISABLED,
+	.flags =	IRQF_DISABLED | IRQF_TIMER,
 	.name =		"Timer",
 };
 

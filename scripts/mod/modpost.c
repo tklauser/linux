@@ -15,7 +15,16 @@
 #include <stdio.h>
 #include <ctype.h>
 #include "modpost.h"
+#include "../../include/generated/autoconf.h"
 #include "../../include/linux/license.h"
+
+/* Some toolchains use a `_' prefix for all user symbols. */
+#ifdef CONFIG_SYMBOL_PREFIX
+#define MODULE_SYMBOL_PREFIX CONFIG_SYMBOL_PREFIX
+#else
+#define MODULE_SYMBOL_PREFIX ""
+#endif
+
 
 /* Are we using CONFIG_MODVERSIONS? */
 int modversions = 0;
@@ -451,8 +460,6 @@ static int parse_elf(struct elf_info *info, const char *filename)
 			info->export_unused_gpl_sec = i;
 		else if (strcmp(secname, "__ksymtab_gpl_future") == 0)
 			info->export_gpl_future_sec = i;
-		else if (strcmp(secname, "__markers_strings") == 0)
-			info->markers_strings_sec = i;
 
 		if (sechdrs[i].sh_type != SHT_SYMTAB)
 			continue;
@@ -515,7 +522,7 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 		break;
 	case SHN_ABS:
 		/* CRC'd symbol */
-		if (memcmp(symname, CRC_PFX, strlen(CRC_PFX)) == 0) {
+		if (strncmp(symname, CRC_PFX, strlen(CRC_PFX)) == 0) {
 			crc = (unsigned int) sym->st_value;
 			sym_update_crc(symname + strlen(CRC_PFX), mod, crc,
 					export);
@@ -559,7 +566,7 @@ static void handle_modversions(struct module *mod, struct elf_info *info,
 		break;
 	default:
 		/* All exported symbols */
-		if (memcmp(symname, KSYMTAB_PFX, strlen(KSYMTAB_PFX)) == 0) {
+		if (strncmp(symname, KSYMTAB_PFX, strlen(KSYMTAB_PFX)) == 0) {
 			sym_add_exported(symname + strlen(KSYMTAB_PFX), mod,
 					export);
 		}
@@ -691,7 +698,7 @@ static int number_prefix(const char *sym)
  *   The $ syntax is for sections where ld append a dot number
  *   to make section name unique.
  */
-int match(const char *sym, const char * const pat[])
+static int match(const char *sym, const char * const pat[])
 {
 	const char *p;
 	while (*pat) {
@@ -763,6 +770,8 @@ static void check_section(const char *modname, struct elf_info *elf,
 
 
 #define ALL_INIT_DATA_SECTIONS \
+	".init.setup$", ".init.rodata$", \
+	".devinit.rodata$", ".cpuinit.rodata$", ".meminit.rodata$" \
 	".init.data$", ".devinit.data$", ".cpuinit.data$", ".meminit.data$"
 #define ALL_EXIT_DATA_SECTIONS \
 	".exit.data$", ".devexit.data$", ".cpuexit.data$", ".memexit.data$"
@@ -772,21 +781,23 @@ static void check_section(const char *modname, struct elf_info *elf,
 #define ALL_EXIT_TEXT_SECTIONS \
 	".exit.text$", ".devexit.text$", ".cpuexit.text$", ".memexit.text$"
 
-#define ALL_INIT_SECTIONS ALL_INIT_DATA_SECTIONS, ALL_INIT_TEXT_SECTIONS
-#define ALL_EXIT_SECTIONS ALL_EXIT_DATA_SECTIONS, ALL_EXIT_TEXT_SECTIONS
+#define ALL_INIT_SECTIONS INIT_SECTIONS, DEV_INIT_SECTIONS, \
+	CPU_INIT_SECTIONS, MEM_INIT_SECTIONS
+#define ALL_EXIT_SECTIONS EXIT_SECTIONS, DEV_EXIT_SECTIONS, \
+	CPU_EXIT_SECTIONS, MEM_EXIT_SECTIONS
 
 #define DATA_SECTIONS ".data$", ".data.rel$"
 #define TEXT_SECTIONS ".text$"
 
-#define INIT_SECTIONS      ".init.data$", ".init.text$"
-#define DEV_INIT_SECTIONS  ".devinit.data$", ".devinit.text$"
-#define CPU_INIT_SECTIONS  ".cpuinit.data$", ".cpuinit.text$"
-#define MEM_INIT_SECTIONS  ".meminit.data$", ".meminit.text$"
+#define INIT_SECTIONS      ".init.*"
+#define DEV_INIT_SECTIONS  ".devinit.*"
+#define CPU_INIT_SECTIONS  ".cpuinit.*"
+#define MEM_INIT_SECTIONS  ".meminit.*"
 
-#define EXIT_SECTIONS      ".exit.data$", ".exit.text$"
-#define DEV_EXIT_SECTIONS  ".devexit.data$", ".devexit.text$"
-#define CPU_EXIT_SECTIONS  ".cpuexit.data$", ".cpuexit.text$"
-#define MEM_EXIT_SECTIONS  ".memexit.data$", ".memexit.text$"
+#define EXIT_SECTIONS      ".exit.*"
+#define DEV_EXIT_SECTIONS  ".devexit.*"
+#define CPU_EXIT_SECTIONS  ".cpuexit.*"
+#define MEM_EXIT_SECTIONS  ".memexit.*"
 
 /* init data sections */
 static const char *init_data_sections[] = { ALL_INIT_DATA_SECTIONS, NULL };
@@ -869,10 +880,34 @@ const struct sectioncheck sectioncheck[] = {
 	.tosec   = { INIT_SECTIONS, NULL },
 	.mismatch = XXXINIT_TO_INIT,
 },
+/* Do not reference cpuinit code/data from meminit code/data */
+{
+	.fromsec = { MEM_INIT_SECTIONS, NULL },
+	.tosec   = { CPU_INIT_SECTIONS, NULL },
+	.mismatch = XXXINIT_TO_INIT,
+},
+/* Do not reference meminit code/data from cpuinit code/data */
+{
+	.fromsec = { CPU_INIT_SECTIONS, NULL },
+	.tosec   = { MEM_INIT_SECTIONS, NULL },
+	.mismatch = XXXINIT_TO_INIT,
+},
 /* Do not reference exit code/data from devexit/cpuexit/memexit code/data */
 {
 	.fromsec = { DEV_EXIT_SECTIONS, CPU_EXIT_SECTIONS, MEM_EXIT_SECTIONS, NULL },
 	.tosec   = { EXIT_SECTIONS, NULL },
+	.mismatch = XXXEXIT_TO_EXIT,
+},
+/* Do not reference cpuexit code/data from memexit code/data */
+{
+	.fromsec = { MEM_EXIT_SECTIONS, NULL },
+	.tosec   = { CPU_EXIT_SECTIONS, NULL },
+	.mismatch = XXXEXIT_TO_EXIT,
+},
+/* Do not reference memexit code/data from cpuexit code/data */
+{
+	.fromsec = { CPU_EXIT_SECTIONS, NULL },
+	.tosec   = { MEM_EXIT_SECTIONS, NULL },
 	.mismatch = XXXEXIT_TO_EXIT,
 },
 /* Do not use exit code/data from init code */
@@ -1168,7 +1203,7 @@ static void report_sec_mismatch(const char *modname, enum mismatch mismatch,
 		"The variable %s references\n"
 		"the %s %s%s%s\n"
 		"If the reference is valid then annotate the\n"
-		"variable with __init* (see linux/init.h) "
+		"variable with __init* or __refdata (see linux/init.h) "
 		"or name the variable:\n",
 		fromsym, to, sec2annotation(tosec), tosym, to_p);
 		while (*s)
@@ -1481,62 +1516,6 @@ static void check_sec_ref(struct module *mod, const char *modname,
 	}
 }
 
-static void get_markers(struct elf_info *info, struct module *mod)
-{
-	const Elf_Shdr *sh = &info->sechdrs[info->markers_strings_sec];
-	const char *strings = (const char *) info->hdr + sh->sh_offset;
-	const Elf_Sym *sym, *first_sym, *last_sym;
-	size_t n;
-
-	if (!info->markers_strings_sec)
-		return;
-
-	/*
-	 * First count the strings.  We look for all the symbols defined
-	 * in the __markers_strings section named __mstrtab_*.  For
-	 * these local names, the compiler puts a random .NNN suffix on,
-	 * so the names don't correspond exactly.
-	 */
-	first_sym = last_sym = NULL;
-	n = 0;
-	for (sym = info->symtab_start; sym < info->symtab_stop; sym++)
-		if (ELF_ST_TYPE(sym->st_info) == STT_OBJECT &&
-		    sym->st_shndx == info->markers_strings_sec &&
-		    !strncmp(info->strtab + sym->st_name,
-			     "__mstrtab_", sizeof "__mstrtab_" - 1)) {
-			if (first_sym == NULL)
-				first_sym = sym;
-			last_sym = sym;
-			++n;
-		}
-
-	if (n == 0)
-		return;
-
-	/*
-	 * Now collect each name and format into a line for the output.
-	 * Lines look like:
-	 *	marker_name	vmlinux	marker %s format %d
-	 * The format string after the second \t can use whitespace.
-	 */
-	mod->markers = NOFAIL(malloc(sizeof mod->markers[0] * n));
-	mod->nmarkers = n;
-
-	n = 0;
-	for (sym = first_sym; sym <= last_sym; sym++)
-		if (ELF_ST_TYPE(sym->st_info) == STT_OBJECT &&
-		    sym->st_shndx == info->markers_strings_sec &&
-		    !strncmp(info->strtab + sym->st_name,
-			     "__mstrtab_", sizeof "__mstrtab_" - 1)) {
-			const char *name = strings + sym->st_value;
-			const char *fmt = strchr(name, '\0') + 1;
-			char *line = NULL;
-			asprintf(&line, "%s\t%s\t%s\n", name, mod->name, fmt);
-			NOFAIL(line);
-			mod->markers[n++] = line;
-		}
-}
-
 static void read_symbols(char *modname)
 {
 	const char *symname;
@@ -1591,8 +1570,6 @@ static void read_symbols(char *modname)
 	if (version || (all_versions && !is_vmlinux(modname)))
 		get_src_version(modname, mod->srcversion,
 				sizeof(mod->srcversion)-1);
-
-	get_markers(&info, mod);
 
 	parse_elf_finish(&info);
 
@@ -1718,7 +1695,7 @@ static void add_header(struct buffer *b, struct module *mod)
 	buf_printf(b, "};\n");
 }
 
-void add_staging_flag(struct buffer *b, const char *name)
+static void add_staging_flag(struct buffer *b, const char *name)
 {
 	static const char *staging_dir = "drivers/staging";
 
@@ -1948,96 +1925,6 @@ static void write_dump(const char *fname)
 	write_if_changed(&buf, fname);
 }
 
-static void add_marker(struct module *mod, const char *name, const char *fmt)
-{
-	char *line = NULL;
-	asprintf(&line, "%s\t%s\t%s\n", name, mod->name, fmt);
-	NOFAIL(line);
-
-	mod->markers = NOFAIL(realloc(mod->markers, ((mod->nmarkers + 1) *
-						     sizeof mod->markers[0])));
-	mod->markers[mod->nmarkers++] = line;
-}
-
-static void read_markers(const char *fname)
-{
-	unsigned long size, pos = 0;
-	void *file = grab_file(fname, &size);
-	char *line;
-
-	if (!file)		/* No old markers, silently ignore */
-		return;
-
-	while ((line = get_next_line(&pos, file, size))) {
-		char *marker, *modname, *fmt;
-		struct module *mod;
-
-		marker = line;
-		modname = strchr(marker, '\t');
-		if (!modname)
-			goto fail;
-		*modname++ = '\0';
-		fmt = strchr(modname, '\t');
-		if (!fmt)
-			goto fail;
-		*fmt++ = '\0';
-		if (*marker == '\0' || *modname == '\0')
-			goto fail;
-
-		mod = find_module(modname);
-		if (!mod) {
-			mod = new_module(modname);
-			mod->skip = 1;
-		}
-		if (is_vmlinux(modname)) {
-			have_vmlinux = 1;
-			mod->skip = 0;
-		}
-
-		if (!mod->skip)
-			add_marker(mod, marker, fmt);
-	}
-	release_file(file, size);
-	return;
-fail:
-	fatal("parse error in markers list file\n");
-}
-
-static int compare_strings(const void *a, const void *b)
-{
-	return strcmp(*(const char **) a, *(const char **) b);
-}
-
-static void write_markers(const char *fname)
-{
-	struct buffer buf = { };
-	struct module *mod;
-	size_t i;
-
-	for (mod = modules; mod; mod = mod->next)
-		if ((!external_module || !mod->skip) && mod->markers != NULL) {
-			/*
-			 * Sort the strings so we can skip duplicates when
-			 * we write them out.
-			 */
-			qsort(mod->markers, mod->nmarkers,
-			      sizeof mod->markers[0], &compare_strings);
-			for (i = 0; i < mod->nmarkers; ++i) {
-				char *line = mod->markers[i];
-				buf_write(&buf, line, strlen(line));
-				while (i + 1 < mod->nmarkers &&
-				       !strcmp(mod->markers[i],
-					       mod->markers[i + 1]))
-					free(mod->markers[i++]);
-				free(mod->markers[i]);
-			}
-			free(mod->markers);
-			mod->markers = NULL;
-		}
-
-	write_if_changed(&buf, fname);
-}
-
 struct ext_sym_list {
 	struct ext_sym_list *next;
 	const char *file;
@@ -2049,8 +1936,6 @@ int main(int argc, char **argv)
 	struct buffer buf = { };
 	char *kernel_read = NULL, *module_read = NULL;
 	char *dump_write = NULL;
-	char *markers_read = NULL;
-	char *markers_write = NULL;
 	int opt;
 	int err;
 	struct ext_sym_list *extsym_iter;
@@ -2094,12 +1979,6 @@ int main(int argc, char **argv)
 		case 'w':
 			warn_unresolved = 1;
 			break;
-			case 'M':
-				markers_write = optarg;
-				break;
-			case 'K':
-				markers_read = optarg;
-				break;
 		default:
 			exit(1);
 		}
@@ -2153,12 +2032,6 @@ int main(int argc, char **argv)
 		     "To see full details build your kernel with:\n"
 		     "'make CONFIG_DEBUG_SECTION_MISMATCH=y'\n",
 		     sec_mismatch_count);
-
-	if (markers_read)
-		read_markers(markers_read);
-
-	if (markers_write)
-		write_markers(markers_write);
 
 	return err;
 }

@@ -50,13 +50,24 @@ int vnic_intr_alloc(struct vnic_dev *vdev, struct vnic_intr *intr,
 void vnic_intr_init(struct vnic_intr *intr, unsigned int coalescing_timer,
 	unsigned int coalescing_type, unsigned int mask_on_assertion)
 {
-	iowrite32(coalescing_timer, &intr->ctrl->coalescing_timer);
+	vnic_intr_coalescing_timer_set(intr, coalescing_timer);
 	iowrite32(coalescing_type, &intr->ctrl->coalescing_type);
 	iowrite32(mask_on_assertion, &intr->ctrl->mask_on_assertion);
 	iowrite32(0, &intr->ctrl->int_credits);
 }
 
+void vnic_intr_coalescing_timer_set(struct vnic_intr *intr,
+	unsigned int coalescing_timer)
+{
+	iowrite32(coalescing_timer, &intr->ctrl->coalescing_timer);
+}
+
 void vnic_intr_clean(struct vnic_intr *intr)
 {
 	iowrite32(0, &intr->ctrl->int_credits);
+}
+
+void vnic_intr_raise(struct vnic_intr *intr)
+{
+	vnic_dev_raise_intr(intr->vdev, (u16)intr->index);
 }

@@ -75,6 +75,7 @@
 
 #include <linux/fs.h>
 #include <linux/pagemap.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include "ibmasm.h"
@@ -97,7 +98,7 @@ static int ibmasmfs_get_super(struct file_system_type *fst,
 	return get_sb_single(fst, flags, data, ibmasmfs_fill_super, mnt);
 }
 
-static struct super_operations ibmasmfs_s_ops = {
+static const struct super_operations ibmasmfs_s_ops = {
 	.statfs		= simple_statfs,
 	.drop_inode	= generic_delete_inode,
 };

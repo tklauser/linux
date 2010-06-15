@@ -12,7 +12,6 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/kernel.h>
 #include <linux/signal.h>
 #include <linux/errno.h>
@@ -23,6 +22,7 @@
 #include <linux/tty.h>
 #include <linux/personality.h>
 #include <linux/suspend.h>
+#include <linux/tracehook.h>
 #include <asm/cacheflush.h>
 #include <asm/ucontext.h>
 #include <asm/uaccess.h>
@@ -264,7 +264,7 @@ static inline void __user *get_sigframe(struct k_sigaction *ka,
 
 	/* this is the X/Open sanctioned signal stack switching.  */
 	if (ka->sa.sa_flags & SA_ONSTACK) {
-		if (!on_sig_stack(sp))
+		if (sas_ss_flags(sp) == 0)
 			sp = current->sas_ss_sp + current->sas_ss_size;
 	}
 
@@ -511,6 +511,9 @@ static void do_signal(struct pt_regs *regs)
 			 * clear the TIF_RESTORE_SIGMASK flag */
 			if (test_thread_flag(TIF_RESTORE_SIGMASK))
 				clear_thread_flag(TIF_RESTORE_SIGMASK);
+
+			tracehook_signal_handler(signr, &info, &ka, regs,
+						 test_thread_flag(TIF_SINGLESTEP));
 		}
 
 		return;
@@ -561,4 +564,11 @@ asmlinkage void do_notify_resume(struct pt_regs *regs, u32 thread_info_flags)
 	/* deal with pending signal delivery */
 	if (thread_info_flags & (_TIF_SIGPENDING | _TIF_RESTORE_SIGMASK))
 		do_signal(regs);
+
+	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
+		clear_thread_flag(TIF_NOTIFY_RESUME);
+		tracehook_notify_resume(__frame);
+		if (current->replacement_session_keyring)
+			key_replace_session_keyring();
+	}
 }

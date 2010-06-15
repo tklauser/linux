@@ -24,7 +24,6 @@
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/suspend.h>
@@ -40,6 +39,7 @@
 #include "tda1004x.h"
 #include "nxt200x.h"
 #include "tuner-xc2028.h"
+#include "xc5000.h"
 
 #include "tda10086.h"
 #include "tda826x.h"
@@ -48,6 +48,7 @@
 #include "isl6405.h"
 #include "lnbp21.h"
 #include "tuner-simple.h"
+#include "tda10048.h"
 #include "tda18271.h"
 #include "lgdt3305.h"
 #include "tda8290.h"
@@ -55,6 +56,7 @@
 #include "zl10353.h"
 
 #include "zl10036.h"
+#include "zl10039.h"
 #include "mt312.h"
 
 MODULE_AUTHOR("Gerd Knorr <kraxel@bytesex.org> [SuSE Labs]");
@@ -869,6 +871,20 @@ static struct zl10353_config behold_h6_config = {
 	.disable_i2c_gate_ctrl = 1,
 };
 
+static struct xc5000_config behold_x7_tunerconfig = {
+	.i2c_address      = 0xc2>>1,
+	.if_khz           = 4560,
+	.radio_input      = XC5000_RADIO_FM1,
+};
+
+static struct zl10353_config behold_x7_config = {
+	.demod_address = 0x1e>>1,
+	.if2           = 45600,
+	.no_tuner      = 1,
+	.parallel_ts   = 1,
+	.disable_i2c_gate_ctrl = 1,
+};
+
 /* ==================================================================
  * tda10086 based DVB-S cards, helper functions
  */
@@ -967,6 +983,10 @@ static struct zl10036_config avertv_a700_tuner = {
 	.tuner_address = 0x60,
 };
 
+static struct mt312_config zl10313_compro_s350_config = {
+	.demod_address = 0x0e,
+};
+
 static struct lgdt3305_config hcw_lgdt3305_config = {
 	.i2c_addr           = 0x0e,
 	.mpeg_mode          = LGDT3305_MPEG_SERIAL,
@@ -976,6 +996,18 @@ static struct lgdt3305_config hcw_lgdt3305_config = {
 	.spectral_inversion = 1,
 	.qam_if_khz         = 4000,
 	.vsb_if_khz         = 3250,
+};
+
+static struct tda10048_config hcw_tda10048_config = {
+	.demod_address    = 0x10 >> 1,
+	.output_mode      = TDA10048_SERIAL_OUTPUT,
+	.fwbulkwritelen   = TDA10048_BULKWRITE_200,
+	.inversion        = TDA10048_INVERSION_ON,
+	.dtv6_if_freq_khz = TDA10048_IF_3300,
+	.dtv7_if_freq_khz = TDA10048_IF_3500,
+	.dtv8_if_freq_khz = TDA10048_IF_4000,
+	.clk_freq_khz     = TDA10048_CLK_16000,
+	.disable_gate_access = 1,
 };
 
 static struct tda18271_std_map hauppauge_tda18271_std_map = {
@@ -989,10 +1021,53 @@ static struct tda18271_config hcw_tda18271_config = {
 	.std_map = &hauppauge_tda18271_std_map,
 	.gate    = TDA18271_GATE_ANALOG,
 	.config  = 3,
+	.output_opt = TDA18271_OUTPUT_LT_OFF,
 };
 
 static struct tda829x_config tda829x_no_probe = {
 	.probe_tuner = TDA829X_DONT_PROBE,
+};
+
+static struct tda10048_config zolid_tda10048_config = {
+	.demod_address    = 0x10 >> 1,
+	.output_mode      = TDA10048_PARALLEL_OUTPUT,
+	.fwbulkwritelen   = TDA10048_BULKWRITE_200,
+	.inversion        = TDA10048_INVERSION_ON,
+	.dtv6_if_freq_khz = TDA10048_IF_3300,
+	.dtv7_if_freq_khz = TDA10048_IF_3500,
+	.dtv8_if_freq_khz = TDA10048_IF_4000,
+	.clk_freq_khz     = TDA10048_CLK_16000,
+	.disable_gate_access = 1,
+};
+
+static struct tda18271_config zolid_tda18271_config = {
+	.gate    = TDA18271_GATE_ANALOG,
+};
+
+static struct tda10048_config dtv1000s_tda10048_config = {
+	.demod_address    = 0x10 >> 1,
+	.output_mode      = TDA10048_PARALLEL_OUTPUT,
+	.fwbulkwritelen   = TDA10048_BULKWRITE_200,
+	.inversion        = TDA10048_INVERSION_ON,
+	.dtv6_if_freq_khz = TDA10048_IF_3300,
+	.dtv7_if_freq_khz = TDA10048_IF_3800,
+	.dtv8_if_freq_khz = TDA10048_IF_4300,
+	.clk_freq_khz     = TDA10048_CLK_16000,
+	.disable_gate_access = 1,
+};
+
+static struct tda18271_std_map dtv1000s_tda18271_std_map = {
+	.dvbt_6   = { .if_freq = 3300, .agc_mode = 3, .std = 4,
+		      .if_lvl = 1, .rfagc_top = 0x37, },
+	.dvbt_7   = { .if_freq = 3800, .agc_mode = 3, .std = 5,
+		      .if_lvl = 1, .rfagc_top = 0x37, },
+	.dvbt_8   = { .if_freq = 4300, .agc_mode = 3, .std = 6,
+		      .if_lvl = 1, .rfagc_top = 0x37, },
+};
+
+static struct tda18271_config dtv1000s_tda18271_config = {
+	.std_map = &dtv1000s_tda18271_std_map,
+	.gate    = TDA18271_GATE_ANALOG,
 };
 
 /* ==================================================================
@@ -1081,6 +1156,7 @@ static int dvb_init(struct saa7134_dev *dev)
 		break;
 	case SAA7134_BOARD_PHILIPS_EUROPA:
 	case SAA7134_BOARD_VIDEOMATE_DVBT_300:
+	case SAA7134_BOARD_ASUS_EUROPA_HYBRID:
 		fe0->dvb.frontend = dvb_attach(tda10046_attach,
 					       &philips_europa_config,
 					       &dev->i2c_adap);
@@ -1106,6 +1182,19 @@ static int dvb_init(struct saa7134_dev *dev)
 					 &tda827x_cfg_2) < 0)
 			goto dettach_frontend;
 		break;
+	case SAA7134_BOARD_HAUPPAUGE_HVR1120:
+		fe0->dvb.frontend = dvb_attach(tda10048_attach,
+					       &hcw_tda10048_config,
+					       &dev->i2c_adap);
+		if (fe0->dvb.frontend != NULL) {
+			dvb_attach(tda829x_attach, fe0->dvb.frontend,
+				   &dev->i2c_adap, 0x4b,
+				   &tda829x_no_probe);
+			dvb_attach(tda18271_attach, fe0->dvb.frontend,
+				   0x60, &dev->i2c_adap,
+				   &hcw_tda18271_config);
+		}
+		break;
 	case SAA7134_BOARD_PHILIPS_TIGER:
 		if (configure_tda827x_fe(dev, &philips_tiger_config,
 					 &tda827x_cfg_0) < 0)
@@ -1121,7 +1210,7 @@ static int dvb_init(struct saa7134_dev *dev)
 					 &tda827x_cfg_1) < 0)
 			goto dettach_frontend;
 		break;
-	case SAA7134_BOARD_HAUPPAUGE_HVR1120:
+	case SAA7134_BOARD_HAUPPAUGE_HVR1150:
 		fe0->dvb.frontend = dvb_attach(lgdt3305_attach,
 					       &hcw_lgdt3305_config,
 					       &dev->i2c_adap);
@@ -1431,7 +1520,16 @@ static int dvb_init(struct saa7134_dev *dev)
 		if (fe0->dvb.frontend) {
 			dvb_attach(simple_tuner_attach, fe0->dvb.frontend,
 				   &dev->i2c_adap, 0x61,
-				   TUNER_PHILIPS_FMD1216ME_MK3);
+				   TUNER_PHILIPS_FMD1216MEX_MK3);
+		}
+		break;
+	case SAA7134_BOARD_BEHOLD_X7:
+		fe0->dvb.frontend = dvb_attach(zl10353_attach,
+						&behold_x7_config,
+						&dev->i2c_adap);
+		if (fe0->dvb.frontend) {
+			dvb_attach(xc5000_attach, fe0->dvb.frontend,
+				   &dev->i2c_adap, &behold_x7_tunerconfig);
 		}
 		break;
 	case SAA7134_BOARD_AVERMEDIA_A700_PRO:
@@ -1445,6 +1543,42 @@ static int dvb_init(struct saa7134_dev *dev)
 				wprintk("%s: No zl10036 found!\n",
 					__func__);
 			}
+		}
+		break;
+	case SAA7134_BOARD_VIDEOMATE_S350:
+		fe0->dvb.frontend = dvb_attach(mt312_attach,
+				&zl10313_compro_s350_config, &dev->i2c_adap);
+		if (fe0->dvb.frontend)
+			if (dvb_attach(zl10039_attach, fe0->dvb.frontend,
+					0x60, &dev->i2c_adap) == NULL)
+				wprintk("%s: No zl10039 found!\n",
+					__func__);
+
+		break;
+	case SAA7134_BOARD_ZOLID_HYBRID_PCI:
+		fe0->dvb.frontend = dvb_attach(tda10048_attach,
+					       &zolid_tda10048_config,
+					       &dev->i2c_adap);
+		if (fe0->dvb.frontend != NULL) {
+			dvb_attach(tda829x_attach, fe0->dvb.frontend,
+				   &dev->i2c_adap, 0x4b,
+				   &tda829x_no_probe);
+			dvb_attach(tda18271_attach, fe0->dvb.frontend,
+				   0x60, &dev->i2c_adap,
+				   &zolid_tda18271_config);
+		}
+		break;
+	case SAA7134_BOARD_LEADTEK_WINFAST_DTV1000S:
+		fe0->dvb.frontend = dvb_attach(tda10048_attach,
+					       &dtv1000s_tda10048_config,
+					       &dev->i2c_adap);
+		if (fe0->dvb.frontend != NULL) {
+			dvb_attach(tda829x_attach, fe0->dvb.frontend,
+				   &dev->i2c_adap, 0x4b,
+				   &tda829x_no_probe);
+			dvb_attach(tda18271_attach, fe0->dvb.frontend,
+				   0x60, &dev->i2c_adap,
+				   &dtv1000s_tda18271_config);
 		}
 		break;
 	default:
@@ -1479,7 +1613,7 @@ static int dvb_init(struct saa7134_dev *dev)
 
 	/* register everything else */
 	ret = videobuf_dvb_register_bus(&dev->frontends, THIS_MODULE, dev,
-		&dev->pci->dev, adapter_nr, 0);
+					&dev->pci->dev, adapter_nr, 0, NULL);
 
 	/* this sequence is necessary to make the tda1004x load its firmware
 	 * and to enter analog mode of hybrid boards

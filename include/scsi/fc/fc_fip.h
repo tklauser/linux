@@ -22,13 +22,6 @@
  * http://www.t11.org/ftp/t11/pub/fc/bb-5/08-543v1.pdf
  */
 
-/*
- * The FIP ethertype eventually goes in net/if_ether.h.
- */
-#ifndef ETH_P_FIP
-#define ETH_P_FIP	0x8914	/* FIP Ethertype */
-#endif
-
 #define FIP_DEF_PRI	128	/* default selection priority */
 #define FIP_DEF_FC_MAP	0x0efc00 /* default FCoE MAP (MAC OUI) value */
 #define FIP_DEF_FKA	8000	/* default FCF keep-alive/advert period (mS) */
@@ -221,9 +214,19 @@ struct fip_vn_desc {
  */
 struct fip_fka_desc {
 	struct fip_desc fd_desc;
-	__u8		fd_resvd[2];
+	__u8		fd_resvd;
+	__u8		fd_flags;	/* bit0 is fka disable flag */
 	__be32		fd_fka_period;	/* adv./keep-alive period in mS */
 } __attribute__((packed));
+
+/*
+ * flags for fip_fka_desc.fd_flags
+ */
+enum fip_fka_flags {
+	FIP_FKA_ADV_D =	0x01,		/* no need for FKA from ENode */
+};
+
+/* FIP_DT_FKA flags */
 
 /*
  * FIP_DT_VENDOR descriptor.

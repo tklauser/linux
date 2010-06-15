@@ -28,9 +28,9 @@ EXPORT_SYMBOL(node_data);
 #define DBGDCONT(args...)
 #endif
 
-#define for_each_mem_cluster(memdesc, cluster, i)		\
-	for ((cluster) = (memdesc)->cluster, (i) = 0;		\
-	     (i) < (memdesc)->numclusters; (i)++, (cluster)++)
+#define for_each_mem_cluster(memdesc, _cluster, i)		\
+	for ((_cluster) = (memdesc)->cluster, (i) = 0;		\
+	     (i) < (memdesc)->numclusters; (i)++, (_cluster)++)
 
 static void __init show_mem_layout(void)
 {
@@ -197,7 +197,7 @@ setup_memory_node(int nid, void *kernel_end)
 	}
 
 	if (bootmap_start == -1)
-		panic("couldn't find a contigous place for the bootmap");
+		panic("couldn't find a contiguous place for the bootmap");
 
 	/* Allocate the bootmap and mark the whole MM as reserved.  */
 	bootmap_size = init_bootmem_node(NODE_DATA(nid), bootmap_start,
@@ -349,7 +349,7 @@ void __init mem_init(void)
 
 	printk("Memory: %luk/%luk available (%luk kernel code, %luk reserved, "
 	       "%luk data, %luk init)\n",
-	       (unsigned long)nr_free_pages() << (PAGE_SHIFT-10),
+	       nr_free_pages() << (PAGE_SHIFT-10),
 	       num_physpages << (PAGE_SHIFT-10),
 	       codesize >> 10,
 	       reservedpages << (PAGE_SHIFT-10),

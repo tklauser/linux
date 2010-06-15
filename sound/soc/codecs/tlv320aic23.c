@@ -25,6 +25,7 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -85,8 +86,8 @@ static int tlv320aic23_write(struct snd_soc_codec *codec, unsigned int reg,
 	 * of data into val
 	 */
 
-	if ((reg < 0 || reg > 9) && (reg != 15)) {
-		printk(KERN_WARNING "%s Invalid register R%d\n", __func__, reg);
+	if (reg > 9 && reg != 15) {
+		printk(KERN_WARNING "%s Invalid register R%u\n", __func__, reg);
 		return -1;
 	}
 
@@ -98,7 +99,7 @@ static int tlv320aic23_write(struct snd_soc_codec *codec, unsigned int reg,
 	if (codec->hw_write(codec->control_data, data, 2) == 2)
 		return 0;
 
-	printk(KERN_ERR "%s cannot write %03x to register R%d\n", __func__,
+	printk(KERN_ERR "%s cannot write %03x to register R%u\n", __func__,
 	       value, reg);
 
 	return -EIO;
@@ -265,22 +266,22 @@ static const int bosr_usb_divisor_table[] = {
 #define UPPER_GROUP ((1<<8) | (1<<9) | (1<<10) | (1<<11)        | (1<<15))
 static const unsigned short sr_valid_mask[] = {
 	LOWER_GROUP|UPPER_GROUP,	/* Normal, bosr - 0*/
-	LOWER_GROUP|UPPER_GROUP,	/* Normal, bosr - 1*/
 	LOWER_GROUP,			/* Usb, bosr - 0*/
+	LOWER_GROUP|UPPER_GROUP,	/* Normal, bosr - 1*/
 	UPPER_GROUP,			/* Usb, bosr - 1*/
 };
 /*
  * Every divisor is a factor of 11*12
  */
 #define SR_MULT (11*12)
-#define A(x) (x) ? (SR_MULT/x) : 0
+#define A(x) (SR_MULT/x)
 static const unsigned char sr_adc_mult_table[] = {
-	A(2), A(2), A(12), A(12),  A(0), A(0), A(3), A(1),
-	A(2), A(2), A(11), A(11),  A(0), A(0), A(0), A(1)
+	A(2), A(2), A(12), A(12),  0, 0, A(3), A(1),
+	A(2), A(2), A(11), A(11),  0, 0, 0, A(1)
 };
 static const unsigned char sr_dac_mult_table[] = {
-	A(2), A(12), A(2), A(12),  A(0), A(0), A(3), A(1),
-	A(2), A(11), A(2), A(11),  A(0), A(0), A(0), A(1)
+	A(2), A(12), A(2), A(12),  0, 0, A(3), A(1),
+	A(2), A(11), A(2), A(11),  0, 0, 0, A(1)
 };
 
 static unsigned get_score(int adc, int adc_l, int adc_h, int need_adc,
@@ -395,7 +396,6 @@ static int tlv320aic23_add_widgets(struct snd_soc_codec *codec)
 	/* set up audio path interconnects */
 	snd_soc_dapm_add_routes(codec, intercon, ARRAY_SIZE(intercon));
 
-	snd_soc_dapm_new_widgets(codec);
 	return 0;
 }
 
@@ -523,6 +523,8 @@ static int tlv320aic23_set_dai_fmt(struct snd_soc_dai *codec_dai,
 	case SND_SOC_DAIFMT_I2S:
 		iface_reg |= TLV320AIC23_FOR_I2S;
 		break;
+	case SND_SOC_DAIFMT_DSP_A:
+		iface_reg |= TLV320AIC23_LRP_ON;
 	case SND_SOC_DAIFMT_DSP_B:
 		iface_reg |= TLV320AIC23_FOR_DSP;
 		break;
@@ -623,11 +625,10 @@ static int tlv320aic23_resume(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_codec *codec = socdev->card->codec;
-	int i;
 	u16 reg;
 
 	/* Sync reg_cache with the hardware */
-	for (reg = 0; reg < ARRAY_SIZE(tlv320aic23_reg); i++) {
+	for (reg = 0; reg <= TLV320AIC23_ACTIVE; reg++) {
 		u16 val = tlv320aic23_read_reg_cache(codec, reg);
 		tlv320aic23_write(codec, reg, val);
 	}
@@ -705,17 +706,9 @@ static int tlv320aic23_init(struct snd_soc_device *socdev)
 	snd_soc_add_controls(codec, tlv320aic23_snd_controls,
 				ARRAY_SIZE(tlv320aic23_snd_controls));
 	tlv320aic23_add_widgets(codec);
-	ret = snd_soc_init_card(socdev);
-	if (ret < 0) {
-		printk(KERN_ERR "tlv320aic23: failed to register card\n");
-		goto card_err;
-	}
 
 	return ret;
 
-card_err:
-	snd_soc_free_pcms(socdev);
-	snd_soc_dapm_free(socdev);
 pcm_err:
 	kfree(codec->reg_cache);
 	return ret;

@@ -13,6 +13,7 @@
 #ifndef __CXGB3I_ULP2_DDP_H__
 #define __CXGB3I_ULP2_DDP_H__
 
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 
 /**
@@ -54,6 +55,7 @@ struct cxgb3i_gather_list {
  * struct cxgb3i_ddp_info - cxgb3i direct data placement for pdu payload
  *
  * @list:	list head to link elements
+ * @refcnt:	ref. count
  * @tdev:	pointer to t3cdev used by cxgb3 driver
  * @max_txsz:	max tx packet size for ddp
  * @max_rxsz:	max rx packet size for ddp
@@ -70,6 +72,7 @@ struct cxgb3i_gather_list {
  */
 struct cxgb3i_ddp_info {
 	struct list_head list;
+	struct kref refcnt;
 	struct t3cdev *tdev;
 	struct pci_dev *pdev;
 	unsigned int max_txsz;

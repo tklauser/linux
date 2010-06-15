@@ -236,19 +236,20 @@ xfs_trans_alloc(
 	uint		type)
 {
 	xfs_wait_for_freeze(mp, SB_FREEZE_TRANS);
-	return _xfs_trans_alloc(mp, type);
+	return _xfs_trans_alloc(mp, type, KM_SLEEP);
 }
 
 xfs_trans_t *
 _xfs_trans_alloc(
 	xfs_mount_t	*mp,
-	uint		type)
+	uint		type,
+	uint		memflags)
 {
 	xfs_trans_t	*tp;
 
 	atomic_inc(&mp->m_active_trans);
 
-	tp = kmem_zone_zalloc(xfs_trans_zone, KM_SLEEP);
+	tp = kmem_zone_zalloc(xfs_trans_zone, memflags);
 	tp->t_magic = XFS_TRANS_MAGIC;
 	tp->t_type = type;
 	tp->t_mountp = mp;
@@ -297,7 +298,7 @@ xfs_trans_dup(
 	tp->t_rtx_res = tp->t_rtx_res_used;
 	ntp->t_pflags = tp->t_pflags;
 
-	XFS_TRANS_DUP_DQINFO(tp->t_mountp, tp, ntp);
+	xfs_trans_dup_dqinfo(tp, ntp);
 
 	atomic_inc(&tp->t_mountp->m_active_trans);
 	return ntp;
@@ -628,8 +629,6 @@ xfs_trans_apply_sb_deltas(
 		xfs_trans_log_buf(tp, bp, offsetof(xfs_dsb_t, sb_icount),
 				  offsetof(xfs_dsb_t, sb_frextents) +
 				  sizeof(sbp->sb_frextents) - 1);
-
-	tp->t_mountp->m_super->s_dirt = 1;
 }
 
 /*
@@ -797,7 +796,7 @@ _xfs_trans_commit(
 	int			sync;
 #define	XFS_TRANS_LOGVEC_COUNT	16
 	xfs_log_iovec_t		log_vector_fast[XFS_TRANS_LOGVEC_COUNT];
-	void			*commit_iclog;
+	struct xlog_in_core	*commit_iclog;
 	int			shutdown;
 
 	commit_lsn = -1;
@@ -831,7 +830,7 @@ shut_us_down:
 		 * means is that we have some (non-persistent) quota
 		 * reservations that need to be unreserved.
 		 */
-		XFS_TRANS_UNRESERVE_AND_MOD_DQUOTS(mp, tp);
+		xfs_trans_unreserve_and_mod_dquots(tp);
 		if (tp->t_ticket) {
 			commit_lsn = xfs_log_done(mp, tp->t_ticket,
 							NULL, log_flags);
@@ -850,10 +849,9 @@ shut_us_down:
 	/*
 	 * If we need to update the superblock, then do it now.
 	 */
-	if (tp->t_flags & XFS_TRANS_SB_DIRTY) {
+	if (tp->t_flags & XFS_TRANS_SB_DIRTY)
 		xfs_trans_apply_sb_deltas(tp);
-	}
-	XFS_TRANS_APPLY_DQUOT_DELTAS(mp, tp);
+	xfs_trans_apply_dquot_deltas(tp);
 
 	/*
 	 * Ask each log item how many log_vector entries it will
@@ -983,9 +981,8 @@ shut_us_down:
 	 */
 	if (sync) {
 		if (!error) {
-			error = _xfs_log_force(mp, commit_lsn,
-				      XFS_LOG_FORCE | XFS_LOG_SYNC,
-				      log_flushed);
+			error = _xfs_log_force_lsn(mp, commit_lsn,
+				      XFS_LOG_SYNC, log_flushed);
 		}
 		XFS_STATS_INC(xs_trans_sync);
 	} else {
@@ -1058,7 +1055,7 @@ xfs_trans_uncommit(
 	}
 
 	xfs_trans_unreserve_and_mod_sb(tp);
-	XFS_TRANS_UNRESERVE_AND_MOD_DQUOTS(tp->t_mountp, tp);
+	xfs_trans_unreserve_and_mod_dquots(tp);
 
 	xfs_trans_free_items(tp, flags);
 	xfs_trans_free_busy(tp);
@@ -1123,7 +1120,7 @@ xfs_trans_fill_vecs(
 	tp->t_header.th_num_items = nitems;
 	log_vector->i_addr = (xfs_caddr_t)&tp->t_header;
 	log_vector->i_len = sizeof(xfs_trans_header_t);
-	XLOG_VEC_SET_TYPE(log_vector, XLOG_REG_TYPE_TRANSHDR);
+	log_vector->i_type = XLOG_REG_TYPE_TRANSHDR;
 }
 
 
@@ -1183,7 +1180,7 @@ xfs_trans_cancel(
 	}
 #endif
 	xfs_trans_unreserve_and_mod_sb(tp);
-	XFS_TRANS_UNRESERVE_AND_MOD_DQUOTS(mp, tp);
+	xfs_trans_unreserve_and_mod_dquots(tp);
 
 	if (tp->t_ticket) {
 		if (flags & XFS_TRANS_RELEASE_LOG_RES) {
@@ -1213,7 +1210,7 @@ xfs_trans_free(
 	xfs_trans_t	*tp)
 {
 	atomic_dec(&tp->t_mountp->m_active_trans);
-	XFS_TRANS_FREE_DQINFO(tp->t_mountp, tp);
+	xfs_trans_free_dqinfo(tp);
 	kmem_zone_free(xfs_trans_zone, tp);
 }
 

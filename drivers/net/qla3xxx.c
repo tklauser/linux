@@ -61,7 +61,7 @@ static int msi;
 module_param(msi, int, 0);
 MODULE_PARM_DESC(msi, "Turn on Message Signaled Interrupts.");
 
-static struct pci_device_id ql3xxx_pci_tbl[] __devinitdata = {
+static DEFINE_PCI_DEVICE_TABLE(ql3xxx_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, QL3022_DEVICE_ID)},
 	{PCI_DEVICE(PCI_VENDOR_ID_QLOGIC, QL3032_DEVICE_ID)},
 	/* required last entry */
@@ -1969,8 +1969,8 @@ static void ql_update_lrg_bufq_prod_index(struct ql3_adapter *qdev)
 	struct ql_rcv_buf_cb *lrg_buf_cb;
 	struct ql3xxx_port_registers __iomem *port_regs = qdev->mem_map_registers;
 
-	if ((qdev->lrg_buf_free_count >= 8)
-	    && (qdev->lrg_buf_release_cnt >= 16)) {
+	if ((qdev->lrg_buf_free_count >= 8) &&
+	    (qdev->lrg_buf_release_cnt >= 16)) {
 
 		if (qdev->lrg_buf_skb_check)
 			if (!ql_populate_free_queue(qdev))
@@ -1978,8 +1978,8 @@ static void ql_update_lrg_bufq_prod_index(struct ql3_adapter *qdev)
 
 		lrg_buf_q_ele = qdev->lrg_buf_next_free;
 
-		while ((qdev->lrg_buf_release_cnt >= 16)
-		       && (qdev->lrg_buf_free_count >= 8)) {
+		while ((qdev->lrg_buf_release_cnt >= 16) &&
+		       (qdev->lrg_buf_free_count >= 8)) {
 
 			for (i = 0; i < 8; i++) {
 				lrg_buf_cb =
@@ -2572,7 +2572,8 @@ map_error:
  * The IOCB is always the top of the chain followed by one or more
  * OALs (when necessary).
  */
-static int ql3xxx_send(struct sk_buff *skb, struct net_device *ndev)
+static netdev_tx_t ql3xxx_send(struct sk_buff *skb,
+			       struct net_device *ndev)
 {
 	struct ql3_adapter *qdev = (struct ql3_adapter *)netdev_priv(ndev);
 	struct ql3xxx_port_registers __iomem *port_regs = qdev->mem_map_registers;
@@ -2617,7 +2618,6 @@ static int ql3xxx_send(struct sk_buff *skb, struct net_device *ndev)
 			    &port_regs->CommonRegs.reqQProducerIndex,
 			    qdev->req_producer_index);
 
-	ndev->trans_start = jiffies;
 	if (netif_msg_tx_queued(qdev))
 		printk(KERN_DEBUG PFX "%s: tx queued, slot %d, len %d\n",
 		       ndev->name, qdev->req_producer_index, skb->len);
@@ -3143,6 +3143,7 @@ static int ql_adapter_initialize(struct ql3_adapter *qdev)
 						(void __iomem *)port_regs;
 	u32 delay = 10;
 	int status = 0;
+	unsigned long hw_flags = 0;
 
 	if(ql_mii_setup(qdev))
 		return -1;
@@ -3151,7 +3152,8 @@ static int ql_adapter_initialize(struct ql3_adapter *qdev)
 	ql_write_common_reg(qdev, &port_regs->CommonRegs.serialPortInterfaceReg,
 			    (ISP_SERIAL_PORT_IF_WE |
 			     (ISP_SERIAL_PORT_IF_WE << 16)));
-
+	/* Give the PHY time to come out of reset. */
+	mdelay(100);
 	qdev->port_link_state = LS_DOWN;
 	netif_carrier_off(qdev->ndev);
 
@@ -3351,7 +3353,9 @@ static int ql_adapter_initialize(struct ql3_adapter *qdev)
 		value = ql_read_page0_reg(qdev, &port_regs->portStatus);
 		if (value & PORT_STATUS_IC)
 			break;
+		spin_unlock_irqrestore(&qdev->hw_lock, hw_flags);
 		msleep(500);
+		spin_lock_irqsave(&qdev->hw_lock, hw_flags);
 	} while (--delay);
 
 	if (delay == 0) {
@@ -3647,7 +3651,7 @@ static int ql_adapter_up(struct ql3_adapter *qdev)
 		ql_sem_unlock(qdev, QL_DRVR_SEM_MASK);
 	} else {
 		printk(KERN_ERR PFX
-		       "%s: Could not aquire driver lock.\n",
+		       "%s: Could not acquire driver lock.\n",
 		       ndev->name);
 		goto err_lock;
 	}
@@ -3838,7 +3842,9 @@ static void ql_reset_work(struct work_struct *work)
 						      16) | ISP_CONTROL_RI));
 			}
 
+			spin_unlock_irqrestore(&qdev->hw_lock, hw_flags);
 			ssleep(1);
+			spin_lock_irqsave(&qdev->hw_lock, hw_flags);
 		} while (--max_wait_time);
 		spin_unlock_irqrestore(&qdev->hw_lock, hw_flags);
 
@@ -4081,7 +4087,6 @@ static void __devexit ql3xxx_remove(struct pci_dev *pdev)
 	struct ql3_adapter *qdev = netdev_priv(ndev);
 
 	unregister_netdev(ndev);
-	qdev = netdev_priv(ndev);
 
 	ql_disable_interrupts(qdev);
 

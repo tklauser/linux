@@ -175,6 +175,16 @@ config RTC_DRV_MAX6900
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-max6900.
 
+config RTC_DRV_MAX8925
+	tristate "Maxim MAX8925"
+	depends on MFD_MAX8925
+	help
+	  If you say yes here you will get support for the
+	  RTC of Maxim MAX8925 PMIC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-max8925.
+
 config RTC_DRV_RS5C372
 	tristate "Ricoh R2025S/D, RS5C372A/B, RV5C386, RV5C387A"
 	help
@@ -242,6 +252,15 @@ config RTC_DRV_M41T80_WDT
 	  If you say Y here you will get support for the
 	  watchdog timer in the ST M41T60 and M41T80 RTC chips series.
 
+config RTC_DRV_BQ32K
+	tristate "TI BQ32000"
+	help
+	  If you say Y here you will get support for the TI
+	  BQ32000 I2C RTC chip.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-bq32k.
+
 config RTC_DRV_DM355EVM
 	tristate "TI DaVinci DM355 EVM RTC"
 	depends on MFD_DM355EVM_MSP
@@ -258,14 +277,14 @@ config RTC_DRV_TWL92330
 	  the Menelaus driver; it's not separate module.
 
 config RTC_DRV_TWL4030
-	tristate "TI TWL4030/TWL5030/TPS659x0"
+	tristate "TI TWL4030/TWL5030/TWL6030/TPS659x0"
 	depends on RTC_CLASS && TWL4030_CORE
 	help
 	  If you say yes here you get support for the RTC on the
-	  TWL4030 family chips, used mostly with OMAP3 platforms.
+	  TWL4030/TWL5030/TWL6030 family chips, used mostly with OMAP3 platforms.
 
 	  This driver can also be built as a module. If so, the module
-	  will be called rtc-twl4030.
+	  will be called rtc-twl.
 
 config RTC_DRV_S35390A
 	tristate "Seiko Instruments S-35390A"
@@ -295,6 +314,15 @@ config RTC_DRV_RX8581
 
 	  This driver can also be built as a module. If so the module
 	  will be called rtc-rx8581.
+
+config RTC_DRV_RX8025
+	tristate "Epson RX-8025SA/NB"
+	help
+	  If you say yes here you get support for the Epson
+	  RX-8025SA/NB RTC chips.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-rx8025.
 
 endif # I2C
 
@@ -368,6 +396,15 @@ config RTC_DRV_DS3234
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-ds3234.
+
+config RTC_DRV_PCF2123
+	tristate "NXP PCF2123"
+	help
+	  If you say yes here you get support for the NXP PCF2123
+	  RTC chip.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-pcf2123.
 
 endif # SPI_MASTER
 
@@ -491,6 +528,26 @@ config RTC_DRV_M48T59
 	  This driver can also be built as a module, if so, the module
 	  will be called "rtc-m48t59".
 
+config RTC_DRV_MSM6242
+	tristate "Oki MSM6242"
+	help
+	  If you say yes here you get support for the Oki MSM6242
+	  timekeeping chip. It is used in some Amiga models (e.g. A2000).
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-msm6242.
+
+config RTC_MXC
+	tristate "Freescale MXC Real Time Clock"
+	depends on ARCH_MXC
+	depends on RTC_CLASS
+	help
+	   If you say yes here you get support for the Freescale MXC
+	   RTC module.
+
+	   This driver can also be built as a module, if so, the module
+	   will be called "rtc-mxc".
+
 config RTC_DRV_BQ4802
 	tristate "TI BQ4802"
 	help
@@ -500,6 +557,16 @@ config RTC_DRV_BQ4802
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-bq4802.
 
+config RTC_DRV_RP5C01
+	tristate "Ricoh RP5C01"
+	help
+	  If you say yes here you get support for the Ricoh RP5C01
+	  timekeeping chip. It is used in some Amiga models (e.g. A3000
+	  and A4000).
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-rp5c01.
+
 config RTC_DRV_V3020
 	tristate "EM Microelectronic V3020"
 	help
@@ -508,6 +575,16 @@ config RTC_DRV_V3020
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-v3020.
+
+config RTC_DRV_WM831X
+	tristate "Wolfson Microelectronics WM831x RTC"
+	depends on MFD_WM831X
+	help
+	  If you say yes here you will get support for the RTC subsystem
+	  of the Wolfson Microelectronics WM831X series PMICs.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called "rtc-wm831x".
 
 config RTC_DRV_WM8350
 	tristate "Wolfson Microelectronics WM8350 RTC"
@@ -526,14 +603,30 @@ config RTC_DRV_PCF50633
 	  If you say yes here you get support for the RTC subsystem of the
 	  NXP PCF50633 used in embedded systems.
 
+config RTC_DRV_AB3100
+	tristate "ST-Ericsson AB3100 RTC"
+	depends on AB3100_CORE
+	default y if AB3100_CORE
+	help
+	  Select this to enable the ST-Ericsson AB3100 Mixed Signal IC RTC
+	  support. This chip contains a battery- and capacitor-backed RTC.
+
+config RTC_DRV_NUC900
+	tristate "NUC910/NUC920 RTC driver"
+	depends on RTC_CLASS && ARCH_W90X900
+	help
+	  If you say yes here you get support for the RTC subsystem of the
+	  NUC910/NUC920 used in embedded systems.
+
 comment "on-CPU RTC drivers"
 
 config RTC_DRV_OMAP
 	tristate "TI OMAP1"
-	depends on ARCH_OMAP15XX || ARCH_OMAP16XX || ARCH_OMAP730
+	depends on ARCH_OMAP15XX || ARCH_OMAP16XX || ARCH_OMAP730 || ARCH_DAVINCI_DA8XX
 	help
-	  Say "yes" here to support the real time clock on TI OMAP1 chips.
-	  This driver can also be built as a module called rtc-omap.
+	  Say "yes" here to support the real time clock on TI OMAP1 and
+	  DA8xx/OMAP-L13x chips.  This driver can also be built as a
+	  module called rtc-omap.
 
 config RTC_DRV_S3C
 	tristate "Samsung S3C series SoC RTC"
@@ -692,7 +785,7 @@ config RTC_DRV_GENERIC
 	tristate "Generic RTC support"
 	# Please consider writing a new RTC driver instead of using the generic
 	# RTC abstraction
-	depends on PARISC || M68K || PPC
+	depends on PARISC || M68K || PPC || SUPERH32
 	help
 	  Say Y or M here to enable RTC support on systems using the generic
 	  RTC abstraction. If you do not know what you are doing, you should
@@ -732,7 +825,7 @@ config RTC_DRV_TX4939
 
 config RTC_DRV_MV
 	tristate "Marvell SoC RTC"
-	depends on ARCH_KIRKWOOD
+	depends on ARCH_KIRKWOOD || ARCH_DOVE
 	help
 	  If you say yes here you will get support for the in-chip RTC
 	  that can be found in some of Marvell's SoC devices, such as
@@ -749,5 +842,50 @@ config RTC_DRV_PS3
 
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-ps3.
+
+config RTC_DRV_COH901331
+	tristate "ST-Ericsson COH 901 331 RTC"
+	depends on ARCH_U300
+	help
+	  If you say Y here you will get access to ST-Ericsson
+	  COH 901 331 RTC clock found in some ST-Ericsson Mobile
+	  Platforms.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called "rtc-coh901331".
+
+
+config RTC_DRV_STMP
+	tristate "Freescale STMP3xxx RTC"
+	depends on ARCH_STMP3XXX
+	help
+	  If you say yes here you will get support for the onboard
+	  STMP3xxx RTC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-stmp3xxx.
+
+config RTC_DRV_PCAP
+	tristate "PCAP RTC"
+	depends on EZX_PCAP
+	help
+	  If you say Y here you will get support for the RTC found on
+	  the PCAP2 ASIC used on some Motorola phones.
+
+config RTC_DRV_MC13783
+	depends on MFD_MC13783
+	tristate "Freescale MC13783 RTC"
+	help
+	  This enables support for the Freescale MC13783 PMIC RTC
+
+config RTC_DRV_MPC5121
+	tristate "Freescale MPC5121 built-in RTC"
+	depends on PPC_MPC512x && RTC_CLASS
+	help
+	  If you say yes here you will get support for the
+	  built-in RTC MPC5121.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-mpc5121.
 
 endif # RTC_CLASS

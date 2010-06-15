@@ -6,7 +6,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,7 +47,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20090320
+#define ACPI_CA_VERSION                 0x20100121
 
 #include "actypes.h"
 #include "actbl.h"
@@ -64,6 +64,7 @@ extern u8 acpi_gbl_enable_interpreter_slack;
 extern u8 acpi_gbl_all_methods_serialized;
 extern u8 acpi_gbl_create_osi_method;
 extern u8 acpi_gbl_leave_wake_gpes_disabled;
+extern u8 acpi_gbl_use_default_register_widths;
 extern acpi_name acpi_gbl_trace_method_name;
 extern u32 acpi_gbl_trace_flags;
 
@@ -153,7 +154,8 @@ acpi_status
 acpi_walk_namespace(acpi_object_type type,
 		    acpi_handle start_object,
 		    u32 max_depth,
-		    acpi_walk_callback user_function,
+		    acpi_walk_callback pre_order_visit,
+		    acpi_walk_callback post_order_visit,
 		    void *context, void **return_value);
 
 acpi_status
@@ -199,7 +201,10 @@ acpi_evaluate_object_typed(acpi_handle object,
 			   acpi_object_type return_type);
 
 acpi_status
-acpi_get_object_info(acpi_handle handle, struct acpi_buffer *return_buffer);
+acpi_get_object_info(acpi_handle handle,
+		     struct acpi_device_info **return_buffer);
+
+acpi_status acpi_install_method(u8 *buffer);
 
 acpi_status
 acpi_get_next_object(acpi_object_type type,
@@ -276,11 +281,11 @@ acpi_status acpi_get_event_status(u32 event, acpi_event_status * event_status);
 /*
  * GPE Interfaces
  */
-acpi_status acpi_set_gpe_type(acpi_handle gpe_device, u32 gpe_number, u8 type);
+acpi_status acpi_set_gpe(acpi_handle gpe_device, u32 gpe_number, u8 action);
 
-acpi_status acpi_enable_gpe(acpi_handle gpe_device, u32 gpe_number);
+acpi_status acpi_enable_gpe(acpi_handle gpe_device, u32 gpe_number, u8 type);
 
-acpi_status acpi_disable_gpe(acpi_handle gpe_device, u32 gpe_number);
+acpi_status acpi_disable_gpe(acpi_handle gpe_device, u32 gpe_number, u8 type);
 
 acpi_status acpi_clear_gpe(acpi_handle gpe_device, u32 gpe_number, u32 flags);
 
@@ -357,9 +362,9 @@ acpi_status acpi_set_firmware_waking_vector(u32 physical_address);
 acpi_status acpi_set_firmware_waking_vector64(u64 physical_address);
 #endif
 
-acpi_status acpi_read(u32 *value, struct acpi_generic_address *reg);
+acpi_status acpi_read(u64 *value, struct acpi_generic_address *reg);
 
-acpi_status acpi_write(u32 value, struct acpi_generic_address *reg);
+acpi_status acpi_write(u64 value, struct acpi_generic_address *reg);
 
 acpi_status
 acpi_get_sleep_type_data(u8 sleep_state, u8 * slp_typ_a, u8 * slp_typ_b);
@@ -375,7 +380,7 @@ acpi_status acpi_leave_sleep_state_prep(u8 sleep_state);
 acpi_status acpi_leave_sleep_state(u8 sleep_state);
 
 /*
- * Debug output
+ * Error/Warning output
  */
 void ACPI_INTERNAL_VAR_XFACE
 acpi_error(const char *module_name,
@@ -394,6 +399,9 @@ void ACPI_INTERNAL_VAR_XFACE
 acpi_info(const char *module_name,
 	  u32 line_number, const char *format, ...) ACPI_PRINTF_LIKE(3);
 
+/*
+ * Debug output
+ */
 #ifdef ACPI_DEBUG_OUTPUT
 
 void ACPI_INTERNAL_VAR_XFACE

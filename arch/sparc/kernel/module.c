@@ -9,9 +9,9 @@
 #include <linux/elf.h>
 #include <linux/vmalloc.h>
 #include <linux/fs.h>
+#include <linux/gfp.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
-#include <linux/slab.h>
 #include <linux/mm.h>
 
 #include <asm/processor.h>
@@ -75,8 +75,6 @@ void *module_alloc(unsigned long size)
 void module_free(struct module *mod, void *module_region)
 {
 	vfree(module_region);
-	/* FIXME: If module_region == mod->init_region, trim exception
-           table entries. */
 }
 
 /* Make generic code ignore STT_REGISTER dummy undefined symbols.  */

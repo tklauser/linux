@@ -321,7 +321,7 @@ static atomic_t hifn_dev_number;
 #define	HIFN_PUBOPLEN_MOD_M	0x0000007f	/* modulus length mask */
 #define	HIFN_PUBOPLEN_MOD_S	0		/* modulus length shift */
 #define	HIFN_PUBOPLEN_EXP_M	0x0003ff80	/* exponent length mask */
-#define	HIFN_PUBOPLEN_EXP_S	7		/* exponent lenght shift */
+#define	HIFN_PUBOPLEN_EXP_S	7		/* exponent length shift */
 #define	HIFN_PUBOPLEN_RED_M	0x003c0000	/* reducend length mask */
 #define	HIFN_PUBOPLEN_RED_S	18		/* reducend length shift */
 
@@ -863,7 +863,7 @@ static int hifn_init_pubrng(struct hifn_device *dev)
 		dev->dmareg |= HIFN_DMAIER_PUBDONE;
 		hifn_write_1(dev, HIFN_1_DMA_IER, dev->dmareg);
 
-		dprintk("Chip %s: Public key engine has been sucessfully "
+		dprintk("Chip %s: Public key engine has been successfully "
 				"initialised.\n", dev->name);
 	}
 
@@ -2564,7 +2564,7 @@ static void hifn_tasklet_callback(unsigned long data)
 		hifn_process_queue(dev);
 }
 
-static int hifn_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+static int __devinit hifn_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int err, i;
 	struct hifn_device *dev;
@@ -2696,7 +2696,7 @@ err_out_disable_pci_device:
 	return err;
 }
 
-static void hifn_remove(struct pci_dev *pdev)
+static void __devexit hifn_remove(struct pci_dev *pdev)
 {
 	int i;
 	struct hifn_device *dev;
@@ -2744,7 +2744,7 @@ static struct pci_driver hifn_pci_driver = {
 	.remove   = __devexit_p(hifn_remove),
 };
 
-static int __devinit hifn_init(void)
+static int __init hifn_init(void)
 {
 	unsigned int freq;
 	int err;
@@ -2789,7 +2789,7 @@ static int __devinit hifn_init(void)
 	return 0;
 }
 
-static void __devexit hifn_fini(void)
+static void __exit hifn_fini(void)
 {
 	pci_unregister_driver(&hifn_pci_driver);
 

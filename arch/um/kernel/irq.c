@@ -10,7 +10,9 @@
 #include "linux/interrupt.h"
 #include "linux/kernel_stat.h"
 #include "linux/module.h"
+#include "linux/sched.h"
 #include "linux/seq_file.h"
+#include "linux/slab.h"
 #include "as-layout.h"
 #include "kern_util.h"
 #include "os.h"
@@ -33,7 +35,7 @@ int show_interrupts(struct seq_file *p, void *v)
 	}
 
 	if (i < NR_IRQS) {
-		spin_lock_irqsave(&irq_desc[i].lock, flags);
+		raw_spin_lock_irqsave(&irq_desc[i].lock, flags);
 		action = irq_desc[i].action;
 		if (!action)
 			goto skip;
@@ -52,7 +54,7 @@ int show_interrupts(struct seq_file *p, void *v)
 
 		seq_putc(p, '\n');
 skip:
-		spin_unlock_irqrestore(&irq_desc[i].lock, flags);
+		raw_spin_unlock_irqrestore(&irq_desc[i].lock, flags);
 	} else if (i == NR_IRQS)
 		seq_putc(p, '\n');
 
@@ -358,7 +360,7 @@ EXPORT_SYMBOL(um_request_irq);
 EXPORT_SYMBOL(reactivate_fd);
 
 /*
- * hw_interrupt_type must define (startup || enable) &&
+ * irq_chip must define (startup || enable) &&
  * (shutdown || disable) && end
  */
 static void dummy(unsigned int irq)
@@ -366,7 +368,7 @@ static void dummy(unsigned int irq)
 }
 
 /* This is used for everything else than the timer. */
-static struct hw_interrupt_type normal_irq_type = {
+static struct irq_chip normal_irq_type = {
 	.typename = "SIGIO",
 	.release = free_irq_by_irq_and_dev,
 	.disable = dummy,
@@ -375,7 +377,7 @@ static struct hw_interrupt_type normal_irq_type = {
 	.end = dummy
 };
 
-static struct hw_interrupt_type SIGVTALRM_irq_type = {
+static struct irq_chip SIGVTALRM_irq_type = {
 	.typename = "SIGVTALRM",
 	.release = free_irq_by_irq_and_dev,
 	.shutdown = dummy, /* never called */

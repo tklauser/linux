@@ -86,9 +86,9 @@ extern void ufs_put_cylinder (struct super_block *, unsigned);
 /* dir.c */
 extern const struct inode_operations ufs_dir_inode_operations;
 extern int ufs_add_link (struct dentry *, struct inode *);
-extern ino_t ufs_inode_by_name(struct inode *, struct dentry *);
+extern ino_t ufs_inode_by_name(struct inode *, const struct qstr *);
 extern int ufs_make_empty(struct inode *, struct inode *);
-extern struct ufs_dir_entry *ufs_find_entry(struct inode *, struct dentry *, struct page **);
+extern struct ufs_dir_entry *ufs_find_entry(struct inode *, const struct qstr *, struct page **);
 extern int ufs_delete_entry(struct inode *, struct ufs_dir_entry *, struct page *);
 extern int ufs_empty_dir (struct inode *);
 extern struct ufs_dir_entry *ufs_dotdot(struct inode *, struct page **);
@@ -99,7 +99,6 @@ extern void ufs_set_link(struct inode *dir, struct ufs_dir_entry *de,
 extern const struct inode_operations ufs_file_inode_operations;
 extern const struct file_operations ufs_file_operations;
 extern const struct address_space_operations ufs_aops;
-extern int ufs_sync_file(struct file *, struct dentry *, int);
 
 /* ialloc.c */
 extern void ufs_free_inode (struct inode *inode);
@@ -107,7 +106,7 @@ extern struct inode * ufs_new_inode (struct inode *, int);
 
 /* inode.c */
 extern struct inode *ufs_iget(struct super_block *, unsigned long);
-extern int ufs_write_inode (struct inode *, int);
+extern int ufs_write_inode (struct inode *, struct writeback_control *);
 extern int ufs_sync_inode (struct inode *);
 extern void ufs_delete_inode (struct inode *);
 extern struct buffer_head * ufs_bread (struct inode *, unsigned, int, int *);

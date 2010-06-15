@@ -1,7 +1,7 @@
 #ifndef _SH_SETUP_H
 #define _SH_SETUP_H
 
-#define COMMAND_LINE_SIZE 256
+#include <asm-generic/setup.h>
 
 #ifdef __KERNEL__
 /*
@@ -18,7 +18,6 @@
 /* ... */
 #define COMMAND_LINE ((char *) (PARAM+0x100))
 
-int setup_early_printk(char *);
 void sh_mv_setup(void);
 
 #endif /* __KERNEL__ */

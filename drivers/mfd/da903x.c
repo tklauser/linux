@@ -18,6 +18,7 @@
 #include <linux/platform_device.h>
 #include <linux/i2c.h>
 #include <linux/mfd/da903x.h>
+#include <linux/slab.h>
 
 #define DA9030_CHIP_ID		0x00
 #define DA9030_EVENT_A		0x01
@@ -561,7 +562,7 @@ static int __init da903x_init(void)
 {
 	return i2c_add_driver(&da903x_driver);
 }
-module_init(da903x_init);
+subsys_initcall(da903x_init);
 
 static void __exit da903x_exit(void)
 {

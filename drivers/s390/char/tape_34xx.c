@@ -2,18 +2,20 @@
  *  drivers/s390/char/tape_34xx.c
  *    tape device discipline for 3480/3490 tapes.
  *
- *    Copyright (C) IBM Corp. 2001,2006
+ *    Copyright IBM Corp. 2001, 2009
  *    Author(s): Carsten Otte <cotte@de.ibm.com>
  *		 Tuan Ngo-Anh <ngoanh@de.ibm.com>
  *		 Martin Schwidefsky <schwidefsky@de.ibm.com>
  */
 
-#define KMSG_COMPONENT "tape"
+#define KMSG_COMPONENT "tape_34xx"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/bio.h>
 #include <linux/workqueue.h>
+#include <linux/slab.h>
 
 #define TAPE_DBF_AREA	tape_34xx_dbf
 
@@ -113,16 +115,16 @@ tape_34xx_work_handler(struct work_struct *work)
 {
 	struct tape_34xx_work *p =
 		container_of(work, struct tape_34xx_work, work);
+	struct tape_device *device = p->device;
 
 	switch(p->op) {
 		case TO_MSEN:
-			tape_34xx_medium_sense(p->device);
+			tape_34xx_medium_sense(device);
 			break;
 		default:
 			DBF_EVENT(3, "T34XX: internal error: unknown work\n");
 	}
-
-	p->device = tape_put_device(p->device);
+	tape_put_device(device);
 	kfree(p);
 }
 
@@ -136,7 +138,7 @@ tape_34xx_schedule_work(struct tape_device *device, enum tape_op op)
 
 	INIT_WORK(&p->work, tape_34xx_work_handler);
 
-	p->device = tape_get_device_reference(device);
+	p->device = tape_get_device(device);
 	p->op     = op;
 
 	schedule_work(&p->work);
@@ -1134,7 +1136,7 @@ tape_34xx_bread(struct tape_device *device, struct request *req)
 	/* Setup ccws. */
 	request->op = TO_BLOCK;
 	start_block = (struct tape_34xx_block_id *) request->cpdata;
-	start_block->block = req->sector >> TAPEBLOCK_HSEC_S2B;
+	start_block->block = blk_rq_pos(req) >> TAPEBLOCK_HSEC_S2B;
 	DBF_EVENT(6, "start_block = %i\n", start_block->block);
 
 	ccw = request->cpaddr;
@@ -1289,7 +1291,7 @@ static int
 tape_34xx_online(struct ccw_device *cdev)
 {
 	return tape_generic_online(
-		cdev->dev.driver_data,
+		dev_get_drvdata(&cdev->dev),
 		&tape_discipline_34xx
 	);
 }
@@ -1302,6 +1304,7 @@ static struct ccw_driver tape_34xx_driver = {
 	.remove = tape_generic_remove,
 	.set_online = tape_34xx_online,
 	.set_offline = tape_generic_offline,
+	.freeze = tape_generic_pm_suspend,
 };
 
 static int

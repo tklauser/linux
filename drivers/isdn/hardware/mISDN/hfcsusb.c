@@ -33,6 +33,7 @@
 #include <linux/delay.h>
 #include <linux/usb.h>
 #include <linux/mISDNhw.h>
+#include <linux/slab.h>
 #include "hfcsusb.h"
 
 static const char *hfcsusb_rev = "Revision: 0.3.3 (socket), 2008-11-05";
@@ -721,7 +722,7 @@ hfcsusb_setup_bch(struct bchannel *bch, int protocol)
 	switch (protocol) {
 	case (-1):	/* used for init */
 		bch->state = -1;
-		/* fall trough */
+		/* fall through */
 	case (ISDN_P_NONE):
 		if (bch->state == ISDN_P_NONE)
 			return 0; /* already in idle state */
@@ -947,7 +948,7 @@ hfcsusb_rx_frame(struct usb_fifo *fifo, __u8 *data, unsigned int len,
 				if (fifo->dch)
 					recv_Dchannel(fifo->dch);
 				if (fifo->bch)
-					recv_Bchannel(fifo->bch);
+					recv_Bchannel(fifo->bch, MISDN_ID_ANY);
 				if (fifo->ech)
 					recv_Echannel(fifo->ech,
 						     &hw->dch);
@@ -969,7 +970,7 @@ hfcsusb_rx_frame(struct usb_fifo *fifo, __u8 *data, unsigned int len,
 	} else {
 		/* deliver transparent data to layer2 */
 		if (rx_skb->len >= poll)
-			recv_Bchannel(fifo->bch);
+			recv_Bchannel(fifo->bch, MISDN_ID_ANY);
 	}
 	spin_unlock(&hw->lock);
 }
@@ -1809,21 +1810,7 @@ deactivate_bchannel(struct bchannel *bch)
 		    hw->name, __func__, bch->nr);
 
 	spin_lock_irqsave(&hw->lock, flags);
-	if (test_and_clear_bit(FLG_TX_NEXT, &bch->Flags)) {
-		dev_kfree_skb(bch->next_skb);
-		bch->next_skb = NULL;
-	}
-	if (bch->tx_skb) {
-		dev_kfree_skb(bch->tx_skb);
-		bch->tx_skb = NULL;
-	}
-	bch->tx_idx = 0;
-	if (bch->rx_skb) {
-		dev_kfree_skb(bch->rx_skb);
-		bch->rx_skb = NULL;
-	}
-	clear_bit(FLG_ACTIVE, &bch->Flags);
-	clear_bit(FLG_TX_BUSY, &bch->Flags);
+	mISDN_clear_bchannel(bch);
 	spin_unlock_irqrestore(&hw->lock, flags);
 	hfcsusb_setup_bch(bch, ISDN_P_NONE);
 	hfcsusb_stop_endpoint(hw, bch->nr);

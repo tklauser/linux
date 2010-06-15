@@ -36,7 +36,7 @@
 #include <linux/notifier.h>
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
-#include <linux/bootmem.h>
+#include <linux/gfp.h>
 #include <asm/uaccess.h>
 #include <asm/delay.h>
 #include <asm/s390_ext.h>
@@ -52,27 +52,17 @@
 #define USECS_PER_JIFFY     ((unsigned long) 1000000/HZ)
 #define CLK_TICKS_PER_JIFFY ((unsigned long) USECS_PER_JIFFY << 12)
 
-/*
- * Create a small time difference between the timer interrupts
- * on the different cpus to avoid lock contention.
- */
-#define CPU_DEVIATION       (smp_processor_id() << 12)
-
-#define TICK_SIZE tick
-
 u64 sched_clock_base_cc = -1;	/* Force to data section. */
-
-static ext_int_info_t ext_int_info_cc;
-static ext_int_info_t ext_int_etr_cc;
+EXPORT_SYMBOL_GPL(sched_clock_base_cc);
 
 static DEFINE_PER_CPU(struct clock_event_device, comparators);
 
 /*
  * Scheduler clock - returns current time in nanosec units.
  */
-unsigned long long sched_clock(void)
+unsigned long long notrace sched_clock(void)
 {
-	return ((get_clock_xt() - sched_clock_base_cc) * 125) >> 9;
+	return (get_clock_monotonic() * 125) >> 9;
 }
 
 /*
@@ -84,22 +74,17 @@ unsigned long long monotonic_clock(void)
 }
 EXPORT_SYMBOL(monotonic_clock);
 
-void tod_to_timeval(__u64 todval, struct timespec *xtime)
+void tod_to_timeval(__u64 todval, struct timespec *xt)
 {
 	unsigned long long sec;
 
 	sec = todval >> 12;
 	do_div(sec, 1000000);
-	xtime->tv_sec = sec;
+	xt->tv_sec = sec;
 	todval -= (sec * 1000000) << 12;
-	xtime->tv_nsec = ((todval * 1000) >> 12);
+	xt->tv_nsec = ((todval * 1000) >> 12);
 }
-
-#ifdef CONFIG_PROFILING
-#define s390_do_profile()	profile_tick(CPU_PROFILING)
-#else
-#define s390_do_profile()	do { ; } while(0)
-#endif /* CONFIG_PROFILING */
+EXPORT_SYMBOL(tod_to_timeval);
 
 void clock_comparator_work(void)
 {
@@ -109,7 +94,6 @@ void clock_comparator_work(void)
 	set_clock_comparator(S390_lowcore.clock_comparator);
 	cd = &__get_cpu_var(comparators);
 	cd->event_handler(cd);
-	s390_do_profile();
 }
 
 /*
@@ -193,12 +177,14 @@ static void timing_alert_interrupt(__u16 code)
 static void etr_reset(void);
 static void stp_reset(void);
 
-unsigned long read_persistent_clock(void)
+void read_persistent_clock(struct timespec *ts)
 {
-	struct timespec ts;
+	tod_to_timeval(get_clock() - TOD_UNIX_EPOCH, ts);
+}
 
-	tod_to_timeval(get_clock() - TOD_UNIX_EPOCH, &ts);
-	return ts.tv_sec;
+void read_boot_clock(struct timespec *ts)
+{
+	tod_to_timeval(sched_clock_base_cc - TOD_UNIX_EPOCH, ts);
 }
 
 static cycle_t read_tod_clock(struct clocksource *cs)
@@ -216,8 +202,13 @@ static struct clocksource clocksource_tod = {
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
+struct clocksource * __init clocksource_default_clock(void)
+{
+	return &clocksource_tod;
+}
 
-void update_vsyscall(struct timespec *wall_time, struct clocksource *clock)
+void update_vsyscall(struct timespec *wall_time, struct clocksource *clock,
+		     u32 mult)
 {
 	if (clock != &clocksource_tod)
 		return;
@@ -226,10 +217,11 @@ void update_vsyscall(struct timespec *wall_time, struct clocksource *clock)
 	++vdso_data->tb_update_count;
 	smp_wmb();
 	vdso_data->xtime_tod_stamp = clock->cycle_last;
-	vdso_data->xtime_clock_sec = xtime.tv_sec;
-	vdso_data->xtime_clock_nsec = xtime.tv_nsec;
+	vdso_data->xtime_clock_sec = wall_time->tv_sec;
+	vdso_data->xtime_clock_nsec = wall_time->tv_nsec;
 	vdso_data->wtom_clock_sec = wall_to_monotonic.tv_sec;
 	vdso_data->wtom_clock_nsec = wall_to_monotonic.tv_nsec;
+	vdso_data->ntp_mult = mult;
 	smp_wmb();
 	++vdso_data->tb_update_count;
 }
@@ -253,48 +245,20 @@ void update_vsyscall_tz(void)
  */
 void __init time_init(void)
 {
-	struct timespec ts;
-	unsigned long flags;
-	cycle_t now;
-
 	/* Reset time synchronization interfaces. */
 	etr_reset();
 	stp_reset();
 
 	/* request the clock comparator external interrupt */
-	if (register_early_external_interrupt(0x1004,
-					      clock_comparator_interrupt,
-					      &ext_int_info_cc) != 0)
+	if (register_external_interrupt(0x1004, clock_comparator_interrupt))
                 panic("Couldn't request external interrupt 0x1004");
 
 	/* request the timing alert external interrupt */
-	if (register_early_external_interrupt(0x1406,
-					      timing_alert_interrupt,
-					      &ext_int_etr_cc) != 0)
+	if (register_external_interrupt(0x1406, timing_alert_interrupt))
 		panic("Couldn't request external interrupt 0x1406");
 
 	if (clocksource_register(&clocksource_tod) != 0)
 		panic("Could not register TOD clock source");
-
-	/*
-	 * The TOD clock is an accurate clock. The xtime should be
-	 * initialized in a way that the difference between TOD and
-	 * xtime is reasonably small. Too bad that timekeeping_init
-	 * sets xtime.tv_nsec to zero. In addition the clock source
-	 * change from the jiffies clock source to the TOD clock
-	 * source add another error of up to 1/HZ second. The same
-	 * function sets wall_to_monotonic to a value that is too
-	 * small for /proc/uptime to be accurate.
-	 * Reset xtime and wall_to_monotonic to sane values.
-	 */
-	write_seqlock_irqsave(&xtime_lock, flags);
-	now = get_clock();
-	tod_to_timeval(now - TOD_UNIX_EPOCH, &xtime);
-	clocksource_tod.cycle_last = now;
-	clocksource_tod.raw_time = xtime;
-	tod_to_timeval(sched_clock_base_cc - TOD_UNIX_EPOCH, &ts);
-	set_normalized_timespec(&wall_to_monotonic, -ts.tv_sec, -ts.tv_nsec);
-	write_sequnlock_irqrestore(&xtime_lock, flags);
 
 	/* Enable TOD clock interrupts on the boot cpu. */
 	init_cpu_timer();
@@ -365,7 +329,7 @@ int get_sync_clock(unsigned long long *clock)
 	sw0 = atomic_read(sw_ptr);
 	*clock = get_clock();
 	sw1 = atomic_read(sw_ptr);
-	put_cpu_var(clock_sync_sync);
+	put_cpu_var(clock_sync_word);
 	if (sw0 == sw1 && (sw0 & 0x80000000U))
 		/* Success: time is in sync. */
 		return 0;
@@ -415,7 +379,7 @@ static inline int check_sync_clock(void)
 
 	sw_ptr = &get_cpu_var(clock_sync_word);
 	rc = (atomic_read(sw_ptr) & 0x80000000U) != 0;
-	put_cpu_var(clock_sync_sync);
+	put_cpu_var(clock_sync_word);
 	return rc;
 }
 
@@ -1154,14 +1118,18 @@ static struct sys_device etr_port1_dev = {
 /*
  * ETR class attributes
  */
-static ssize_t etr_stepping_port_show(struct sysdev_class *class, char *buf)
+static ssize_t etr_stepping_port_show(struct sysdev_class *class,
+					struct sysdev_class_attribute *attr,
+					char *buf)
 {
 	return sprintf(buf, "%i\n", etr_port0.esw.p);
 }
 
 static SYSDEV_CLASS_ATTR(stepping_port, 0400, etr_stepping_port_show, NULL);
 
-static ssize_t etr_stepping_mode_show(struct sysdev_class *class, char *buf)
+static ssize_t etr_stepping_mode_show(struct sysdev_class *class,
+				      	struct sysdev_class_attribute *attr,
+					char *buf)
 {
 	char *mode_str;
 
@@ -1452,14 +1420,14 @@ static void __init stp_reset(void)
 {
 	int rc;
 
-	stp_page = alloc_bootmem_pages(PAGE_SIZE);
+	stp_page = (void *) get_zeroed_page(GFP_ATOMIC);
 	rc = chsc_sstpc(stp_page, STP_OP_CTRL, 0x0000);
 	if (rc == 0)
 		set_bit(CLOCK_SYNC_HAS_STP, &clock_sync_flags);
 	else if (stp_online) {
 		pr_warning("The real or virtual hardware system does "
 			   "not provide an STP interface\n");
-		free_bootmem((unsigned long) stp_page, PAGE_SIZE);
+		free_page((unsigned long) stp_page);
 		stp_page = NULL;
 		stp_online = 0;
 	}
@@ -1622,7 +1590,9 @@ static struct sysdev_class stp_sysclass = {
 	.name	= "stp",
 };
 
-static ssize_t stp_ctn_id_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_ctn_id_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online)
 		return -ENODATA;
@@ -1632,7 +1602,9 @@ static ssize_t stp_ctn_id_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(ctn_id, 0400, stp_ctn_id_show, NULL);
 
-static ssize_t stp_ctn_type_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_ctn_type_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online)
 		return -ENODATA;
@@ -1641,7 +1613,9 @@ static ssize_t stp_ctn_type_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(ctn_type, 0400, stp_ctn_type_show, NULL);
 
-static ssize_t stp_dst_offset_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_dst_offset_show(struct sysdev_class *class,
+				   struct sysdev_class_attribute *attr,
+				   char *buf)
 {
 	if (!stp_online || !(stp_info.vbits & 0x2000))
 		return -ENODATA;
@@ -1650,7 +1624,9 @@ static ssize_t stp_dst_offset_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(dst_offset, 0400, stp_dst_offset_show, NULL);
 
-static ssize_t stp_leap_seconds_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_leap_seconds_show(struct sysdev_class *class,
+					struct sysdev_class_attribute *attr,
+					char *buf)
 {
 	if (!stp_online || !(stp_info.vbits & 0x8000))
 		return -ENODATA;
@@ -1659,7 +1635,9 @@ static ssize_t stp_leap_seconds_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(leap_seconds, 0400, stp_leap_seconds_show, NULL);
 
-static ssize_t stp_stratum_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_stratum_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online)
 		return -ENODATA;
@@ -1668,7 +1646,9 @@ static ssize_t stp_stratum_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(stratum, 0400, stp_stratum_show, NULL);
 
-static ssize_t stp_time_offset_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_time_offset_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online || !(stp_info.vbits & 0x0800))
 		return -ENODATA;
@@ -1677,7 +1657,9 @@ static ssize_t stp_time_offset_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(time_offset, 0400, stp_time_offset_show, NULL);
 
-static ssize_t stp_time_zone_offset_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_time_zone_offset_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online || !(stp_info.vbits & 0x4000))
 		return -ENODATA;
@@ -1687,7 +1669,9 @@ static ssize_t stp_time_zone_offset_show(struct sysdev_class *class, char *buf)
 static SYSDEV_CLASS_ATTR(time_zone_offset, 0400,
 			 stp_time_zone_offset_show, NULL);
 
-static ssize_t stp_timing_mode_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_timing_mode_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online)
 		return -ENODATA;
@@ -1696,7 +1680,9 @@ static ssize_t stp_timing_mode_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(timing_mode, 0400, stp_timing_mode_show, NULL);
 
-static ssize_t stp_timing_state_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_timing_state_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	if (!stp_online)
 		return -ENODATA;
@@ -1705,12 +1691,15 @@ static ssize_t stp_timing_state_show(struct sysdev_class *class, char *buf)
 
 static SYSDEV_CLASS_ATTR(timing_state, 0400, stp_timing_state_show, NULL);
 
-static ssize_t stp_online_show(struct sysdev_class *class, char *buf)
+static ssize_t stp_online_show(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
+				char *buf)
 {
 	return sprintf(buf, "%i\n", stp_online);
 }
 
 static ssize_t stp_online_store(struct sysdev_class *class,
+				struct sysdev_class_attribute *attr,
 				const char *buf, size_t count)
 {
 	unsigned int value;

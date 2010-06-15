@@ -40,6 +40,9 @@
 #include <asm/syscalls.h>
 #include <asm/fpu.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/syscalls.h>
+
 /* This mask defines the bits of the SR which the user is not allowed to
    change, which are everything except S, Q, M, PR, SZ, FR. */
 #define SR_MASK      (0xffff8cfd)
@@ -79,13 +82,13 @@ get_fpu_long(struct task_struct *task, unsigned long addr)
 
 	if (last_task_used_math == task) {
 		enable_fpu();
-		save_fpu(task, regs);
+		save_fpu(task);
 		disable_fpu();
 		last_task_used_math = 0;
 		regs->sr |= SR_FD;
 	}
 
-	tmp = ((long *)&task->thread.fpu)[addr / sizeof(unsigned long)];
+	tmp = ((long *)task->thread.xstate)[addr / sizeof(unsigned long)];
 	return tmp;
 }
 
@@ -111,17 +114,16 @@ put_fpu_long(struct task_struct *task, unsigned long addr, unsigned long data)
 	regs = (struct pt_regs*)((unsigned char *)task + THREAD_SIZE) - 1;
 
 	if (!tsk_used_math(task)) {
-		fpinit(&task->thread.fpu.hard);
-		set_stopped_child_used_math(task);
+		init_fpu(task);
 	} else if (last_task_used_math == task) {
 		enable_fpu();
-		save_fpu(task, regs);
+		save_fpu(task);
 		disable_fpu();
 		last_task_used_math = 0;
 		regs->sr |= SR_FD;
 	}
 
-	((long *)&task->thread.fpu)[addr / sizeof(unsigned long)] = data;
+	((long *)task->thread.xstate)[addr / sizeof(unsigned long)] = data;
 	return 0;
 }
 
@@ -130,6 +132,8 @@ void user_enable_single_step(struct task_struct *child)
 	struct pt_regs *regs = child->thread.uregs;
 
 	regs->sr |= SR_SSTEP;	/* auto-resetting upon exception */
+
+	set_tsk_thread_flag(child, TIF_SINGLESTEP);
 }
 
 void user_disable_single_step(struct task_struct *child)
@@ -137,6 +141,8 @@ void user_disable_single_step(struct task_struct *child)
 	struct pt_regs *regs = child->thread.uregs;
 
 	regs->sr &= ~SR_SSTEP;
+
+	clear_tsk_thread_flag(child, TIF_SINGLESTEP);
 }
 
 static int genregs_get(struct task_struct *target,
@@ -219,7 +225,7 @@ int fpregs_get(struct task_struct *target,
 		return ret;
 
 	return user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-				   &target->thread.fpu.hard, 0, -1);
+				   &target->thread.xstate->hardfpu, 0, -1);
 }
 
 static int fpregs_set(struct task_struct *target,
@@ -236,7 +242,7 @@ static int fpregs_set(struct task_struct *target,
 	set_stopped_child_used_math(target);
 
 	return user_regset_copyin(&pos, &count, &kbuf, &ubuf,
-				  &target->thread.fpu.hard, 0, -1);
+				  &target->thread.xstate->hardfpu, 0, -1);
 }
 
 static int fpregs_active(struct task_struct *target,
@@ -438,6 +444,9 @@ asmlinkage long long do_syscall_trace_enter(struct pt_regs *regs)
 		 */
 		ret = -1LL;
 
+	if (unlikely(test_thread_flag(TIF_SYSCALL_TRACEPOINT)))
+		trace_sys_enter(regs, regs->regs[9]);
+
 	if (unlikely(current->audit_context))
 		audit_syscall_entry(audit_arch(), regs->regs[1],
 				    regs->regs[2], regs->regs[3],
@@ -448,12 +457,18 @@ asmlinkage long long do_syscall_trace_enter(struct pt_regs *regs)
 
 asmlinkage void do_syscall_trace_leave(struct pt_regs *regs)
 {
+	int step;
+
 	if (unlikely(current->audit_context))
 		audit_syscall_exit(AUDITSC_RESULT(regs->regs[9]),
 				   regs->regs[9]);
 
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		tracehook_report_syscall_exit(regs, 0);
+	if (unlikely(test_thread_flag(TIF_SYSCALL_TRACEPOINT)))
+		trace_sys_exit(regs, regs->regs[9]);
+
+	step = test_thread_flag(TIF_SINGLESTEP);
+	if (step || test_thread_flag(TIF_SYSCALL_TRACE))
+		tracehook_report_syscall_exit(regs, step);
 }
 
 /* Called with interrupts disabled */
@@ -470,9 +485,10 @@ asmlinkage void do_single_step(unsigned long long vec, struct pt_regs *regs)
 }
 
 /* Called with interrupts disabled */
-asmlinkage void do_software_break_point(unsigned long long vec,
-					struct pt_regs *regs)
+BUILD_TRAP_HANDLER(breakpoint)
 {
+	TRAP_HANDLER_DECL;
+
 	/* We need to forward step the PC, to counteract the backstep done
 	   in signal.c. */
 	local_irq_enable();

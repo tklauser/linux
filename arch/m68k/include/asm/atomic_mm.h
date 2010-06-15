@@ -148,14 +148,18 @@ static inline int atomic_xchg(atomic_t *v, int new)
 static inline int atomic_sub_and_test(int i, atomic_t *v)
 {
 	char c;
-	__asm__ __volatile__("subl %2,%1; seq %0" : "=d" (c), "+m" (*v): "g" (i));
+	__asm__ __volatile__("subl %2,%1; seq %0"
+			     : "=d" (c), "+m" (*v)
+			     : "id" (i));
 	return c != 0;
 }
 
 static inline int atomic_add_negative(int i, atomic_t *v)
 {
 	char c;
-	__asm__ __volatile__("addl %2,%1; smi %0" : "=d" (c), "+m" (*v): "g" (i));
+	__asm__ __volatile__("addl %2,%1; smi %0"
+			     : "=d" (c), "+m" (*v)
+			     : "id" (i));
 	return c != 0;
 }
 
@@ -192,5 +196,5 @@ static __inline__ int atomic_add_unless(atomic_t *v, int a, int u)
 #define smp_mb__before_atomic_inc()	barrier()
 #define smp_mb__after_atomic_inc()	barrier()
 
-#include <asm-generic/atomic.h>
+#include <asm-generic/atomic-long.h>
 #endif /* __ARCH_M68K_ATOMIC __ */

@@ -33,6 +33,7 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -210,7 +211,6 @@ static int ssm2602_add_widgets(struct snd_soc_codec *codec)
 
 	snd_soc_dapm_add_routes(codec, audio_conn, ARRAY_SIZE(audio_conn));
 
-	snd_soc_dapm_new_widgets(codec);
 	return 0;
 }
 
@@ -336,15 +336,17 @@ static int ssm2602_startup(struct snd_pcm_substream *substream,
 			master_runtime->sample_bits,
 			master_runtime->rate);
 
-		snd_pcm_hw_constraint_minmax(substream->runtime,
-					     SNDRV_PCM_HW_PARAM_RATE,
-					     master_runtime->rate,
-					     master_runtime->rate);
+		if (master_runtime->rate != 0)
+			snd_pcm_hw_constraint_minmax(substream->runtime,
+						     SNDRV_PCM_HW_PARAM_RATE,
+						     master_runtime->rate,
+						     master_runtime->rate);
 
-		snd_pcm_hw_constraint_minmax(substream->runtime,
-					     SNDRV_PCM_HW_PARAM_SAMPLE_BITS,
-					     master_runtime->sample_bits,
-					     master_runtime->sample_bits);
+		if (master_runtime->sample_bits != 0)
+			snd_pcm_hw_constraint_minmax(substream->runtime,
+						     SNDRV_PCM_HW_PARAM_SAMPLE_BITS,
+						     master_runtime->sample_bits,
+						     master_runtime->sample_bits);
 
 		ssm2602->slave_substream = substream;
 	} else
@@ -372,6 +374,7 @@ static void ssm2602_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_device *socdev = rtd->socdev;
 	struct snd_soc_codec *codec = socdev->card->codec;
 	struct ssm2602_priv *ssm2602 = codec->private_data;
+
 	/* deactivate */
 	if (!codec->active)
 		ssm2602_write(codec, SSM2602_ACTIVE, 0);
@@ -497,11 +500,9 @@ static int ssm2602_set_bias_level(struct snd_soc_codec *codec,
 	return 0;
 }
 
-#define SSM2602_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
-		SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |\
-		SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |\
-		SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |\
-		SNDRV_PCM_RATE_96000)
+#define SSM2602_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_32000 |\
+		SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |\
+		SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000)
 
 #define SSM2602_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE |\
 		SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE)
@@ -612,17 +613,9 @@ static int ssm2602_init(struct snd_soc_device *socdev)
 	snd_soc_add_controls(codec, ssm2602_snd_controls,
 				ARRAY_SIZE(ssm2602_snd_controls));
 	ssm2602_add_widgets(codec);
-	ret = snd_soc_init_card(socdev);
-	if (ret < 0) {
-		pr_err("ssm2602: failed to register card\n");
-		goto card_err;
-	}
 
 	return ret;
 
-card_err:
-	snd_soc_free_pcms(socdev);
-	snd_soc_dapm_free(socdev);
 pcm_err:
 	kfree(codec->reg_cache);
 	return ret;

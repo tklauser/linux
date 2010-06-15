@@ -48,7 +48,6 @@
 #include <asm/segment.h>
 #include <asm/smp.h>
 #include <asm/page_types.h>
-#include <asm/desc.h>
 #include <asm/percpu.h>
 #include <asm/dwarf2.h>
 #include <asm/processor-flags.h>
@@ -84,7 +83,7 @@
 #define preempt_stop(clobbers)	DISABLE_INTERRUPTS(clobbers); TRACE_IRQS_OFF
 #else
 #define preempt_stop(clobbers)
-#define resume_kernel		restore_nocheck
+#define resume_kernel		restore_all
 #endif
 
 .macro TRACE_IRQS_IRET
@@ -335,6 +334,10 @@ ENTRY(ret_from_fork)
 END(ret_from_fork)
 
 /*
+ * Interrupt exit functions should be protected against kprobes
+ */
+	.pushsection .kprobes.text, "ax"
+/*
  * Return to user mode is not as complex as all this looks,
  * but we want the default path for a system call return to
  * go as quickly as possible which is why some of this is
@@ -372,7 +375,7 @@ END(ret_from_exception)
 ENTRY(resume_kernel)
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	cmpl $0,TI_preempt_count(%ebp)	# non-zero preempt_count ?
-	jnz restore_nocheck
+	jnz restore_all
 need_resched:
 	movl TI_flags(%ebp), %ecx	# need_resched set ?
 	testb $_TIF_NEED_RESCHED, %cl
@@ -384,6 +387,10 @@ need_resched:
 END(resume_kernel)
 #endif
 	CFI_ENDPROC
+/*
+ * End of kprobes section
+ */
+	.popsection
 
 /* SYSENTER_RETURN points to after the "sysenter" instruction in
    the vsyscall page.  See vsyscall-sysentry.S, which defines the symbol.  */
@@ -514,6 +521,10 @@ sysexit_audit:
 	PTGS_TO_GS_EX
 ENDPROC(ia32_sysenter_target)
 
+/*
+ * syscall stub including irq exit should be protected against kprobes
+ */
+	.pushsection .kprobes.text, "ax"
 	# system call handler stub
 ENTRY(system_call)
 	RING0_INT_FRAME			# can't unwind into user space anyway
@@ -540,6 +551,8 @@ syscall_exit:
 	jne syscall_exit_work
 
 restore_all:
+	TRACE_IRQS_IRET
+restore_all_notrace:
 	movl PT_EFLAGS(%esp), %eax	# mix EFLAGS, SS and CS
 	# Warning: PT_OLDSS(%esp) contains the wrong/random values if we
 	# are returning to the kernel.
@@ -551,8 +564,6 @@ restore_all:
 	CFI_REMEMBER_STATE
 	je ldt_ss			# returning to user-space with LDT SS
 restore_nocheck:
-	TRACE_IRQS_IRET
-restore_nocheck_notrace:
 	RESTORE_REGS 4			# skip orig_eax/error_code
 	CFI_ADJUST_CFA_OFFSET -4
 irq_return:
@@ -588,22 +599,34 @@ ldt_ss:
 	jne restore_nocheck
 #endif
 
-	/* If returning to userspace with 16bit stack,
-	 * try to fix the higher word of ESP, as the CPU
-	 * won't restore it.
-	 * This is an "official" bug of all the x86-compatible
-	 * CPUs, which we can try to work around to make
-	 * dosemu and wine happy. */
-	movl PT_OLDESP(%esp), %eax
-	movl %esp, %edx
-	call patch_espfix_desc
+/*
+ * Setup and switch to ESPFIX stack
+ *
+ * We're returning to userspace with a 16 bit stack. The CPU will not
+ * restore the high word of ESP for us on executing iret... This is an
+ * "official" bug of all the x86-compatible CPUs, which we can work
+ * around to make dosemu and wine happy. We do this by preloading the
+ * high word of ESP with the high word of the userspace ESP while
+ * compensating for the offset by changing to the ESPFIX segment with
+ * a base address that matches for the difference.
+ */
+	mov %esp, %edx			/* load kernel esp */
+	mov PT_OLDESP(%esp), %eax	/* load userspace esp */
+	mov %dx, %ax			/* eax: new kernel esp */
+	sub %eax, %edx			/* offset (low word is 0) */
+	PER_CPU(gdt_page, %ebx)
+	shr $16, %edx
+	mov %dl, GDT_ENTRY_ESPFIX_SS * 8 + 4(%ebx) /* bits 16..23 */
+	mov %dh, GDT_ENTRY_ESPFIX_SS * 8 + 7(%ebx) /* bits 24..31 */
 	pushl $__ESPFIX_SS
 	CFI_ADJUST_CFA_OFFSET 4
-	pushl %eax
+	push %eax			/* new kernel esp */
 	CFI_ADJUST_CFA_OFFSET 4
+	/* Disable interrupts, but do not irqtrace this section: we
+	 * will soon execute iret and the tracer was already set to
+	 * the irqstate after the iret */
 	DISABLE_INTERRUPTS(CLBR_EAX)
-	TRACE_IRQS_OFF
-	lss (%esp), %esp
+	lss (%esp), %esp		/* switch to espfix segment */
 	CFI_ADJUST_CFA_OFFSET -8
 	jmp restore_nocheck
 	CFI_ENDPROC
@@ -694,37 +717,89 @@ syscall_badsys:
 	jmp resume_userspace
 END(syscall_badsys)
 	CFI_ENDPROC
+/*
+ * End of kprobes section
+ */
+	.popsection
 
 /*
  * System calls that need a pt_regs pointer.
  */
-#define PTREGSCALL(name) \
+#define PTREGSCALL0(name) \
 	ALIGN; \
 ptregs_##name: \
 	leal 4(%esp),%eax; \
 	jmp sys_##name;
 
-PTREGSCALL(iopl)
-PTREGSCALL(fork)
-PTREGSCALL(clone)
-PTREGSCALL(vfork)
-PTREGSCALL(execve)
-PTREGSCALL(sigaltstack)
-PTREGSCALL(sigreturn)
-PTREGSCALL(rt_sigreturn)
-PTREGSCALL(vm86)
-PTREGSCALL(vm86old)
+#define PTREGSCALL1(name) \
+	ALIGN; \
+ptregs_##name: \
+	leal 4(%esp),%edx; \
+	movl (PT_EBX+4)(%esp),%eax; \
+	jmp sys_##name;
+
+#define PTREGSCALL2(name) \
+	ALIGN; \
+ptregs_##name: \
+	leal 4(%esp),%ecx; \
+	movl (PT_ECX+4)(%esp),%edx; \
+	movl (PT_EBX+4)(%esp),%eax; \
+	jmp sys_##name;
+
+#define PTREGSCALL3(name) \
+	ALIGN; \
+ptregs_##name: \
+	leal 4(%esp),%eax; \
+	pushl %eax; \
+	movl PT_EDX(%eax),%ecx; \
+	movl PT_ECX(%eax),%edx; \
+	movl PT_EBX(%eax),%eax; \
+	call sys_##name; \
+	addl $4,%esp; \
+	ret
+
+PTREGSCALL1(iopl)
+PTREGSCALL0(fork)
+PTREGSCALL0(vfork)
+PTREGSCALL3(execve)
+PTREGSCALL2(sigaltstack)
+PTREGSCALL0(sigreturn)
+PTREGSCALL0(rt_sigreturn)
+PTREGSCALL2(vm86)
+PTREGSCALL1(vm86old)
+
+/* Clone is an oddball.  The 4th arg is in %edi */
+	ALIGN;
+ptregs_clone:
+	leal 4(%esp),%eax
+	pushl %eax
+	pushl PT_EDI(%eax)
+	movl PT_EDX(%eax),%ecx
+	movl PT_ECX(%eax),%edx
+	movl PT_EBX(%eax),%eax
+	call sys_clone
+	addl $8,%esp
+	ret
 
 .macro FIXUP_ESPFIX_STACK
-	/* since we are on a wrong stack, we cant make it a C code :( */
+/*
+ * Switch back for ESPFIX stack to the normal zerobased stack
+ *
+ * We can't call C functions using the ESPFIX stack. This code reads
+ * the high word of the segment base from the GDT and swiches to the
+ * normal stack and adjusts ESP with the matching offset.
+ */
+	/* fixup the stack */
 	PER_CPU(gdt_page, %ebx)
-	GET_DESC_BASE(GDT_ENTRY_ESPFIX_SS, %ebx, %eax, %ax, %al, %ah)
-	addl %esp, %eax
+	mov GDT_ENTRY_ESPFIX_SS * 8 + 4(%ebx), %al /* bits 16..23 */
+	mov GDT_ENTRY_ESPFIX_SS * 8 + 7(%ebx), %ah /* bits 24..31 */
+	shl $16, %eax
+	addl %esp, %eax			/* the adjusted stack pointer */
 	pushl $__KERNEL_DS
 	CFI_ADJUST_CFA_OFFSET 4
 	pushl %eax
 	CFI_ADJUST_CFA_OFFSET 4
-	lss (%esp), %esp
+	lss (%esp), %esp		/* switch to the normal stack segment */
 	CFI_ADJUST_CFA_OFFSET -8
 .endm
 .macro UNWIND_ESPFIX_STACK
@@ -794,6 +869,10 @@ common_interrupt:
 ENDPROC(common_interrupt)
 	CFI_ENDPROC
 
+/*
+ *  Irq entries should be protected against kprobes
+ */
+	.pushsection .kprobes.text, "ax"
 #define BUILD_INTERRUPT3(name, nr, fn)	\
 ENTRY(name)				\
 	RING0_INT_FRAME;		\
@@ -960,16 +1039,16 @@ ENTRY(spurious_interrupt_bug)
 	jmp error_code
 	CFI_ENDPROC
 END(spurious_interrupt_bug)
+/*
+ * End of kprobes section
+ */
+	.popsection
 
 ENTRY(kernel_thread_helper)
 	pushl $0		# fake return address for unwinder
 	CFI_STARTPROC
-	movl %edx,%eax
-	push %edx
-	CFI_ADJUST_CFA_OFFSET 4
-	call *%ebx
-	push %eax
-	CFI_ADJUST_CFA_OFFSET 4
+	movl %edi,%eax
+	call *%esi
 	call do_exit
 	ud2			# padding for call trace
 	CFI_ENDPROC
@@ -1154,6 +1233,7 @@ ENTRY(ftrace_graph_caller)
 	pushl %edx
 	movl 0xc(%esp), %edx
 	lea 0x4(%ebp), %eax
+	movl (%ebp), %ecx
 	subl $MCOUNT_INSN_SIZE, %edx
 	call prepare_ftrace_return
 	popl %edx
@@ -1164,16 +1244,14 @@ END(ftrace_graph_caller)
 
 .globl return_to_handler
 return_to_handler:
-	pushl $0
 	pushl %eax
-	pushl %ecx
 	pushl %edx
+	movl %ebp, %eax
 	call ftrace_return_to_handler
-	movl %eax, 0xc(%esp)
+	movl %eax, %ecx
 	popl %edx
-	popl %ecx
 	popl %eax
-	ret
+	jmp *%ecx
 #endif
 
 .section .rodata,"a"
@@ -1329,7 +1407,7 @@ nmi_stack_correct:
 	xorl %edx,%edx		# zero error code
 	movl %esp,%eax		# pt_regs pointer
 	call do_nmi
-	jmp restore_nocheck_notrace
+	jmp restore_all_notrace
 	CFI_ENDPROC
 
 nmi_stack_fixup:

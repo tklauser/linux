@@ -9,7 +9,6 @@
  */
 
 #include <linux/init.h>
-#include <linux/slab.h>
 #include <asm/cpuinfo.h>
 #include <asm/pvr.h>
 
@@ -26,11 +25,11 @@ const struct cpu_ver_key cpu_ver_lookup[] = {
 	{"7.10.b", 0x09},
 	{"7.10.c", 0x0a},
 	{"7.10.d", 0x0b},
-	/* FIXME There is no keycode defined in MBV for these versions */
-	{"2.10.a", 0x10},
-	{"3.00.a", 0x20},
-	{"4.00.a", 0x30},
-	{"4.00.b", 0x40},
+	{"7.20.a", 0x0c},
+	{"7.20.b", 0x0d},
+	{"7.20.c", 0x0e},
+	{"7.20.d", 0x0f},
+	{"7.30.a", 0x10},
 	{NULL, 0},
 };
 
@@ -47,6 +46,8 @@ const struct family_string_key family_string_lookup[] = {
 	{"spartan3a", 0xa},
 	{"spartan3an", 0xb},
 	{"spartan3adsp", 0xc},
+	{"spartan6", 0xd},
+	{"virtex6", 0xe},
 	/* FIXME There is no key code defined for spartan2 */
 	{"spartan2", 0xf0},
 	{NULL, 0},

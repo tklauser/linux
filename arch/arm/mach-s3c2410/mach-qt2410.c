@@ -27,6 +27,7 @@
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <linux/sysdev.h>
 #include <linux/platform_device.h>
 #include <linux/serial_core.h>
@@ -198,7 +199,7 @@ static struct platform_device qt2410_cs89x0 = {
 /* LED */
 
 static struct s3c24xx_led_platdata qt2410_pdata_led = {
-	.gpio		= S3C2410_GPB0,
+	.gpio		= S3C2410_GPB(0),
 	.flags		= S3C24XX_LEDF_ACTLOW | S3C24XX_LEDF_TRISTATE,
 	.name		= "led",
 	.def_trigger	= "timer",
@@ -218,18 +219,18 @@ static void spi_gpio_cs(struct s3c2410_spigpio_info *spi, int cs)
 {
 	switch (cs) {
 	case BITBANG_CS_ACTIVE:
-		s3c2410_gpio_setpin(S3C2410_GPB5, 0);
+		s3c2410_gpio_setpin(S3C2410_GPB(5), 0);
 		break;
 	case BITBANG_CS_INACTIVE:
-		s3c2410_gpio_setpin(S3C2410_GPB5, 1);
+		s3c2410_gpio_setpin(S3C2410_GPB(5), 1);
 		break;
 	}
 }
 
 static struct s3c2410_spigpio_info spi_gpio_cfg = {
-	.pin_clk	= S3C2410_GPG7,
-	.pin_mosi	= S3C2410_GPG6,
-	.pin_miso	= S3C2410_GPG5,
+	.pin_clk	= S3C2410_GPG(7),
+	.pin_mosi	= S3C2410_GPG(6),
+	.pin_miso	= S3C2410_GPG(5),
 	.chip_select	= &spi_gpio_cs,
 };
 
@@ -245,7 +246,7 @@ static struct platform_device qt2410_spi = {
 /* Board devices */
 
 static struct platform_device *qt2410_devices[] __initdata = {
-	&s3c_device_usb,
+	&s3c_device_ohci,
 	&s3c_device_lcd,
 	&s3c_device_wdt,
 	&s3c_device_i2c0,
@@ -257,7 +258,7 @@ static struct platform_device *qt2410_devices[] __initdata = {
 	&qt2410_led,
 };
 
-static struct mtd_partition qt2410_nand_part[] = {
+static struct mtd_partition __initdata qt2410_nand_part[] = {
 	[0] = {
 		.name	= "U-Boot",
 		.size	= 0x30000,
@@ -285,7 +286,7 @@ static struct mtd_partition qt2410_nand_part[] = {
 	},
 };
 
-static struct s3c2410_nand_set qt2410_nand_sets[] = {
+static struct s3c2410_nand_set __initdata qt2410_nand_sets[] = {
 	[0] = {
 		.name		= "NAND",
 		.nr_chips	= 1,
@@ -298,7 +299,7 @@ static struct s3c2410_nand_set qt2410_nand_sets[] = {
  * chips and beyond.
  */
 
-static struct s3c2410_platform_nand qt2410_nand_info = {
+static struct s3c2410_platform_nand __initdata qt2410_nand_info = {
 	.tacls		= 20,
 	.twrph0		= 60,
 	.twrph1		= 20,
@@ -330,7 +331,7 @@ static void __init qt2410_map_io(void)
 
 static void __init qt2410_machine_init(void)
 {
-	s3c_device_nand.dev.platform_data = &qt2410_nand_info;
+	s3c_nand_set_platdata(&qt2410_nand_info);
 
 	switch (tft_type) {
 	case 'p': /* production */
@@ -346,13 +347,13 @@ static void __init qt2410_machine_init(void)
 	}
 	s3c24xx_fb_set_platdata(&qt2410_fb_info);
 
-	s3c2410_gpio_cfgpin(S3C2410_GPB0, S3C2410_GPIO_OUTPUT);
-	s3c2410_gpio_setpin(S3C2410_GPB0, 1);
+	s3c2410_gpio_cfgpin(S3C2410_GPB(0), S3C2410_GPIO_OUTPUT);
+	s3c2410_gpio_setpin(S3C2410_GPB(0), 1);
 
 	s3c24xx_udc_set_platdata(&qt2410_udc_cfg);
 	s3c_i2c0_set_platdata(NULL);
 
-	s3c2410_gpio_cfgpin(S3C2410_GPB5, S3C2410_GPIO_OUTPUT);
+	s3c2410_gpio_cfgpin(S3C2410_GPB(5), S3C2410_GPIO_OUTPUT);
 
 	platform_add_devices(qt2410_devices, ARRAY_SIZE(qt2410_devices));
 	s3c_pm_init();

@@ -3,13 +3,12 @@
 
 #define ATMEL_MCI_MAX_NR_SLOTS	2
 
-#include <linux/dw_dmac.h>
-
 /**
  * struct mci_slot_pdata - board-specific per-slot configuration
  * @bus_width: Number of data lines wired up the slot
  * @detect_pin: GPIO pin wired to the card detect switch
  * @wp_pin: GPIO pin wired to the write protect sensor
+ * @detect_is_active_high: The state of the detect pin when it is active
  *
  * If a given slot is not present on the board, @bus_width should be
  * set to 0. The other fields are ignored in this case.
@@ -24,6 +23,7 @@ struct mci_slot_pdata {
 	unsigned int		bus_width;
 	int			detect_pin;
 	int			wp_pin;
+	bool			detect_is_active_high;
 };
 
 /**
@@ -32,7 +32,7 @@ struct mci_slot_pdata {
  * @slot: Per-slot configuration data.
  */
 struct mci_platform_data {
-	struct dw_dma_slave	dma_slave;
+	struct mci_dma_data	*dma_slave;
 	struct mci_slot_pdata	slot[ATMEL_MCI_MAX_NR_SLOTS];
 };
 

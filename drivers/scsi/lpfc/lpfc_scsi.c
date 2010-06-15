@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2008 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2009 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -19,6 +19,7 @@
  * included with this package.                                     *
  *******************************************************************/
 #include <linux/pci.h>
+#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <asm/unaligned.h>
@@ -31,8 +32,10 @@
 #include <scsi/scsi_transport_fc.h>
 
 #include "lpfc_version.h"
+#include "lpfc_hw4.h"
 #include "lpfc_hw.h"
 #include "lpfc_sli.h"
+#include "lpfc_sli4.h"
 #include "lpfc_nl.h"
 #include "lpfc_disc.h"
 #include "lpfc_scsi.h"
@@ -54,25 +57,29 @@ static char *dif_op_str[] = {
 	"SCSI_PROT_WRITE_INSERT",
 	"SCSI_PROT_READ_PASS",
 	"SCSI_PROT_WRITE_PASS",
-	"SCSI_PROT_READ_CONVERT",
-	"SCSI_PROT_WRITE_CONVERT"
 };
+static void
+lpfc_release_scsi_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb);
+static void
+lpfc_release_scsi_buf_s3(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb);
 
 static void
-lpfc_debug_save_data(struct scsi_cmnd *cmnd)
+lpfc_debug_save_data(struct lpfc_hba *phba, struct scsi_cmnd *cmnd)
 {
 	void *src, *dst;
 	struct scatterlist *sgde = scsi_sglist(cmnd);
 
 	if (!_dump_buf_data) {
-		printk(KERN_ERR "BLKGRD ERROR %s _dump_buf_data is NULL\n",
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9050 BLKGRD: ERROR %s _dump_buf_data is NULL\n",
 				__func__);
 		return;
 	}
 
 
 	if (!sgde) {
-		printk(KERN_ERR "BLKGRD ERROR: data scatterlist is null\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9051 BLKGRD: ERROR: data scatterlist is null\n");
 		return;
 	}
 
@@ -86,19 +93,21 @@ lpfc_debug_save_data(struct scsi_cmnd *cmnd)
 }
 
 static void
-lpfc_debug_save_dif(struct scsi_cmnd *cmnd)
+lpfc_debug_save_dif(struct lpfc_hba *phba, struct scsi_cmnd *cmnd)
 {
 	void *src, *dst;
 	struct scatterlist *sgde = scsi_prot_sglist(cmnd);
 
 	if (!_dump_buf_dif) {
-		printk(KERN_ERR "BLKGRD ERROR %s _dump_buf_data is NULL\n",
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9052 BLKGRD: ERROR %s _dump_buf_data is NULL\n",
 				__func__);
 		return;
 	}
 
 	if (!sgde) {
-		printk(KERN_ERR "BLKGRD ERROR: prot scatterlist is null\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9053 BLKGRD: ERROR: prot scatterlist is null\n");
 		return;
 	}
 
@@ -108,6 +117,27 @@ lpfc_debug_save_dif(struct scsi_cmnd *cmnd)
 		memcpy(dst, src, sgde->length);
 		dst += sgde->length;
 		sgde = sg_next(sgde);
+	}
+}
+
+/**
+ * lpfc_sli4_set_rsp_sgl_last - Set the last bit in the response sge.
+ * @phba: Pointer to HBA object.
+ * @lpfc_cmd: lpfc scsi command object pointer.
+ *
+ * This function is called from the lpfc_prep_task_mgmt_cmd function to
+ * set the last bit in the response sge entry.
+ **/
+static void
+lpfc_sli4_set_rsp_sgl_last(struct lpfc_hba *phba,
+				struct lpfc_scsi_buf *lpfc_cmd)
+{
+	struct sli4_sge *sgl = (struct sli4_sge *)lpfc_cmd->fcp_bpl;
+	if (sgl) {
+		sgl += 1;
+		sgl->word2 = le32_to_cpu(sgl->word2);
+		bf_set(lpfc_sli4_sge_last, sgl, 1);
+		sgl->word2 = cpu_to_le32(sgl->word2);
 	}
 }
 
@@ -219,6 +249,36 @@ lpfc_send_sdev_queuedepth_change_event(struct lpfc_hba *phba,
 }
 
 /**
+ * lpfc_change_queue_depth - Alter scsi device queue depth
+ * @sdev: Pointer the scsi device on which to change the queue depth.
+ * @qdepth: New queue depth to set the sdev to.
+ * @reason: The reason for the queue depth change.
+ *
+ * This function is called by the midlayer and the LLD to alter the queue
+ * depth for a scsi device. This function sets the queue depth to the new
+ * value and sends an event out to log the queue depth change.
+ **/
+int
+lpfc_change_queue_depth(struct scsi_device *sdev, int qdepth, int reason)
+{
+	struct lpfc_vport *vport = (struct lpfc_vport *) sdev->host->hostdata;
+	struct lpfc_hba   *phba = vport->phba;
+	struct lpfc_rport_data *rdata;
+	unsigned long new_queue_depth, old_queue_depth;
+
+	old_queue_depth = sdev->queue_depth;
+	scsi_adjust_queue_depth(sdev, scsi_get_tag_type(sdev), qdepth);
+	new_queue_depth = sdev->queue_depth;
+	rdata = sdev->hostdata;
+	if (rdata)
+		lpfc_send_sdev_queuedepth_change_event(phba, vport,
+						       rdata->pnode, sdev->lun,
+						       old_queue_depth,
+						       new_queue_depth);
+	return sdev->queue_depth;
+}
+
+/**
  * lpfc_rampdown_queue_depth - Post RAMP_DOWN_QUEUE event to worker thread
  * @phba: The Hba for which this call is being executed.
  *
@@ -282,8 +342,10 @@ lpfc_rampup_queue_depth(struct lpfc_vport  *vport,
 	if (vport->cfg_lun_queue_depth <= queue_depth)
 		return;
 	spin_lock_irqsave(&phba->hbalock, flags);
-	if (((phba->last_ramp_up_time + QUEUE_RAMP_UP_INTERVAL) > jiffies) ||
-	 ((phba->last_rsrc_error_time + QUEUE_RAMP_UP_INTERVAL ) > jiffies)) {
+	if (time_before(jiffies,
+			phba->last_ramp_up_time + QUEUE_RAMP_UP_INTERVAL) ||
+	    time_before(jiffies,
+			phba->last_rsrc_error_time + QUEUE_RAMP_UP_INTERVAL)) {
 		spin_unlock_irqrestore(&phba->hbalock, flags);
 		return;
 	}
@@ -315,17 +377,16 @@ lpfc_ramp_down_queue_handler(struct lpfc_hba *phba)
 	struct lpfc_vport **vports;
 	struct Scsi_Host  *shost;
 	struct scsi_device *sdev;
-	unsigned long new_queue_depth, old_queue_depth;
+	unsigned long new_queue_depth;
 	unsigned long num_rsrc_err, num_cmd_success;
 	int i;
-	struct lpfc_rport_data *rdata;
 
 	num_rsrc_err = atomic_read(&phba->num_rsrc_err);
 	num_cmd_success = atomic_read(&phba->num_cmd_success);
 
 	vports = lpfc_create_vport_work_array(phba);
 	if (vports != NULL)
-		for(i = 0; i <= phba->max_vpi && vports[i] != NULL; i++) {
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
 			shost = lpfc_shost_from_vport(vports[i]);
 			shost_for_each_device(sdev, shost) {
 				new_queue_depth =
@@ -336,22 +397,8 @@ lpfc_ramp_down_queue_handler(struct lpfc_hba *phba)
 				else
 					new_queue_depth = sdev->queue_depth -
 								new_queue_depth;
-				old_queue_depth = sdev->queue_depth;
-				if (sdev->ordered_tags)
-					scsi_adjust_queue_depth(sdev,
-							MSG_ORDERED_TAG,
-							new_queue_depth);
-				else
-					scsi_adjust_queue_depth(sdev,
-							MSG_SIMPLE_TAG,
-							new_queue_depth);
-				rdata = sdev->hostdata;
-				if (rdata)
-					lpfc_send_sdev_queuedepth_change_event(
-						phba, vports[i],
-						rdata->pnode,
-						sdev->lun, old_queue_depth,
-						new_queue_depth);
+				lpfc_change_queue_depth(sdev, new_queue_depth,
+							SCSI_QDEPTH_DEFAULT);
 			}
 		}
 	lpfc_destroy_vport_work_array(phba, vports);
@@ -375,32 +422,18 @@ lpfc_ramp_up_queue_handler(struct lpfc_hba *phba)
 	struct Scsi_Host  *shost;
 	struct scsi_device *sdev;
 	int i;
-	struct lpfc_rport_data *rdata;
 
 	vports = lpfc_create_vport_work_array(phba);
 	if (vports != NULL)
-		for(i = 0; i <= phba->max_vpi && vports[i] != NULL; i++) {
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
 			shost = lpfc_shost_from_vport(vports[i]);
 			shost_for_each_device(sdev, shost) {
 				if (vports[i]->cfg_lun_queue_depth <=
 				    sdev->queue_depth)
 					continue;
-				if (sdev->ordered_tags)
-					scsi_adjust_queue_depth(sdev,
-							MSG_ORDERED_TAG,
-							sdev->queue_depth+1);
-				else
-					scsi_adjust_queue_depth(sdev,
-							MSG_SIMPLE_TAG,
-							sdev->queue_depth+1);
-				rdata = sdev->hostdata;
-				if (rdata)
-					lpfc_send_sdev_queuedepth_change_event(
-						phba, vports[i],
-						rdata->pnode,
-						sdev->lun,
-						sdev->queue_depth - 1,
-						sdev->queue_depth);
+				lpfc_change_queue_depth(sdev,
+							sdev->queue_depth+1,
+							SCSI_QDEPTH_RAMP_UP);
 			}
 		}
 	lpfc_destroy_vport_work_array(phba, vports);
@@ -427,7 +460,7 @@ lpfc_scsi_dev_block(struct lpfc_hba *phba)
 
 	vports = lpfc_create_vport_work_array(phba);
 	if (vports != NULL)
-		for (i = 0; i <= phba->max_vpi && vports[i] != NULL; i++) {
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
 			shost = lpfc_shost_from_vport(vports[i]);
 			shost_for_each_device(sdev, shost) {
 				rport = starget_to_rport(scsi_target(sdev));
@@ -438,22 +471,23 @@ lpfc_scsi_dev_block(struct lpfc_hba *phba)
 }
 
 /**
- * lpfc_new_scsi_buf - Scsi buffer allocator
+ * lpfc_new_scsi_buf_s3 - Scsi buffer allocator for HBA with SLI3 IF spec
  * @vport: The virtual port for which this call being executed.
+ * @num_to_allocate: The requested number of buffers to allocate.
  *
- * This routine allocates a scsi buffer, which contains all the necessary
- * information needed to initiate a SCSI I/O.  The non-DMAable buffer region
- * contains information to build the IOCB.  The DMAable region contains
- * memory for the FCP CMND, FCP RSP, and the initial BPL.  In addition to
- * allocating memory, the FCP CMND and FCP RSP BDEs are setup in the BPL
- * and the BPL BDE is setup in the IOCB.
+ * This routine allocates a scsi buffer for device with SLI-3 interface spec,
+ * the scsi buffer contains all the necessary information needed to initiate
+ * a SCSI I/O. The non-DMAable buffer region contains information to build
+ * the IOCB. The DMAable region contains memory for the FCP CMND, FCP RSP,
+ * and the initial BPL. In addition to allocating memory, the FCP CMND and
+ * FCP RSP BDEs are setup in the BPL and the BPL BDE is setup in the IOCB.
  *
  * Return codes:
- *   NULL - Error
- *   Pointer to lpfc_scsi_buf data structure - Success
+ *   int - number of scsi buffers that were allocated.
+ *   0 = failure, less than num_to_alloc is a partial failure.
  **/
-static struct lpfc_scsi_buf *
-lpfc_new_scsi_buf(struct lpfc_vport *vport)
+static int
+lpfc_new_scsi_buf_s3(struct lpfc_vport *vport, int num_to_alloc)
 {
 	struct lpfc_hba *phba = vport->phba;
 	struct lpfc_scsi_buf *psb;
@@ -463,107 +497,420 @@ lpfc_new_scsi_buf(struct lpfc_vport *vport)
 	dma_addr_t pdma_phys_fcp_rsp;
 	dma_addr_t pdma_phys_bpl;
 	uint16_t iotag;
+	int bcnt;
 
-	psb = kzalloc(sizeof(struct lpfc_scsi_buf), GFP_KERNEL);
-	if (!psb)
-		return NULL;
+	for (bcnt = 0; bcnt < num_to_alloc; bcnt++) {
+		psb = kzalloc(sizeof(struct lpfc_scsi_buf), GFP_KERNEL);
+		if (!psb)
+			break;
 
-	/*
-	 * Get memory from the pci pool to map the virt space to pci bus space
-	 * for an I/O.  The DMA buffer includes space for the struct fcp_cmnd,
-	 * struct fcp_rsp and the number of bde's necessary to support the
-	 * sg_tablesize.
-	 */
-	psb->data = pci_pool_alloc(phba->lpfc_scsi_dma_buf_pool, GFP_KERNEL,
-							&psb->dma_handle);
-	if (!psb->data) {
-		kfree(psb);
-		return NULL;
-	}
+		/*
+		 * Get memory from the pci pool to map the virt space to pci
+		 * bus space for an I/O.  The DMA buffer includes space for the
+		 * struct fcp_cmnd, struct fcp_rsp and the number of bde's
+		 * necessary to support the sg_tablesize.
+		 */
+		psb->data = pci_pool_alloc(phba->lpfc_scsi_dma_buf_pool,
+					GFP_KERNEL, &psb->dma_handle);
+		if (!psb->data) {
+			kfree(psb);
+			break;
+		}
 
-	/* Initialize virtual ptrs to dma_buf region. */
-	memset(psb->data, 0, phba->cfg_sg_dma_buf_size);
+		/* Initialize virtual ptrs to dma_buf region. */
+		memset(psb->data, 0, phba->cfg_sg_dma_buf_size);
 
-	/* Allocate iotag for psb->cur_iocbq. */
-	iotag = lpfc_sli_next_iotag(phba, &psb->cur_iocbq);
-	if (iotag == 0) {
-		pci_pool_free(phba->lpfc_scsi_dma_buf_pool,
-			      psb->data, psb->dma_handle);
-		kfree (psb);
-		return NULL;
-	}
-	psb->cur_iocbq.iocb_flag |= LPFC_IO_FCP;
+		/* Allocate iotag for psb->cur_iocbq. */
+		iotag = lpfc_sli_next_iotag(phba, &psb->cur_iocbq);
+		if (iotag == 0) {
+			pci_pool_free(phba->lpfc_scsi_dma_buf_pool,
+					psb->data, psb->dma_handle);
+			kfree(psb);
+			break;
+		}
+		psb->cur_iocbq.iocb_flag |= LPFC_IO_FCP;
 
-	psb->fcp_cmnd = psb->data;
-	psb->fcp_rsp = psb->data + sizeof(struct fcp_cmnd);
-	psb->fcp_bpl = psb->data + sizeof(struct fcp_cmnd) +
-							sizeof(struct fcp_rsp);
-
-	/* Initialize local short-hand pointers. */
-	bpl = psb->fcp_bpl;
-	pdma_phys_fcp_cmd = psb->dma_handle;
-	pdma_phys_fcp_rsp = psb->dma_handle + sizeof(struct fcp_cmnd);
-	pdma_phys_bpl = psb->dma_handle + sizeof(struct fcp_cmnd) +
+		psb->fcp_cmnd = psb->data;
+		psb->fcp_rsp = psb->data + sizeof(struct fcp_cmnd);
+		psb->fcp_bpl = psb->data + sizeof(struct fcp_cmnd) +
 			sizeof(struct fcp_rsp);
 
-	/*
-	 * The first two bdes are the FCP_CMD and FCP_RSP.  The balance are sg
-	 * list bdes.  Initialize the first two and leave the rest for
-	 * queuecommand.
-	 */
-	bpl[0].addrHigh = le32_to_cpu(putPaddrHigh(pdma_phys_fcp_cmd));
-	bpl[0].addrLow = le32_to_cpu(putPaddrLow(pdma_phys_fcp_cmd));
-	bpl[0].tus.f.bdeSize = sizeof(struct fcp_cmnd);
-	bpl[0].tus.f.bdeFlags = BUFF_TYPE_BDE_64;
-	bpl[0].tus.w = le32_to_cpu(bpl[0].tus.w);
+		/* Initialize local short-hand pointers. */
+		bpl = psb->fcp_bpl;
+		pdma_phys_fcp_cmd = psb->dma_handle;
+		pdma_phys_fcp_rsp = psb->dma_handle + sizeof(struct fcp_cmnd);
+		pdma_phys_bpl = psb->dma_handle + sizeof(struct fcp_cmnd) +
+			sizeof(struct fcp_rsp);
 
-	/* Setup the physical region for the FCP RSP */
-	bpl[1].addrHigh = le32_to_cpu(putPaddrHigh(pdma_phys_fcp_rsp));
-	bpl[1].addrLow = le32_to_cpu(putPaddrLow(pdma_phys_fcp_rsp));
-	bpl[1].tus.f.bdeSize = sizeof(struct fcp_rsp);
-	bpl[1].tus.f.bdeFlags = BUFF_TYPE_BDE_64;
-	bpl[1].tus.w = le32_to_cpu(bpl[1].tus.w);
+		/*
+		 * The first two bdes are the FCP_CMD and FCP_RSP. The balance
+		 * are sg list bdes.  Initialize the first two and leave the
+		 * rest for queuecommand.
+		 */
+		bpl[0].addrHigh = le32_to_cpu(putPaddrHigh(pdma_phys_fcp_cmd));
+		bpl[0].addrLow = le32_to_cpu(putPaddrLow(pdma_phys_fcp_cmd));
+		bpl[0].tus.f.bdeSize = sizeof(struct fcp_cmnd);
+		bpl[0].tus.f.bdeFlags = BUFF_TYPE_BDE_64;
+		bpl[0].tus.w = le32_to_cpu(bpl[0].tus.w);
 
-	/*
-	 * Since the IOCB for the FCP I/O is built into this lpfc_scsi_buf,
-	 * initialize it with all known data now.
-	 */
-	iocb = &psb->cur_iocbq.iocb;
-	iocb->un.fcpi64.bdl.ulpIoTag32 = 0;
-	if ((phba->sli_rev == 3) &&
-	    !(phba->sli3_options & LPFC_SLI3_BG_ENABLED)) {
-		/* fill in immediate fcp command BDE */
-		iocb->un.fcpi64.bdl.bdeFlags = BUFF_TYPE_BDE_IMMED;
-		iocb->un.fcpi64.bdl.bdeSize = sizeof(struct fcp_cmnd);
-		iocb->un.fcpi64.bdl.addrLow = offsetof(IOCB_t,
-						       unsli3.fcp_ext.icd);
-		iocb->un.fcpi64.bdl.addrHigh = 0;
-		iocb->ulpBdeCount = 0;
-		iocb->ulpLe = 0;
-		/* fill in responce BDE */
-		iocb->unsli3.fcp_ext.rbde.tus.f.bdeFlags = BUFF_TYPE_BDE_64;
-		iocb->unsli3.fcp_ext.rbde.tus.f.bdeSize =
-						sizeof(struct fcp_rsp);
-		iocb->unsli3.fcp_ext.rbde.addrLow =
-						putPaddrLow(pdma_phys_fcp_rsp);
-		iocb->unsli3.fcp_ext.rbde.addrHigh =
-						putPaddrHigh(pdma_phys_fcp_rsp);
-	} else {
-		iocb->un.fcpi64.bdl.bdeFlags = BUFF_TYPE_BLP_64;
-		iocb->un.fcpi64.bdl.bdeSize = (2 * sizeof(struct ulp_bde64));
-		iocb->un.fcpi64.bdl.addrLow = putPaddrLow(pdma_phys_bpl);
-		iocb->un.fcpi64.bdl.addrHigh = putPaddrHigh(pdma_phys_bpl);
-		iocb->ulpBdeCount = 1;
-		iocb->ulpLe = 1;
+		/* Setup the physical region for the FCP RSP */
+		bpl[1].addrHigh = le32_to_cpu(putPaddrHigh(pdma_phys_fcp_rsp));
+		bpl[1].addrLow = le32_to_cpu(putPaddrLow(pdma_phys_fcp_rsp));
+		bpl[1].tus.f.bdeSize = sizeof(struct fcp_rsp);
+		bpl[1].tus.f.bdeFlags = BUFF_TYPE_BDE_64;
+		bpl[1].tus.w = le32_to_cpu(bpl[1].tus.w);
+
+		/*
+		 * Since the IOCB for the FCP I/O is built into this
+		 * lpfc_scsi_buf, initialize it with all known data now.
+		 */
+		iocb = &psb->cur_iocbq.iocb;
+		iocb->un.fcpi64.bdl.ulpIoTag32 = 0;
+		if ((phba->sli_rev == 3) &&
+				!(phba->sli3_options & LPFC_SLI3_BG_ENABLED)) {
+			/* fill in immediate fcp command BDE */
+			iocb->un.fcpi64.bdl.bdeFlags = BUFF_TYPE_BDE_IMMED;
+			iocb->un.fcpi64.bdl.bdeSize = sizeof(struct fcp_cmnd);
+			iocb->un.fcpi64.bdl.addrLow = offsetof(IOCB_t,
+					unsli3.fcp_ext.icd);
+			iocb->un.fcpi64.bdl.addrHigh = 0;
+			iocb->ulpBdeCount = 0;
+			iocb->ulpLe = 0;
+			/* fill in responce BDE */
+			iocb->unsli3.fcp_ext.rbde.tus.f.bdeFlags =
+							BUFF_TYPE_BDE_64;
+			iocb->unsli3.fcp_ext.rbde.tus.f.bdeSize =
+				sizeof(struct fcp_rsp);
+			iocb->unsli3.fcp_ext.rbde.addrLow =
+				putPaddrLow(pdma_phys_fcp_rsp);
+			iocb->unsli3.fcp_ext.rbde.addrHigh =
+				putPaddrHigh(pdma_phys_fcp_rsp);
+		} else {
+			iocb->un.fcpi64.bdl.bdeFlags = BUFF_TYPE_BLP_64;
+			iocb->un.fcpi64.bdl.bdeSize =
+					(2 * sizeof(struct ulp_bde64));
+			iocb->un.fcpi64.bdl.addrLow =
+					putPaddrLow(pdma_phys_bpl);
+			iocb->un.fcpi64.bdl.addrHigh =
+					putPaddrHigh(pdma_phys_bpl);
+			iocb->ulpBdeCount = 1;
+			iocb->ulpLe = 1;
+		}
+		iocb->ulpClass = CLASS3;
+		psb->status = IOSTAT_SUCCESS;
+		/* Put it back into the SCSI buffer list */
+		lpfc_release_scsi_buf_s3(phba, psb);
+
 	}
-	iocb->ulpClass = CLASS3;
 
-	return psb;
+	return bcnt;
 }
 
 /**
- * lpfc_get_scsi_buf - Get a scsi buffer from lpfc_scsi_buf_list list of Hba
- * @phba: The Hba for which this call is being executed.
+ * lpfc_sli4_fcp_xri_aborted - Fast-path process of fcp xri abort
+ * @phba: pointer to lpfc hba data structure.
+ * @axri: pointer to the fcp xri abort wcqe structure.
+ *
+ * This routine is invoked by the worker thread to process a SLI4 fast-path
+ * FCP aborted xri.
+ **/
+void
+lpfc_sli4_fcp_xri_aborted(struct lpfc_hba *phba,
+			  struct sli4_wcqe_xri_aborted *axri)
+{
+	uint16_t xri = bf_get(lpfc_wcqe_xa_xri, axri);
+	struct lpfc_scsi_buf *psb, *next_psb;
+	unsigned long iflag = 0;
+	struct lpfc_iocbq *iocbq;
+	int i;
+
+	spin_lock_irqsave(&phba->hbalock, iflag);
+	spin_lock(&phba->sli4_hba.abts_scsi_buf_list_lock);
+	list_for_each_entry_safe(psb, next_psb,
+		&phba->sli4_hba.lpfc_abts_scsi_buf_list, list) {
+		if (psb->cur_iocbq.sli4_xritag == xri) {
+			list_del(&psb->list);
+			psb->exch_busy = 0;
+			psb->status = IOSTAT_SUCCESS;
+			spin_unlock(
+				&phba->sli4_hba.abts_scsi_buf_list_lock);
+			spin_unlock_irqrestore(&phba->hbalock, iflag);
+			lpfc_release_scsi_buf_s4(phba, psb);
+			return;
+		}
+	}
+	spin_unlock(&phba->sli4_hba.abts_scsi_buf_list_lock);
+	for (i = 1; i <= phba->sli.last_iotag; i++) {
+		iocbq = phba->sli.iocbq_lookup[i];
+
+		if (!(iocbq->iocb_flag &  LPFC_IO_FCP) ||
+			(iocbq->iocb_flag & LPFC_IO_LIBDFC))
+			continue;
+		if (iocbq->sli4_xritag != xri)
+			continue;
+		psb = container_of(iocbq, struct lpfc_scsi_buf, cur_iocbq);
+		psb->exch_busy = 0;
+		spin_unlock_irqrestore(&phba->hbalock, iflag);
+		return;
+
+	}
+	spin_unlock_irqrestore(&phba->hbalock, iflag);
+}
+
+/**
+ * lpfc_sli4_repost_scsi_sgl_list - Repsot the Scsi buffers sgl pages as block
+ * @phba: pointer to lpfc hba data structure.
+ *
+ * This routine walks the list of scsi buffers that have been allocated and
+ * repost them to the HBA by using SGL block post. This is needed after a
+ * pci_function_reset/warm_start or start. The lpfc_hba_down_post_s4 routine
+ * is responsible for moving all scsi buffers on the lpfc_abts_scsi_sgl_list
+ * to the lpfc_scsi_buf_list. If the repost fails, reject all scsi buffers.
+ *
+ * Returns: 0 = success, non-zero failure.
+ **/
+int
+lpfc_sli4_repost_scsi_sgl_list(struct lpfc_hba *phba)
+{
+	struct lpfc_scsi_buf *psb;
+	int index, status, bcnt = 0, rcnt = 0, rc = 0;
+	LIST_HEAD(sblist);
+
+	for (index = 0; index < phba->sli4_hba.scsi_xri_cnt; index++) {
+		psb = phba->sli4_hba.lpfc_scsi_psb_array[index];
+		if (psb) {
+			/* Remove from SCSI buffer list */
+			list_del(&psb->list);
+			/* Add it to a local SCSI buffer list */
+			list_add_tail(&psb->list, &sblist);
+			if (++rcnt == LPFC_NEMBED_MBOX_SGL_CNT) {
+				bcnt = rcnt;
+				rcnt = 0;
+			}
+		} else
+			/* A hole present in the XRI array, need to skip */
+			bcnt = rcnt;
+
+		if (index == phba->sli4_hba.scsi_xri_cnt - 1)
+			/* End of XRI array for SCSI buffer, complete */
+			bcnt = rcnt;
+
+		/* Continue until collect up to a nembed page worth of sgls */
+		if (bcnt == 0)
+			continue;
+		/* Now, post the SCSI buffer list sgls as a block */
+		status = lpfc_sli4_post_scsi_sgl_block(phba, &sblist, bcnt);
+		/* Reset SCSI buffer count for next round of posting */
+		bcnt = 0;
+		while (!list_empty(&sblist)) {
+			list_remove_head(&sblist, psb, struct lpfc_scsi_buf,
+					 list);
+			if (status) {
+				/* Put this back on the abort scsi list */
+				psb->exch_busy = 1;
+				rc++;
+			} else {
+				psb->exch_busy = 0;
+				psb->status = IOSTAT_SUCCESS;
+			}
+			/* Put it back into the SCSI buffer list */
+			lpfc_release_scsi_buf_s4(phba, psb);
+		}
+	}
+	return rc;
+}
+
+/**
+ * lpfc_new_scsi_buf_s4 - Scsi buffer allocator for HBA with SLI4 IF spec
+ * @vport: The virtual port for which this call being executed.
+ * @num_to_allocate: The requested number of buffers to allocate.
+ *
+ * This routine allocates a scsi buffer for device with SLI-4 interface spec,
+ * the scsi buffer contains all the necessary information needed to initiate
+ * a SCSI I/O.
+ *
+ * Return codes:
+ *   int - number of scsi buffers that were allocated.
+ *   0 = failure, less than num_to_alloc is a partial failure.
+ **/
+static int
+lpfc_new_scsi_buf_s4(struct lpfc_vport *vport, int num_to_alloc)
+{
+	struct lpfc_hba *phba = vport->phba;
+	struct lpfc_scsi_buf *psb;
+	struct sli4_sge *sgl;
+	IOCB_t *iocb;
+	dma_addr_t pdma_phys_fcp_cmd;
+	dma_addr_t pdma_phys_fcp_rsp;
+	dma_addr_t pdma_phys_bpl, pdma_phys_bpl1;
+	uint16_t iotag, last_xritag = NO_XRI;
+	int status = 0, index;
+	int bcnt;
+	int non_sequential_xri = 0;
+	int rc = 0;
+	LIST_HEAD(sblist);
+
+	for (bcnt = 0; bcnt < num_to_alloc; bcnt++) {
+		psb = kzalloc(sizeof(struct lpfc_scsi_buf), GFP_KERNEL);
+		if (!psb)
+			break;
+
+		/*
+		 * Get memory from the pci pool to map the virt space to pci bus
+		 * space for an I/O.  The DMA buffer includes space for the
+		 * struct fcp_cmnd, struct fcp_rsp and the number of bde's
+		 * necessary to support the sg_tablesize.
+		 */
+		psb->data = pci_pool_alloc(phba->lpfc_scsi_dma_buf_pool,
+						GFP_KERNEL, &psb->dma_handle);
+		if (!psb->data) {
+			kfree(psb);
+			break;
+		}
+
+		/* Initialize virtual ptrs to dma_buf region. */
+		memset(psb->data, 0, phba->cfg_sg_dma_buf_size);
+
+		/* Allocate iotag for psb->cur_iocbq. */
+		iotag = lpfc_sli_next_iotag(phba, &psb->cur_iocbq);
+		if (iotag == 0) {
+			kfree(psb);
+			break;
+		}
+
+		psb->cur_iocbq.sli4_xritag = lpfc_sli4_next_xritag(phba);
+		if (psb->cur_iocbq.sli4_xritag == NO_XRI) {
+			pci_pool_free(phba->lpfc_scsi_dma_buf_pool,
+			      psb->data, psb->dma_handle);
+			kfree(psb);
+			break;
+		}
+		if (last_xritag != NO_XRI
+			&& psb->cur_iocbq.sli4_xritag != (last_xritag+1)) {
+			non_sequential_xri = 1;
+		} else
+			list_add_tail(&psb->list, &sblist);
+		last_xritag = psb->cur_iocbq.sli4_xritag;
+
+		index = phba->sli4_hba.scsi_xri_cnt++;
+		psb->cur_iocbq.iocb_flag |= LPFC_IO_FCP;
+
+		psb->fcp_bpl = psb->data;
+		psb->fcp_cmnd = (psb->data + phba->cfg_sg_dma_buf_size)
+			- (sizeof(struct fcp_cmnd) + sizeof(struct fcp_rsp));
+		psb->fcp_rsp = (struct fcp_rsp *)((uint8_t *)psb->fcp_cmnd +
+					sizeof(struct fcp_cmnd));
+
+		/* Initialize local short-hand pointers. */
+		sgl = (struct sli4_sge *)psb->fcp_bpl;
+		pdma_phys_bpl = psb->dma_handle;
+		pdma_phys_fcp_cmd =
+			(psb->dma_handle + phba->cfg_sg_dma_buf_size)
+			 - (sizeof(struct fcp_cmnd) + sizeof(struct fcp_rsp));
+		pdma_phys_fcp_rsp = pdma_phys_fcp_cmd + sizeof(struct fcp_cmnd);
+
+		/*
+		 * The first two bdes are the FCP_CMD and FCP_RSP.  The balance
+		 * are sg list bdes.  Initialize the first two and leave the
+		 * rest for queuecommand.
+		 */
+		sgl->addr_hi = cpu_to_le32(putPaddrHigh(pdma_phys_fcp_cmd));
+		sgl->addr_lo = cpu_to_le32(putPaddrLow(pdma_phys_fcp_cmd));
+		bf_set(lpfc_sli4_sge_last, sgl, 0);
+		sgl->word2 = cpu_to_le32(sgl->word2);
+		sgl->sge_len = cpu_to_le32(sizeof(struct fcp_cmnd));
+		sgl++;
+
+		/* Setup the physical region for the FCP RSP */
+		sgl->addr_hi = cpu_to_le32(putPaddrHigh(pdma_phys_fcp_rsp));
+		sgl->addr_lo = cpu_to_le32(putPaddrLow(pdma_phys_fcp_rsp));
+		bf_set(lpfc_sli4_sge_last, sgl, 1);
+		sgl->word2 = cpu_to_le32(sgl->word2);
+		sgl->sge_len = cpu_to_le32(sizeof(struct fcp_rsp));
+
+		/*
+		 * Since the IOCB for the FCP I/O is built into this
+		 * lpfc_scsi_buf, initialize it with all known data now.
+		 */
+		iocb = &psb->cur_iocbq.iocb;
+		iocb->un.fcpi64.bdl.ulpIoTag32 = 0;
+		iocb->un.fcpi64.bdl.bdeFlags = BUFF_TYPE_BDE_64;
+		/* setting the BLP size to 2 * sizeof BDE may not be correct.
+		 * We are setting the bpl to point to out sgl. An sgl's
+		 * entries are 16 bytes, a bpl entries are 12 bytes.
+		 */
+		iocb->un.fcpi64.bdl.bdeSize = sizeof(struct fcp_cmnd);
+		iocb->un.fcpi64.bdl.addrLow = putPaddrLow(pdma_phys_fcp_cmd);
+		iocb->un.fcpi64.bdl.addrHigh = putPaddrHigh(pdma_phys_fcp_cmd);
+		iocb->ulpBdeCount = 1;
+		iocb->ulpLe = 1;
+		iocb->ulpClass = CLASS3;
+		if (phba->cfg_sg_dma_buf_size > SGL_PAGE_SIZE)
+			pdma_phys_bpl1 = pdma_phys_bpl + SGL_PAGE_SIZE;
+		else
+			pdma_phys_bpl1 = 0;
+		psb->dma_phys_bpl = pdma_phys_bpl;
+		phba->sli4_hba.lpfc_scsi_psb_array[index] = psb;
+		if (non_sequential_xri) {
+			status = lpfc_sli4_post_sgl(phba, pdma_phys_bpl,
+						pdma_phys_bpl1,
+						psb->cur_iocbq.sli4_xritag);
+			if (status) {
+				/* Put this back on the abort scsi list */
+				psb->exch_busy = 1;
+				rc++;
+			} else {
+				psb->exch_busy = 0;
+				psb->status = IOSTAT_SUCCESS;
+			}
+			/* Put it back into the SCSI buffer list */
+			lpfc_release_scsi_buf_s4(phba, psb);
+			break;
+		}
+	}
+	if (bcnt) {
+		status = lpfc_sli4_post_scsi_sgl_block(phba, &sblist, bcnt);
+		/* Reset SCSI buffer count for next round of posting */
+		while (!list_empty(&sblist)) {
+			list_remove_head(&sblist, psb, struct lpfc_scsi_buf,
+				 list);
+			if (status) {
+				/* Put this back on the abort scsi list */
+				psb->exch_busy = 1;
+				rc++;
+			} else {
+				psb->exch_busy = 0;
+				psb->status = IOSTAT_SUCCESS;
+			}
+			/* Put it back into the SCSI buffer list */
+			lpfc_release_scsi_buf_s4(phba, psb);
+		}
+	}
+
+	return bcnt + non_sequential_xri - rc;
+}
+
+/**
+ * lpfc_new_scsi_buf - Wrapper funciton for scsi buffer allocator
+ * @vport: The virtual port for which this call being executed.
+ * @num_to_allocate: The requested number of buffers to allocate.
+ *
+ * This routine wraps the actual SCSI buffer allocator function pointer from
+ * the lpfc_hba struct.
+ *
+ * Return codes:
+ *   int - number of scsi buffers that were allocated.
+ *   0 = failure, less than num_to_alloc is a partial failure.
+ **/
+static inline int
+lpfc_new_scsi_buf(struct lpfc_vport *vport, int num_to_alloc)
+{
+	return vport->phba->lpfc_new_scsi_buf(vport, num_to_alloc);
+}
+
+/**
+ * lpfc_get_scsi_buf - Get a scsi buffer from lpfc_scsi_buf_list of the HBA
+ * @phba: The HBA for which this call is being executed.
  *
  * This routine removes a scsi buffer from head of @phba lpfc_scsi_buf_list list
  * and returns to caller.
@@ -591,7 +938,7 @@ lpfc_get_scsi_buf(struct lpfc_hba * phba)
 }
 
 /**
- * lpfc_release_scsi_buf - Return a scsi buffer back to hba's lpfc_scsi_buf_list
+ * lpfc_release_scsi_buf - Return a scsi buffer back to hba scsi buf list
  * @phba: The Hba for which this call is being executed.
  * @psb: The scsi buffer which is being released.
  *
@@ -599,7 +946,7 @@ lpfc_get_scsi_buf(struct lpfc_hba * phba)
  * lpfc_scsi_buf_list list.
  **/
 static void
-lpfc_release_scsi_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
+lpfc_release_scsi_buf_s3(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
 {
 	unsigned long iflag = 0;
 
@@ -610,26 +957,74 @@ lpfc_release_scsi_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
 }
 
 /**
- * lpfc_scsi_prep_dma_buf - Routine to do DMA mapping for scsi buffer
+ * lpfc_release_scsi_buf_s4: Return a scsi buffer back to hba scsi buf list.
+ * @phba: The Hba for which this call is being executed.
+ * @psb: The scsi buffer which is being released.
+ *
+ * This routine releases @psb scsi buffer by adding it to tail of @phba
+ * lpfc_scsi_buf_list list. For SLI4 XRI's are tied to the scsi buffer
+ * and cannot be reused for at least RA_TOV amount of time if it was
+ * aborted.
+ **/
+static void
+lpfc_release_scsi_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
+{
+	unsigned long iflag = 0;
+
+	if (psb->exch_busy) {
+		spin_lock_irqsave(&phba->sli4_hba.abts_scsi_buf_list_lock,
+					iflag);
+		psb->pCmd = NULL;
+		list_add_tail(&psb->list,
+			&phba->sli4_hba.lpfc_abts_scsi_buf_list);
+		spin_unlock_irqrestore(&phba->sli4_hba.abts_scsi_buf_list_lock,
+					iflag);
+	} else {
+
+		spin_lock_irqsave(&phba->scsi_buf_list_lock, iflag);
+		psb->pCmd = NULL;
+		list_add_tail(&psb->list, &phba->lpfc_scsi_buf_list);
+		spin_unlock_irqrestore(&phba->scsi_buf_list_lock, iflag);
+	}
+}
+
+/**
+ * lpfc_release_scsi_buf: Return a scsi buffer back to hba scsi buf list.
+ * @phba: The Hba for which this call is being executed.
+ * @psb: The scsi buffer which is being released.
+ *
+ * This routine releases @psb scsi buffer by adding it to tail of @phba
+ * lpfc_scsi_buf_list list.
+ **/
+static void
+lpfc_release_scsi_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
+{
+
+	phba->lpfc_release_scsi_buf(phba, psb);
+}
+
+/**
+ * lpfc_scsi_prep_dma_buf_s3 - DMA mapping for scsi buffer to SLI3 IF spec
  * @phba: The Hba for which this call is being executed.
  * @lpfc_cmd: The scsi buffer which is going to be mapped.
  *
  * This routine does the pci dma mapping for scatter-gather list of scsi cmnd
- * field of @lpfc_cmd. This routine scans through sg elements and format the
- * bdea. This routine also initializes all IOCB fields which are dependent on
- * scsi command request buffer.
+ * field of @lpfc_cmd for device with SLI-3 interface spec. This routine scans
+ * through sg elements and format the bdea. This routine also initializes all
+ * IOCB fields which are dependent on scsi command request buffer.
  *
  * Return codes:
  *   1 - Error
  *   0 - Success
  **/
 static int
-lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
+lpfc_scsi_prep_dma_buf_s3(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 {
 	struct scsi_cmnd *scsi_cmnd = lpfc_cmd->pCmd;
 	struct scatterlist *sgel = NULL;
 	struct fcp_cmnd *fcp_cmnd = lpfc_cmd->fcp_cmnd;
 	struct ulp_bde64 *bpl = lpfc_cmd->fcp_bpl;
+	struct lpfc_iocbq *iocbq = &lpfc_cmd->cur_iocbq;
 	IOCB_t *iocb_cmd = &lpfc_cmd->cur_iocbq.iocb;
 	struct ulp_bde64 *data_bde = iocb_cmd->unsli3.fcp_ext.dbde;
 	dma_addr_t physaddr;
@@ -658,7 +1053,8 @@ lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 
 		lpfc_cmd->seg_cnt = nseg;
 		if (lpfc_cmd->seg_cnt > phba->cfg_sg_seg_cnt) {
-			printk(KERN_ERR "%s: Too many sg segments from "
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9064 BLKGRD: %s: Too many sg segments from "
 			       "dma_map_sg.  Config %d, seg_cnt %d\n",
 			       __func__, phba->cfg_sg_seg_cnt,
 			       lpfc_cmd->seg_cnt);
@@ -679,6 +1075,7 @@ lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 			physaddr = sg_dma_address(sgel);
 			if (phba->sli_rev == 3 &&
 			    !(phba->sli3_options & LPFC_SLI3_BG_ENABLED) &&
+			    !(iocbq->iocb_flag & DSS_SECURITY_OP) &&
 			    nseg <= LPFC_EXT_DATA_BDE_COUNT) {
 				data_bde->tus.f.bdeFlags = BUFF_TYPE_BDE_64;
 				data_bde->tus.f.bdeSize = sg_dma_len(sgel);
@@ -705,7 +1102,8 @@ lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 	 * explicitly reinitialized since all iocb memory resources are reused.
 	 */
 	if (phba->sli_rev == 3 &&
-	    !(phba->sli3_options & LPFC_SLI3_BG_ENABLED)) {
+	    !(phba->sli3_options & LPFC_SLI3_BG_ENABLED) &&
+	    !(iocbq->iocb_flag & DSS_SECURITY_OP)) {
 		if (num_bde > LPFC_EXT_DATA_BDE_COUNT) {
 			/*
 			 * The extended IOCB format can only fit 3 BDE or a BPL.
@@ -730,6 +1128,7 @@ lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 	} else {
 		iocb_cmd->un.fcpi64.bdl.bdeSize =
 			((num_bde + 2) * sizeof(struct ulp_bde64));
+		iocb_cmd->unsli3.fcp_ext.ebde_count = (num_bde + 1);
 	}
 	fcp_cmnd->fcpDl = cpu_to_be32(scsi_bufflen(scsi_cmnd));
 
@@ -746,7 +1145,7 @@ lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
  * with the cmd
  */
 static int
-lpfc_sc_to_sli_prof(struct scsi_cmnd *sc)
+lpfc_sc_to_sli_prof(struct lpfc_hba *phba, struct scsi_cmnd *sc)
 {
 	uint8_t guard_type = scsi_host_get_guard(sc->device->host);
 	uint8_t ret_prof = LPFC_PROF_INVALID;
@@ -763,16 +1162,15 @@ lpfc_sc_to_sli_prof(struct scsi_cmnd *sc)
 			ret_prof = LPFC_PROF_A1;
 			break;
 
-		case SCSI_PROT_READ_CONVERT:
-		case SCSI_PROT_WRITE_CONVERT:
+		case SCSI_PROT_READ_PASS:
+		case SCSI_PROT_WRITE_PASS:
 			ret_prof = LPFC_PROF_AST1;
 			break;
 
-		case SCSI_PROT_READ_PASS:
-		case SCSI_PROT_WRITE_PASS:
 		case SCSI_PROT_NORMAL:
 		default:
-			printk(KERN_ERR "Bad op/guard:%d/%d combination\n",
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9063 BLKGRD:Bad op/guard:%d/%d combination\n",
 					scsi_get_prot_op(sc), guard_type);
 			break;
 
@@ -789,13 +1187,12 @@ lpfc_sc_to_sli_prof(struct scsi_cmnd *sc)
 			ret_prof = LPFC_PROF_C1;
 			break;
 
-		case SCSI_PROT_READ_CONVERT:
-		case SCSI_PROT_WRITE_CONVERT:
 		case SCSI_PROT_READ_INSERT:
 		case SCSI_PROT_WRITE_STRIP:
 		case SCSI_PROT_NORMAL:
 		default:
-			printk(KERN_ERR "Bad op/guard:%d/%d combination\n",
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9075 BLKGRD: Bad op/guard:%d/%d combination\n",
 					scsi_get_prot_op(sc), guard_type);
 			break;
 		}
@@ -827,8 +1224,8 @@ lpfc_cmd_blksize(struct scsi_cmnd *sc)
  * @reftag:         out: ref tag (reference tag)
  *
  * Description:
- *   Extract DIF paramters from the command if possible.  Otherwise,
- *   use default paratmers.
+ *   Extract DIF parameters from the command if possible.  Otherwise,
+ *   use default parameters.
  *
  **/
 static inline void
@@ -841,8 +1238,7 @@ lpfc_get_cmd_dif_parms(struct scsi_cmnd *sc, uint16_t *apptagmask,
 	static int cnt;
 
 	if (protcnt && (op == SCSI_PROT_WRITE_STRIP ||
-				op == SCSI_PROT_WRITE_PASS ||
-				op == SCSI_PROT_WRITE_CONVERT)) {
+				op == SCSI_PROT_WRITE_PASS)) {
 
 		cnt++;
 		spt = page_address(sg_page(scsi_prot_sglist(sc))) +
@@ -898,7 +1294,7 @@ lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	uint16_t apptagmask, apptagval;
 
 	pde1 = (struct lpfc_pde *) bpl;
-	prof = lpfc_sc_to_sli_prof(sc);
+	prof = lpfc_sc_to_sli_prof(phba, sc);
 
 	if (prof == LPFC_PROF_INVALID)
 		goto out;
@@ -998,7 +1394,7 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		return 0;
 	}
 
-	prof = lpfc_sc_to_sli_prof(sc);
+	prof = lpfc_sc_to_sli_prof(phba, sc);
 	if (prof == LPFC_PROF_INVALID)
 		goto out;
 
@@ -1047,7 +1443,8 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		subtotal = 0; /* total bytes processed for current prot grp */
 		while (!pgdone) {
 			if (!sgde) {
-				printk(KERN_ERR "%s Invalid data segment\n",
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9065 BLKGRD:%s Invalid data segment\n",
 						__func__);
 				return 0;
 			}
@@ -1101,7 +1498,8 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 			reftag += protgrp_blks;
 		} else {
 			/* if we're here, we have a bug */
-			printk(KERN_ERR "BLKGRD: bug in %s\n", __func__);
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9054 BLKGRD: bug in %s\n", __func__);
 		}
 
 	} while (!alldone);
@@ -1133,8 +1531,6 @@ lpfc_prot_group_type(struct lpfc_hba *phba, struct scsi_cmnd *sc)
 	case SCSI_PROT_WRITE_STRIP:
 	case SCSI_PROT_READ_PASS:
 	case SCSI_PROT_WRITE_PASS:
-	case SCSI_PROT_WRITE_CONVERT:
-	case SCSI_PROT_READ_CONVERT:
 		ret = LPFC_PG_TYPE_DIF_BUF;
 		break;
 	default:
@@ -1185,8 +1581,10 @@ lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba,
 
 		lpfc_cmd->seg_cnt = datasegcnt;
 		if (lpfc_cmd->seg_cnt > phba->cfg_sg_seg_cnt) {
-			printk(KERN_ERR "%s: Too many sg segments from "
-					"dma_map_sg.  Config %d, seg_cnt %d\n",
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9067 BLKGRD: %s: Too many sg segments"
+					" from dma_map_sg.  Config %d, seg_cnt"
+					" %d\n",
 					__func__, phba->cfg_sg_seg_cnt,
 					lpfc_cmd->seg_cnt);
 			scsi_dma_unmap(scsi_cmnd);
@@ -1199,7 +1597,7 @@ lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba,
 		case LPFC_PG_TYPE_NO_DIF:
 			num_bde = lpfc_bg_setup_bpl(phba, scsi_cmnd, bpl,
 					datasegcnt);
-			/* we shoud have 2 or more entries in buffer list */
+			/* we should have 2 or more entries in buffer list */
 			if (num_bde < 2)
 				goto err;
 			break;
@@ -1220,8 +1618,9 @@ lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba,
 			lpfc_cmd->prot_seg_cnt = protsegcnt;
 			if (lpfc_cmd->prot_seg_cnt
 			    > phba->cfg_prot_sg_seg_cnt) {
-				printk(KERN_ERR "%s: Too many prot sg segments "
-						"from dma_map_sg.  Config %d,"
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9068 BLKGRD: %s: Too many prot sg "
+					"segments from dma_map_sg.  Config %d,"
 						"prot_seg_cnt %d\n", __func__,
 						phba->cfg_prot_sg_seg_cnt,
 						lpfc_cmd->prot_seg_cnt);
@@ -1235,7 +1634,7 @@ lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba,
 
 			num_bde = lpfc_bg_setup_bpl_prot(phba, scsi_cmnd, bpl,
 					datasegcnt, protsegcnt);
-			/* we shoud have 3 or more entries in buffer list */
+			/* we should have 3 or more entries in buffer list */
 			if (num_bde < 3)
 				goto err;
 			break;
@@ -1312,23 +1711,26 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 	uint32_t bgstat = bgf->bgstat;
 	uint64_t failing_sector = 0;
 
-	printk(KERN_ERR "BG ERROR in cmd 0x%x lba 0x%llx blk cnt 0x%lx "
+	lpfc_printf_log(phba, KERN_ERR, LOG_BG, "9069 BLKGRD: BG ERROR in cmd"
+			" 0x%x lba 0x%llx blk cnt 0x%x "
 			"bgstat=0x%x bghm=0x%x\n",
 			cmd->cmnd[0], (unsigned long long)scsi_get_lba(cmd),
-			cmd->request->nr_sectors, bgstat, bghm);
+			blk_rq_sectors(cmd->request), bgstat, bghm);
 
 	spin_lock(&_dump_buf_lock);
 	if (!_dump_buf_done) {
-		printk(KERN_ERR "Saving Data for %u blocks to debugfs\n",
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,  "9070 BLKGRD: Saving"
+			" Data for %u blocks to debugfs\n",
 				(cmd->cmnd[7] << 8 | cmd->cmnd[8]));
-		lpfc_debug_save_data(cmd);
+		lpfc_debug_save_data(phba, cmd);
 
 		/* If we have a prot sgl, save the DIF buffer */
 		if (lpfc_prot_group_type(phba, cmd) ==
 				LPFC_PG_TYPE_DIF_BUF) {
-			printk(KERN_ERR "Saving DIF for %u blocks to debugfs\n",
-					(cmd->cmnd[7] << 8 | cmd->cmnd[8]));
-			lpfc_debug_save_dif(cmd);
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG, "9071 BLKGRD: "
+				"Saving DIF for %u blocks to debugfs\n",
+				(cmd->cmnd[7] << 8 | cmd->cmnd[8]));
+			lpfc_debug_save_dif(phba, cmd);
 		}
 
 		_dump_buf_done = 1;
@@ -1337,15 +1739,17 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 
 	if (lpfc_bgs_get_invalid_prof(bgstat)) {
 		cmd->result = ScsiResult(DID_ERROR, 0);
-		printk(KERN_ERR "Invalid BlockGuard profile. bgstat:0x%x\n",
-				bgstat);
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG, "9072 BLKGRD: Invalid"
+			" BlockGuard profile. bgstat:0x%x\n",
+			bgstat);
 		ret = (-1);
 		goto out;
 	}
 
 	if (lpfc_bgs_get_uninit_dif_block(bgstat)) {
 		cmd->result = ScsiResult(DID_ERROR, 0);
-		printk(KERN_ERR "Invalid BlockGuard DIF Block. bgstat:0x%x\n",
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG, "9073 BLKGRD: "
+				"Invalid BlockGuard DIF Block. bgstat:0x%x\n",
 				bgstat);
 		ret = (-1);
 		goto out;
@@ -1359,7 +1763,8 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 		cmd->result = DRIVER_SENSE << 24
 			| ScsiResult(DID_ABORT, SAM_STAT_CHECK_CONDITION);
 		phba->bg_guard_err_cnt++;
-		printk(KERN_ERR "BLKGRD: guard_tag error\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9055 BLKGRD: guard_tag error\n");
 	}
 
 	if (lpfc_bgs_get_reftag_err(bgstat)) {
@@ -1371,7 +1776,8 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 			| ScsiResult(DID_ABORT, SAM_STAT_CHECK_CONDITION);
 
 		phba->bg_reftag_err_cnt++;
-		printk(KERN_ERR "BLKGRD: ref_tag error\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9056 BLKGRD: ref_tag error\n");
 	}
 
 	if (lpfc_bgs_get_apptag_err(bgstat)) {
@@ -1383,7 +1789,8 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 			| ScsiResult(DID_ABORT, SAM_STAT_CHECK_CONDITION);
 
 		phba->bg_apptag_err_cnt++;
-		printk(KERN_ERR "BLKGRD: app_tag error\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9061 BLKGRD: app_tag error\n");
 	}
 
 	if (lpfc_bgs_get_hi_water_mark_present(bgstat)) {
@@ -1404,11 +1811,139 @@ lpfc_parse_bg_err(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd,
 	if (!ret) {
 		/* No error was reported - problem in FW? */
 		cmd->result = ScsiResult(DID_ERROR, 0);
-		printk(KERN_ERR "BLKGRD: no errors reported!\n");
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+			"9057 BLKGRD: no errors reported!\n");
 	}
 
 out:
 	return ret;
+}
+
+/**
+ * lpfc_scsi_prep_dma_buf_s4 - DMA mapping for scsi buffer to SLI4 IF spec
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be mapped.
+ *
+ * This routine does the pci dma mapping for scatter-gather list of scsi cmnd
+ * field of @lpfc_cmd for device with SLI-4 interface spec.
+ *
+ * Return codes:
+ * 	1 - Error
+ * 	0 - Success
+ **/
+static int
+lpfc_scsi_prep_dma_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
+{
+	struct scsi_cmnd *scsi_cmnd = lpfc_cmd->pCmd;
+	struct scatterlist *sgel = NULL;
+	struct fcp_cmnd *fcp_cmnd = lpfc_cmd->fcp_cmnd;
+	struct sli4_sge *sgl = (struct sli4_sge *)lpfc_cmd->fcp_bpl;
+	IOCB_t *iocb_cmd = &lpfc_cmd->cur_iocbq.iocb;
+	dma_addr_t physaddr;
+	uint32_t num_bde = 0;
+	uint32_t dma_len;
+	uint32_t dma_offset = 0;
+	int nseg;
+
+	/*
+	 * There are three possibilities here - use scatter-gather segment, use
+	 * the single mapping, or neither.  Start the lpfc command prep by
+	 * bumping the bpl beyond the fcp_cmnd and fcp_rsp regions to the first
+	 * data bde entry.
+	 */
+	if (scsi_sg_count(scsi_cmnd)) {
+		/*
+		 * The driver stores the segment count returned from pci_map_sg
+		 * because this a count of dma-mappings used to map the use_sg
+		 * pages.  They are not guaranteed to be the same for those
+		 * architectures that implement an IOMMU.
+		 */
+
+		nseg = scsi_dma_map(scsi_cmnd);
+		if (unlikely(!nseg))
+			return 1;
+		sgl += 1;
+		/* clear the last flag in the fcp_rsp map entry */
+		sgl->word2 = le32_to_cpu(sgl->word2);
+		bf_set(lpfc_sli4_sge_last, sgl, 0);
+		sgl->word2 = cpu_to_le32(sgl->word2);
+		sgl += 1;
+
+		lpfc_cmd->seg_cnt = nseg;
+		if (lpfc_cmd->seg_cnt > phba->cfg_sg_seg_cnt) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG, "9074 BLKGRD:"
+				" %s: Too many sg segments from "
+				"dma_map_sg.  Config %d, seg_cnt %d\n",
+				__func__, phba->cfg_sg_seg_cnt,
+			       lpfc_cmd->seg_cnt);
+			scsi_dma_unmap(scsi_cmnd);
+			return 1;
+		}
+
+		/*
+		 * The driver established a maximum scatter-gather segment count
+		 * during probe that limits the number of sg elements in any
+		 * single scsi command.  Just run through the seg_cnt and format
+		 * the sge's.
+		 * When using SLI-3 the driver will try to fit all the BDEs into
+		 * the IOCB. If it can't then the BDEs get added to a BPL as it
+		 * does for SLI-2 mode.
+		 */
+		scsi_for_each_sg(scsi_cmnd, sgel, nseg, num_bde) {
+			physaddr = sg_dma_address(sgel);
+			dma_len = sg_dma_len(sgel);
+			sgl->addr_lo = cpu_to_le32(putPaddrLow(physaddr));
+			sgl->addr_hi = cpu_to_le32(putPaddrHigh(physaddr));
+			if ((num_bde + 1) == nseg)
+				bf_set(lpfc_sli4_sge_last, sgl, 1);
+			else
+				bf_set(lpfc_sli4_sge_last, sgl, 0);
+			bf_set(lpfc_sli4_sge_offset, sgl, dma_offset);
+			sgl->word2 = cpu_to_le32(sgl->word2);
+			sgl->sge_len = cpu_to_le32(dma_len);
+			dma_offset += dma_len;
+			sgl++;
+		}
+	} else {
+		sgl += 1;
+		/* clear the last flag in the fcp_rsp map entry */
+		sgl->word2 = le32_to_cpu(sgl->word2);
+		bf_set(lpfc_sli4_sge_last, sgl, 1);
+		sgl->word2 = cpu_to_le32(sgl->word2);
+	}
+
+	/*
+	 * Finish initializing those IOCB fields that are dependent on the
+	 * scsi_cmnd request_buffer.  Note that for SLI-2 the bdeSize is
+	 * explicitly reinitialized.
+	 * all iocb memory resources are reused.
+	 */
+	fcp_cmnd->fcpDl = cpu_to_be32(scsi_bufflen(scsi_cmnd));
+
+	/*
+	 * Due to difference in data length between DIF/non-DIF paths,
+	 * we need to set word 4 of IOCB here
+	 */
+	iocb_cmd->un.fcpi.fcpi_parm = scsi_bufflen(scsi_cmnd);
+	return 0;
+}
+
+/**
+ * lpfc_scsi_prep_dma_buf - Wrapper function for DMA mapping of scsi buffer
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be mapped.
+ *
+ * This routine wraps the actual DMA mapping function pointer from the
+ * lpfc_hba struct.
+ *
+ * Return codes:
+ * 	1 - Error
+ * 	0 - Success
+ **/
+static inline int
+lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
+{
+	return phba->lpfc_scsi_prep_dma_buf(phba, lpfc_cmd);
 }
 
 /**
@@ -1504,15 +2039,15 @@ lpfc_send_scsi_error_event(struct lpfc_hba *phba, struct lpfc_vport *vport,
 }
 
 /**
- * lpfc_scsi_unprep_dma_buf - Routine to un-map DMA mapping of scatter gather
- * @phba: The Hba for which this call is being executed.
+ * lpfc_scsi_unprep_dma_buf - Un-map DMA mapping of SG-list for dev
+ * @phba: The HBA for which this call is being executed.
  * @psb: The scsi buffer which is going to be un-mapped.
  *
  * This routine does DMA un-mapping of scatter gather list of scsi command
- * field of @lpfc_cmd.
+ * field of @lpfc_cmd for device with SLI-3 interface spec.
  **/
 static void
-lpfc_scsi_unprep_dma_buf(struct lpfc_hba * phba, struct lpfc_scsi_buf * psb)
+lpfc_scsi_unprep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
 {
 	/*
 	 * There are only two special cases to consider.  (1) the scsi command
@@ -1564,6 +2099,31 @@ lpfc_handle_fcp_err(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 		goto out;
 	}
 
+	if (resp_info & RSP_LEN_VALID) {
+		rsplen = be32_to_cpu(fcprsp->rspRspLen);
+		if (rsplen != 0 && rsplen != 4 && rsplen != 8) {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+				 "2719 Invalid response length: "
+				 "tgt x%x lun x%x cmnd x%x rsplen x%x\n",
+				 cmnd->device->id,
+				 cmnd->device->lun, cmnd->cmnd[0],
+				 rsplen);
+			host_status = DID_ERROR;
+			goto out;
+		}
+		if (fcprsp->rspInfo3 != RSP_NO_FAILURE) {
+			lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+				 "2757 Protocol failure detected during "
+				 "processing of FCP I/O op: "
+				 "tgt x%x lun x%x cmnd x%x rspInfo3 x%x\n",
+				 cmnd->device->id,
+				 cmnd->device->lun, cmnd->cmnd[0],
+				 fcprsp->rspInfo3);
+			host_status = DID_ERROR;
+			goto out;
+		}
+	}
+
 	if ((resp_info & SNS_LEN_VALID) && fcprsp->rspSnsLen) {
 		uint32_t snslen = be32_to_cpu(fcprsp->rspSnsLen);
 		if (snslen > SCSI_SENSE_BUFFERSIZE)
@@ -1587,15 +2147,6 @@ lpfc_handle_fcp_err(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 			 be32_to_cpu(fcprsp->rspSnsLen),
 			 be32_to_cpu(fcprsp->rspRspLen),
 			 fcprsp->rspInfo3);
-
-	if (resp_info & RSP_LEN_VALID) {
-		rsplen = be32_to_cpu(fcprsp->rspRspLen);
-		if ((rsplen != 0 && rsplen != 4 && rsplen != 8) ||
-		    (fcprsp->rspInfo3 != RSP_NO_FAILURE)) {
-			host_status = DID_ERROR;
-			goto out;
-		}
-	}
 
 	scsi_set_resid(cmnd, 0);
 	if (resp_info & RESID_UNDER) {
@@ -1647,7 +2198,7 @@ lpfc_handle_fcp_err(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	} else if (resp_info & RESID_OVER) {
 		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 				 "9028 FCP command x%x residual overrun error. "
-				 "Data: x%x x%x \n", cmnd->cmnd[0],
+				 "Data: x%x x%x\n", cmnd->cmnd[0],
 				 scsi_bufflen(cmnd), scsi_get_resid(cmnd));
 		host_status = DID_ERROR;
 
@@ -1676,7 +2227,7 @@ lpfc_handle_fcp_err(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
  * lpfc_scsi_cmd_iocb_cmpl - Scsi cmnd IOCB completion routine
  * @phba: The Hba for which this call is being executed.
  * @pIocbIn: The command IOCBQ for the scsi cmnd.
- * @pIocbOut: The response IOCBQ for the scsi cmnd .
+ * @pIocbOut: The response IOCBQ for the scsi cmnd.
  *
  * This routine assigns scsi command result by looking into response IOCB
  * status field appropriately. This routine handles QUEUE FULL condition as
@@ -1694,7 +2245,7 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 	struct scsi_cmnd *cmd = lpfc_cmd->pCmd;
 	int result;
 	struct scsi_device *tmp_sdev;
-	int depth = 0;
+	int depth;
 	unsigned long flags;
 	struct lpfc_fast_path_event *fast_path_evt;
 	struct Scsi_Host *shost = cmd->device->host;
@@ -1702,6 +2253,9 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 
 	lpfc_cmd->result = pIocbOut->iocb.un.ulpWord[4];
 	lpfc_cmd->status = pIocbOut->iocb.ulpStatus;
+	/* pick up SLI4 exhange busy status from HBA */
+	lpfc_cmd->exch_busy = pIocbOut->iocb_flag & LPFC_EXCHANGE_BUSY;
+
 	if (pnode && NLP_CHK_NODE_ACT(pnode))
 		atomic_dec(&pnode->cmd_pending);
 
@@ -1778,7 +2332,7 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 					lpfc_printf_vlog(vport, KERN_WARNING,
 							LOG_BG,
 							"9031 non-zero BGSTAT "
-							"on unprotected cmd");
+							"on unprotected cmd\n");
 				}
 			}
 
@@ -1861,36 +2415,8 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 		return;
 	}
 
-
 	if (!result)
 		lpfc_rampup_queue_depth(vport, queue_depth);
-
-	if (!result && pnode && NLP_CHK_NODE_ACT(pnode) &&
-	   ((jiffies - pnode->last_ramp_up_time) >
-		LPFC_Q_RAMP_UP_INTERVAL * HZ) &&
-	   ((jiffies - pnode->last_q_full_time) >
-		LPFC_Q_RAMP_UP_INTERVAL * HZ) &&
-	   (vport->cfg_lun_queue_depth > queue_depth)) {
-		shost_for_each_device(tmp_sdev, shost) {
-			if (vport->cfg_lun_queue_depth > tmp_sdev->queue_depth){
-				if (tmp_sdev->id != scsi_id)
-					continue;
-				if (tmp_sdev->ordered_tags)
-					scsi_adjust_queue_depth(tmp_sdev,
-						MSG_ORDERED_TAG,
-						tmp_sdev->queue_depth+1);
-				else
-					scsi_adjust_queue_depth(tmp_sdev,
-						MSG_SIMPLE_TAG,
-						tmp_sdev->queue_depth+1);
-
-				pnode->last_ramp_up_time = jiffies;
-			}
-		}
-		lpfc_send_sdev_queuedepth_change_event(phba, vport, pnode,
-			0xFFFFFFFF,
-			queue_depth , queue_depth + 1);
-	}
 
 	/*
 	 * Check for queue full.  If the lun is reporting queue full, then
@@ -1898,30 +2424,20 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 	 */
 	if (result == SAM_STAT_TASK_SET_FULL && pnode &&
 	    NLP_CHK_NODE_ACT(pnode)) {
-		pnode->last_q_full_time = jiffies;
-
 		shost_for_each_device(tmp_sdev, shost) {
 			if (tmp_sdev->id != scsi_id)
 				continue;
 			depth = scsi_track_queue_full(tmp_sdev,
-					tmp_sdev->queue_depth - 1);
-		}
-		/*
-		 * The queue depth cannot be lowered any more.
-		 * Modify the returned error code to store
-		 * the final depth value set by
-		 * scsi_track_queue_full.
-		 */
-		if (depth == -1)
-			depth = shost->cmd_per_lun;
-
-		if (depth) {
+						      tmp_sdev->queue_depth-1);
+			if (depth <= 0)
+				continue;
 			lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 					 "0711 detected queue full - lun queue "
 					 "depth adjusted to %d.\n", depth);
 			lpfc_send_sdev_queuedepth_change_event(phba, vport,
-				pnode, 0xFFFFFFFF,
-				depth+1, depth);
+							       pnode,
+							       tmp_sdev->lun,
+							       depth+1, depth);
 		}
 	}
 
@@ -1957,13 +2473,13 @@ lpfc_fcpcmd_to_iocb(uint8_t *data, struct fcp_cmnd *fcp_cmnd)
 }
 
 /**
- * lpfc_scsi_prep_cmnd -  Routine to convert scsi cmnd to FCP information unit
+ * lpfc_scsi_prep_cmnd - Wrapper func for convert scsi cmnd to FCP info unit
  * @vport: The virtual port for which this call is being executed.
  * @lpfc_cmd: The scsi command which needs to send.
  * @pnode: Pointer to lpfc_nodelist.
  *
  * This routine initializes fcp_cmnd and iocb data structure from scsi command
- * to transfer.
+ * to transfer for device with SLI3 interface spec.
  **/
 static void
 lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
@@ -2013,8 +2529,11 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	if (scsi_sg_count(scsi_cmnd)) {
 		if (datadir == DMA_TO_DEVICE) {
 			iocb_cmd->ulpCommand = CMD_FCP_IWRITE64_CR;
-			iocb_cmd->un.fcpi.fcpi_parm = 0;
-			iocb_cmd->ulpPU = 0;
+			if (phba->sli_rev < LPFC_SLI_REV4) {
+				iocb_cmd->un.fcpi.fcpi_parm = 0;
+				iocb_cmd->ulpPU = 0;
+			} else
+				iocb_cmd->ulpPU = PARM_READ_CHECK;
 			fcp_cmnd->fcpCntl3 = WRITE_DATA;
 			phba->fc4OutputRequests++;
 		} else {
@@ -2051,13 +2570,14 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 }
 
 /**
- * lpfc_scsi_prep_task_mgmt_cmnd - Convert scsi TM cmnd to FCP information unit
+ * lpfc_scsi_prep_task_mgmt_cmnd - Convert SLI3 scsi TM cmd to FCP info unit
  * @vport: The virtual port for which this call is being executed.
  * @lpfc_cmd: Pointer to lpfc_scsi_buf data structure.
  * @lun: Logical unit number.
  * @task_mgmt_cmd: SCSI task management command.
  *
- * This routine creates FCP information unit corresponding to @task_mgmt_cmd.
+ * This routine creates FCP information unit corresponding to @task_mgmt_cmd
+ * for device with SLI-3 interface spec.
  *
  * Return codes:
  *   0 - Error
@@ -2106,11 +2626,54 @@ lpfc_scsi_prep_task_mgmt_cmd(struct lpfc_vport *vport,
 		 * The driver will provide the timeout mechanism.
 		 */
 		piocb->ulpTimeout = 0;
-	} else {
+	} else
 		piocb->ulpTimeout = lpfc_cmd->timeout;
-	}
+
+	if (vport->phba->sli_rev == LPFC_SLI_REV4)
+		lpfc_sli4_set_rsp_sgl_last(vport->phba, lpfc_cmd);
 
 	return 1;
+}
+
+/**
+ * lpfc_scsi_api_table_setup - Set up scsi api fucntion jump table
+ * @phba: The hba struct for which this call is being executed.
+ * @dev_grp: The HBA PCI-Device group number.
+ *
+ * This routine sets up the SCSI interface API function jump table in @phba
+ * struct.
+ * Returns: 0 - success, -ENODEV - failure.
+ **/
+int
+lpfc_scsi_api_table_setup(struct lpfc_hba *phba, uint8_t dev_grp)
+{
+
+	phba->lpfc_scsi_unprep_dma_buf = lpfc_scsi_unprep_dma_buf;
+	phba->lpfc_scsi_prep_cmnd = lpfc_scsi_prep_cmnd;
+	phba->lpfc_get_scsi_buf = lpfc_get_scsi_buf;
+
+	switch (dev_grp) {
+	case LPFC_PCI_DEV_LP:
+		phba->lpfc_new_scsi_buf = lpfc_new_scsi_buf_s3;
+		phba->lpfc_scsi_prep_dma_buf = lpfc_scsi_prep_dma_buf_s3;
+		phba->lpfc_release_scsi_buf = lpfc_release_scsi_buf_s3;
+		break;
+	case LPFC_PCI_DEV_OC:
+		phba->lpfc_new_scsi_buf = lpfc_new_scsi_buf_s4;
+		phba->lpfc_scsi_prep_dma_buf = lpfc_scsi_prep_dma_buf_s4;
+		phba->lpfc_release_scsi_buf = lpfc_release_scsi_buf_s4;
+		break;
+	default:
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"1418 Invalid HBA PCI-device group: 0x%x\n",
+				dev_grp);
+		return -ENODEV;
+		break;
+	}
+	phba->lpfc_get_scsi_buf = lpfc_get_scsi_buf;
+	phba->lpfc_rampdown_queue_depth = lpfc_rampdown_queue_depth;
+	phba->lpfc_scsi_cmd_iocb_cmpl = lpfc_scsi_cmd_iocb_cmpl;
+	return 0;
 }
 
 /**
@@ -2132,73 +2695,6 @@ lpfc_tskmgmt_def_cmpl(struct lpfc_hba *phba,
 	if (lpfc_cmd)
 		lpfc_release_scsi_buf(phba, lpfc_cmd);
 	return;
-}
-
-/**
- * lpfc_scsi_tgt_reset - Target reset handler
- * @lpfc_cmd: Pointer to lpfc_scsi_buf data structure
- * @vport: The virtual port for which this call is being executed.
- * @tgt_id: Target ID.
- * @lun: Lun number.
- * @rdata: Pointer to lpfc_rport_data.
- *
- * This routine issues a TARGET RESET iocb to reset a target with @tgt_id ID.
- *
- * Return Code:
- *   0x2003 - Error
- *   0x2002 - Success.
- **/
-static int
-lpfc_scsi_tgt_reset(struct lpfc_scsi_buf *lpfc_cmd, struct lpfc_vport *vport,
-		    unsigned  tgt_id, unsigned int lun,
-		    struct lpfc_rport_data *rdata)
-{
-	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_iocbq *iocbq;
-	struct lpfc_iocbq *iocbqrsp;
-	int ret;
-	int status;
-
-	if (!rdata->pnode || !NLP_CHK_NODE_ACT(rdata->pnode))
-		return FAILED;
-
-	lpfc_cmd->rdata = rdata;
-	status = lpfc_scsi_prep_task_mgmt_cmd(vport, lpfc_cmd, lun,
-					   FCP_TARGET_RESET);
-	if (!status)
-		return FAILED;
-
-	iocbq = &lpfc_cmd->cur_iocbq;
-	iocbqrsp = lpfc_sli_get_iocbq(phba);
-
-	if (!iocbqrsp)
-		return FAILED;
-
-	/* Issue Target Reset to TGT <num> */
-	lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP,
-			 "0702 Issue Target Reset to TGT %d Data: x%x x%x\n",
-			 tgt_id, rdata->pnode->nlp_rpi, rdata->pnode->nlp_flag);
-	status = lpfc_sli_issue_iocb_wait(phba,
-				       &phba->sli.ring[phba->sli.fcp_ring],
-				       iocbq, iocbqrsp, lpfc_cmd->timeout);
-	if (status != IOCB_SUCCESS) {
-		if (status == IOCB_TIMEDOUT) {
-			iocbq->iocb_cmpl = lpfc_tskmgmt_def_cmpl;
-			ret = TIMEOUT_ERROR;
-		} else
-			ret = FAILED;
-		lpfc_cmd->status = IOSTAT_DRIVER_REJECT;
-	} else {
-		ret = SUCCESS;
-		lpfc_cmd->result = iocbqrsp->iocb.un.ulpWord[4];
-		lpfc_cmd->status = iocbqrsp->iocb.ulpStatus;
-		if (lpfc_cmd->status == IOSTAT_LOCAL_REJECT &&
-			(lpfc_cmd->result & IOERR_DRVR_MASK))
-				lpfc_cmd->status = IOSTAT_DRIVER_REJECT;
-	}
-
-	lpfc_sli_release_iocbq(phba, iocbqrsp);
-	return ret;
 }
 
 /**
@@ -2234,6 +2730,13 @@ lpfc_info(struct Scsi_Host *host)
 				 384-len,
 				 " port %s",
 				 phba->Port);
+		}
+		len = strlen(lpfcinfobuf);
+		if (phba->sli4_hba.link_state.logical_speed) {
+			snprintf(lpfcinfobuf + len,
+				 384-len,
+				 " Logical Link Speed: %d Mbps",
+				 phba->sli4_hba.link_state.logical_speed * 10);
 		}
 	}
 	return lpfcinfobuf;
@@ -2280,7 +2783,9 @@ void lpfc_poll_timeout(unsigned long ptr)
 	struct lpfc_hba *phba = (struct lpfc_hba *) ptr;
 
 	if (phba->cfg_poll & ENABLE_FCP_RING_POLLING) {
-		lpfc_sli_poll_fcp_ring (phba);
+		lpfc_sli_handle_fast_ring_event(phba,
+			&phba->sli.ring[LPFC_FCP_RING], HA_R0RE_REQ);
+
 		if (phba->cfg_poll & DISABLE_FCP_RING_INT)
 			lpfc_poll_rearm_timer(phba);
 	}
@@ -2305,9 +2810,8 @@ lpfc_queuecommand(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	struct Scsi_Host  *shost = cmnd->device->host;
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_sli   *psli = &phba->sli;
 	struct lpfc_rport_data *rdata = cmnd->device->hostdata;
-	struct lpfc_nodelist *ndlp = rdata->pnode;
+	struct lpfc_nodelist *ndlp;
 	struct lpfc_scsi_buf *lpfc_cmd;
 	struct fc_rport *rport = starget_to_rport(scsi_target(cmnd->device));
 	int err;
@@ -2317,13 +2821,15 @@ lpfc_queuecommand(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 		cmnd->result = err;
 		goto out_fail_command;
 	}
+	ndlp = rdata->pnode;
 
 	if (!(phba->sli3_options & LPFC_SLI3_BG_ENABLED) &&
 		scsi_get_prot_op(cmnd) != SCSI_PROT_NORMAL) {
 
-		printk(KERN_ERR "BLKGRD ERROR: rcvd protected cmd:%02x op:%02x "
-				"str=%s without registering for BlockGuard - "
-				"Rejecting command\n",
+		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9058 BLKGRD: ERROR: rcvd protected cmd:%02x"
+				" op:%02x str=%s without registering for"
+				" BlockGuard - Rejecting command\n",
 				cmnd->cmnd[0], scsi_get_prot_op(cmnd),
 				dif_op_str[scsi_get_prot_op(cmnd)]);
 		goto out_fail_command;
@@ -2363,61 +2869,66 @@ lpfc_queuecommand(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	cmnd->scsi_done = done;
 
 	if (scsi_get_prot_op(cmnd) != SCSI_PROT_NORMAL) {
-		lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+		if (vport->phba->cfg_enable_bg) {
+			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
 				"9033 BLKGRD: rcvd protected cmd:%02x op:%02x "
 				"str=%s\n",
 				cmnd->cmnd[0], scsi_get_prot_op(cmnd),
 				dif_op_str[scsi_get_prot_op(cmnd)]);
-		lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
 				"9034 BLKGRD: CDB: %02x %02x %02x %02x %02x "
-				"%02x %02x %02x %02x %02x \n",
+				"%02x %02x %02x %02x %02x\n",
 				cmnd->cmnd[0], cmnd->cmnd[1], cmnd->cmnd[2],
 				cmnd->cmnd[3], cmnd->cmnd[4], cmnd->cmnd[5],
 				cmnd->cmnd[6], cmnd->cmnd[7], cmnd->cmnd[8],
 				cmnd->cmnd[9]);
-		if (cmnd->cmnd[0] == READ_10)
-			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+			if (cmnd->cmnd[0] == READ_10)
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
 					"9035 BLKGRD: READ @ sector %llu, "
-					 "count %lu\n",
-					 (unsigned long long)scsi_get_lba(cmnd),
-					cmnd->request->nr_sectors);
-		else if (cmnd->cmnd[0] == WRITE_10)
-			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
-					"9036 BLKGRD: WRITE @ sector %llu, "
-					"count %lu cmd=%p\n",
+					"count %u\n",
 					(unsigned long long)scsi_get_lba(cmnd),
-					cmnd->request->nr_sectors,
+					blk_rq_sectors(cmnd->request));
+			else if (cmnd->cmnd[0] == WRITE_10)
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+					"9036 BLKGRD: WRITE @ sector %llu, "
+					"count %u cmd=%p\n",
+					(unsigned long long)scsi_get_lba(cmnd),
+					blk_rq_sectors(cmnd->request),
 					cmnd);
+		}
 
 		err = lpfc_bg_scsi_prep_dma_buf(phba, lpfc_cmd);
 	} else {
-		lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
-				"9038 BLKGRD: rcvd unprotected cmd:%02x op:%02x"
-				" str=%s\n",
-				cmnd->cmnd[0], scsi_get_prot_op(cmnd),
-				dif_op_str[scsi_get_prot_op(cmnd)]);
-		lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
-				 "9039 BLKGRD: CDB: %02x %02x %02x %02x %02x "
-				 "%02x %02x %02x %02x %02x \n",
-				 cmnd->cmnd[0], cmnd->cmnd[1], cmnd->cmnd[2],
-				 cmnd->cmnd[3], cmnd->cmnd[4], cmnd->cmnd[5],
-				 cmnd->cmnd[6], cmnd->cmnd[7], cmnd->cmnd[8],
-				 cmnd->cmnd[9]);
-		if (cmnd->cmnd[0] == READ_10)
+		if (vport->phba->cfg_enable_bg) {
 			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
-					 "9040 dbg: READ @ sector %llu, "
-					 "count %lu\n",
-					 (unsigned long long)scsi_get_lba(cmnd),
-					 cmnd->request->nr_sectors);
-		else if (cmnd->cmnd[0] == WRITE_10)
-			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+					"9038 BLKGRD: rcvd unprotected cmd:"
+					"%02x op:%02x str=%s\n",
+					cmnd->cmnd[0], scsi_get_prot_op(cmnd),
+					dif_op_str[scsi_get_prot_op(cmnd)]);
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+					"9039 BLKGRD: CDB: %02x %02x %02x "
+					"%02x %02x %02x %02x %02x %02x %02x\n",
+					cmnd->cmnd[0], cmnd->cmnd[1],
+					cmnd->cmnd[2], cmnd->cmnd[3],
+					cmnd->cmnd[4], cmnd->cmnd[5],
+					cmnd->cmnd[6], cmnd->cmnd[7],
+					cmnd->cmnd[8], cmnd->cmnd[9]);
+			if (cmnd->cmnd[0] == READ_10)
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+					"9040 dbg: READ @ sector %llu, "
+					"count %u\n",
+					(unsigned long long)scsi_get_lba(cmnd),
+					 blk_rq_sectors(cmnd->request));
+			else if (cmnd->cmnd[0] == WRITE_10)
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
 					 "9041 dbg: WRITE @ sector %llu, "
-					 "count %lu cmd=%p\n",
+					 "count %u cmd=%p\n",
 					 (unsigned long long)scsi_get_lba(cmnd),
-					 cmnd->request->nr_sectors, cmnd);
-		else
-			lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
+					 blk_rq_sectors(cmnd->request), cmnd);
+			else
+				lpfc_printf_vlog(vport, KERN_WARNING, LOG_BG,
 					 "9042 dbg: parser not implemented\n");
+		}
 		err = lpfc_scsi_prep_dma_buf(phba, lpfc_cmd);
 	}
 
@@ -2427,14 +2938,18 @@ lpfc_queuecommand(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	lpfc_scsi_prep_cmnd(vport, lpfc_cmd, ndlp);
 
 	atomic_inc(&ndlp->cmd_pending);
-	err = lpfc_sli_issue_iocb(phba, &phba->sli.ring[psli->fcp_ring],
+	err = lpfc_sli_issue_iocb(phba, LPFC_FCP_RING,
 				  &lpfc_cmd->cur_iocbq, SLI_IOCB_RET_IOCB);
 	if (err) {
 		atomic_dec(&ndlp->cmd_pending);
 		goto out_host_busy_free_buf;
 	}
 	if (phba->cfg_poll & ENABLE_FCP_RING_POLLING) {
-		lpfc_sli_poll_fcp_ring(phba);
+		spin_unlock(shost->host_lock);
+		lpfc_sli_handle_fast_ring_event(phba,
+			&phba->sli.ring[LPFC_FCP_RING], HA_R0RE_REQ);
+
+		spin_lock(shost->host_lock);
 		if (phba->cfg_poll & DISABLE_FCP_RING_INT)
 			lpfc_poll_rearm_timer(phba);
 	}
@@ -2453,28 +2968,6 @@ lpfc_queuecommand(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 }
 
 /**
- * lpfc_block_error_handler - Routine to block error  handler
- * @cmnd: Pointer to scsi_cmnd data structure.
- *
- *  This routine blocks execution till fc_rport state is not FC_PORSTAT_BLCOEKD.
- **/
-static void
-lpfc_block_error_handler(struct scsi_cmnd *cmnd)
-{
-	struct Scsi_Host *shost = cmnd->device->host;
-	struct fc_rport *rport = starget_to_rport(scsi_target(cmnd->device));
-
-	spin_lock_irq(shost->host_lock);
-	while (rport->port_state == FC_PORTSTATE_BLOCKED) {
-		spin_unlock_irq(shost->host_lock);
-		msleep(1000);
-		spin_lock_irq(shost->host_lock);
-	}
-	spin_unlock_irq(shost->host_lock);
-	return;
-}
-
-/**
  * lpfc_abort_handler - scsi_host_template eh_abort_handler entry point
  * @cmnd: Pointer to scsi_cmnd data structure.
  *
@@ -2490,7 +2983,6 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	struct Scsi_Host  *shost = cmnd->device->host;
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_sli_ring *pring = &phba->sli.ring[phba->sli.fcp_ring];
 	struct lpfc_iocbq *iocb;
 	struct lpfc_iocbq *abtsiocb;
 	struct lpfc_scsi_buf *lpfc_cmd;
@@ -2498,7 +2990,7 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	int ret = SUCCESS;
 	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(waitq);
 
-	lpfc_block_error_handler(cmnd);
+	fc_block_scsi_eh(cmnd);
 	lpfc_cmd = (struct lpfc_scsi_buf *)cmnd->host_scribble;
 	BUG_ON(!lpfc_cmd);
 
@@ -2531,10 +3023,18 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	icmd = &abtsiocb->iocb;
 	icmd->un.acxri.abortType = ABORT_TYPE_ABTS;
 	icmd->un.acxri.abortContextTag = cmd->ulpContext;
-	icmd->un.acxri.abortIoTag = cmd->ulpIoTag;
+	if (phba->sli_rev == LPFC_SLI_REV4)
+		icmd->un.acxri.abortIoTag = iocb->sli4_xritag;
+	else
+		icmd->un.acxri.abortIoTag = cmd->ulpIoTag;
 
 	icmd->ulpLe = 1;
 	icmd->ulpClass = cmd->ulpClass;
+
+	/* ABTS WQE must go to the same WQ as the WQE to be aborted */
+	abtsiocb->fcp_wqidx = iocb->fcp_wqidx;
+	abtsiocb->iocb_flag |= LPFC_USE_FCPWQIDX;
+
 	if (lpfc_is_link_up(phba))
 		icmd->ulpCommand = CMD_ABORT_XRI_CN;
 	else
@@ -2542,14 +3042,16 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 
 	abtsiocb->iocb_cmpl = lpfc_sli_abort_fcp_cmpl;
 	abtsiocb->vport = vport;
-	if (lpfc_sli_issue_iocb(phba, pring, abtsiocb, 0) == IOCB_ERROR) {
+	if (lpfc_sli_issue_iocb(phba, LPFC_FCP_RING, abtsiocb, 0) ==
+	    IOCB_ERROR) {
 		lpfc_sli_release_iocbq(phba, abtsiocb);
 		ret = FAILED;
 		goto out;
 	}
 
 	if (phba->cfg_poll & DISABLE_FCP_RING_INT)
-		lpfc_sli_poll_fcp_ring (phba);
+		lpfc_sli_handle_fast_ring_event(phba,
+			&phba->sli.ring[LPFC_FCP_RING], HA_R0RE_REQ);
 
 	lpfc_cmd->waitq = &waitq;
 	/* Wait for abort to complete */
@@ -2579,11 +3081,207 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	return ret;
 }
 
+static char *
+lpfc_taskmgmt_name(uint8_t task_mgmt_cmd)
+{
+	switch (task_mgmt_cmd) {
+	case FCP_ABORT_TASK_SET:
+		return "ABORT_TASK_SET";
+	case FCP_CLEAR_TASK_SET:
+		return "FCP_CLEAR_TASK_SET";
+	case FCP_BUS_RESET:
+		return "FCP_BUS_RESET";
+	case FCP_LUN_RESET:
+		return "FCP_LUN_RESET";
+	case FCP_TARGET_RESET:
+		return "FCP_TARGET_RESET";
+	case FCP_CLEAR_ACA:
+		return "FCP_CLEAR_ACA";
+	case FCP_TERMINATE_TASK:
+		return "FCP_TERMINATE_TASK";
+	default:
+		return "unknown";
+	}
+}
+
+/**
+ * lpfc_send_taskmgmt - Generic SCSI Task Mgmt Handler
+ * @vport: The virtual port for which this call is being executed.
+ * @rdata: Pointer to remote port local data
+ * @tgt_id: Target ID of remote device.
+ * @lun_id: Lun number for the TMF
+ * @task_mgmt_cmd: type of TMF to send
+ *
+ * This routine builds and sends a TMF (SCSI Task Mgmt Function) to
+ * a remote port.
+ *
+ * Return Code:
+ *   0x2003 - Error
+ *   0x2002 - Success.
+ **/
+static int
+lpfc_send_taskmgmt(struct lpfc_vport *vport, struct lpfc_rport_data *rdata,
+		    unsigned  tgt_id, unsigned int lun_id,
+		    uint8_t task_mgmt_cmd)
+{
+	struct lpfc_hba   *phba = vport->phba;
+	struct lpfc_scsi_buf *lpfc_cmd;
+	struct lpfc_iocbq *iocbq;
+	struct lpfc_iocbq *iocbqrsp;
+	int ret;
+	int status;
+
+	if (!rdata->pnode || !NLP_CHK_NODE_ACT(rdata->pnode))
+		return FAILED;
+
+	lpfc_cmd = lpfc_get_scsi_buf(phba);
+	if (lpfc_cmd == NULL)
+		return FAILED;
+	lpfc_cmd->timeout = 60;
+	lpfc_cmd->rdata = rdata;
+
+	status = lpfc_scsi_prep_task_mgmt_cmd(vport, lpfc_cmd, lun_id,
+					   task_mgmt_cmd);
+	if (!status) {
+		lpfc_release_scsi_buf(phba, lpfc_cmd);
+		return FAILED;
+	}
+
+	iocbq = &lpfc_cmd->cur_iocbq;
+	iocbqrsp = lpfc_sli_get_iocbq(phba);
+	if (iocbqrsp == NULL) {
+		lpfc_release_scsi_buf(phba, lpfc_cmd);
+		return FAILED;
+	}
+
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP,
+			 "0702 Issue %s to TGT %d LUN %d "
+			 "rpi x%x nlp_flag x%x\n",
+			 lpfc_taskmgmt_name(task_mgmt_cmd), tgt_id, lun_id,
+			 rdata->pnode->nlp_rpi, rdata->pnode->nlp_flag);
+
+	status = lpfc_sli_issue_iocb_wait(phba, LPFC_FCP_RING,
+					  iocbq, iocbqrsp, lpfc_cmd->timeout);
+	if (status != IOCB_SUCCESS) {
+		if (status == IOCB_TIMEDOUT) {
+			iocbq->iocb_cmpl = lpfc_tskmgmt_def_cmpl;
+			ret = TIMEOUT_ERROR;
+		} else
+			ret = FAILED;
+		lpfc_cmd->status = IOSTAT_DRIVER_REJECT;
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			 "0727 TMF %s to TGT %d LUN %d failed (%d, %d)\n",
+			 lpfc_taskmgmt_name(task_mgmt_cmd),
+			 tgt_id, lun_id, iocbqrsp->iocb.ulpStatus,
+			 iocbqrsp->iocb.un.ulpWord[4]);
+	} else
+		ret = SUCCESS;
+
+	lpfc_sli_release_iocbq(phba, iocbqrsp);
+
+	if (ret != TIMEOUT_ERROR)
+		lpfc_release_scsi_buf(phba, lpfc_cmd);
+
+	return ret;
+}
+
+/**
+ * lpfc_chk_tgt_mapped -
+ * @vport: The virtual port to check on
+ * @cmnd: Pointer to scsi_cmnd data structure.
+ *
+ * This routine delays until the scsi target (aka rport) for the
+ * command exists (is present and logged in) or we declare it non-existent.
+ *
+ * Return code :
+ *  0x2003 - Error
+ *  0x2002 - Success
+ **/
+static int
+lpfc_chk_tgt_mapped(struct lpfc_vport *vport, struct scsi_cmnd *cmnd)
+{
+	struct lpfc_rport_data *rdata = cmnd->device->hostdata;
+	struct lpfc_nodelist *pnode;
+	unsigned long later;
+
+	if (!rdata) {
+		lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP,
+			"0797 Tgt Map rport failure: rdata x%p\n", rdata);
+		return FAILED;
+	}
+	pnode = rdata->pnode;
+	/*
+	 * If target is not in a MAPPED state, delay until
+	 * target is rediscovered or devloss timeout expires.
+	 */
+	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
+	while (time_after(later, jiffies)) {
+		if (!pnode || !NLP_CHK_NODE_ACT(pnode))
+			return FAILED;
+		if (pnode->nlp_state == NLP_STE_MAPPED_NODE)
+			return SUCCESS;
+		schedule_timeout_uninterruptible(msecs_to_jiffies(500));
+		rdata = cmnd->device->hostdata;
+		if (!rdata)
+			return FAILED;
+		pnode = rdata->pnode;
+	}
+	if (!pnode || !NLP_CHK_NODE_ACT(pnode) ||
+	    (pnode->nlp_state != NLP_STE_MAPPED_NODE))
+		return FAILED;
+	return SUCCESS;
+}
+
+/**
+ * lpfc_reset_flush_io_context -
+ * @vport: The virtual port (scsi_host) for the flush context
+ * @tgt_id: If aborting by Target contect - specifies the target id
+ * @lun_id: If aborting by Lun context - specifies the lun id
+ * @context: specifies the context level to flush at.
+ *
+ * After a reset condition via TMF, we need to flush orphaned i/o
+ * contexts from the adapter. This routine aborts any contexts
+ * outstanding, then waits for their completions. The wait is
+ * bounded by devloss_tmo though.
+ *
+ * Return code :
+ *  0x2003 - Error
+ *  0x2002 - Success
+ **/
+static int
+lpfc_reset_flush_io_context(struct lpfc_vport *vport, uint16_t tgt_id,
+			uint64_t lun_id, lpfc_ctx_cmd context)
+{
+	struct lpfc_hba   *phba = vport->phba;
+	unsigned long later;
+	int cnt;
+
+	cnt = lpfc_sli_sum_iocb(vport, tgt_id, lun_id, context);
+	if (cnt)
+		lpfc_sli_abort_iocb(vport, &phba->sli.ring[phba->sli.fcp_ring],
+				    tgt_id, lun_id, context);
+	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
+	while (time_after(later, jiffies) && cnt) {
+		schedule_timeout_uninterruptible(msecs_to_jiffies(20));
+		cnt = lpfc_sli_sum_iocb(vport, tgt_id, lun_id, context);
+	}
+	if (cnt) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			"0724 I/O flush failure for context %s : cnt x%x\n",
+			((context == LPFC_CTX_LUN) ? "LUN" :
+			 ((context == LPFC_CTX_TGT) ? "TGT" :
+			  ((context == LPFC_CTX_HOST) ? "HOST" : "Unknown"))),
+			cnt);
+		return FAILED;
+	}
+	return SUCCESS;
+}
+
 /**
  * lpfc_device_reset_handler - scsi_host_template eh_device_reset entry point
  * @cmnd: Pointer to scsi_cmnd data structure.
  *
- * This routine does a device reset by sending a TARGET_RESET task management
+ * This routine does a device reset by sending a LUN_RESET task management
  * command.
  *
  * Return code :
@@ -2595,33 +3293,91 @@ lpfc_device_reset_handler(struct scsi_cmnd *cmnd)
 {
 	struct Scsi_Host  *shost = cmnd->device->host;
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
-	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_scsi_buf *lpfc_cmd;
-	struct lpfc_iocbq *iocbq, *iocbqrsp;
 	struct lpfc_rport_data *rdata = cmnd->device->hostdata;
-	struct lpfc_nodelist *pnode = rdata->pnode;
-	unsigned long later;
-	int ret = SUCCESS;
-	int status;
-	int cnt;
+	struct lpfc_nodelist *pnode;
+	unsigned tgt_id = cmnd->device->id;
+	unsigned int lun_id = cmnd->device->lun;
 	struct lpfc_scsi_event_header scsi_event;
+	int status;
 
-	lpfc_block_error_handler(cmnd);
+	if (!rdata) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			"0798 Device Reset rport failure: rdata x%p\n", rdata);
+		return FAILED;
+	}
+	pnode = rdata->pnode;
+	fc_block_scsi_eh(cmnd);
+
+	status = lpfc_chk_tgt_mapped(vport, cmnd);
+	if (status == FAILED) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			"0721 Device Reset rport failure: rdata x%p\n", rdata);
+		return FAILED;
+	}
+
+	scsi_event.event_type = FC_REG_SCSI_EVENT;
+	scsi_event.subcategory = LPFC_EVENT_LUNRESET;
+	scsi_event.lun = lun_id;
+	memcpy(scsi_event.wwpn, &pnode->nlp_portname, sizeof(struct lpfc_name));
+	memcpy(scsi_event.wwnn, &pnode->nlp_nodename, sizeof(struct lpfc_name));
+
+	fc_host_post_vendor_event(shost, fc_get_event_number(),
+		sizeof(scsi_event), (char *)&scsi_event, LPFC_NL_VENDOR_ID);
+
+	status = lpfc_send_taskmgmt(vport, rdata, tgt_id, lun_id,
+						FCP_LUN_RESET);
+
+	lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			 "0713 SCSI layer issued Device Reset (%d, %d) "
+			 "return x%x\n", tgt_id, lun_id, status);
+
 	/*
-	 * If target is not in a MAPPED state, delay the reset until
-	 * target is rediscovered or devloss timeout expires.
+	 * We have to clean up i/o as : they may be orphaned by the TMF;
+	 * or if the TMF failed, they may be in an indeterminate state.
+	 * So, continue on.
+	 * We will report success if all the i/o aborts successfully.
 	 */
-	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
-	while (time_after(later, jiffies)) {
-		if (!pnode || !NLP_CHK_NODE_ACT(pnode))
-			return FAILED;
-		if (pnode->nlp_state == NLP_STE_MAPPED_NODE)
-			break;
-		schedule_timeout_uninterruptible(msecs_to_jiffies(500));
-		rdata = cmnd->device->hostdata;
-		if (!rdata)
-			break;
-		pnode = rdata->pnode;
+	status = lpfc_reset_flush_io_context(vport, tgt_id, lun_id,
+						LPFC_CTX_LUN);
+	return status;
+}
+
+/**
+ * lpfc_target_reset_handler - scsi_host_template eh_target_reset entry point
+ * @cmnd: Pointer to scsi_cmnd data structure.
+ *
+ * This routine does a target reset by sending a TARGET_RESET task management
+ * command.
+ *
+ * Return code :
+ *  0x2003 - Error
+ *  0x2002 - Success
+ **/
+static int
+lpfc_target_reset_handler(struct scsi_cmnd *cmnd)
+{
+	struct Scsi_Host  *shost = cmnd->device->host;
+	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
+	struct lpfc_rport_data *rdata = cmnd->device->hostdata;
+	struct lpfc_nodelist *pnode;
+	unsigned tgt_id = cmnd->device->id;
+	unsigned int lun_id = cmnd->device->lun;
+	struct lpfc_scsi_event_header scsi_event;
+	int status;
+
+	if (!rdata) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			"0799 Target Reset rport failure: rdata x%p\n", rdata);
+		return FAILED;
+	}
+	pnode = rdata->pnode;
+	fc_block_scsi_eh(cmnd);
+
+	status = lpfc_chk_tgt_mapped(vport, cmnd);
+	if (status == FAILED) {
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
+			"0722 Target Reset rport failure: rdata x%p\n", rdata);
+		return FAILED;
 	}
 
 	scsi_event.event_type = FC_REG_SCSI_EVENT;
@@ -2630,106 +3386,47 @@ lpfc_device_reset_handler(struct scsi_cmnd *cmnd)
 	memcpy(scsi_event.wwpn, &pnode->nlp_portname, sizeof(struct lpfc_name));
 	memcpy(scsi_event.wwnn, &pnode->nlp_nodename, sizeof(struct lpfc_name));
 
-	fc_host_post_vendor_event(shost,
-		fc_get_event_number(),
-		sizeof(scsi_event),
-		(char *)&scsi_event,
-		LPFC_NL_VENDOR_ID);
+	fc_host_post_vendor_event(shost, fc_get_event_number(),
+		sizeof(scsi_event), (char *)&scsi_event, LPFC_NL_VENDOR_ID);
 
-	if (!rdata || pnode->nlp_state != NLP_STE_MAPPED_NODE) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
-				 "0721 LUN Reset rport "
-				 "failure: msec x%x rdata x%p\n",
-				 jiffies_to_msecs(jiffies - later), rdata);
-		return FAILED;
-	}
-	lpfc_cmd = lpfc_get_scsi_buf(phba);
-	if (lpfc_cmd == NULL)
-		return FAILED;
-	lpfc_cmd->timeout = 60;
-	lpfc_cmd->rdata = rdata;
+	status = lpfc_send_taskmgmt(vport, rdata, tgt_id, lun_id,
+					FCP_TARGET_RESET);
 
-	status = lpfc_scsi_prep_task_mgmt_cmd(vport, lpfc_cmd,
-					      cmnd->device->lun,
-					      FCP_TARGET_RESET);
-	if (!status) {
-		lpfc_release_scsi_buf(phba, lpfc_cmd);
-		return FAILED;
-	}
-	iocbq = &lpfc_cmd->cur_iocbq;
-
-	/* get a buffer for this IOCB command response */
-	iocbqrsp = lpfc_sli_get_iocbq(phba);
-	if (iocbqrsp == NULL) {
-		lpfc_release_scsi_buf(phba, lpfc_cmd);
-		return FAILED;
-	}
-	lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP,
-			 "0703 Issue target reset to TGT %d LUN %d "
-			 "rpi x%x nlp_flag x%x\n", cmnd->device->id,
-			 cmnd->device->lun, pnode->nlp_rpi, pnode->nlp_flag);
-	status = lpfc_sli_issue_iocb_wait(phba,
-					  &phba->sli.ring[phba->sli.fcp_ring],
-					  iocbq, iocbqrsp, lpfc_cmd->timeout);
-	if (status == IOCB_TIMEDOUT) {
-		iocbq->iocb_cmpl = lpfc_tskmgmt_def_cmpl;
-		ret = TIMEOUT_ERROR;
-	} else {
-		if (status != IOCB_SUCCESS)
-			ret = FAILED;
-		lpfc_release_scsi_buf(phba, lpfc_cmd);
-	}
 	lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
-			 "0713 SCSI layer issued device reset (%d, %d) "
-			 "return x%x status x%x result x%x\n",
-			 cmnd->device->id, cmnd->device->lun, ret,
-			 iocbqrsp->iocb.ulpStatus,
-			 iocbqrsp->iocb.un.ulpWord[4]);
-	lpfc_sli_release_iocbq(phba, iocbqrsp);
-	cnt = lpfc_sli_sum_iocb(vport, cmnd->device->id, cmnd->device->lun,
-				LPFC_CTX_TGT);
-	if (cnt)
-		lpfc_sli_abort_iocb(vport, &phba->sli.ring[phba->sli.fcp_ring],
-				    cmnd->device->id, cmnd->device->lun,
-				    LPFC_CTX_TGT);
-	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
-	while (time_after(later, jiffies) && cnt) {
-		schedule_timeout_uninterruptible(msecs_to_jiffies(20));
-		cnt = lpfc_sli_sum_iocb(vport, cmnd->device->id,
-					cmnd->device->lun, LPFC_CTX_TGT);
-	}
-	if (cnt) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
-				 "0719 device reset I/O flush failure: "
-				 "cnt x%x\n", cnt);
-		ret = FAILED;
-	}
-	return ret;
+			 "0723 SCSI layer issued Target Reset (%d, %d) "
+			 "return x%x\n", tgt_id, lun_id, status);
+
+	/*
+	 * We have to clean up i/o as : they may be orphaned by the TMF;
+	 * or if the TMF failed, they may be in an indeterminate state.
+	 * So, continue on.
+	 * We will report success if all the i/o aborts successfully.
+	 */
+	status = lpfc_reset_flush_io_context(vport, tgt_id, lun_id,
+					LPFC_CTX_TGT);
+	return status;
 }
 
 /**
  * lpfc_bus_reset_handler - scsi_host_template eh_bus_reset_handler entry point
  * @cmnd: Pointer to scsi_cmnd data structure.
  *
- * This routine does target reset to all target on @cmnd->device->host.
+ * This routine does target reset to all targets on @cmnd->device->host.
+ * This emulates Parallel SCSI Bus Reset Semantics.
  *
- * Return Code:
- *   0x2003 - Error
- *   0x2002 - Success
+ * Return code :
+ *  0x2003 - Error
+ *  0x2002 - Success
  **/
 static int
 lpfc_bus_reset_handler(struct scsi_cmnd *cmnd)
 {
 	struct Scsi_Host  *shost = cmnd->device->host;
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
-	struct lpfc_hba   *phba = vport->phba;
 	struct lpfc_nodelist *ndlp = NULL;
-	int match;
-	int ret = SUCCESS, status = SUCCESS, i;
-	int cnt;
-	struct lpfc_scsi_buf * lpfc_cmd;
-	unsigned long later;
 	struct lpfc_scsi_event_header scsi_event;
+	int match;
+	int ret = SUCCESS, status, i;
 
 	scsi_event.event_type = FC_REG_SCSI_EVENT;
 	scsi_event.subcategory = LPFC_EVENT_BUSRESET;
@@ -2737,13 +3434,11 @@ lpfc_bus_reset_handler(struct scsi_cmnd *cmnd)
 	memcpy(scsi_event.wwpn, &vport->fc_portname, sizeof(struct lpfc_name));
 	memcpy(scsi_event.wwnn, &vport->fc_nodename, sizeof(struct lpfc_name));
 
-	fc_host_post_vendor_event(shost,
-		fc_get_event_number(),
-		sizeof(scsi_event),
-		(char *)&scsi_event,
-		LPFC_NL_VENDOR_ID);
+	fc_host_post_vendor_event(shost, fc_get_event_number(),
+		sizeof(scsi_event), (char *)&scsi_event, LPFC_NL_VENDOR_ID);
 
-	lpfc_block_error_handler(cmnd);
+	fc_block_scsi_eh(cmnd);
+
 	/*
 	 * Since the driver manages a single bus device, reset all
 	 * targets known to the driver.  Should any target reset
@@ -2766,16 +3461,11 @@ lpfc_bus_reset_handler(struct scsi_cmnd *cmnd)
 		spin_unlock_irq(shost->host_lock);
 		if (!match)
 			continue;
-		lpfc_cmd = lpfc_get_scsi_buf(phba);
-		if (lpfc_cmd) {
-			lpfc_cmd->timeout = 60;
-			status = lpfc_scsi_tgt_reset(lpfc_cmd, vport, i,
-						     cmnd->device->lun,
-						     ndlp->rport->dd_data);
-			if (status != TIMEOUT_ERROR)
-				lpfc_release_scsi_buf(phba, lpfc_cmd);
-		}
-		if (!lpfc_cmd || status != SUCCESS) {
+
+		status = lpfc_send_taskmgmt(vport, ndlp->rport->dd_data,
+					i, 0, FCP_TARGET_RESET);
+
+		if (status != SUCCESS) {
 			lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
 					 "0700 Bus Reset on target %d failed\n",
 					 i);
@@ -2783,25 +3473,16 @@ lpfc_bus_reset_handler(struct scsi_cmnd *cmnd)
 		}
 	}
 	/*
-	 * All outstanding txcmplq I/Os should have been aborted by
-	 * the targets.  Unfortunately, some targets do not abide by
-	 * this forcing the driver to double check.
+	 * We have to clean up i/o as : they may be orphaned by the TMFs
+	 * above; or if any of the TMFs failed, they may be in an
+	 * indeterminate state.
+	 * We will report success if all the i/o aborts successfully.
 	 */
-	cnt = lpfc_sli_sum_iocb(vport, 0, 0, LPFC_CTX_HOST);
-	if (cnt)
-		lpfc_sli_abort_iocb(vport, &phba->sli.ring[phba->sli.fcp_ring],
-				    0, 0, LPFC_CTX_HOST);
-	later = msecs_to_jiffies(2 * vport->cfg_devloss_tmo * 1000) + jiffies;
-	while (time_after(later, jiffies) && cnt) {
-		schedule_timeout_uninterruptible(msecs_to_jiffies(20));
-		cnt = lpfc_sli_sum_iocb(vport, 0, 0, LPFC_CTX_HOST);
-	}
-	if (cnt) {
-		lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
-				 "0715 Bus Reset I/O flush failure: "
-				 "cnt x%x left x%x\n", cnt, i);
+
+	status = lpfc_reset_flush_io_context(vport, 0, 0, LPFC_CTX_HOST);
+	if (status != SUCCESS)
 		ret = FAILED;
-	}
+
 	lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
 			 "0714 SCSI layer issued Bus Reset Data: x%x\n", ret);
 	return ret;
@@ -2825,11 +3506,10 @@ lpfc_slave_alloc(struct scsi_device *sdev)
 {
 	struct lpfc_vport *vport = (struct lpfc_vport *) sdev->host->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
-	struct lpfc_scsi_buf *scsi_buf = NULL;
 	struct fc_rport *rport = starget_to_rport(scsi_target(sdev));
-	uint32_t total = 0, i;
+	uint32_t total = 0;
 	uint32_t num_to_alloc = 0;
-	unsigned long flags;
+	int num_allocated = 0;
 
 	if (!rport || fc_remote_port_chkready(rport))
 		return -ENXIO;
@@ -2863,21 +3543,16 @@ lpfc_slave_alloc(struct scsi_device *sdev)
 				 (phba->cfg_hba_queue_depth - total));
 		num_to_alloc = phba->cfg_hba_queue_depth - total;
 	}
-
-	for (i = 0; i < num_to_alloc; i++) {
-		scsi_buf = lpfc_new_scsi_buf(vport);
-		if (!scsi_buf) {
-			lpfc_printf_vlog(vport, KERN_ERR, LOG_FCP,
-					 "0706 Failed to allocate "
-					 "command buffer\n");
-			break;
-		}
-
-		spin_lock_irqsave(&phba->scsi_buf_list_lock, flags);
-		phba->total_scsi_bufs++;
-		list_add_tail(&scsi_buf->list, &phba->lpfc_scsi_buf_list);
-		spin_unlock_irqrestore(&phba->scsi_buf_list_lock, flags);
+	num_allocated = lpfc_new_scsi_buf(vport, num_to_alloc);
+	if (num_to_alloc != num_allocated) {
+			lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
+				 "0708 Allocation request of %d "
+				 "command buffers did not succeed.  "
+				 "Allocated %d buffers.\n",
+				 num_to_alloc, num_allocated);
 	}
+	if (num_allocated > 0)
+		phba->total_scsi_bufs += num_allocated;
 	return 0;
 }
 
@@ -2914,7 +3589,8 @@ lpfc_slave_configure(struct scsi_device *sdev)
 	rport->dev_loss_tmo = vport->cfg_devloss_tmo;
 
 	if (phba->cfg_poll & ENABLE_FCP_RING_POLLING) {
-		lpfc_sli_poll_fcp_ring(phba);
+		lpfc_sli_handle_fast_ring_event(phba,
+			&phba->sli.ring[LPFC_FCP_RING], HA_R0RE_REQ);
 		if (phba->cfg_poll & DISABLE_FCP_RING_INT)
 			lpfc_poll_rearm_timer(phba);
 	}
@@ -2942,7 +3618,8 @@ struct scsi_host_template lpfc_template = {
 	.info			= lpfc_info,
 	.queuecommand		= lpfc_queuecommand,
 	.eh_abort_handler	= lpfc_abort_handler,
-	.eh_device_reset_handler= lpfc_device_reset_handler,
+	.eh_device_reset_handler = lpfc_device_reset_handler,
+	.eh_target_reset_handler = lpfc_target_reset_handler,
 	.eh_bus_reset_handler	= lpfc_bus_reset_handler,
 	.slave_alloc		= lpfc_slave_alloc,
 	.slave_configure	= lpfc_slave_configure,
@@ -2954,6 +3631,8 @@ struct scsi_host_template lpfc_template = {
 	.use_clustering		= ENABLE_CLUSTERING,
 	.shost_attrs		= lpfc_hba_attrs,
 	.max_sectors		= 0xFFFF,
+	.vendor_id		= LPFC_NL_VENDOR_ID,
+	.change_queue_depth	= lpfc_change_queue_depth,
 };
 
 struct scsi_host_template lpfc_vport_template = {
@@ -2962,7 +3641,8 @@ struct scsi_host_template lpfc_vport_template = {
 	.info			= lpfc_info,
 	.queuecommand		= lpfc_queuecommand,
 	.eh_abort_handler	= lpfc_abort_handler,
-	.eh_device_reset_handler= lpfc_device_reset_handler,
+	.eh_device_reset_handler = lpfc_device_reset_handler,
+	.eh_target_reset_handler = lpfc_target_reset_handler,
 	.eh_bus_reset_handler	= lpfc_bus_reset_handler,
 	.slave_alloc		= lpfc_slave_alloc,
 	.slave_configure	= lpfc_slave_configure,
@@ -2974,4 +3654,5 @@ struct scsi_host_template lpfc_vport_template = {
 	.use_clustering		= ENABLE_CLUSTERING,
 	.shost_attrs		= lpfc_vport_attrs,
 	.max_sectors		= 0xFFFF,
+	.change_queue_depth	= lpfc_change_queue_depth,
 };

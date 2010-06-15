@@ -21,6 +21,7 @@
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/utsname.h>
 #include <linux/device.h>
 
@@ -191,7 +192,7 @@ module_param(qlen, uint, S_IRUGO);
 #define GMIDI_MS_INTERFACE	1
 #define GMIDI_NUM_INTERFACES	2
 
-DECLARE_USB_AC_HEADER_DESCRIPTOR(1);
+DECLARE_UAC_AC_HEADER_DESCRIPTOR(1);
 DECLARE_USB_MIDI_OUT_JACK_DESCRIPTOR(1);
 DECLARE_USB_MS_ENDPOINT_DESCRIPTOR(1);
 
@@ -237,12 +238,12 @@ static const struct usb_interface_descriptor ac_interface_desc = {
 };
 
 /* B.3.2  Class-Specific AC Interface Descriptor */
-static const struct usb_ac_header_descriptor_1 ac_header_desc = {
-	.bLength =		USB_DT_AC_HEADER_SIZE(1),
+static const struct uac_ac_header_descriptor_v1_1 ac_header_desc = {
+	.bLength =		UAC_DT_AC_HEADER_SIZE(1),
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubtype =	USB_MS_HEADER,
 	.bcdADC =		cpu_to_le16(0x0100),
-	.wTotalLength =		cpu_to_le16(USB_DT_AC_HEADER_SIZE(1)),
+	.wTotalLength =		cpu_to_le16(UAC_DT_AC_HEADER_SIZE(1)),
 	.bInCollection =	1,
 	.baInterfaceNr = {
 		[0] =		GMIDI_MS_INTERFACE,
@@ -618,11 +619,6 @@ gmidi_set_config(struct gmidi_device *dev, unsigned number, gfp_t gfp_flags)
 	}
 #endif
 
-	if (gadget_is_sa1100(gadget) && dev->config) {
-		/* tx fifo is full, but we can't clear it...*/
-		ERROR(dev, "can't change configurations\n");
-		return -ESPIPE;
-	}
 	gmidi_reset_config(dev);
 
 	switch (number) {

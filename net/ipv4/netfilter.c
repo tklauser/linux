@@ -4,6 +4,7 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/ip.h>
 #include <linux/skbuff.h>
+#include <linux/gfp.h>
 #include <net/route.h>
 #include <net/xfrm.h>
 #include <net/ip.h>
@@ -12,7 +13,7 @@
 /* route_me_harder function, used by iptable_nat, iptable_mangle + ip_queue */
 int ip_route_me_harder(struct sk_buff *skb, unsigned addr_type)
 {
-	struct net *net = dev_net(skb->dst->dev);
+	struct net *net = dev_net(skb_dst(skb)->dev);
 	const struct iphdr *iph = ip_hdr(skb);
 	struct rtable *rt;
 	struct flowi fl = {};
@@ -41,8 +42,8 @@ int ip_route_me_harder(struct sk_buff *skb, unsigned addr_type)
 			return -1;
 
 		/* Drop old route. */
-		dst_release(skb->dst);
-		skb->dst = &rt->u.dst;
+		skb_dst_drop(skb);
+		skb_dst_set(skb, &rt->u.dst);
 	} else {
 		/* non-local src, find valid iif to satisfy
 		 * rp-filter when calling ip_route_input. */
@@ -50,7 +51,7 @@ int ip_route_me_harder(struct sk_buff *skb, unsigned addr_type)
 		if (ip_route_output_key(net, &rt, &fl) != 0)
 			return -1;
 
-		odst = skb->dst;
+		odst = skb_dst(skb);
 		if (ip_route_input(skb, iph->daddr, iph->saddr,
 				   RT_TOS(iph->tos), rt->u.dst.dev) != 0) {
 			dst_release(&rt->u.dst);
@@ -60,18 +61,22 @@ int ip_route_me_harder(struct sk_buff *skb, unsigned addr_type)
 		dst_release(odst);
 	}
 
-	if (skb->dst->error)
+	if (skb_dst(skb)->error)
 		return -1;
 
 #ifdef CONFIG_XFRM
 	if (!(IPCB(skb)->flags & IPSKB_XFRM_TRANSFORMED) &&
-	    xfrm_decode_session(skb, &fl, AF_INET) == 0)
-		if (xfrm_lookup(net, &skb->dst, &fl, skb->sk, 0))
+	    xfrm_decode_session(skb, &fl, AF_INET) == 0) {
+		struct dst_entry *dst = skb_dst(skb);
+		skb_dst_set(skb, NULL);
+		if (xfrm_lookup(net, &dst, &fl, skb->sk, 0))
 			return -1;
+		skb_dst_set(skb, dst);
+	}
 #endif
 
 	/* Change in oif may mean change in hh_len. */
-	hh_len = skb->dst->dev->hard_header_len;
+	hh_len = skb_dst(skb)->dev->hard_header_len;
 	if (skb_headroom(skb) < hh_len &&
 	    pskb_expand_head(skb, hh_len - skb_headroom(skb), 0, GFP_ATOMIC))
 		return -1;
@@ -92,7 +97,7 @@ int ip_xfrm_me_harder(struct sk_buff *skb)
 	if (xfrm_decode_session(skb, &fl, AF_INET) < 0)
 		return -1;
 
-	dst = skb->dst;
+	dst = skb_dst(skb);
 	if (dst->xfrm)
 		dst = ((struct xfrm_dst *)dst)->route;
 	dst_hold(dst);
@@ -100,11 +105,11 @@ int ip_xfrm_me_harder(struct sk_buff *skb)
 	if (xfrm_lookup(dev_net(dst->dev), &dst, &fl, skb->sk, 0) < 0)
 		return -1;
 
-	dst_release(skb->dst);
-	skb->dst = dst;
+	skb_dst_drop(skb);
+	skb_dst_set(skb, dst);
 
 	/* Change in oif may mean change in hh_len. */
-	hh_len = skb->dst->dev->hard_header_len;
+	hh_len = skb_dst(skb)->dev->hard_header_len;
 	if (skb_headroom(skb) < hh_len &&
 	    pskb_expand_head(skb, hh_len - skb_headroom(skb), 0, GFP_ATOMIC))
 		return -1;
@@ -151,10 +156,10 @@ static int nf_ip_reroute(struct sk_buff *skb,
 	if (entry->hook == NF_INET_LOCAL_OUT) {
 		const struct iphdr *iph = ip_hdr(skb);
 
-		if (!(iph->tos == rt_info->tos
-		      && skb->mark == rt_info->mark
-		      && iph->daddr == rt_info->daddr
-		      && iph->saddr == rt_info->saddr))
+		if (!(iph->tos == rt_info->tos &&
+		      skb->mark == rt_info->mark &&
+		      iph->daddr == rt_info->daddr &&
+		      iph->saddr == rt_info->saddr))
 			return ip_route_me_harder(skb, RTN_UNSPEC);
 	}
 	return 0;
@@ -244,9 +249,9 @@ module_exit(ipv4_netfilter_fini);
 
 #ifdef CONFIG_SYSCTL
 struct ctl_path nf_net_ipv4_netfilter_sysctl_path[] = {
-	{ .procname = "net", .ctl_name = CTL_NET, },
-	{ .procname = "ipv4", .ctl_name = NET_IPV4, },
-	{ .procname = "netfilter", .ctl_name = NET_IPV4_NETFILTER, },
+	{ .procname = "net", },
+	{ .procname = "ipv4", },
+	{ .procname = "netfilter", },
 	{ }
 };
 EXPORT_SYMBOL_GPL(nf_net_ipv4_netfilter_sysctl_path);

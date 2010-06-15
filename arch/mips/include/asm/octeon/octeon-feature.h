@@ -57,6 +57,13 @@ enum octeon_feature {
 	OCTEON_FEATURE_RAID,
 	/* Octeon has a builtin USB */
 	OCTEON_FEATURE_USB,
+	/* Octeon IPD can run without using work queue entries */
+	OCTEON_FEATURE_NO_WPTR,
+	/* Octeon has DFA state machines */
+	OCTEON_FEATURE_DFA,
+	/* Octeon MDIO block supports clause 45 transactions for 10
+	 * Gig support */
+	OCTEON_FEATURE_MDIO_CLAUSE_45,
 };
 
 static inline int cvmx_fuse_read(int fuse);
@@ -92,6 +99,8 @@ static inline int octeon_has_feature(enum octeon_feature feature)
 		return !cvmx_fuse_read(90);
 
 	case OCTEON_FEATURE_PCIE:
+	case OCTEON_FEATURE_MGMT_PORT:
+	case OCTEON_FEATURE_RAID:
 		return OCTEON_IS_MODEL(OCTEON_CN56XX)
 			|| OCTEON_IS_MODEL(OCTEON_CN52XX);
 
@@ -103,15 +112,29 @@ static inline int octeon_has_feature(enum octeon_feature feature)
 	case OCTEON_FEATURE_TRA:
 		return !(OCTEON_IS_MODEL(OCTEON_CN30XX)
 			 || OCTEON_IS_MODEL(OCTEON_CN50XX));
-	case OCTEON_FEATURE_MGMT_PORT:
-		return OCTEON_IS_MODEL(OCTEON_CN56XX)
-			|| OCTEON_IS_MODEL(OCTEON_CN52XX);
-	case OCTEON_FEATURE_RAID:
-		return OCTEON_IS_MODEL(OCTEON_CN56XX)
-			|| OCTEON_IS_MODEL(OCTEON_CN52XX);
 	case OCTEON_FEATURE_USB:
 		return !(OCTEON_IS_MODEL(OCTEON_CN38XX)
 			 || OCTEON_IS_MODEL(OCTEON_CN58XX));
+	case OCTEON_FEATURE_NO_WPTR:
+		return (OCTEON_IS_MODEL(OCTEON_CN56XX)
+			 || OCTEON_IS_MODEL(OCTEON_CN52XX))
+			&& !OCTEON_IS_MODEL(OCTEON_CN56XX_PASS1_X)
+			&& !OCTEON_IS_MODEL(OCTEON_CN52XX_PASS1_X);
+	case OCTEON_FEATURE_DFA:
+		if (!OCTEON_IS_MODEL(OCTEON_CN38XX)
+		    && !OCTEON_IS_MODEL(OCTEON_CN31XX)
+		    && !OCTEON_IS_MODEL(OCTEON_CN58XX))
+			return 0;
+		else if (OCTEON_IS_MODEL(OCTEON_CN3020))
+			return 0;
+		else if (OCTEON_IS_MODEL(OCTEON_CN38XX_PASS1))
+			return 1;
+		else
+			return !cvmx_fuse_read(120);
+	case OCTEON_FEATURE_MDIO_CLAUSE_45:
+		return !(OCTEON_IS_MODEL(OCTEON_CN3XXX)
+			 || OCTEON_IS_MODEL(OCTEON_CN58XX)
+			 || OCTEON_IS_MODEL(OCTEON_CN50XX));
 	}
 	return 0;
 }

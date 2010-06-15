@@ -23,11 +23,13 @@ comment "Crypto core or helper"
 
 config CRYPTO_FIPS
 	bool "FIPS 200 compliance"
+	depends on CRYPTO_ANSI_CPRNG
 	help
 	  This options enables the fips boot option which is
 	  required if you want to system to operate in a FIPS 200
 	  certification.  You should say no unless you know what
-	  this is.
+	  this is. Note that CRYPTO_ANSI_CPRNG is requred if this
+	  option is selected
 
 config CRYPTO_ALGAPI
 	tristate
@@ -112,6 +114,16 @@ config CRYPTO_NULL
 	help
 	  These are 'Null' algorithms, used by IPsec, which do nothing.
 
+config CRYPTO_PCRYPT
+	tristate "Parallel crypto engine (EXPERIMENTAL)"
+	depends on SMP && EXPERIMENTAL
+	select PADATA
+	select CRYPTO_MANAGER
+	select CRYPTO_AEAD
+	help
+	  This converts an arbitrary crypto algorithm into a parallel
+	  algorithm that executes in kernel threads.
+
 config CRYPTO_WORKQUEUE
        tristate
 
@@ -156,7 +168,7 @@ config CRYPTO_GCM
 	tristate "GCM/GMAC support"
 	select CRYPTO_CTR
 	select CRYPTO_AEAD
-	select CRYPTO_GF128MUL
+	select CRYPTO_GHASH
 	help
 	  Support for Galois/Counter Mode (GCM) and Galois Message
 	  Authentication Code (GMAC). Required for IPSec.
@@ -241,6 +253,11 @@ config CRYPTO_XTS
 	  key size 256, 384 or 512 bits. This implementation currently
 	  can't handle a sectorsize which is not a multiple of 16 bytes.
 
+config CRYPTO_FPU
+	tristate
+	select CRYPTO_BLKCIPHER
+	select CRYPTO_MANAGER
+
 comment "Hash modes"
 
 config CRYPTO_HMAC
@@ -261,6 +278,18 @@ config CRYPTO_XCBC
 		http://www.ietf.org/rfc/rfc3566.txt
 		http://csrc.nist.gov/encryption/modes/proposedmodes/
 		 xcbc-mac/xcbc-mac-spec.pdf
+
+config CRYPTO_VMAC
+	tristate "VMAC support"
+	depends on EXPERIMENTAL
+	select CRYPTO_HASH
+	select CRYPTO_MANAGER
+	help
+	  VMAC is a message authentication algorithm designed for
+	  very high speed on 64-bit architectures.
+
+	  See also:
+	  <http://fastcrypto.org/vmac>
 
 comment "Digest"
 
@@ -283,6 +312,13 @@ config CRYPTO_CRC32C_INTEL
 	  which will enable any routine to use the CRC32 instruction to
 	  gain performance compared with software implementation.
 	  Module will be crc32c-intel.
+
+config CRYPTO_GHASH
+	tristate "GHASH digest algorithm"
+	select CRYPTO_SHASH
+	select CRYPTO_GF128MUL
+	help
+	  GHASH is message digest algorithm for GCM (Galois/Counter Mode).
 
 config CRYPTO_MD4
 	tristate "MD4 digest algorithm"
@@ -414,6 +450,15 @@ config CRYPTO_WP512
 	  See also:
 	  <http://planeta.terra.com.br/informatica/paulobarreto/WhirlpoolPage.html>
 
+config CRYPTO_GHASH_CLMUL_NI_INTEL
+	tristate "GHASH digest algorithm (CLMUL-NI accelerated)"
+	depends on (X86 || UML_X86) && 64BIT
+	select CRYPTO_SHASH
+	select CRYPTO_CRYPTD
+	help
+	  GHASH is message digest algorithm for GCM (Galois/Counter Mode).
+	  The implementation is accelerated by CLMUL-NI of Intel.
+
 comment "Ciphers"
 
 config CRYPTO_AES
@@ -486,6 +531,7 @@ config CRYPTO_AES_NI_INTEL
 	select CRYPTO_AES_X86_64
 	select CRYPTO_CRYPTD
 	select CRYPTO_ALGAPI
+	select CRYPTO_FPU
 	help
 	  Use Intel AES-NI instructions for AES algorithm.
 
@@ -504,6 +550,10 @@ config CRYPTO_AES_NI_INTEL
 	  The AES specifies three key sizes: 128, 192 and 256 bits
 
 	  See <http://csrc.nist.gov/encryption/aes/> for more information.
+
+	  In addition to AES cipher algorithm support, the
+	  acceleration for some popular block cipher mode is supported
+	  too, including ECB, CBC, CTR, LRW, PCBC, XTS.
 
 config CRYPTO_ANUBIS
 	tristate "Anubis cipher algorithm"
@@ -770,13 +820,14 @@ comment "Random Number Generation"
 
 config CRYPTO_ANSI_CPRNG
 	tristate "Pseudo Random Number Generation for Cryptographic modules"
+	default m
 	select CRYPTO_AES
 	select CRYPTO_RNG
-	select CRYPTO_FIPS
 	help
 	  This option enables the generic pseudo random number generator
 	  for cryptographic modules.  Uses the Algorithm specified in
-	  ANSI X9.31 A.2.4
+	  ANSI X9.31 A.2.4. Note that this option must be enabled if
+	  CRYPTO_FIPS is selected
 
 source "drivers/crypto/Kconfig"
 

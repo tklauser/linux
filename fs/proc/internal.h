@@ -61,8 +61,6 @@ extern const struct file_operations proc_pagemap_operations;
 extern const struct file_operations proc_net_operations;
 extern const struct inode_operations proc_net_inode_operations;
 
-void free_proc_entry(struct proc_dir_entry *de);
-
 void proc_init_inodecache(void);
 
 static inline struct pid *proc_pid(struct inode *inode)
@@ -92,3 +90,32 @@ struct pde_opener {
 	struct list_head lh;
 };
 void pde_users_dec(struct proc_dir_entry *pde);
+
+extern spinlock_t proc_subdir_lock;
+
+struct dentry *proc_pid_lookup(struct inode *dir, struct dentry * dentry, struct nameidata *);
+int proc_pid_readdir(struct file * filp, void * dirent, filldir_t filldir);
+unsigned long task_vsize(struct mm_struct *);
+int task_statm(struct mm_struct *, int *, int *, int *, int *);
+void task_mem(struct seq_file *, struct mm_struct *);
+
+static inline struct proc_dir_entry *pde_get(struct proc_dir_entry *pde)
+{
+	atomic_inc(&pde->count);
+	return pde;
+}
+void pde_put(struct proc_dir_entry *pde);
+
+extern struct vfsmount *proc_mnt;
+int proc_fill_super(struct super_block *);
+struct inode *proc_get_inode(struct super_block *, unsigned int, struct proc_dir_entry *);
+
+/*
+ * These are generic /proc routines that use the internal
+ * "struct proc_dir_entry" tree to traverse the filesystem.
+ *
+ * The /proc root directory has extended versions to take care
+ * of the /proc/<pid> subdirectories.
+ */
+int proc_readdir(struct file *, void *, filldir_t);
+struct dentry *proc_lookup(struct inode *, struct dentry *, struct nameidata *);

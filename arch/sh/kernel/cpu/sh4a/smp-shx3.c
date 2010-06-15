@@ -14,6 +14,13 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 
+#define STBCR_REG(phys_id) (0xfe400004 | (phys_id << 12))
+#define RESET_REG(phys_id) (0xfe400008 | (phys_id << 12))
+
+#define STBCR_MSTP	0x00000001
+#define STBCR_RESET	0x00000002
+#define STBCR_LTSLP	0x80000000
+
 static irqreturn_t ipi_interrupt_handler(int irq, void *arg)
 {
 	unsigned int message = (unsigned int)(long)arg;
@@ -21,9 +28,9 @@ static irqreturn_t ipi_interrupt_handler(int irq, void *arg)
 	unsigned int offs = 4 * cpu;
 	unsigned int x;
 
-	x = ctrl_inl(0xfe410070 + offs); /* C0INITICI..CnINTICI */
+	x = __raw_readl(0xfe410070 + offs); /* C0INITICI..CnINTICI */
 	x &= (1 << (message << 2));
-	ctrl_outl(x, 0xfe410080 + offs); /* C0INTICICLR..CnINTICICLR */
+	__raw_writel(x, 0xfe410080 + offs); /* C0INTICICLR..CnINTICICLR */
 
 	smp_message_recv(message);
 
@@ -35,8 +42,10 @@ void __init plat_smp_setup(void)
 	unsigned int cpu = 0;
 	int i, num;
 
-	cpus_clear(cpu_possible_map);
-	cpu_set(cpu, cpu_possible_map);
+	init_cpu_possible(cpumask_of(cpu));
+
+	/* Enable light sleep for the boot CPU */
+	__raw_writel(__raw_readl(STBCR_REG(cpu)) | STBCR_LTSLP, STBCR_REG(cpu));
 
 	__cpu_number_map[0] = 0;
 	__cpu_logical_map[0] = 0;
@@ -46,7 +55,7 @@ void __init plat_smp_setup(void)
 	 * for the total number of cores.
 	 */
 	for (i = 1, num = 0; i < NR_CPUS; i++) {
-		cpu_set(i, cpu_possible_map);
+		set_cpu_possible(i, true);
 		__cpu_number_map[i] = ++num;
 		__cpu_logical_map[num] = i;
 	}
@@ -58,6 +67,8 @@ void __init plat_prepare_cpus(unsigned int max_cpus)
 {
 	int i;
 
+	local_timer_setup(0);
+
 	BUILD_BUG_ON(SMP_MSG_NR >= 8);
 
 	for (i = 0; i < SMP_MSG_NR; i++)
@@ -65,32 +76,26 @@ void __init plat_prepare_cpus(unsigned int max_cpus)
 			    "IPI", (void *)(long)i);
 }
 
-#define STBCR_REG(phys_id) (0xfe400004 | (phys_id << 12))
-#define RESET_REG(phys_id) (0xfe400008 | (phys_id << 12))
-
-#define STBCR_MSTP	0x00000001
-#define STBCR_RESET	0x00000002
-#define STBCR_LTSLP	0x80000000
-
-#define STBCR_AP_VAL	(STBCR_RESET | STBCR_LTSLP)
-
 void plat_start_cpu(unsigned int cpu, unsigned long entry_point)
 {
-	ctrl_outl(entry_point, RESET_REG(cpu));
+	if (__in_29bit_mode())
+		__raw_writel(entry_point, RESET_REG(cpu));
+	else
+		__raw_writel(virt_to_phys(entry_point), RESET_REG(cpu));
 
-	if (!(ctrl_inl(STBCR_REG(cpu)) & STBCR_MSTP))
-		ctrl_outl(STBCR_MSTP, STBCR_REG(cpu));
+	if (!(__raw_readl(STBCR_REG(cpu)) & STBCR_MSTP))
+		__raw_writel(STBCR_MSTP, STBCR_REG(cpu));
 
-	while (!(ctrl_inl(STBCR_REG(cpu)) & STBCR_MSTP))
+	while (!(__raw_readl(STBCR_REG(cpu)) & STBCR_MSTP))
 		cpu_relax();
 
 	/* Start up secondary processor by sending a reset */
-	ctrl_outl(STBCR_AP_VAL, STBCR_REG(cpu));
+	__raw_writel(STBCR_RESET | STBCR_LTSLP, STBCR_REG(cpu));
 }
 
 int plat_smp_processor_id(void)
 {
-	return ctrl_inl(0xff000048); /* CPIDR */
+	return __raw_readl(0xff000048); /* CPIDR */
 }
 
 void plat_send_ipi(unsigned int cpu, unsigned int message)
@@ -99,5 +104,5 @@ void plat_send_ipi(unsigned int cpu, unsigned int message)
 
 	BUG_ON(cpu >= 4);
 
-	ctrl_outl(1 << (message << 2), addr); /* C0INTICI..CnINTICI */
+	__raw_writel(1 << (message << 2), addr); /* C0INTICI..CnINTICI */
 }

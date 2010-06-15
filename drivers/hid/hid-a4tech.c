@@ -20,6 +20,7 @@
 #include <linux/input.h>
 #include <linux/hid.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 
 #include "hid-ids.h"
 
@@ -145,12 +146,12 @@ static struct hid_driver a4_driver = {
 	.remove = a4_remove,
 };
 
-static int a4_init(void)
+static int __init a4_init(void)
 {
 	return hid_register_driver(&a4_driver);
 }
 
-static void a4_exit(void)
+static void __exit a4_exit(void)
 {
 	hid_unregister_driver(&a4_driver);
 }

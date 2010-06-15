@@ -48,7 +48,16 @@ ifneq ($(SUBARCH),$(ARCH))
   endif
 endif
 
+ifndef CONFIG_FUNCTION_TRACER
 cflags-y := -ffunction-sections
+endif
+ifdef CONFIG_FUNCTION_GRAPH_TRACER
+  ifndef KBUILD_MCOUNT_RA_ADDRESS
+    ifeq ($(call cc-option-yn,-mmcount-ra-address), y)
+      cflags-y += -mmcount-ra-address -DKBUILD_MCOUNT_RA_ADDRESS
+    endif
+  endif
+endif
 cflags-y += $(call cc-option, -mno-check-zero-division)
 
 ifdef CONFIG_32BIT
@@ -69,6 +78,7 @@ endif
 
 all-$(CONFIG_BOOT_ELF32)	:= $(vmlinux-32)
 all-$(CONFIG_BOOT_ELF64)	:= $(vmlinux-64)
+all-$(CONFIG_SYS_SUPPORTS_ZBOOT)+= vmlinuz
 
 #
 # GCC uses -G 0 -mabicalls -fpic as default.  We don't want PIC in the kernel
@@ -120,7 +130,26 @@ cflags-$(CONFIG_CPU_R4300)	+= -march=r4300 -Wa,--trap
 cflags-$(CONFIG_CPU_VR41XX)	+= -march=r4100 -Wa,--trap
 cflags-$(CONFIG_CPU_R4X00)	+= -march=r4600 -Wa,--trap
 cflags-$(CONFIG_CPU_TX49XX)	+= -march=r4600 -Wa,--trap
-cflags-$(CONFIG_CPU_LOONGSON2)	+= -march=r4600 -Wa,--trap
+# only gcc >= 4.4 have the loongson-specific support
+cflags-$(CONFIG_CPU_LOONGSON2)	+= -Wa,--trap
+cflags-$(CONFIG_CPU_LOONGSON2E) += \
+	$(call cc-option,-march=loongson2e,-march=r4600)
+cflags-$(CONFIG_CPU_LOONGSON2F) += \
+	$(call cc-option,-march=loongson2f,-march=r4600)
+# enable the workarounds for loongson2f
+ifdef CONFIG_CPU_LOONGSON2F_WORKAROUNDS
+  ifeq ($(call as-option,-Wa$(comma)-mfix-loongson2f-nop,),)
+    $(error only binutils >= 2.20.2 have needed option -mfix-loongson2f-nop)
+  else
+    cflags-$(CONFIG_CPU_NOP_WORKAROUNDS) += -Wa$(comma)-mfix-loongson2f-nop
+  endif
+  ifeq ($(call as-option,-Wa$(comma)-mfix-loongson2f-jump,),)
+    $(error only binutils >= 2.20.2 have needed option -mfix-loongson2f-jump)
+  else
+    cflags-$(CONFIG_CPU_JUMP_WORKAROUNDS) += -Wa$(comma)-mfix-loongson2f-jump
+  endif
+endif
+
 cflags-$(CONFIG_CPU_MIPS32_R1)	+= $(call cc-option,-march=mips32,-mips32 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS32) \
 			-Wa,-mips32 -Wa,--trap
 cflags-$(CONFIG_CPU_MIPS32_R2)	+= $(call cc-option,-march=mips32r2,-mips32r2 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS32) \
@@ -167,11 +196,26 @@ libs-$(CONFIG_ARC)		+= arch/mips/fw/arc/
 libs-$(CONFIG_CFE)		+= arch/mips/fw/cfe/
 libs-$(CONFIG_SNIPROM)		+= arch/mips/fw/sni/
 libs-y				+= arch/mips/fw/lib/
-libs-$(CONFIG_SIBYTE_CFE)	+= arch/mips/sibyte/cfe/
+
+#
+# Kernel compression
+#
+ifdef SYS_SUPPORTS_ZBOOT
+COMPRESSION_FNAME		= vmlinuz
+else
+COMPRESSION_FNAME		= vmlinux
+endif
 
 #
 # Board-dependent options and extra files
 #
+
+#
+# Texas Instruments AR7
+#
+core-$(CONFIG_AR7)		+= arch/mips/ar7/
+cflags-$(CONFIG_AR7)		+= -I$(srctree)/arch/mips/include/asm/mach-ar7
+load-$(CONFIG_AR7)		+= 0xffffffff94100000
 
 #
 # Acer PICA 61, Mips Magnum 4000 and Olivetti M700.
@@ -184,7 +228,6 @@ load-$(CONFIG_MACH_JAZZ)	+= 0xffffffff80080000
 # Common Alchemy Au1x00 stuff
 #
 core-$(CONFIG_SOC_AU1X00)	+= arch/mips/alchemy/common/
-cflags-$(CONFIG_SOC_AU1X00)	+= -I$(srctree)/arch/mips/include/asm/mach-au1x00
 
 #
 # AMD Alchemy Pb1000 eval board
@@ -282,6 +325,10 @@ load-$(CONFIG_MIPS_MTX1)	+= 0xffffffff80100000
 libs-$(CONFIG_MIPS_XXS1500)	+= arch/mips/alchemy/xxs1500/
 load-$(CONFIG_MIPS_XXS1500)	+= 0xffffffff80100000
 
+# must be last for Alchemy systems for GPIO to work properly
+cflags-$(CONFIG_SOC_AU1X00)	+= -I$(srctree)/arch/mips/include/asm/mach-au1x00
+
+
 #
 # Cobalt Server
 #
@@ -305,11 +352,13 @@ cflags-$(CONFIG_WR_PPMC)		+= -I$(srctree)/arch/mips/include/asm/mach-wrppmc
 load-$(CONFIG_WR_PPMC)		+= 0xffffffff80100000
 
 #
-# lemote fulong mini-PC board
+# Loongson family
 #
-core-$(CONFIG_LEMOTE_FULONG) +=arch/mips/lemote/lm2e/
-load-$(CONFIG_LEMOTE_FULONG) +=0xffffffff80100000
-cflags-$(CONFIG_LEMOTE_FULONG) += -I$(srctree)/arch/mips/include/asm/mach-lemote
+core-$(CONFIG_MACH_LOONGSON) += arch/mips/loongson/
+cflags-$(CONFIG_MACH_LOONGSON) += -I$(srctree)/arch/mips/include/asm/mach-loongson \
+                    -mno-branch-likely
+load-$(CONFIG_LEMOTE_FULOONG2E) += 0xffffffff80100000
+load-$(CONFIG_LEMOTE_MACH2F) += 0xffffffff80200000
 
 #
 # MIPS Malta board
@@ -317,7 +366,7 @@ cflags-$(CONFIG_LEMOTE_FULONG) += -I$(srctree)/arch/mips/include/asm/mach-lemote
 core-$(CONFIG_MIPS_MALTA)	+= arch/mips/mti-malta/
 cflags-$(CONFIG_MIPS_MALTA)	+= -I$(srctree)/arch/mips/include/asm/mach-malta
 load-$(CONFIG_MIPS_MALTA)	+= 0xffffffff80100000
-all-$(CONFIG_MIPS_MALTA)	:= vmlinux.bin
+all-$(CONFIG_MIPS_MALTA)	:= $(COMPRESSION_FNAME).bin
 
 #
 # MIPS SIM
@@ -340,13 +389,6 @@ load-$(CONFIG_PMC_MSP)		+= 0xffffffff80100000
 core-$(CONFIG_PMC_YOSEMITE)	+= arch/mips/pmc-sierra/yosemite/
 cflags-$(CONFIG_PMC_YOSEMITE)	+= -I$(srctree)/arch/mips/include/asm/mach-yosemite
 load-$(CONFIG_PMC_YOSEMITE)	+= 0xffffffff80100000
-
-#
-# Basler eXcite
-#
-core-$(CONFIG_BASLER_EXCITE)	+= arch/mips/basler/excite/
-cflags-$(CONFIG_BASLER_EXCITE)	+= -I$(srctree)/arch/mips/include/asm/mach-excite
-load-$(CONFIG_BASLER_EXCITE)	+= 0x80100000
 
 #
 # LASAT platforms
@@ -425,6 +467,13 @@ cflags-$(CONFIG_SOC_EMMA2RH)	+= -I$(srctree)/arch/mips/include/asm/mach-emma2rh
 #
 core-$(CONFIG_NEC_MARKEINS)	+= arch/mips/emma/markeins/
 load-$(CONFIG_NEC_MARKEINS)	+= 0xffffffff88100000
+
+#
+# Cisco PowerTV Platform
+#
+core-$(CONFIG_POWERTV)		+= arch/mips/powertv/
+cflags-$(CONFIG_POWERTV)        += -I$(srctree)/arch/mips/include/asm/mach-powertv
+load-$(CONFIG_POWERTV)		+= 0xffffffff90800000
 
 #
 # SGI IP22 (Indy/Indigo2)
@@ -551,6 +600,13 @@ cflags-$(CONFIG_BCM47XX)	+= -I$(srctree)/arch/mips/include/asm/mach-bcm47xx
 load-$(CONFIG_BCM47XX)		:= 0xffffffff80001000
 
 #
+# Broadcom BCM63XX boards
+#
+core-$(CONFIG_BCM63XX)		+= arch/mips/bcm63xx/
+cflags-$(CONFIG_BCM63XX)	+= -I$(srctree)/arch/mips/include/asm/mach-bcm63xx/
+load-$(CONFIG_BCM63XX)		:= 0xffffffff80010000
+
+#
 # SNI RM
 #
 core-$(CONFIG_SNI_RM)		+= arch/mips/sni/
@@ -560,7 +616,7 @@ load-$(CONFIG_SNI_RM)		+= 0xffffffff80600000
 else
 load-$(CONFIG_SNI_RM)		+= 0xffffffff80030000
 endif
-all-$(CONFIG_SNI_RM)		:= vmlinux.ecoff
+all-$(CONFIG_SNI_RM)		:= $(COMPRESSION_FNAME).ecoff
 
 #
 # Common TXx9
@@ -606,16 +662,6 @@ endif
 cflags-y			+= -I$(srctree)/arch/mips/include/asm/mach-generic
 drivers-$(CONFIG_PCI)		+= arch/mips/pci/
 
-ifdef CONFIG_32BIT
-ifdef CONFIG_CPU_LITTLE_ENDIAN
-JIFFIES			= jiffies_64
-else
-JIFFIES			= jiffies_64 + 4
-endif
-else
-JIFFIES			= jiffies_64
-endif
-
 #
 # Automatically detect the build format. By default we choose
 # the elf format according to the load address.
@@ -639,8 +685,9 @@ ifdef CONFIG_64BIT
 endif
 
 KBUILD_AFLAGS	+= $(cflags-y)
-KBUILD_CFLAGS	+= $(cflags-y) \
-			-D"VMLINUX_LOAD_ADDRESS=$(load-y)"
+KBUILD_CFLAGS	+= $(cflags-y)
+KBUILD_CPPFLAGS += -D"VMLINUX_LOAD_ADDRESS=$(load-y)"
+KBUILD_CPPFLAGS += -D"DATAOFFSET=$(if $(dataoffset-y),$(dataoffset-y),0)"
 
 LDFLAGS			+= -m $(ld-emul)
 
@@ -655,18 +702,6 @@ endif
 
 OBJCOPYFLAGS		+= --remove-section=.reginfo
 
-#
-# Choosing incompatible machines durings configuration will result in
-# error messages during linking.  Select a default linkscript if
-# none has been choosen above.
-#
-
-CPPFLAGS_vmlinux.lds := \
-	$(KBUILD_CFLAGS) \
-	-D"LOADADDR=$(load-y)" \
-	-D"JIFFIES=$(JIFFIES)" \
-	-D"DATAOFFSET=$(if $(dataoffset-y),$(dataoffset-y),0)"
-
 head-y := arch/mips/kernel/head.o arch/mips/kernel/init_task.o
 
 libs-y			+= arch/mips/lib/
@@ -674,6 +709,9 @@ libs-y			+= arch/mips/lib/
 core-y			+= arch/mips/kernel/ arch/mips/mm/ arch/mips/math-emu/
 
 drivers-$(CONFIG_OPROFILE)	+= arch/mips/oprofile/
+
+# suspend and hibernation support
+drivers-$(CONFIG_PM)	+= arch/mips/power/
 
 ifdef CONFIG_LASAT
 rom.bin rom.sw: vmlinux
@@ -696,8 +734,22 @@ vmlinux.64: vmlinux
 	$(OBJCOPY) -O $(64bit-bfd) $(OBJCOPYFLAGS) $< $@
 
 makeboot =$(Q)$(MAKE) $(build)=arch/mips/boot VMLINUX=$(vmlinux-32) $(1)
+makezboot =$(Q)$(MAKE) $(build)=arch/mips/boot/compressed \
+	   VMLINUX_LOAD_ADDRESS=$(load-y) 32bit-bfd=$(32bit-bfd) $(1)
 
 all:	$(all-y)
+
+vmlinuz: vmlinux FORCE
+	+@$(call makezboot,$@)
+
+vmlinuz.bin: vmlinux
+	+@$(call makezboot,$@)
+
+vmlinuz.ecoff: vmlinux
+	+@$(call makezboot,$@)
+
+vmlinuz.srec: vmlinux
+	+@$(call makezboot,$@)
 
 vmlinux.bin: $(vmlinux-32)
 	+@$(call makeboot,$@)
@@ -723,11 +775,13 @@ endif
 
 install:
 	$(Q)install -D -m 755 vmlinux $(INSTALL_PATH)/vmlinux-$(KERNELRELEASE)
+	$(Q)install -D -m 755 vmlinuz $(INSTALL_PATH)/vmlinuz-$(KERNELRELEASE)
 	$(Q)install -D -m 644 .config $(INSTALL_PATH)/config-$(KERNELRELEASE)
 	$(Q)install -D -m 644 System.map $(INSTALL_PATH)/System.map-$(KERNELRELEASE)
 
 archclean:
 	@$(MAKE) $(clean)=arch/mips/boot
+	@$(MAKE) $(clean)=arch/mips/boot/compressed
 	@$(MAKE) $(clean)=arch/mips/lasat
 
 define archhelp
@@ -735,10 +789,18 @@ define archhelp
 	echo '  vmlinux.ecoff        - ECOFF boot image'
 	echo '  vmlinux.bin          - Raw binary boot image'
 	echo '  vmlinux.srec         - SREC boot image'
+	echo '  vmlinuz              - Compressed boot(zboot) image'
+	echo '  vmlinuz.ecoff        - ECOFF zboot image'
+	echo '  vmlinuz.bin          - Raw binary zboot image'
+	echo '  vmlinuz.srec         - SREC zboot image'
 	echo
 	echo '  These will be default as apropriate for a configured platform.'
 endef
 
 CLEAN_FILES += vmlinux.32 \
 	       vmlinux.64 \
-	       vmlinux.ecoff
+	       vmlinux.ecoff \
+	       vmlinuz \
+	       vmlinuz.ecoff \
+	       vmlinuz.bin \
+	       vmlinuz.srec

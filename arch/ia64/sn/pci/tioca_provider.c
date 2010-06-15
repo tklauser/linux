@@ -9,6 +9,8 @@
 #include <linux/types.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
+#include <linux/bitmap.h>
+#include <linux/slab.h>
 #include <asm/sn/sn_sal.h>
 #include <asm/sn/addrs.h>
 #include <asm/sn/io.h>
@@ -123,7 +125,7 @@ tioca_gart_init(struct tioca_kernel *tioca_kern)
 
 	if (!tmp) {
 		printk(KERN_ERR "%s:  Could not allocate "
-		       "%lu bytes (order %d) for GART\n",
+		       "%llu bytes (order %d) for GART\n",
 		       __func__,
 		       tioca_kern->ca_gart_size,
 		       get_order(tioca_kern->ca_gart_size));
@@ -348,7 +350,7 @@ tioca_dma_d48(struct pci_dev *pdev, u64 paddr)
 	agp_dma_extn = __sn_readq_relaxed(&ca_base->ca_agp_dma_addr_extn);
 	if (node_upper != (agp_dma_extn >> CA_AGP_DMA_NODE_ID_SHFT)) {
 		printk(KERN_ERR "%s:  coretalk upper node (%u) "
-		       "mismatch with ca_agp_dma_addr_extn (%lu)\n",
+		       "mismatch with ca_agp_dma_addr_extn (%llu)\n",
 		       __func__,
 		       node_upper, (agp_dma_extn >> CA_AGP_DMA_NODE_ID_SHFT));
 		return 0;
@@ -367,9 +369,9 @@ tioca_dma_d48(struct pci_dev *pdev, u64 paddr)
  * dma_addr_t is guaranteed to be contiguous in CA bus space.
  */
 static dma_addr_t
-tioca_dma_mapped(struct pci_dev *pdev, u64 paddr, size_t req_size)
+tioca_dma_mapped(struct pci_dev *pdev, unsigned long paddr, size_t req_size)
 {
-	int i, ps, ps_shift, entry, entries, mapsize, last_entry;
+	int ps, ps_shift, entry, entries, mapsize;
 	u64 xio_addr, end_xio_addr;
 	struct tioca_common *tioca_common;
 	struct tioca_kernel *tioca_kern;
@@ -410,23 +412,13 @@ tioca_dma_mapped(struct pci_dev *pdev, u64 paddr, size_t req_size)
 	map = tioca_kern->ca_pcigart_pagemap;
 	mapsize = tioca_kern->ca_pcigart_entries;
 
-	entry = find_first_zero_bit(map, mapsize);
-	while (entry < mapsize) {
-		last_entry = find_next_bit(map, mapsize, entry);
-
-		if (last_entry - entry >= entries)
-			break;
-
-		entry = find_next_zero_bit(map, mapsize, last_entry);
-	}
-
-	if (entry > mapsize) {
+	entry = bitmap_find_next_zero_area(map, mapsize, 0, entries, 0);
+	if (entry >= mapsize) {
 		kfree(ca_dmamap);
 		goto map_return;
 	}
 
-	for (i = 0; i < entries; i++)
-		set_bit(entry + i, map);
+	bitmap_set(map, entry, entries);
 
 	bus_addr = tioca_kern->ca_pciap_base + (entry * ps);
 

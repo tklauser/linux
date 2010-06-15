@@ -11,6 +11,7 @@
  *  isofs directory handling functions
  */
 #include <linux/smp_lock.h>
+#include <linux/gfp.h>
 #include "isofs.h"
 
 int isofs_name_translate(struct iso_directory_record *de, char *new, struct inode *inode)
@@ -195,9 +196,8 @@ static int do_isofs_readdir(struct inode *inode, struct file *filp,
 		 * Do not report hidden files if so instructed, or associated
 		 * files unless instructed to do so
 		 */
-		if ((sbi->s_hide == 'y' &&
-				(de->flags[-sbi->s_high_sierra] & 1)) ||
-				(sbi->s_showassoc =='n' &&
+		if ((sbi->s_hide && (de->flags[-sbi->s_high_sierra] & 1)) ||
+		    (!sbi->s_showassoc &&
 				(de->flags[-sbi->s_high_sierra] & 4))) {
 			filp->f_pos += de_len;
 			continue;

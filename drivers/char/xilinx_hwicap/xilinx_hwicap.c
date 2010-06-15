@@ -86,6 +86,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 #include <asm/io.h>
 #include <asm/uaccess.h>
@@ -559,7 +560,7 @@ static int hwicap_release(struct inode *inode, struct file *file)
 	return status;
 }
 
-static struct file_operations hwicap_fops = {
+static const struct file_operations hwicap_fops = {
 	.owner = THIS_MODULE,
 	.write = hwicap_write,
 	.read = hwicap_read,

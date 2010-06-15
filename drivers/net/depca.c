@@ -237,6 +237,7 @@
 
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
@@ -516,7 +517,8 @@ struct depca_private {
 ** Public Functions
 */
 static int depca_open(struct net_device *dev);
-static int depca_start_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t depca_start_xmit(struct sk_buff *skb,
+				    struct net_device *dev);
 static irqreturn_t depca_interrupt(int irq, void *dev_id);
 static int depca_close(struct net_device *dev);
 static int depca_ioctl(struct net_device *dev, struct ifreq *rq, int cmd);
@@ -810,7 +812,7 @@ static int __init depca_hw_init (struct net_device *dev, struct device *device)
 
 	dev->mem_start = 0;
 
-	device->driver_data = dev;
+	dev_set_drvdata(device, dev);
 	SET_NETDEV_DEV (dev, device);
 
 	status = register_netdev(dev);
@@ -847,7 +849,7 @@ static int depca_open(struct net_device *dev)
 
 	depca_dbg_open(dev);
 
-	if (request_irq(dev->irq, &depca_interrupt, 0, lp->adapter_name, dev)) {
+	if (request_irq(dev->irq, depca_interrupt, 0, lp->adapter_name, dev)) {
 		printk("depca_open(): Requested IRQ%d is busy\n", dev->irq);
 		status = -EAGAIN;
 	} else {
@@ -928,7 +930,8 @@ static void depca_tx_timeout(struct net_device *dev)
 /*
 ** Writes a socket buffer to TX descriptor ring and starts transmission
 */
-static int depca_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t depca_start_xmit(struct sk_buff *skb,
+				    struct net_device *dev)
 {
 	struct depca_private *lp = netdev_priv(dev);
 	u_long ioaddr = dev->base_addr;
@@ -957,7 +960,7 @@ static int depca_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		if (TX_BUFFS_AVAIL)
 			netif_start_queue(dev);
 	} else
-		status = -1;
+		status = NETDEV_TX_LOCKED;
 
       out:
 	return status;
@@ -1269,7 +1272,7 @@ static void set_multicast_list(struct net_device *dev)
 static void SetMulticastFilter(struct net_device *dev)
 {
 	struct depca_private *lp = netdev_priv(dev);
-	struct dev_mc_list *dmi = dev->mc_list;
+	struct dev_mc_list *dmi;
 	char *addrs;
 	int i, j, bit, byte;
 	u16 hashcode;
@@ -1284,9 +1287,8 @@ static void SetMulticastFilter(struct net_device *dev)
 			lp->init_block.mcast_table[i] = 0;
 		}
 		/* Add multicast addresses */
-		for (i = 0; i < dev->mc_count; i++) {	/* for each address in the list */
+		netdev_for_each_mc_addr(dmi, dev) {
 			addrs = dmi->dmi_addr;
-			dmi = dmi->next;
 			if ((*addrs & 0x01) == 1) {	/* multicast address? */
 				crc = ether_crc(ETH_ALEN, addrs);
 				hashcode = (crc & 1);	/* hashcode is 6 LSb of CRC ... */
@@ -1614,7 +1616,7 @@ static int __devexit depca_device_remove (struct device *device)
 	struct depca_private *lp;
 	int bus;
 
-	dev  = device->driver_data;
+	dev  = dev_get_drvdata(device);
 	lp   = netdev_priv(dev);
 
 	unregister_netdev (dev);
@@ -1793,7 +1795,7 @@ static int __init get_hw_addr(struct net_device *dev)
 static int load_packet(struct net_device *dev, struct sk_buff *skb)
 {
 	struct depca_private *lp = netdev_priv(dev);
-	int i, entry, end, len, status = 0;
+	int i, entry, end, len, status = NETDEV_TX_OK;
 
 	entry = lp->tx_new;	/* Ring around buffer number. */
 	end = (entry + (skb->len - 1) / TX_BUFF_SZ) & lp->txRingMask;
@@ -1839,7 +1841,7 @@ static int load_packet(struct net_device *dev, struct sk_buff *skb)
 
 		lp->tx_new = (++end) & lp->txRingMask;	/* update current pointers */
 	} else {
-		status = -1;
+		status = NETDEV_TX_LOCKED;
 	}
 
 	return status;

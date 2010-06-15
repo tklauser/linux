@@ -6,64 +6,86 @@
  * Copyright (C) 2009, Wind River Systems Inc
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
+
 #ifndef _ASM_NIOS2_UACCESS_H
 #define _ASM_NIOS2_UACCESS_H
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/thread_info.h>
-#include <asm-generic/uaccess.h>
-
-/* FIXME: Add comment
- */
-extern int fixup_exception(struct pt_regs *regs, unsigned long address);
-struct exception_table_entry
-{
-	unsigned long insn;
-	unsigned long nextinsn;
-};
-
-
-/* Segment stuff
- */
-#define USER_DS   (mm_segment_t){ 0x80000000UL }
-#define KERNEL_DS (mm_segment_t){ 0 }
-extern int segment_eq(mm_segment_t a, mm_segment_t b);
-extern mm_segment_t get_ds(void);
-extern void set_fs(mm_segment_t seg);
-extern mm_segment_t get_fs(void);
-
-
-/* Misc user access functions (implemented in uaccess.c)
- * FIXME: copy_from_user, __copy_from_user_inatomic, copy_to_user and 
- * __copy_to_user_inatomic can and should be inlined.
- */
-extern long copy_from_user(void* to, const void __user *from, int n);
-extern long __copy_from_user(void* to, const void __user *from, int n);
-extern long __copy_from_user_inatomic(void* to, const void __user *from, int n);
-
-extern long copy_to_user(void __user *to, const void *from, long n);
-extern long __copy_to_user(void __user *to, const void *from, long n);
-extern long __copy_to_user_inatomic(void __user *to, const void *from, long n);
 
 #define VERIFY_READ    0
 #define VERIFY_WRITE   1
 
-/* These functions are implemented in uaccess.c
+/* FIXME: Add comment
  */
-extern long strncpy_from_user(char *__to, const char __user *__from, 
-                              long __len);
+extern int fixup_exception(struct pt_regs *regs, unsigned long address);
+struct exception_table_entry {
+	unsigned long insn;
+	unsigned long nextinsn;
+};
+
+/*
+ * Segment stuff
+ */
+#define MAKE_MM_SEG(s)		((mm_segment_t) { (s) } )
+#define USER_DS			MAKE_MM_SEG(0x80000000UL)
+#define KERNEL_DS		MAKE_MM_SEG(0)
+
+#define get_ds()		(KERNEL_DS)
+#define get_fs()		(current_thread_info()->addr_limit)
+#define set_fs(seg)		(current_thread_info()->addr_limit = (seg))
+
+#define segment_eq(a, b)	((a).seg == (b).seg)
+
+#define access_ok(type, from, len)		\
+	(((signed long)(((long)get_fs().seg) &	\
+                   ((long)(from) | (((long)(from)) + (len)) | (len)))) == 0)
+
+extern long __copy_from_user(void* to, const void __user *from, unsigned long n);
+extern long __copy_to_user(void __user *to, const void *from, unsigned long n);
+
+static inline long copy_from_user(void *to, const void __user *from, unsigned long n)
+{
+	if (!access_ok(VERIFY_READ, from, n))
+		return n;
+	return __copy_from_user(to, from, n);
+}
+
+static inline long __copy_from_user_inatomic(void *to, const void __user *from,
+						unsigned long n)
+{
+	return __copy_from_user(to, from, n);
+}
+
+static inline long __copy_to_user_inatomic(void __user *to, const void *from,
+						unsigned long n)
+{
+	return __copy_to_user(to, from, n);
+}
+
+static inline long copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+	if (!access_ok(VERIFY_WRITE, to, n))
+		return n;
+	return __copy_to_user(to, from, n);
+}
+
+extern long strncpy_from_user(char *__to, const char __user *__from,
+				long __len);
 extern long strnlen_user(const char __user *s, long n);
 
 __kernel_size_t __clear_user(void __user *addr, __kernel_size_t size);
-size_t clear_user(void __user *addr, __kernel_size_t size);
+
+static inline size_t clear_user(void __user *addr, __kernel_size_t size)
+{
+	if (!access_ok(VERIFY_WRITE, addr, size))
+		return size;
+	return __clear_user(addr, size);
+}
 
 /* Optimized macros
  */
-#define access_ok(type,from,len)                                        \
-   (((signed long)(((long)get_fs().seg) &                               \
-                   ((long)(from) | (((long)from) + (len)) | len))) == 0)
-
 #define __get_user_asm(val, insn, addr, err)                         \
    {                                                                 \
                                                                      \
@@ -95,7 +117,6 @@ size_t clear_user(void __user *addr, __kernel_size_t size);
          default: __get_user_unknown(val, size, ptr, err); break;  \
       }                                                            \
    } while (0)
-
 
 #define __get_user(x,ptr)                                               \
    ({                                                                   \

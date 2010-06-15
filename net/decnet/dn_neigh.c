@@ -28,6 +28,7 @@
 #include <linux/module.h>
 #include <linux/socket.h>
 #include <linux/if_arp.h>
+#include <linux/slab.h>
 #include <linux/if_ether.h>
 #include <linux/init.h>
 #include <linux/proc_fs.h>
@@ -59,7 +60,7 @@ static int dn_phase3_output(struct sk_buff *);
 /*
  * For talking to broadcast devices: Ethernet & PPP
  */
-static struct neigh_ops dn_long_ops = {
+static const struct neigh_ops dn_long_ops = {
 	.family =		AF_DECnet,
 	.error_report =		dn_long_error_report,
 	.output =		dn_long_output,
@@ -71,7 +72,7 @@ static struct neigh_ops dn_long_ops = {
 /*
  * For talking to pointopoint and multidrop devices: DDCMP and X.25
  */
-static struct neigh_ops dn_short_ops = {
+static const struct neigh_ops dn_short_ops = {
 	.family =		AF_DECnet,
 	.error_report =		dn_short_error_report,
 	.output =		dn_short_output,
@@ -83,7 +84,7 @@ static struct neigh_ops dn_short_ops = {
 /*
  * For talking to DECnet phase III nodes
  */
-static struct neigh_ops dn_phase3_ops = {
+static const struct neigh_ops dn_phase3_ops = {
 	.family =		AF_DECnet,
 	.error_report =		dn_short_error_report, /* Can use short version here */
 	.output =		dn_phase3_output,
@@ -204,7 +205,7 @@ static void dn_short_error_report(struct neighbour *neigh, struct sk_buff *skb)
 
 static int dn_neigh_output_packet(struct sk_buff *skb)
 {
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct dn_route *rt = (struct dn_route *)dst;
 	struct neighbour *neigh = dst->neighbour;
 	struct net_device *dev = neigh->dev;
@@ -224,7 +225,7 @@ static int dn_neigh_output_packet(struct sk_buff *skb)
 
 static int dn_long_output(struct sk_buff *skb)
 {
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct neighbour *neigh = dst->neighbour;
 	struct net_device *dev = neigh->dev;
 	int headroom = dev->hard_header_len + sizeof(struct dn_long_packet) + 3;
@@ -270,7 +271,7 @@ static int dn_long_output(struct sk_buff *skb)
 
 static int dn_short_output(struct sk_buff *skb)
 {
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct neighbour *neigh = dst->neighbour;
 	struct net_device *dev = neigh->dev;
 	int headroom = dev->hard_header_len + sizeof(struct dn_short_packet) + 2;
@@ -313,7 +314,7 @@ static int dn_short_output(struct sk_buff *skb)
  */
 static int dn_phase3_output(struct sk_buff *skb)
 {
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct neighbour *neigh = dst->neighbour;
 	struct net_device *dev = neigh->dev;
 	int headroom = dev->hard_header_len + sizeof(struct dn_short_packet) + 2;

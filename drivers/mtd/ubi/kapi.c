@@ -22,8 +22,29 @@
 
 #include <linux/module.h>
 #include <linux/err.h>
+#include <linux/slab.h>
+#include <linux/namei.h>
+#include <linux/fs.h>
 #include <asm/div64.h>
 #include "ubi.h"
+
+/**
+ * ubi_do_get_device_info - get information about UBI device.
+ * @ubi: UBI device description object
+ * @di: the information is stored here
+ *
+ * This function is the same as 'ubi_get_device_info()', but it assumes the UBI
+ * device is locked and cannot disappear.
+ */
+void ubi_do_get_device_info(struct ubi_device *ubi, struct ubi_device_info *di)
+{
+	di->ubi_num = ubi->ubi_num;
+	di->leb_size = ubi->leb_size;
+	di->min_io_size = ubi->min_io_size;
+	di->ro_mode = ubi->ro_mode;
+	di->cdev = ubi->cdev.dev;
+}
+EXPORT_SYMBOL_GPL(ubi_do_get_device_info);
 
 /**
  * ubi_get_device_info - get information about UBI device.
@@ -39,33 +60,24 @@ int ubi_get_device_info(int ubi_num, struct ubi_device_info *di)
 
 	if (ubi_num < 0 || ubi_num >= UBI_MAX_DEVICES)
 		return -EINVAL;
-
 	ubi = ubi_get_device(ubi_num);
 	if (!ubi)
 		return -ENODEV;
-
-	di->ubi_num = ubi->ubi_num;
-	di->leb_size = ubi->leb_size;
-	di->min_io_size = ubi->min_io_size;
-	di->ro_mode = ubi->ro_mode;
-	di->cdev = ubi->cdev.dev;
-
+	ubi_do_get_device_info(ubi, di);
 	ubi_put_device(ubi);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ubi_get_device_info);
 
 /**
- * ubi_get_volume_info - get information about UBI volume.
- * @desc: volume descriptor
+ * ubi_do_get_volume_info - get information about UBI volume.
+ * @ubi: UBI device description object
+ * @vol: volume description object
  * @vi: the information is stored here
  */
-void ubi_get_volume_info(struct ubi_volume_desc *desc,
-			 struct ubi_volume_info *vi)
+void ubi_do_get_volume_info(struct ubi_device *ubi, struct ubi_volume *vol,
+			    struct ubi_volume_info *vi)
 {
-	const struct ubi_volume *vol = desc->vol;
-	const struct ubi_device *ubi = vol->ubi;
-
 	vi->vol_id = vol->vol_id;
 	vi->ubi_num = ubi->ubi_num;
 	vi->size = vol->reserved_pebs;
@@ -78,6 +90,17 @@ void ubi_get_volume_info(struct ubi_volume_desc *desc,
 	vi->name_len = vol->name_len;
 	vi->name = vol->name;
 	vi->cdev = vol->cdev.dev;
+}
+
+/**
+ * ubi_get_volume_info - get information about UBI volume.
+ * @desc: volume descriptor
+ * @vi: the information is stored here
+ */
+void ubi_get_volume_info(struct ubi_volume_desc *desc,
+			 struct ubi_volume_info *vi)
+{
+	ubi_do_get_volume_info(desc->vol->ubi, desc->vol, vi);
 }
 EXPORT_SYMBOL_GPL(ubi_get_volume_info);
 
@@ -106,7 +129,7 @@ struct ubi_volume_desc *ubi_open_volume(int ubi_num, int vol_id, int mode)
 	struct ubi_device *ubi;
 	struct ubi_volume *vol;
 
-	dbg_gen("open device %d volume %d, mode %d", ubi_num, vol_id, mode);
+	dbg_gen("open device %d, volume %d, mode %d", ubi_num, vol_id, mode);
 
 	if (ubi_num < 0 || ubi_num >= UBI_MAX_DEVICES)
 		return ERR_PTR(-EINVAL);
@@ -196,6 +219,8 @@ out_free:
 	kfree(desc);
 out_put_ubi:
 	ubi_put_device(ubi);
+	dbg_err("cannot open device %d, volume %d, error %d",
+		ubi_num, vol_id, err);
 	return ERR_PTR(err);
 }
 EXPORT_SYMBOL_GPL(ubi_open_volume);
@@ -215,7 +240,7 @@ struct ubi_volume_desc *ubi_open_volume_nm(int ubi_num, const char *name,
 	struct ubi_device *ubi;
 	struct ubi_volume_desc *ret;
 
-	dbg_gen("open volume %s, mode %d", name, mode);
+	dbg_gen("open device %d, volume %s, mode %d", ubi_num, name, mode);
 
 	if (!name)
 		return ERR_PTR(-EINVAL);
@@ -258,6 +283,43 @@ struct ubi_volume_desc *ubi_open_volume_nm(int ubi_num, const char *name,
 EXPORT_SYMBOL_GPL(ubi_open_volume_nm);
 
 /**
+ * ubi_open_volume_path - open UBI volume by its character device node path.
+ * @pathname: volume character device node path
+ * @mode: open mode
+ *
+ * This function is similar to 'ubi_open_volume()', but opens a volume the path
+ * to its character device node.
+ */
+struct ubi_volume_desc *ubi_open_volume_path(const char *pathname, int mode)
+{
+	int error, ubi_num, vol_id, mod;
+	struct inode *inode;
+	struct path path;
+
+	dbg_gen("open volume %s, mode %d", pathname, mode);
+
+	if (!pathname || !*pathname)
+		return ERR_PTR(-EINVAL);
+
+	error = kern_path(pathname, LOOKUP_FOLLOW, &path);
+	if (error)
+		return ERR_PTR(error);
+
+	inode = path.dentry->d_inode;
+	mod = inode->i_mode;
+	ubi_num = ubi_major2num(imajor(inode));
+	vol_id = iminor(inode) - 1;
+	path_put(&path);
+
+	if (!S_ISCHR(mod))
+		return ERR_PTR(-EINVAL);
+	if (vol_id >= 0 && ubi_num >= 0)
+		return ubi_open_volume(ubi_num, vol_id, mode);
+	return ERR_PTR(-ENODEV);
+}
+EXPORT_SYMBOL_GPL(ubi_open_volume_path);
+
+/**
  * ubi_close_volume - close UBI volume.
  * @desc: volume descriptor
  */
@@ -266,7 +328,8 @@ void ubi_close_volume(struct ubi_volume_desc *desc)
 	struct ubi_volume *vol = desc->vol;
 	struct ubi_device *ubi = vol->ubi;
 
-	dbg_gen("close volume %d, mode %d", vol->vol_id, desc->mode);
+	dbg_gen("close device %d, volume %d, mode %d",
+		ubi->ubi_num, vol->vol_id, desc->mode);
 
 	spin_lock(&ubi->volumes_lock);
 	switch (desc->mode) {
@@ -558,7 +621,7 @@ int ubi_leb_unmap(struct ubi_volume_desc *desc, int lnum)
 EXPORT_SYMBOL_GPL(ubi_leb_unmap);
 
 /**
- * ubi_leb_map - map logical erasblock to a physical eraseblock.
+ * ubi_leb_map - map logical eraseblock to a physical eraseblock.
  * @desc: volume descriptor
  * @lnum: logical eraseblock number
  * @dtype: expected data type
@@ -656,3 +719,59 @@ int ubi_sync(int ubi_num)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(ubi_sync);
+
+BLOCKING_NOTIFIER_HEAD(ubi_notifiers);
+
+/**
+ * ubi_register_volume_notifier - register a volume notifier.
+ * @nb: the notifier description object
+ * @ignore_existing: if non-zero, do not send "added" notification for all
+ *                   already existing volumes
+ *
+ * This function registers a volume notifier, which means that
+ * 'nb->notifier_call()' will be invoked when an UBI  volume is created,
+ * removed, re-sized, re-named, or updated. The first argument of the function
+ * is the notification type. The second argument is pointer to a
+ * &struct ubi_notification object which describes the notification event.
+ * Using UBI API from the volume notifier is prohibited.
+ *
+ * This function returns zero in case of success and a negative error code
+ * in case of failure.
+ */
+int ubi_register_volume_notifier(struct notifier_block *nb,
+				 int ignore_existing)
+{
+	int err;
+
+	err = blocking_notifier_chain_register(&ubi_notifiers, nb);
+	if (err != 0)
+		return err;
+	if (ignore_existing)
+		return 0;
+
+	/*
+	 * We are going to walk all UBI devices and all volumes, and
+	 * notify the user about existing volumes by the %UBI_VOLUME_ADDED
+	 * event. We have to lock the @ubi_devices_mutex to make sure UBI
+	 * devices do not disappear.
+	 */
+	mutex_lock(&ubi_devices_mutex);
+	ubi_enumerate_volumes(nb);
+	mutex_unlock(&ubi_devices_mutex);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(ubi_register_volume_notifier);
+
+/**
+ * ubi_unregister_volume_notifier - unregister the volume notifier.
+ * @nb: the notifier description object
+ *
+ * This function unregisters volume notifier @nm and returns zero in case of
+ * success and a negative error code in case of failure.
+ */
+int ubi_unregister_volume_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&ubi_notifiers, nb);
+}
+EXPORT_SYMBOL_GPL(ubi_unregister_volume_notifier);

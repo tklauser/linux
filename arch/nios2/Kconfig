@@ -5,54 +5,68 @@
 
 menu "NiosII Configuration"
 
+source "arch/nios2/boards/Kconfig"
+
+menu "NiosII specific compiler options"
+
+config NIOS2_HW_MUL_SUPPORT
+	bool "Enable MUL instruction"
+	default y
+	help
+	  Enables the -mhw-mul compiler flag.
+
+config NIOS2_HW_MULX_SUPPORT
+	bool "Enable MULX instruction"
+	default n
+	help
+	  Enables the -mhw-mulx compiler flag.
+
+config NIOS2_HW_DIV_SUPPORT
+	bool "Enable DIV instruction"
+	default n
+	help
+	  Enables the -mhw-div compiler flag.
+
+endmenu
+
+config OF
+	bool "Devicetree support"
+	def_bool n
+	select DTC
+	select OF_FLATTREE
+
+config DTC
+	bool
+	depends on OF
+
+config NIOS2_UIMAGE_FLASHADDR
+	hex "Offset address for uImage.flash"
+	default 0x1C80000
+	help
+	  uImage.flash is simply an srec of the uImage with an offset. Suitable
+	  for use with the nios2-flash-programmer tool.
+
 choice
-	prompt "NiosII FPGA configuration"
-
-config NIOS2_DEFAULT_MMU
-	bool "MMU_DEFAULT"
+	prompt "Kernel executes from"
 	help
-	  The default mmu config for the v17 release
+	  Choose the memory type that the kernel will be running in.
 
-config NIOS2_MAXIMUM_MMU
-	bool "MAXIMUM_MMU"
+config RAMKERNEL
+	bool "RAM"
 	help
-	  The maximum mmu config for the v17 release
-
-config NIOS2_CUSTOM_FPGA
-	bool "CUSTOM_FPGA"
-	help
-	  Adapt the kernel to custom FPGA configuration. You will
-          need to generate a header file for your desgin using the
-	  "sopc-create-header-files" scripts provided by Altera.
-	  The file "include/asm-nios2/custom_fpga.h" will be used.
+	  The kernel will be resident in RAM when running.
 
 endchoice
 
-config NIOS2_HW_MUL_SUPPORT
-       bool "HW mul support"
-       default y
-       help
-	Enables the -mhw-mul compiler flag.
-
-config NIOS2_HW_MULX_SUPPORT
-       bool "HW mulx support"
-       default n
-       help
-	Enables the -mhw-mulx compiler flag.
-
-config NIOS2_HW_DIV_SUPPORT
-       bool "HW div support"
-       default n
-       help
-	Enables the -mhw-div compiler flag.
-
-config NIOS2_UIMAGE_FLASHADDR
-       hex "Offset address for uImage.flash"
-       default 0x1C80000
-       help
-       	  uImage.flash is simply an srec of the uImage with an
-          offset. Suitable for use with the nios2-flash-programmer
-          tool.
+config CMDLINE
+	string "Default kernel command string"
+	default ""
+	help
+	  On some platforms, there is currently no way for the boot loader to
+	  pass arguments to the kernel. For these platforms, you can supply
+	  some command-line options at build time by entering them here.  In
+	  other cases you can specify kernel args so that you don't have
+	  to set them up in board prom initialization routines.
 
 config PASS_CMDLINE
 	bool "Passed kernel command line from u-boot"
@@ -77,75 +91,47 @@ config AVALON_DMA
 	  Support the Altera DMA controller with Avalon interface, so drivers
 	  for DMA-able devices can use this interface.
 
-config GENERIC_GPIO
-	bool "GPIO interface"
-	default n
-	help
-    	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
-    	  than the Altera PIO. The spinlock is no longer needed.
-
-config PIO_DEVICES
-       tristate "Enable NiosII PIO driver"
-       default y
-       help
-
-config PIO_LED
-       bool "Enable NiosII PIO led driver"
-       depends on PIO_DEVICES
-       default y
-       help
-         Enable the example PIO led driver (which just
-         displays a timer value on the 8 leds)
-
-config EARLY_PRINTK
-       bool "Activate early kernel debugging"
-       default y
-       help
-         Enable early printk on console
-
 source "arch/nios2/drivers/Kconfig"
 
 endmenu
 
 config NIOS2
-	bool
-	default y
+	def_bool y
 	# Horrible source of confusion.  Die, die, die ...
 	select EMBEDDED
+	select USB_ARCH_HAS_HCD
 
 config MMU
-       bool
-       default y
-
+	def_bool y
 
 config RWSEM_GENERIC_SPINLOCK
-	bool
-	default y
+	def_bool y
 
 #
 # FIXME: Should UID16 really be set ?
 #
 config UID16
-       bool
-       default y
+	def_bool y
+
+config GENERIC_CSUM
+	def_bool y
 
 config GENERIC_FIND_NEXT_BIT
-	bool
-	default y
+	def_bool y
 
 config GENERIC_HWEIGHT
-	bool
-	default y
+	def_bool y
 
 config GENERIC_CALIBRATE_DELAY
-	bool
-	default y
+	def_bool y
 
 config GENERIC_TIME
-	bool
-	default y
+	def_bool y
 
 config GENERIC_HARDIRQS
+	def_bool y
+
+config GENERIC_HARDIRQS_NO__DO_IRQ
 	def_bool y
 
 config GENERIC_IRQ_PROBE
@@ -155,25 +141,21 @@ config NO_IOPORT
 	def_bool y
 
 config ZONE_DMA
-       bool
-       default y
+	def_bool y
 
 config BINFMT_ELF
-       bool
-       default y
+	def_bool y
 
 # FIXME: really !
 config NOT_COHERENT_CACHE
-       bool
-       default n
+	def_bool n
 
 config HZ
-       int
-       default 100
+	int
+	default 100
 
 config TRACE_IRQFLAGS_SUPPORT
-       bool
-       default n
+	def_bool n
 
 source "mm/Kconfig"
 

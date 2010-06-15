@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2008 Intel Corporation.
+  Copyright(c) 1999 - 2009 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -193,7 +193,11 @@ enum e1e_registers {
 	E1000_RXCSUM   = 0x05000, /* Rx Checksum Control - RW */
 	E1000_RFCTL    = 0x05008, /* Receive Filter Control */
 	E1000_MTA      = 0x05200, /* Multicast Table Array - RW Array */
-	E1000_RA       = 0x05400, /* Receive Address - RW Array */
+	E1000_RAL_BASE = 0x05400, /* Receive Address Low - RW */
+#define E1000_RAL(_n)   (E1000_RAL_BASE + ((_n) * 8))
+#define E1000_RA        (E1000_RAL(0))
+	E1000_RAH_BASE = 0x05404, /* Receive Address High - RW */
+#define E1000_RAH(_n)   (E1000_RAH_BASE + ((_n) * 8))
 	E1000_VFTA     = 0x05600, /* VLAN Filter Table Array - RW Array */
 	E1000_WUC      = 0x05800, /* Wakeup Control - RW */
 	E1000_WUFC     = 0x05808, /* Wakeup Filter Control - RW */
@@ -210,10 +214,12 @@ enum e1e_registers {
 	E1000_FACTPS    = 0x05B30, /* Function Active and Power State to MNG */
 	E1000_SWSM      = 0x05B50, /* SW Semaphore */
 	E1000_FWSM      = 0x05B54, /* FW Semaphore */
+	E1000_SWSM2     = 0x05B58, /* Driver-only SW semaphore */
+	E1000_CRC_OFFSET = 0x05F50, /* CRC Offset register */
 	E1000_HICR      = 0x08F00, /* Host Interface Control */
 };
 
-/* RSS registers */
+#define E1000_MAX_PHY_ADDR		4
 
 /* IGP01E1000 Specific Registers */
 #define IGP01E1000_PHY_PORT_CONFIG	0x10 /* Port Config */
@@ -253,7 +259,7 @@ enum e1e_registers {
 #define IGP01E1000_PLHR_SS_DOWNGRADE	0x8000
 
 #define IGP01E1000_PSSR_POLARITY_REVERSED	0x0002
-#define IGP01E1000_PSSR_MDIX			0x0008
+#define IGP01E1000_PSSR_MDIX			0x0800
 #define IGP01E1000_PSSR_SPEED_MASK		0xC000
 #define IGP01E1000_PSSR_SPEED_1000MBPS		0xC000
 
@@ -296,7 +302,12 @@ enum e1e_registers {
 #define E1000_KMRNCTRLSTA_OFFSET_SHIFT	16
 #define E1000_KMRNCTRLSTA_REN		0x00200000
 #define E1000_KMRNCTRLSTA_DIAG_OFFSET	0x3    /* Kumeran Diagnostic */
+#define E1000_KMRNCTRLSTA_TIMEOUTS	0x4    /* Kumeran Timeouts */
+#define E1000_KMRNCTRLSTA_INBAND_PARAM	0x9    /* Kumeran InBand Parameters */
 #define E1000_KMRNCTRLSTA_DIAG_NELPBK	0x1000 /* Nearend Loopback mode */
+#define E1000_KMRNCTRLSTA_K1_CONFIG	0x7
+#define E1000_KMRNCTRLSTA_K1_ENABLE	0x140E
+#define E1000_KMRNCTRLSTA_K1_DISABLE	0x1400
 
 #define IFE_PHY_EXTENDED_STATUS_CONTROL	0x10
 #define IFE_PHY_SPECIAL_CONTROL		0x11 /* 100BaseTx PHY Special Control */
@@ -347,6 +358,7 @@ enum e1e_registers {
 #define E1000_DEV_ID_80003ES2LAN_COPPER_SPT	0x10BA
 #define E1000_DEV_ID_80003ES2LAN_SERDES_SPT	0x10BB
 
+#define E1000_DEV_ID_ICH8_82567V_3		0x1501
 #define E1000_DEV_ID_ICH8_IGP_M_AMT		0x1049
 #define E1000_DEV_ID_ICH8_IGP_AMT		0x104A
 #define E1000_DEV_ID_ICH8_IGP_C			0x104B
@@ -368,10 +380,17 @@ enum e1e_registers {
 #define E1000_DEV_ID_ICH10_R_BM_V		0x10CE
 #define E1000_DEV_ID_ICH10_D_BM_LM		0x10DE
 #define E1000_DEV_ID_ICH10_D_BM_LF		0x10DF
+#define E1000_DEV_ID_PCH_M_HV_LM		0x10EA
+#define E1000_DEV_ID_PCH_M_HV_LC		0x10EB
+#define E1000_DEV_ID_PCH_D_HV_DM		0x10EF
+#define E1000_DEV_ID_PCH_D_HV_DC		0x10F0
 
 #define E1000_REVISION_4 4
 
 #define E1000_FUNC_1 1
+
+#define E1000_ALT_MAC_ADDRESS_OFFSET_LAN0   0
+#define E1000_ALT_MAC_ADDRESS_OFFSET_LAN1   3
 
 enum e1000_mac_type {
 	e1000_82571,
@@ -383,6 +402,7 @@ enum e1000_mac_type {
 	e1000_ich8lan,
 	e1000_ich9lan,
 	e1000_ich10lan,
+	e1000_pchlan,
 };
 
 enum e1000_media_type {
@@ -417,6 +437,8 @@ enum e1000_phy_type {
 	e1000_phy_igp_3,
 	e1000_phy_ife,
 	e1000_phy_bm,
+	e1000_phy_82578,
+	e1000_phy_82577,
 };
 
 enum e1000_bus_width {
@@ -720,48 +742,59 @@ struct e1000_host_mng_command_info {
 
 /* Function pointers and static data for the MAC. */
 struct e1000_mac_operations {
+	s32  (*id_led_init)(struct e1000_hw *);
 	bool (*check_mng_mode)(struct e1000_hw *);
 	s32  (*check_for_link)(struct e1000_hw *);
 	s32  (*cleanup_led)(struct e1000_hw *);
 	void (*clear_hw_cntrs)(struct e1000_hw *);
+	void (*clear_vfta)(struct e1000_hw *);
 	s32  (*get_bus_info)(struct e1000_hw *);
+	void (*set_lan_id)(struct e1000_hw *);
 	s32  (*get_link_up_info)(struct e1000_hw *, u16 *, u16 *);
 	s32  (*led_on)(struct e1000_hw *);
 	s32  (*led_off)(struct e1000_hw *);
-	void (*update_mc_addr_list)(struct e1000_hw *, u8 *, u32, u32, u32);
+	void (*update_mc_addr_list)(struct e1000_hw *, u8 *, u32);
 	s32  (*reset_hw)(struct e1000_hw *);
 	s32  (*init_hw)(struct e1000_hw *);
 	s32  (*setup_link)(struct e1000_hw *);
 	s32  (*setup_physical_interface)(struct e1000_hw *);
+	s32  (*setup_led)(struct e1000_hw *);
+	void (*write_vfta)(struct e1000_hw *, u32, u32);
+	s32  (*read_mac_addr)(struct e1000_hw *);
 };
 
 /* Function pointers for the PHY. */
 struct e1000_phy_operations {
-	s32  (*acquire_phy)(struct e1000_hw *);
+	s32  (*acquire)(struct e1000_hw *);
+	s32  (*cfg_on_link_up)(struct e1000_hw *);
+	s32  (*check_polarity)(struct e1000_hw *);
 	s32  (*check_reset_block)(struct e1000_hw *);
-	s32  (*commit_phy)(struct e1000_hw *);
+	s32  (*commit)(struct e1000_hw *);
 	s32  (*force_speed_duplex)(struct e1000_hw *);
 	s32  (*get_cfg_done)(struct e1000_hw *hw);
 	s32  (*get_cable_length)(struct e1000_hw *);
-	s32  (*get_phy_info)(struct e1000_hw *);
-	s32  (*read_phy_reg)(struct e1000_hw *, u32, u16 *);
-	void (*release_phy)(struct e1000_hw *);
-	s32  (*reset_phy)(struct e1000_hw *);
+	s32  (*get_info)(struct e1000_hw *);
+	s32  (*read_reg)(struct e1000_hw *, u32, u16 *);
+	s32  (*read_reg_locked)(struct e1000_hw *, u32, u16 *);
+	void (*release)(struct e1000_hw *);
+	s32  (*reset)(struct e1000_hw *);
 	s32  (*set_d0_lplu_state)(struct e1000_hw *, bool);
 	s32  (*set_d3_lplu_state)(struct e1000_hw *, bool);
-	s32  (*write_phy_reg)(struct e1000_hw *, u32, u16);
-	s32  (*cfg_on_link_up)(struct e1000_hw *);
+	s32  (*write_reg)(struct e1000_hw *, u32, u16);
+	s32  (*write_reg_locked)(struct e1000_hw *, u32, u16);
+	void (*power_up)(struct e1000_hw *);
+	void (*power_down)(struct e1000_hw *);
 };
 
 /* Function pointers for the NVM. */
 struct e1000_nvm_operations {
-	s32  (*acquire_nvm)(struct e1000_hw *);
-	s32  (*read_nvm)(struct e1000_hw *, u16, u16, u16 *);
-	void (*release_nvm)(struct e1000_hw *);
-	s32  (*update_nvm)(struct e1000_hw *);
+	s32  (*acquire)(struct e1000_hw *);
+	s32  (*read)(struct e1000_hw *, u16, u16, u16 *);
+	void (*release)(struct e1000_hw *);
+	s32  (*update)(struct e1000_hw *);
 	s32  (*valid_led_default)(struct e1000_hw *, u16 *);
-	s32  (*validate_nvm)(struct e1000_hw *);
-	s32  (*write_nvm)(struct e1000_hw *, u16, u16, u16 *);
+	s32  (*validate)(struct e1000_hw *);
+	s32  (*write)(struct e1000_hw *, u16, u16, u16 *);
 };
 
 struct e1000_mac_info {
@@ -786,10 +819,15 @@ struct e1000_mac_info {
 	u16 ifs_ratio;
 	u16 ifs_step_size;
 	u16 mta_reg_count;
+
+	/* Maximum size of the MTA register table in all supported adapters */
+	#define MAX_MTA_REG 128
+	u32 mta_shadow[MAX_MTA_REG];
 	u16 rar_entry_count;
 
 	u8  forced_speed_duplex;
 
+	bool adaptive_ifs;
 	bool arc_subsystem_valid;
 	bool autoneg;
 	bool autoneg_failed;
@@ -868,7 +906,11 @@ struct e1000_fc_info {
 
 struct e1000_dev_spec_82571 {
 	bool laa_is_present;
-	bool alt_mac_addr_is_present;
+	u32 smb_counter;
+};
+
+struct e1000_dev_spec_80003es2lan {
+	bool  mdic_wa_enable;
 };
 
 struct e1000_shadow_ram {
@@ -881,6 +923,7 @@ struct e1000_shadow_ram {
 struct e1000_dev_spec_ich8lan {
 	bool kmrn_lock_loss_workaround_enabled;
 	struct e1000_shadow_ram shadow_ram[E1000_ICH8_SHADOW_RAM_WORDS];
+	bool nvm_k1_enabled;
 };
 
 struct e1000_hw {
@@ -898,19 +941,9 @@ struct e1000_hw {
 
 	union {
 		struct e1000_dev_spec_82571	e82571;
+		struct e1000_dev_spec_80003es2lan e80003es2lan;
 		struct e1000_dev_spec_ich8lan	ich8lan;
 	} dev_spec;
 };
-
-#ifdef DEBUG
-#define hw_dbg(hw, format, arg...) \
-	printk(KERN_DEBUG "%s: " format, e1000e_get_hw_dev_name(hw), ##arg)
-#else
-static inline int __attribute__ ((format (printf, 2, 3)))
-hw_dbg(struct e1000_hw *hw, const char *format, ...)
-{
-	return 0;
-}
-#endif
 
 #endif

@@ -69,7 +69,7 @@ static inline void get_mmu_context(struct mm_struct *mm, unsigned int cpu)
 		 * We exhaust ASID of this version.
 		 * Flush all TLB and start new cycle.
 		 */
-		flush_tlb_all();
+		local_flush_tlb_all();
 
 #ifdef CONFIG_SUPERH64
 		/*
@@ -122,30 +122,30 @@ static inline void switch_mm(struct mm_struct *prev,
 	unsigned int cpu = smp_processor_id();
 
 	if (likely(prev != next)) {
-		cpu_set(cpu, next->cpu_vm_mask);
+		cpumask_set_cpu(cpu, mm_cpumask(next));
 		set_TTB(next->pgd);
 		activate_context(next, cpu);
 	} else
-		if (!cpu_test_and_set(cpu, next->cpu_vm_mask))
+		if (!cpumask_test_and_set_cpu(cpu, mm_cpumask(next)))
 			activate_context(next, cpu);
 }
+
+#define activate_mm(prev, next)		switch_mm((prev),(next),NULL)
+#define deactivate_mm(tsk,mm)		do { } while (0)
+#define enter_lazy_tlb(mm,tsk)		do { } while (0)
+
 #else
-#define get_mmu_context(mm)		do { } while (0)
-#define init_new_context(tsk,mm)	(0)
-#define destroy_context(mm)		do { } while (0)
+
 #define set_asid(asid)			do { } while (0)
 #define get_asid()			(0)
 #define cpu_asid(cpu, mm)		({ (void)cpu; NO_CONTEXT; })
 #define switch_and_save_asid(asid)	(0)
 #define set_TTB(pgd)			do { } while (0)
 #define get_TTB()			(0)
-#define activate_context(mm,cpu)	do { } while (0)
-#define switch_mm(prev,next,tsk)	do { } while (0)
-#endif /* CONFIG_MMU */
 
-#define activate_mm(prev, next)		switch_mm((prev),(next),NULL)
-#define deactivate_mm(tsk,mm)		do { } while (0)
-#define enter_lazy_tlb(mm,tsk)		do { } while (0)
+#include <asm-generic/mmu_context.h>
+
+#endif /* CONFIG_MMU */
 
 #if defined(CONFIG_CPU_SH3) || defined(CONFIG_CPU_SH4)
 /*
@@ -158,7 +158,7 @@ static inline void enable_mmu(void)
 	unsigned int cpu = smp_processor_id();
 
 	/* Enable MMU */
-	ctrl_outl(MMU_CONTROL_INIT, MMUCR);
+	__raw_writel(MMU_CONTROL_INIT, MMUCR);
 	ctrl_barrier();
 
 	if (asid_cache(cpu) == NO_CONTEXT)
@@ -171,9 +171,9 @@ static inline void disable_mmu(void)
 {
 	unsigned long cr;
 
-	cr = ctrl_inl(MMUCR);
+	cr = __raw_readl(MMUCR);
 	cr &= ~MMU_CONTROL_INIT;
-	ctrl_outl(cr, MMUCR);
+	__raw_writel(cr, MMUCR);
 
 	ctrl_barrier();
 }

@@ -24,30 +24,10 @@
  */
 
 #include <linux/fs.h>
-#include <linux/buffer_head.h>	/* for sync_mapping_buffers() */
+#include <linux/quotaops.h>
 
 #include "ufs_fs.h"
 #include "ufs.h"
-
-
-int ufs_sync_file(struct file *file, struct dentry *dentry, int datasync)
-{
-	struct inode *inode = dentry->d_inode;
-	int err;
-	int ret;
-
-	ret = sync_mapping_buffers(inode->i_mapping);
-	if (!(inode->i_state & I_DIRTY))
-		return ret;
-	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC))
-		return ret;
-
-	err = ufs_sync_inode(inode);
-	if (ret == 0)
-		ret = err;
-	return ret;
-}
-
 
 /*
  * We have mostly NULL's here: the current defaults are ok for
@@ -61,7 +41,7 @@ const struct file_operations ufs_file_operations = {
 	.write		= do_sync_write,
 	.aio_write	= generic_file_aio_write,
 	.mmap		= generic_file_mmap,
-	.open           = generic_file_open,
-	.fsync		= ufs_sync_file,
+	.open           = dquot_file_open,
+	.fsync		= simple_fsync,
 	.splice_read	= generic_file_splice_read,
 };

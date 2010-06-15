@@ -29,6 +29,7 @@
 #include <linux/types.h>
 #include <linux/list.h>
 #include <linux/inet.h>
+#include <linux/slab.h>
 #include <linux/file.h>
 #include <linux/blkdev.h>
 #include <linux/crypto.h>
@@ -440,20 +441,20 @@ void iscsi_tcp_cleanup_task(struct iscsi_task *task)
 	struct iscsi_tcp_task *tcp_task = task->dd_data;
 	struct iscsi_r2t_info *r2t;
 
-	/* nothing to do for mgmt or pending tasks */
-	if (!task->sc || task->state == ISCSI_TASK_PENDING)
+	/* nothing to do for mgmt */
+	if (!task->sc)
 		return;
 
 	/* flush task's r2t queues */
-	while (__kfifo_get(tcp_task->r2tqueue, (void*)&r2t, sizeof(void*))) {
-		__kfifo_put(tcp_task->r2tpool.queue, (void*)&r2t,
+	while (kfifo_out(&tcp_task->r2tqueue, (void*)&r2t, sizeof(void*))) {
+		kfifo_in(&tcp_task->r2tpool.queue, (void*)&r2t,
 			    sizeof(void*));
 		ISCSI_DBG_TCP(task->conn, "pending r2t dropped\n");
 	}
 
 	r2t = tcp_task->r2t;
 	if (r2t != NULL) {
-		__kfifo_put(tcp_task->r2tpool.queue, (void*)&r2t,
+		kfifo_in(&tcp_task->r2tpool.queue, (void*)&r2t,
 			    sizeof(void*));
 		tcp_task->r2t = NULL;
 	}
@@ -473,7 +474,13 @@ static int iscsi_tcp_data_in(struct iscsi_conn *conn, struct iscsi_task *task)
 	int datasn = be32_to_cpu(rhdr->datasn);
 	unsigned total_in_length = scsi_in(task->sc)->length;
 
-	iscsi_update_cmdsn(conn->session, (struct iscsi_nopin*)rhdr);
+	/*
+	 * lib iscsi will update this in the completion handling if there
+	 * is status.
+	 */
+	if (!(rhdr->flags & ISCSI_FLAG_DATA_STATUS))
+		iscsi_update_cmdsn(conn->session, (struct iscsi_nopin*)rhdr);
+
 	if (tcp_conn->in.datalen == 0)
 		return 0;
 
@@ -535,7 +542,7 @@ static int iscsi_tcp_r2t_rsp(struct iscsi_conn *conn, struct iscsi_task *task)
 		return 0;
 	}
 
-	rc = __kfifo_get(tcp_task->r2tpool.queue, (void*)&r2t, sizeof(void*));
+	rc = kfifo_out(&tcp_task->r2tpool.queue, (void*)&r2t, sizeof(void*));
 	if (!rc) {
 		iscsi_conn_printk(KERN_ERR, conn, "Could not allocate R2T. "
 				  "Target has sent more R2Ts than it "
@@ -548,7 +555,7 @@ static int iscsi_tcp_r2t_rsp(struct iscsi_conn *conn, struct iscsi_task *task)
 	if (r2t->data_length == 0) {
 		iscsi_conn_printk(KERN_ERR, conn,
 				  "invalid R2T with zero data len\n");
-		__kfifo_put(tcp_task->r2tpool.queue, (void*)&r2t,
+		kfifo_in(&tcp_task->r2tpool.queue, (void*)&r2t,
 			    sizeof(void*));
 		return ISCSI_ERR_DATALEN;
 	}
@@ -564,7 +571,7 @@ static int iscsi_tcp_r2t_rsp(struct iscsi_conn *conn, struct iscsi_task *task)
 				  "invalid R2T with data len %u at offset %u "
 				  "and total length %d\n", r2t->data_length,
 				  r2t->data_offset, scsi_out(task->sc)->length);
-		__kfifo_put(tcp_task->r2tpool.queue, (void*)&r2t,
+		kfifo_in(&tcp_task->r2tpool.queue, (void*)&r2t,
 			    sizeof(void*));
 		return ISCSI_ERR_DATALEN;
 	}
@@ -574,7 +581,7 @@ static int iscsi_tcp_r2t_rsp(struct iscsi_conn *conn, struct iscsi_task *task)
 	r2t->sent = 0;
 
 	tcp_task->exp_datasn = r2tsn + 1;
-	__kfifo_put(tcp_task->r2tqueue, (void*)&r2t, sizeof(void*));
+	kfifo_in(&tcp_task->r2tqueue, (void*)&r2t, sizeof(void*));
 	conn->r2t_pdus_cnt++;
 
 	iscsi_requeue_task(task);
@@ -680,6 +687,7 @@ iscsi_tcp_hdr_dissect(struct iscsi_conn *conn, struct iscsi_hdr *hdr)
 				     "offset=%d, datalen=%d)\n",
 				      tcp_task->data_offset,
 				      tcp_conn->in.datalen);
+			task->last_xfer = jiffies;
 			rc = iscsi_segment_seek_sg(&tcp_conn->in.segment,
 						   sdb->table.sgl,
 						   sdb->table.nents,
@@ -707,9 +715,10 @@ iscsi_tcp_hdr_dissect(struct iscsi_conn *conn, struct iscsi_hdr *hdr)
 			rc = ISCSI_ERR_BAD_ITT;
 		else if (ahslen)
 			rc = ISCSI_ERR_AHSLEN;
-		else if (task->sc->sc_data_direction == DMA_TO_DEVICE)
+		else if (task->sc->sc_data_direction == DMA_TO_DEVICE) {
+			task->last_xfer = jiffies;
 			rc = iscsi_tcp_r2t_rsp(conn, task);
-		else
+		} else
 			rc = ISCSI_ERR_PROTO;
 		spin_unlock(&conn->session->lock);
 		break;
@@ -857,6 +866,12 @@ int iscsi_tcp_recv_skb(struct iscsi_conn *conn, struct sk_buff *skb,
 	int rc = 0;
 
 	ISCSI_DBG_TCP(conn, "in %d bytes\n", skb->len - offset);
+	/*
+	 * Update for each skb instead of pdu, because over slow networks a
+	 * data_in's data could take a while to read in. We also want to
+	 * account for r2ts.
+	 */
+	conn->last_recv = jiffies;
 
 	if (unlikely(conn->suspend_rx)) {
 		ISCSI_DBG_TCP(conn, "Rx suspended!\n");
@@ -937,7 +952,7 @@ int iscsi_tcp_task_init(struct iscsi_task *task)
 		return conn->session->tt->init_pdu(task, 0, task->data_count);
 	}
 
-	BUG_ON(__kfifo_len(tcp_task->r2tqueue));
+	BUG_ON(kfifo_len(&tcp_task->r2tqueue));
 	tcp_task->exp_datasn = 0;
 
 	/* Prepare PDU, optionally w/ immediate data */
@@ -968,7 +983,7 @@ static struct iscsi_r2t_info *iscsi_tcp_get_curr_r2t(struct iscsi_task *task)
 			if (r2t->data_length <= r2t->sent) {
 				ISCSI_DBG_TCP(task->conn,
 					      "  done with r2t %p\n", r2t);
-				__kfifo_put(tcp_task->r2tpool.queue,
+				kfifo_in(&tcp_task->r2tpool.queue,
 					    (void *)&tcp_task->r2t,
 					    sizeof(void *));
 				tcp_task->r2t = r2t = NULL;
@@ -976,9 +991,12 @@ static struct iscsi_r2t_info *iscsi_tcp_get_curr_r2t(struct iscsi_task *task)
 		}
 
 		if (r2t == NULL) {
-			__kfifo_get(tcp_task->r2tqueue,
-				    (void *)&tcp_task->r2t, sizeof(void *));
-			r2t = tcp_task->r2t;
+			if (kfifo_out(&tcp_task->r2tqueue,
+			    (void *)&tcp_task->r2t, sizeof(void *)) !=
+			    sizeof(void *))
+				r2t = NULL;
+			else
+				r2t = tcp_task->r2t;
 		}
 		spin_unlock_bh(&session->lock);
 	}
@@ -990,7 +1008,7 @@ static struct iscsi_r2t_info *iscsi_tcp_get_curr_r2t(struct iscsi_task *task)
  * iscsi_tcp_task_xmit - xmit normal PDU task
  * @task: iscsi command task
  *
- * We're expected to return 0 when everything was transmitted succesfully,
+ * We're expected to return 0 when everything was transmitted successfully,
  * -EAGAIN if there's still data in the queue, or != 0 for any other kind
  * of error.
  */
@@ -1113,9 +1131,8 @@ int iscsi_tcp_r2tpool_alloc(struct iscsi_session *session)
 		}
 
 		/* R2T xmit queue */
-		tcp_task->r2tqueue = kfifo_alloc(
-		      session->max_r2t * 4 * sizeof(void*), GFP_KERNEL, NULL);
-		if (tcp_task->r2tqueue == ERR_PTR(-ENOMEM)) {
+		if (kfifo_alloc(&tcp_task->r2tqueue,
+		      session->max_r2t * 4 * sizeof(void*), GFP_KERNEL)) {
 			iscsi_pool_free(&tcp_task->r2tpool);
 			goto r2t_alloc_fail;
 		}
@@ -1128,7 +1145,7 @@ r2t_alloc_fail:
 		struct iscsi_task *task = session->cmds[i];
 		struct iscsi_tcp_task *tcp_task = task->dd_data;
 
-		kfifo_free(tcp_task->r2tqueue);
+		kfifo_free(&tcp_task->r2tqueue);
 		iscsi_pool_free(&tcp_task->r2tpool);
 	}
 	return -ENOMEM;
@@ -1143,7 +1160,7 @@ void iscsi_tcp_r2tpool_free(struct iscsi_session *session)
 		struct iscsi_task *task = session->cmds[i];
 		struct iscsi_tcp_task *tcp_task = task->dd_data;
 
-		kfifo_free(tcp_task->r2tqueue);
+		kfifo_free(&tcp_task->r2tqueue);
 		iscsi_pool_free(&tcp_task->r2tpool);
 	}
 }

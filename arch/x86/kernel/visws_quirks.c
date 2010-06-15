@@ -30,6 +30,7 @@
 #include <asm/setup.h>
 #include <asm/apic.h>
 #include <asm/e820.h>
+#include <asm/time.h>
 #include <asm/io.h>
 
 #include <linux/kernel_stat.h>
@@ -48,12 +49,7 @@ extern int no_broadcast;
 char visws_board_type	= -1;
 char visws_board_rev	= -1;
 
-int is_visws_box(void)
-{
-	return visws_board_type >= 0;
-}
-
-static int __init visws_time_init(void)
+static void __init visws_time_init(void)
 {
 	printk(KERN_INFO "Starting Cobalt Timer system clock\n");
 
@@ -66,21 +62,13 @@ static int __init visws_time_init(void)
 	/* Enable (unmask) the timer interrupt */
 	co_cpu_write(CO_CPU_CTRL, co_cpu_read(CO_CPU_CTRL) & ~CO_CTRL_TIMEMASK);
 
-	/*
-	 * Zero return means the generic timer setup code will set up
-	 * the standard vector:
-	 */
-	return 0;
+	setup_default_timer_irq();
 }
 
-static int __init visws_pre_intr_init(void)
+/* Replaces the default init_ISA_irqs in the generic setup */
+static void __init visws_pre_intr_init(void)
 {
 	init_VISWS_APIC_irqs();
-
-	/*
-	 * We dont want ISA irqs to be set up by the generic code:
-	 */
-	return 1;
 }
 
 /* Quirk for machine specific memory setup. */
@@ -156,12 +144,8 @@ static void visws_machine_power_off(void)
 	outl(PIIX_SPECIAL_STOP, 0xCFC);
 }
 
-static int __init visws_get_smp_config(unsigned int early)
+static void __init visws_get_smp_config(unsigned int early)
 {
-	/*
-	 * Prevent MP-table parsing by the generic code:
-	 */
-	return 1;
 }
 
 /*
@@ -194,7 +178,7 @@ static void __init MP_processor_info(struct mpc_cpu *m)
 		return;
 	}
 
-	apic_cpus = apic->apicid_to_cpu_present(m->apicid);
+	apic->apicid_to_cpu_present(m->apicid, &apic_cpus);
 	physids_or(phys_cpu_present_map, phys_cpu_present_map, apic_cpus);
 	/*
 	 * Validate version
@@ -208,7 +192,7 @@ static void __init MP_processor_info(struct mpc_cpu *m)
 	apic_version[m->apicid] = ver;
 }
 
-static int __init visws_find_smp_config(unsigned int reserve)
+static void __init visws_find_smp_config(void)
 {
 	struct mpc_cpu *mp = phys_to_virt(CO_CPU_TAB_PHYS);
 	unsigned short ncpus = readw(phys_to_virt(CO_CPU_NUM_PHYS));
@@ -230,21 +214,9 @@ static int __init visws_find_smp_config(unsigned int reserve)
 		MP_processor_info(mp++);
 
 	mp_lapic_addr = APIC_DEFAULT_PHYS_BASE;
-
-	return 1;
 }
 
-static int visws_trap_init(void);
-
-static struct x86_quirks visws_x86_quirks __initdata = {
-	.arch_time_init		= visws_time_init,
-	.arch_pre_intr_init	= visws_pre_intr_init,
-	.arch_memory_setup	= visws_memory_setup,
-	.arch_intr_init		= NULL,
-	.arch_trap_init		= visws_trap_init,
-	.mach_get_smp_config	= visws_get_smp_config,
-	.mach_find_smp_config	= visws_find_smp_config,
-};
+static void visws_trap_init(void);
 
 void __init visws_early_detect(void)
 {
@@ -257,11 +229,16 @@ void __init visws_early_detect(void)
 		return;
 
 	/*
-	 * Install special quirks for timer, interrupt and memory setup:
-	 * Fall back to generic behavior for traps:
-	 * Override generic MP-table parsing:
+	 * Override the default platform setup functions
 	 */
-	x86_quirks = &visws_x86_quirks;
+	x86_init.resources.memory_setup = visws_memory_setup;
+	x86_init.mpparse.get_smp_config = visws_get_smp_config;
+	x86_init.mpparse.find_smp_config = visws_find_smp_config;
+	x86_init.irqs.pre_vector_init = visws_pre_intr_init;
+	x86_init.irqs.trap_init = visws_trap_init;
+	x86_init.timers.timer_init = visws_time_init;
+	x86_init.pci.init = pci_visws_init;
+	x86_init.pci.init_irq = x86_init_noop;
 
 	/*
 	 * Install reboot quirks:
@@ -400,12 +377,10 @@ static __init void cobalt_init(void)
 		co_apic_read(CO_APIC_ID));
 }
 
-static int __init visws_trap_init(void)
+static void __init visws_trap_init(void)
 {
 	lithium_init();
 	cobalt_init();
-
-	return 1;
 }
 
 /*
@@ -508,7 +483,7 @@ static void end_cobalt_irq(unsigned int irq)
 }
 
 static struct irq_chip cobalt_irq_type = {
-	.typename =	"Cobalt-APIC",
+	.name =		"Cobalt-APIC",
 	.startup =	startup_cobalt_irq,
 	.shutdown =	disable_cobalt_irq,
 	.enable =	enable_cobalt_irq,
@@ -530,7 +505,7 @@ static struct irq_chip cobalt_irq_type = {
  */
 static unsigned int startup_piix4_master_irq(unsigned int irq)
 {
-	init_8259A(0);
+	legacy_pic->init(0);
 
 	return startup_cobalt_irq(irq);
 }
@@ -545,7 +520,7 @@ static void end_piix4_master_irq(unsigned int irq)
 }
 
 static struct irq_chip piix4_master_irq_type = {
-	.typename =	"PIIX4-master",
+	.name =		"PIIX4-master",
 	.startup =	startup_piix4_master_irq,
 	.ack =		ack_cobalt_irq,
 	.end =		end_piix4_master_irq,
@@ -553,10 +528,7 @@ static struct irq_chip piix4_master_irq_type = {
 
 
 static struct irq_chip piix4_virtual_irq_type = {
-	.typename =	"PIIX4-virtual",
-	.shutdown =	disable_8259A_irq,
-	.enable =	enable_8259A_irq,
-	.disable =	disable_8259A_irq,
+	.name =		"PIIX4-virtual",
 };
 
 
@@ -581,7 +553,7 @@ static irqreturn_t piix4_master_intr(int irq, void *dev_id)
 	struct irq_desc *desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&i8259A_lock, flags);
+	raw_spin_lock_irqsave(&i8259A_lock, flags);
 
 	/* Find out what's interrupting in the PIIX4 master 8259 */
 	outb(0x0c, 0x20);		/* OCW3 Poll command */
@@ -618,7 +590,7 @@ static irqreturn_t piix4_master_intr(int irq, void *dev_id)
 		outb(0x60 + realirq, 0x20);
 	}
 
-	spin_unlock_irqrestore(&i8259A_lock, flags);
+	raw_spin_unlock_irqrestore(&i8259A_lock, flags);
 
 	desc = irq_to_desc(realirq);
 
@@ -631,12 +603,12 @@ static irqreturn_t piix4_master_intr(int irq, void *dev_id)
 		handle_IRQ_event(realirq, desc->action);
 
 	if (!(desc->status & IRQ_DISABLED))
-		enable_8259A_irq(realirq);
+		legacy_pic->chip->unmask(realirq);
 
 	return IRQ_HANDLED;
 
 out_unlock:
-	spin_unlock_irqrestore(&i8259A_lock, flags);
+	raw_spin_unlock_irqrestore(&i8259A_lock, flags);
 	return IRQ_NONE;
 }
 
@@ -650,6 +622,12 @@ static struct irqaction cascade_action = {
 	.name =		"cascade",
 };
 
+static inline void set_piix4_virtual_irq_type(void)
+{
+	piix4_virtual_irq_type.shutdown = i8259A_chip.mask;
+	piix4_virtual_irq_type.enable =	i8259A_chip.unmask;
+	piix4_virtual_irq_type.disable = i8259A_chip.mask;
+}
 
 void init_VISWS_APIC_irqs(void)
 {
@@ -675,6 +653,7 @@ void init_VISWS_APIC_irqs(void)
 			desc->chip = &piix4_master_irq_type;
 		}
 		else if (i < CO_IRQ_APIC0) {
+			set_piix4_virtual_irq_type();
 			desc->chip = &piix4_virtual_irq_type;
 		}
 		else if (IS_CO_APIC(i)) {

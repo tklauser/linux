@@ -17,6 +17,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include "hisax.h"
 #include <linux/isdn/capicmd.h>
@@ -833,8 +834,6 @@ static struct FsmNode fnlist[] __initdata =
 };
 /* *INDENT-ON* */
 
-#define FNCOUNT (sizeof(fnlist)/sizeof(struct FsmNode))
-
 int __init
 CallcNew(void)
 {
@@ -842,7 +841,7 @@ CallcNew(void)
 	callcfsm.event_count = EVENT_COUNT;
 	callcfsm.strEvent = strEvent;
 	callcfsm.strState = strState;
-	return FsmNew(&callcfsm, fnlist, FNCOUNT);
+	return FsmNew(&callcfsm, fnlist, ARRAY_SIZE(fnlist));
 }
 
 void

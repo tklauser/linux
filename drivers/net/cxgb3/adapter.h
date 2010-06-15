@@ -48,10 +48,25 @@
 struct vlan_group;
 struct adapter;
 struct sge_qset;
+struct port_info;
 
 enum {			/* rx_offload flags */
 	T3_RX_CSUM	= 1 << 0,
 	T3_LRO		= 1 << 1,
+};
+
+enum mac_idx_types {
+	LAN_MAC_IDX	= 0,
+	SAN_MAC_IDX,
+
+	MAX_MAC_IDX
+};
+
+struct iscsi_config {
+	__u8	mac_addr[ETH_ALEN];
+	__u32	flags;
+	int (*send)(struct port_info *pi, struct sk_buff **skb);
+	int (*recv)(struct port_info *pi, struct sk_buff *skb);
 };
 
 struct port_info {
@@ -68,6 +83,7 @@ struct port_info {
 	struct net_device_stats netstats;
 	int activity;
 	__be32 iscsi_ipv4addr;
+	struct iscsi_config iscsic;
 
 	int link_fault; /* link fault was detected */
 };
@@ -195,7 +211,7 @@ struct sge_qset {		/* an SGE queue set */
 	struct sge_rspq rspq;
 	struct sge_fl fl[SGE_RXQ_PER_SET];
 	struct sge_txq txq[SGE_TXQ_PER_SET];
-	struct napi_gro_fraginfo lro_frag_tbl;
+	int nomem;
 	int lro_enabled;
 	void *lro_va;
 	struct net_device *netdev;
@@ -248,11 +264,17 @@ struct adapter {
 	struct work_struct fatal_error_handler_task;
 	struct work_struct link_fault_handler_task;
 
+	struct work_struct db_full_task;
+	struct work_struct db_empty_task;
+	struct work_struct db_drop_task;
+
 	struct dentry *debugfs_root;
 
 	struct mutex mdio_lock;
 	spinlock_t stats_lock;
 	spinlock_t work_lock;
+
+	struct sk_buff *nofail_skb;
 };
 
 static inline u32 t3_read_reg(struct adapter *adapter, u32 reg_addr)
@@ -272,6 +294,14 @@ static inline void t3_write_reg(struct adapter *adapter, u32 reg_addr, u32 val)
 static inline struct port_info *adap2pinfo(struct adapter *adap, int idx)
 {
 	return netdev_priv(adap->port[idx]);
+}
+
+static inline int phy2portid(struct cphy *phy)
+{
+	struct adapter *adap = phy->adapter;
+	struct port_info *port0 = adap2pinfo(adap, 0);
+
+	return &port0->phy == phy ? 0 : 1;
 }
 
 #define OFFLOAD_DEVMAP_BIT 15
@@ -299,7 +329,7 @@ void t3_stop_sge_timers(struct adapter *adap);
 void t3_free_sge_resources(struct adapter *adap);
 void t3_sge_err_intr_handler(struct adapter *adapter);
 irq_handler_t t3_intr_handler(struct adapter *adap, int polling);
-int t3_eth_xmit(struct sk_buff *skb, struct net_device *dev);
+netdev_tx_t t3_eth_xmit(struct sk_buff *skb, struct net_device *dev);
 int t3_mgmt_tx(struct adapter *adap, struct sk_buff *skb);
 void t3_update_qset_coalesce(struct sge_qset *qs, const struct qset_params *p);
 int t3_sge_alloc_qset(struct adapter *adapter, unsigned int id, int nports,
@@ -309,5 +339,8 @@ int t3_sge_alloc_qset(struct adapter *adapter, unsigned int id, int nports,
 int t3_get_desc(const struct sge_qset *qs, unsigned int qnum, unsigned int idx,
 		unsigned char *data);
 irqreturn_t t3_sge_intr_msix(int irq, void *cookie);
+extern struct workqueue_struct *cxgb3_wq;
+
+int t3_get_edc_fw(struct cphy *phy, int edc_idx, int size);
 
 #endif				/* __T3_ADAPTER_H__ */

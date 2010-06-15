@@ -213,8 +213,9 @@ static struct urb *simple_alloc_urb (
 }
 
 static unsigned pattern = 0;
-module_param (pattern, uint, S_IRUGO);
-MODULE_PARM_DESC(pattern, "i/o pattern (0 == zeroes)");
+static unsigned mod_pattern;
+module_param_named(pattern, mod_pattern, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(mod_pattern, "i/o pattern (0 == zeroes)");
 
 static inline void simple_fill_buf (struct urb *urb)
 {
@@ -1072,23 +1073,34 @@ static int unlink1 (struct usbtest_dev *dev, int pipe, int size, int async)
 	 */
 	msleep (jiffies % (2 * INTERRUPT_RATE));
 	if (async) {
-retry:
-		retval = usb_unlink_urb (urb);
-		if (retval == -EBUSY || retval == -EIDRM) {
-			/* we can't unlink urbs while they're completing.
-			 * or if they've completed, and we haven't resubmitted.
-			 * "normal" drivers would prevent resubmission, but
-			 * since we're testing unlink paths, we can't.
-			 */
-			ERROR(dev,  "unlink retry\n");
-			goto retry;
+		while (!completion_done(&completion)) {
+			retval = usb_unlink_urb(urb);
+
+			switch (retval) {
+			case -EBUSY:
+			case -EIDRM:
+				/* we can't unlink urbs while they're completing
+				 * or if they've completed, and we haven't
+				 * resubmitted. "normal" drivers would prevent
+				 * resubmission, but since we're testing unlink
+				 * paths, we can't.
+				 */
+				ERROR(dev, "unlink retry\n");
+				continue;
+			case 0:
+			case -EINPROGRESS:
+				break;
+
+			default:
+				dev_err(&dev->intf->dev,
+					"unlink fail %d\n", retval);
+				return retval;
+			}
+
+			break;
 		}
 	} else
 		usb_kill_urb (urb);
-	if (!(retval == 0 || retval == -EINPROGRESS)) {
-		dev_err(&dev->intf->dev, "unlink fail %d\n", retval);
-		return retval;
-	}
 
 	wait_for_completion (&completion);
 	retval = urb->status;
@@ -1556,6 +1568,8 @@ usbtest_ioctl (struct usb_interface *intf, unsigned int code, void *buf)
 
 	// FIXME USBDEVFS_CONNECTINFO doesn't say how fast the device is.
 
+	pattern = mod_pattern;
+
 	if (code != USBTEST_REQUEST)
 		return -EOPNOTSUPP;
 
@@ -1566,10 +1580,6 @@ usbtest_ioctl (struct usb_interface *intf, unsigned int code, void *buf)
 		return -ERESTARTSYS;
 
 	/* FIXME: What if a system sleep starts while a test is running? */
-	if (!intf->is_active) {
-		mutex_unlock(&dev->lock);
-		return -EHOSTUNREACH;
-	}
 
 	/* some devices, like ez-usb default devices, need a non-default
 	 * altsetting to have any active endpoints.  some tests change
@@ -2087,7 +2097,7 @@ static struct usbtest_info generic_info = {
 #endif
 
 
-static struct usb_device_id id_table [] = {
+static const struct usb_device_id id_table[] = {
 
 	/*-------------------------------------------------------------*/
 

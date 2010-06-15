@@ -16,6 +16,7 @@
  */
 
 #include <linux/mISDNif.h>
+#include <linux/slab.h>
 #include "core.h"
 
 static u_int	*debug;
@@ -209,7 +210,7 @@ mISDN_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 
 	if (memcpy_fromiovec(skb_put(skb, len), msg->msg_iov, len)) {
 		err = -EFAULT;
-		goto drop;
+		goto done;
 	}
 
 	memcpy(mISDN_HEAD_P(skb), skb->data, MISDN_HEADER_LEN);
@@ -222,7 +223,7 @@ mISDN_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 	} else { /* use default for L2 messages */
 		if ((sk->sk_protocol == ISDN_P_LAPD_TE) ||
 		    (sk->sk_protocol == ISDN_P_LAPD_NT))
-		    mISDN_HEAD_ID(skb) = _pms(sk)->ch.nr;
+			mISDN_HEAD_ID(skb) = _pms(sk)->ch.nr;
 	}
 
 	if (*debug & DEBUG_SOCKET)
@@ -230,19 +231,21 @@ mISDN_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 		     __func__, mISDN_HEAD_ID(skb));
 
 	err = -ENODEV;
-	if (!_pms(sk)->ch.peer ||
-	    (err = _pms(sk)->ch.recv(_pms(sk)->ch.peer, skb)))
-		goto drop;
-
-	err = len;
+	if (!_pms(sk)->ch.peer)
+		goto done;
+	err = _pms(sk)->ch.recv(_pms(sk)->ch.peer, skb);
+	if (err)
+		goto done;
+	else {
+		skb = NULL;
+		err = len;
+	}
 
 done:
+	if (skb)
+		kfree_skb(skb);
 	release_sock(sk);
 	return err;
-
-drop:
-	kfree_skb(skb);
-	goto done;
 }
 
 static int
@@ -292,7 +295,7 @@ static int
 data_sock_ioctl_bound(struct sock *sk, unsigned int cmd, void __user *p)
 {
 	struct mISDN_ctrl_req	cq;
-	int			err = -EINVAL, val;
+	int			err = -EINVAL, val[2];
 	struct mISDNchannel	*bchan, *next;
 
 	lock_sock(sk);
@@ -328,12 +331,27 @@ data_sock_ioctl_bound(struct sock *sk, unsigned int cmd, void __user *p)
 			err = -EINVAL;
 			break;
 		}
-		if (get_user(val, (int __user *)p)) {
+		val[0] = cmd;
+		if (get_user(val[1], (int __user *)p)) {
 			err = -EFAULT;
 			break;
 		}
 		err = _pms(sk)->dev->teimgr->ctrl(_pms(sk)->dev->teimgr,
-		    CONTROL_CHANNEL, &val);
+		    CONTROL_CHANNEL, val);
+		break;
+	case IMHOLD_L1:
+		if (sk->sk_protocol != ISDN_P_LAPD_NT
+		 && sk->sk_protocol != ISDN_P_LAPD_TE) {
+			err = -EINVAL;
+			break;
+		}
+		val[0] = cmd;
+		if (get_user(val[1], (int __user *)p)) {
+			err = -EFAULT;
+			break;
+		}
+		err = _pms(sk)->dev->teimgr->ctrl(_pms(sk)->dev->teimgr,
+		    CONTROL_CHANNEL, val);
 		break;
 	default:
 		err = -EINVAL;
@@ -398,7 +416,7 @@ data_sock_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 }
 
 static int data_sock_setsockopt(struct socket *sock, int level, int optname,
-	char __user *optval, int len)
+	char __user *optval, unsigned int len)
 {
 	struct sock *sk = sock->sk;
 	int err = 0, opt = 0;
@@ -762,7 +780,7 @@ base_sock_create(struct net *net, struct socket *sock, int protocol)
 }
 
 static int
-mISDN_sock_create(struct net *net, struct socket *sock, int proto)
+mISDN_sock_create(struct net *net, struct socket *sock, int proto, int kern)
 {
 	int err = -EPROTONOSUPPORT;
 
@@ -791,8 +809,7 @@ mISDN_sock_create(struct net *net, struct socket *sock, int proto)
 	return err;
 }
 
-static struct
-net_proto_family mISDN_sock_family_ops = {
+static const struct net_proto_family mISDN_sock_family_ops = {
 	.owner  = THIS_MODULE,
 	.family = PF_ISDN,
 	.create = mISDN_sock_create,

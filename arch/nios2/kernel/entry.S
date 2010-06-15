@@ -42,9 +42,16 @@
 #include <asm/segment.h>
 #include <asm/entry.h>
 #include <asm/unistd.h>
-#include <asm/traps.h>
 #include <asm/processor.h>
 
+.macro GET_THREAD_INFO reg 
+.if THREAD_SIZE & 0xffff0000
+	andhi	\reg, sp, %hi(~(THREAD_SIZE-1))
+.else
+	addi	\reg, r0, %lo(~(THREAD_SIZE-1))
+	and	\reg, \reg, sp
+.endif
+.endm
 
 /* FIXME: Lots of these exceptions needs to be handled
  */ 
@@ -167,7 +174,7 @@ ENTRY(handle_system_call)
 	/* Check that the requested system call is within limits
 	 */
 	movui	r1,NR_syscalls
-	bgtu	r2,r1,ret_invsyscall
+	bgeu	r2,r1,ret_invsyscall
 	slli	r1,r2,2
 	movhi	r11,%hiadj(sys_call_table)
 	add	r1,r1,r11
@@ -248,7 +255,7 @@ restore_all:
 	/* If the syscall number was invalid return ENOSYS
 	*/
 ret_invsyscall:
-	movi	r2,-LENOSYS
+	movi	r2,-ENOSYS
 	br translate_rc_and_ret
 
 

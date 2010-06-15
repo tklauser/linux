@@ -4,6 +4,7 @@
  * Copyright (c) 2004-2006 Herbert Xu <herbert@gondor.apana.org.au>
  */
 
+#include <linux/gfp.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -28,7 +29,7 @@ static inline void ipip_ecn_decapsulate(struct sk_buff *skb)
  */
 static int xfrm4_mode_tunnel_output(struct xfrm_state *x, struct sk_buff *skb)
 {
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct iphdr *top_iph;
 	int flags;
 
@@ -41,7 +42,7 @@ static int xfrm4_mode_tunnel_output(struct xfrm_state *x, struct sk_buff *skb)
 	top_iph->ihl = 5;
 	top_iph->version = 4;
 
-	top_iph->protocol = xfrm_af2proto(skb->dst->ops->family);
+	top_iph->protocol = xfrm_af2proto(skb_dst(skb)->ops->family);
 
 	/* DS disclosed */
 	top_iph->tos = INET_ECN_encapsulate(XFRM_MODE_SKB_CB(skb)->tos,

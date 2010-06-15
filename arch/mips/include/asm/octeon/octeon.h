@@ -47,6 +47,7 @@ struct octeon_cop2_state;
 extern unsigned long octeon_crypto_enable(struct octeon_cop2_state *state);
 extern void octeon_crypto_disable(struct octeon_cop2_state *state,
 				  unsigned long flags);
+extern asmlinkage void octeon_cop2_restore(struct octeon_cop2_state *task);
 
 extern void octeon_init_cvmcount(void);
 
@@ -212,6 +213,11 @@ struct octeon_cf_data {
 	int		dma_engine;	/* -1 for no DMA */
 };
 
+struct octeon_i2c_data {
+	unsigned int	sys_freq;
+	unsigned int	i2c_freq;
+};
+
 extern void octeon_write_lcd(const char *s);
 extern void octeon_check_cpu_bist(void);
 extern int octeon_get_boot_debug_flag(void);
@@ -244,5 +250,7 @@ static inline uint32_t octeon_npi_read32(uint64_t address)
 {
 	return cvmx_read64_uint32(address ^ 4);
 }
+
+extern struct cvmx_bootinfo *octeon_bootinfo;
 
 #endif /* __ASM_OCTEON_OCTEON_H */

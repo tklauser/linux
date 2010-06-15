@@ -30,7 +30,7 @@
 #include "sb.h"
 
 /**
- * struct nilfs_recovery_info - Recovery infomation
+ * struct nilfs_recovery_info - Recovery information
  * @ri_need_recovery: Recovery status
  * @ri_super_root: Block number of the last super root
  * @ri_ri_cno: Number of the last checkpoint
@@ -71,7 +71,7 @@ struct nilfs_recovery_info {
  */
 struct nilfs_cstage {
 	int			scnt;
-	unsigned 		flags;
+	unsigned		flags;
 	struct nilfs_inode_info *dirty_file_ptr;
 	struct nilfs_inode_info *gc_inode_ptr;
 };
@@ -90,12 +90,14 @@ struct nilfs_segsum_pointer {
  * @sc_nblk_inc: Block count of current generation
  * @sc_dirty_files: List of files to be written
  * @sc_gc_inodes: List of GC inodes having blocks to be written
- * @sc_cleaning_segments: List of segments to be freed through construction
  * @sc_copied_buffers: List of copied buffers (buffer heads) to freeze data
+ * @sc_freesegs: array of segment numbers to be freed
+ * @sc_nfreesegs: number of segments on @sc_freesegs
  * @sc_dsync_inode: inode whose data pages are written for a sync operation
  * @sc_dsync_start: start byte offset of data pages
  * @sc_dsync_end: end byte offset of data pages (inclusive)
  * @sc_segbufs: List of segment buffers
+ * @sc_write_logs: List of segment buffers to hold logs under writing
  * @sc_segbuf_nblocks: Number of available blocks in segment buffers.
  * @sc_curseg: Current segment buffer
  * @sc_super_root: Pointer to the super root buffer
@@ -114,6 +116,7 @@ struct nilfs_segsum_pointer {
  * @sc_wait_daemon: Daemon wait queue
  * @sc_wait_task: Start/end wait queue to control segctord task
  * @sc_seq_request: Request counter
+ * @sc_seq_accept: Accepted request count
  * @sc_seq_done: Completion counter
  * @sc_sync: Request of explicit sync operation
  * @sc_interval: Timeout value of background construction
@@ -131,8 +134,10 @@ struct nilfs_sc_info {
 
 	struct list_head	sc_dirty_files;
 	struct list_head	sc_gc_inodes;
-	struct list_head	sc_cleaning_segments;
 	struct list_head	sc_copied_buffers;
+
+	__u64		       *sc_freesegs;
+	size_t			sc_nfreesegs;
 
 	struct nilfs_inode_info *sc_dsync_inode;
 	loff_t			sc_dsync_start;
@@ -140,6 +145,7 @@ struct nilfs_sc_info {
 
 	/* Segment buffers */
 	struct list_head	sc_segbufs;
+	struct list_head	sc_write_logs;
 	unsigned long		sc_segbuf_nblocks;
 	struct nilfs_segment_buffer *sc_curseg;
 	struct buffer_head     *sc_super_root;
@@ -164,6 +170,7 @@ struct nilfs_sc_info {
 	wait_queue_head_t	sc_wait_task;
 
 	__u32			sc_seq_request;
+	__u32			sc_seq_accepted;
 	__u32			sc_seq_done;
 
 	int			sc_sync;
@@ -225,10 +232,6 @@ extern void nilfs_flush_segment(struct super_block *, ino_t);
 extern int nilfs_clean_segments(struct super_block *, struct nilfs_argv *,
 				void **);
 
-extern int nilfs_segctor_add_segments_to_be_freed(struct nilfs_sc_info *,
-						  __u64 *, size_t);
-extern void nilfs_segctor_clear_segments_to_be_freed(struct nilfs_sc_info *);
-
 extern int nilfs_attach_segment_constructor(struct nilfs_sb_info *);
 extern void nilfs_detach_segment_constructor(struct nilfs_sb_info *);
 
@@ -240,5 +243,6 @@ extern int nilfs_search_super_root(struct the_nilfs *, struct nilfs_sb_info *,
 extern int nilfs_recover_logical_segments(struct the_nilfs *,
 					  struct nilfs_sb_info *,
 					  struct nilfs_recovery_info *);
+extern void nilfs_dispose_segment_list(struct list_head *);
 
 #endif /* _NILFS_SEGMENT_H */

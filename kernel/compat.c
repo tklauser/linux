@@ -25,6 +25,7 @@
 #include <linux/posix-timers.h>
 #include <linux/times.h>
 #include <linux/ptrace.h>
+#include <linux/gfp.h>
 
 #include <asm/uaccess.h>
 
@@ -880,6 +881,17 @@ compat_sys_rt_sigtimedwait (compat_sigset_t __user *uthese,
 	}
 	return ret;
 
+}
+
+asmlinkage long
+compat_sys_rt_tgsigqueueinfo(compat_pid_t tgid, compat_pid_t pid, int sig,
+			     struct compat_siginfo __user *uinfo)
+{
+	siginfo_t info;
+
+	if (copy_siginfo_from_user32(&info, uinfo))
+		return -EFAULT;
+	return do_rt_tgsigqueueinfo(tgid, pid, sig, &info);
 }
 
 #ifdef __ARCH_WANT_COMPAT_SYS_TIME

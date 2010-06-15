@@ -23,12 +23,12 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/swap.h>
+#include <linux/slab.h>
 #include <linux/crc32.h>
 #include "nilfs.h"
 #include "segment.h"
 #include "sufile.h"
 #include "page.h"
-#include "seglist.h"
 #include "segbuf.h"
 
 /*
@@ -40,7 +40,6 @@ enum {
 	NILFS_SEG_FAIL_IO,
 	NILFS_SEG_FAIL_MAGIC,
 	NILFS_SEG_FAIL_SEQ,
-	NILFS_SEG_FAIL_CHECKSUM_SEGSUM,
 	NILFS_SEG_FAIL_CHECKSUM_SUPER_ROOT,
 	NILFS_SEG_FAIL_CHECKSUM_FULL,
 	NILFS_SEG_FAIL_CONSISTENCY,
@@ -71,10 +70,6 @@ static int nilfs_warn_segment_error(int err)
 	case NILFS_SEG_FAIL_SEQ:
 		printk(KERN_WARNING
 		       "NILFS warning: Sequence number mismatch\n");
-		break;
-	case NILFS_SEG_FAIL_CHECKSUM_SEGSUM:
-		printk(KERN_WARNING
-		       "NILFS warning: Checksum error in segment summary\n");
 		break;
 	case NILFS_SEG_FAIL_CHECKSUM_SUPER_ROOT:
 		printk(KERN_WARNING
@@ -207,19 +202,15 @@ int nilfs_read_super_root_block(struct super_block *sb, sector_t sr_block,
  * @pseg_start: start disk block number of partial segment
  * @seg_seq: sequence number requested
  * @ssi: pointer to nilfs_segsum_info struct to store information
- * @full_check: full check flag
- *              (0: only checks segment summary CRC, 1: data CRC)
  */
 static int
 load_segment_summary(struct nilfs_sb_info *sbi, sector_t pseg_start,
-		     u64 seg_seq, struct nilfs_segsum_info *ssi,
-		     int full_check)
+		     u64 seg_seq, struct nilfs_segsum_info *ssi)
 {
 	struct buffer_head *bh_sum;
 	struct nilfs_segment_summary *sum;
-	unsigned long offset, nblock;
-	u64 check_bytes;
-	u32 crc, crc_sum;
+	unsigned long nblock;
+	u32 crc;
 	int ret = NILFS_SEG_FAIL_IO;
 
 	bh_sum = sb_bread(sbi->s_super, pseg_start);
@@ -238,34 +229,24 @@ load_segment_summary(struct nilfs_sb_info *sbi, sector_t pseg_start,
 		ret = NILFS_SEG_FAIL_SEQ;
 		goto failed;
 	}
-	if (full_check) {
-		offset = sizeof(sum->ss_datasum);
-		check_bytes =
-			((u64)ssi->nblocks << sbi->s_super->s_blocksize_bits);
-		nblock = ssi->nblocks;
-		crc_sum = le32_to_cpu(sum->ss_datasum);
-		ret = NILFS_SEG_FAIL_CHECKSUM_FULL;
-	} else { /* only checks segment summary */
-		offset = sizeof(sum->ss_datasum) + sizeof(sum->ss_sumsum);
-		check_bytes = ssi->sumbytes;
-		nblock = ssi->nsumblk;
-		crc_sum = le32_to_cpu(sum->ss_sumsum);
-		ret = NILFS_SEG_FAIL_CHECKSUM_SEGSUM;
-	}
 
+	nblock = ssi->nblocks;
 	if (unlikely(nblock == 0 ||
 		     nblock > sbi->s_nilfs->ns_blocks_per_segment)) {
 		/* This limits the number of blocks read in the CRC check */
 		ret = NILFS_SEG_FAIL_CONSISTENCY;
 		goto failed;
 	}
-	if (calc_crc_cont(sbi, bh_sum, &crc, offset, check_bytes,
+	if (calc_crc_cont(sbi, bh_sum, &crc, sizeof(sum->ss_datasum),
+			  ((u64)nblock << sbi->s_super->s_blocksize_bits),
 			  pseg_start, nblock)) {
 		ret = NILFS_SEG_FAIL_IO;
 		goto failed;
 	}
-	if (crc == crc_sum)
+	if (crc == le32_to_cpu(sum->ss_datasum))
 		ret = 0;
+	else
+		ret = NILFS_SEG_FAIL_CHECKSUM_FULL;
  failed:
 	brelse(bh_sum);
  out:
@@ -395,6 +376,24 @@ static void dispose_recovery_list(struct list_head *head)
 	}
 }
 
+struct nilfs_segment_entry {
+	struct list_head	list;
+	__u64			segnum;
+};
+
+static int nilfs_segment_list_add(struct list_head *head, __u64 segnum)
+{
+	struct nilfs_segment_entry *ent = kmalloc(sizeof(*ent), GFP_NOFS);
+
+	if (unlikely(!ent))
+		return -ENOMEM;
+
+	ent->segnum = segnum;
+	INIT_LIST_HEAD(&ent->list);
+	list_add_tail(&ent->list, head);
+	return 0;
+}
+
 void nilfs_dispose_segment_list(struct list_head *head)
 {
 	while (!list_empty(head)) {
@@ -402,7 +401,7 @@ void nilfs_dispose_segment_list(struct list_head *head)
 			= list_entry(head->next,
 				     struct nilfs_segment_entry, list);
 		list_del(&ent->list);
-		nilfs_free_segment_entry(ent);
+		kfree(ent);
 	}
 }
 
@@ -431,12 +430,10 @@ static int nilfs_prepare_segment_for_recovery(struct the_nilfs *nilfs,
 	if (unlikely(err))
 		goto failed;
 
-	err = -ENOMEM;
 	for (i = 1; i < 4; i++) {
-		ent = nilfs_alloc_segment_entry(segnum[i]);
-		if (unlikely(!ent))
+		err = nilfs_segment_list_add(head, segnum[i]);
+		if (unlikely(err))
 			goto failed;
-		list_add_tail(&ent->list, head);
 	}
 
 	/*
@@ -450,7 +447,7 @@ static int nilfs_prepare_segment_for_recovery(struct the_nilfs *nilfs,
 				goto failed;
 		}
 		list_del(&ent->list);
-		nilfs_free_segment_entry(ent);
+		kfree(ent);
 	}
 
 	/* Allocate new segments for recovery */
@@ -537,7 +534,8 @@ static int recover_dsync_blocks(struct nilfs_sb_info *sbi,
 		printk(KERN_WARNING
 		       "NILFS warning: error recovering data block "
 		       "(err=%d, ino=%lu, block-offset=%llu)\n",
-		       err, rb->ino, (unsigned long long)rb->blkoff);
+		       err, (unsigned long)rb->ino,
+		       (unsigned long long)rb->blkoff);
 		if (!err2)
 			err2 = err;
  next:
@@ -582,7 +580,7 @@ static int nilfs_do_roll_forward(struct the_nilfs *nilfs,
 
 	while (segnum != ri->ri_segnum || pseg_start <= ri->ri_pseg_start) {
 
-		ret = load_segment_summary(sbi, pseg_start, seg_seq, &ssi, 1);
+		ret = load_segment_summary(sbi, pseg_start, seg_seq, &ssi);
 		if (ret) {
 			if (ret == NILFS_SEG_FAIL_IO) {
 				err = -EIO;
@@ -754,14 +752,8 @@ int nilfs_recover_logical_segments(struct the_nilfs *nilfs,
 		nilfs_finish_roll_forward(nilfs, sbi, ri);
 	}
 
-	nilfs_detach_checkpoint(sbi);
-	return 0;
-
  failed:
 	nilfs_detach_checkpoint(sbi);
-	nilfs_mdt_clear(nilfs->ns_cpfile);
-	nilfs_mdt_clear(nilfs->ns_sufile);
-	nilfs_mdt_clear(nilfs->ns_dat);
 	return err;
 }
 
@@ -788,10 +780,10 @@ int nilfs_search_super_root(struct the_nilfs *nilfs, struct nilfs_sb_info *sbi,
 	struct nilfs_segsum_info ssi;
 	sector_t pseg_start, pseg_end, sr_pseg_start = 0;
 	sector_t seg_start, seg_end; /* range of full segment (block number) */
+	sector_t b, end;
 	u64 seg_seq;
 	__u64 segnum, nextnum = 0;
 	__u64 cno;
-	struct nilfs_segment_entry *ent;
 	LIST_HEAD(segments);
 	int empty_seg = 0, scan_newer = 0;
 	int ret;
@@ -804,9 +796,14 @@ int nilfs_search_super_root(struct the_nilfs *nilfs, struct nilfs_sb_info *sbi,
 	/* Calculate range of segment */
 	nilfs_get_segment_range(nilfs, segnum, &seg_start, &seg_end);
 
+	/* Read ahead segment */
+	b = seg_start;
+	while (b <= seg_end)
+		sb_breadahead(sbi->s_super, b++);
+
 	for (;;) {
 		/* Load segment summary */
-		ret = load_segment_summary(sbi, pseg_start, seg_seq, &ssi, 1);
+		ret = load_segment_summary(sbi, pseg_start, seg_seq, &ssi);
 		if (ret) {
 			if (ret == NILFS_SEG_FAIL_IO)
 				goto failed;
@@ -826,14 +823,20 @@ int nilfs_search_super_root(struct the_nilfs *nilfs, struct nilfs_sb_info *sbi,
 		ri->ri_nextnum = nextnum;
 		empty_seg = 0;
 
+		if (!NILFS_SEG_HAS_SR(&ssi) && !scan_newer) {
+			/* This will never happen because a superblock
+			   (last_segment) always points to a pseg
+			   having a super root. */
+			ret = NILFS_SEG_FAIL_CONSISTENCY;
+			goto failed;
+		}
+
+		if (pseg_start == seg_start) {
+			nilfs_get_segment_range(nilfs, nextnum, &b, &end);
+			while (b <= end)
+				sb_breadahead(sbi->s_super, b++);
+		}
 		if (!NILFS_SEG_HAS_SR(&ssi)) {
-			if (!scan_newer) {
-				/* This will never happen because a superblock
-				   (last_segment) always points to a pseg
-				   having a super root. */
-				ret = NILFS_SEG_FAIL_CONSISTENCY;
-				goto failed;
-			}
 			if (!ri->ri_lsegs_start && NILFS_SEG_LOGBGN(&ssi)) {
 				ri->ri_lsegs_start = pseg_start;
 				ri->ri_lsegs_start_seq = seg_seq;
@@ -892,12 +895,9 @@ int nilfs_search_super_root(struct the_nilfs *nilfs, struct nilfs_sb_info *sbi,
 		if (empty_seg++)
 			goto super_root_found; /* found a valid super root */
 
-		ent = nilfs_alloc_segment_entry(segnum);
-		if (unlikely(!ent)) {
-			ret = -ENOMEM;
+		ret = nilfs_segment_list_add(&segments, segnum);
+		if (unlikely(ret))
 			goto failed;
-		}
-		list_add_tail(&ent->list, &segments);
 
 		seg_seq++;
 		segnum = nextnum;
@@ -907,7 +907,7 @@ int nilfs_search_super_root(struct the_nilfs *nilfs, struct nilfs_sb_info *sbi,
 
  super_root_found:
 	/* Updating pointers relating to the latest checkpoint */
-	list_splice(&segments, ri->ri_used_segments.prev);
+	list_splice_tail(&segments, &ri->ri_used_segments);
 	nilfs->ns_last_pseg = sr_pseg_start;
 	nilfs->ns_last_seq = nilfs->ns_seg_seq;
 	nilfs->ns_last_cno = ri->ri_cno;

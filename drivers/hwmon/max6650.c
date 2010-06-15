@@ -12,7 +12,7 @@
  * also work with the MAX6651. It does not distinguish max6650 and max6651
  * chips.
  *
- * Tha datasheet was last seen at:
+ * The datasheet was last seen at:
  *
  *        http://pdfserv.maxim-ic.com/en/ds/MAX6650-MAX6651.pdf
  *
@@ -62,8 +62,6 @@ module_param(fan_voltage, int, S_IRUGO);
 module_param(prescaler, int, S_IRUGO);
 module_param(clock, int, S_IRUGO);
 
-I2C_CLIENT_INSMOD_1(max6650);
-
 /*
  * MAX 6650/6651 registers
  */
@@ -98,6 +96,16 @@ I2C_CLIENT_INSMOD_1(max6650);
 #define MAX6650_CFG_MODE_OPEN_LOOP	0x30
 #define MAX6650_COUNT_MASK		0x03
 
+/*
+ * Alarm status register bits
+ */
+
+#define MAX6650_ALRM_MAX	0x01
+#define MAX6650_ALRM_MIN	0x02
+#define MAX6650_ALRM_TACH	0x04
+#define MAX6650_ALRM_GPIO1	0x08
+#define MAX6650_ALRM_GPIO2	0x10
+
 /* Minimum and maximum values of the FAN-RPM */
 #define FAN_RPM_MIN 240
 #define FAN_RPM_MAX 30000
@@ -106,7 +114,7 @@ I2C_CLIENT_INSMOD_1(max6650);
 
 static int max6650_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id);
-static int max6650_detect(struct i2c_client *client, int kind,
+static int max6650_detect(struct i2c_client *client,
 			  struct i2c_board_info *info);
 static int max6650_init_client(struct i2c_client *client);
 static int max6650_remove(struct i2c_client *client);
@@ -117,7 +125,7 @@ static struct max6650_data *max6650_update_device(struct device *dev);
  */
 
 static const struct i2c_device_id max6650_id[] = {
-	{ "max6650", max6650 },
+	{ "max6650", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, max6650_id);
@@ -131,7 +139,7 @@ static struct i2c_driver max6650_driver = {
 	.remove		= max6650_remove,
 	.id_table	= max6650_id,
 	.detect		= max6650_detect,
-	.address_data	= &addr_data,
+	.address_list	= normal_i2c,
 };
 
 /*
@@ -151,6 +159,7 @@ struct max6650_data
 	u8 tach[4];
 	u8 count;
 	u8 dac;
+	u8 alarm;
 };
 
 static ssize_t get_fan(struct device *dev, struct device_attribute *devattr,
@@ -407,6 +416,7 @@ static ssize_t set_div(struct device *dev, struct device_attribute *devattr,
 		data->count = 3;
 		break;
 	default:
+		mutex_unlock(&data->update_lock);
 		dev_err(&client->dev,
 			"illegal value for fan divider (%d)\n", div);
 		return -EINVAL;
@@ -418,6 +428,33 @@ static ssize_t set_div(struct device *dev, struct device_attribute *devattr,
 	return count;
 }
 
+/*
+ * Get alarm stati:
+ * Possible values:
+ * 0 = no alarm
+ * 1 = alarm
+ */
+
+static ssize_t get_alarm(struct device *dev, struct device_attribute *devattr,
+			 char *buf)
+{
+	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
+	struct max6650_data *data = max6650_update_device(dev);
+	struct i2c_client *client = to_i2c_client(dev);
+	int alarm = 0;
+
+	if (data->alarm & attr->index) {
+		mutex_lock(&data->update_lock);
+		alarm = 1;
+		data->alarm &= ~attr->index;
+		data->alarm |= i2c_smbus_read_byte_data(client,
+							MAX6650_REG_ALARM);
+		mutex_unlock(&data->update_lock);
+	}
+
+	return sprintf(buf, "%d\n", alarm);
+}
+
 static SENSOR_DEVICE_ATTR(fan1_input, S_IRUGO, get_fan, NULL, 0);
 static SENSOR_DEVICE_ATTR(fan2_input, S_IRUGO, get_fan, NULL, 1);
 static SENSOR_DEVICE_ATTR(fan3_input, S_IRUGO, get_fan, NULL, 2);
@@ -426,7 +463,41 @@ static DEVICE_ATTR(fan1_target, S_IWUSR | S_IRUGO, get_target, set_target);
 static DEVICE_ATTR(fan1_div, S_IWUSR | S_IRUGO, get_div, set_div);
 static DEVICE_ATTR(pwm1_enable, S_IWUSR | S_IRUGO, get_enable, set_enable);
 static DEVICE_ATTR(pwm1, S_IWUSR | S_IRUGO, get_pwm, set_pwm);
+static SENSOR_DEVICE_ATTR(fan1_max_alarm, S_IRUGO, get_alarm, NULL,
+			  MAX6650_ALRM_MAX);
+static SENSOR_DEVICE_ATTR(fan1_min_alarm, S_IRUGO, get_alarm, NULL,
+			  MAX6650_ALRM_MIN);
+static SENSOR_DEVICE_ATTR(fan1_fault, S_IRUGO, get_alarm, NULL,
+			  MAX6650_ALRM_TACH);
+static SENSOR_DEVICE_ATTR(gpio1_alarm, S_IRUGO, get_alarm, NULL,
+			  MAX6650_ALRM_GPIO1);
+static SENSOR_DEVICE_ATTR(gpio2_alarm, S_IRUGO, get_alarm, NULL,
+			  MAX6650_ALRM_GPIO2);
 
+static mode_t max6650_attrs_visible(struct kobject *kobj, struct attribute *a,
+				    int n)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct i2c_client *client = to_i2c_client(dev);
+	u8 alarm_en = i2c_smbus_read_byte_data(client, MAX6650_REG_ALARM_EN);
+	struct device_attribute *devattr;
+
+	/*
+	 * Hide the alarms that have not been enabled by the firmware
+	 */
+
+	devattr = container_of(a, struct device_attribute, attr);
+	if (devattr == &sensor_dev_attr_fan1_max_alarm.dev_attr
+	 || devattr == &sensor_dev_attr_fan1_min_alarm.dev_attr
+	 || devattr == &sensor_dev_attr_fan1_fault.dev_attr
+	 || devattr == &sensor_dev_attr_gpio1_alarm.dev_attr
+	 || devattr == &sensor_dev_attr_gpio2_alarm.dev_attr) {
+		if (!(alarm_en & to_sensor_dev_attr(devattr)->index))
+			return 0;
+	}
+
+	return a->mode;
+}
 
 static struct attribute *max6650_attrs[] = {
 	&sensor_dev_attr_fan1_input.dev_attr.attr,
@@ -437,11 +508,17 @@ static struct attribute *max6650_attrs[] = {
 	&dev_attr_fan1_div.attr,
 	&dev_attr_pwm1_enable.attr,
 	&dev_attr_pwm1.attr,
+	&sensor_dev_attr_fan1_max_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan1_min_alarm.dev_attr.attr,
+	&sensor_dev_attr_fan1_fault.dev_attr.attr,
+	&sensor_dev_attr_gpio1_alarm.dev_attr.attr,
+	&sensor_dev_attr_gpio2_alarm.dev_attr.attr,
 	NULL
 };
 
 static struct attribute_group max6650_attr_grp = {
 	.attrs = max6650_attrs,
+	.is_visible = max6650_attrs_visible,
 };
 
 /*
@@ -449,13 +526,13 @@ static struct attribute_group max6650_attr_grp = {
  */
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
-static int max6650_detect(struct i2c_client *client, int kind,
+static int max6650_detect(struct i2c_client *client,
 			  struct i2c_board_info *info)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	int address = client->addr;
 
-	dev_dbg(&adapter->dev, "max6650_detect called, kind = %d\n", kind);
+	dev_dbg(&adapter->dev, "max6650_detect called\n");
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
 		dev_dbg(&adapter->dev, "max6650: I2C bus doesn't support "
@@ -463,23 +540,7 @@ static int max6650_detect(struct i2c_client *client, int kind,
 		return -ENODEV;
 	}
 
-	/*
-	 * Now we do the remaining detection. A negative kind means that
-	 * the driver was loaded with no force parameter (default), so we
-	 * must both detect and identify the chip (actually there is only
-	 * one possible kind of chip for now, max6650). A zero kind means that
-	 * the driver was loaded with the force parameter, the detection
-	 * step shall be skipped. A positive kind means that the driver
-	 * was loaded with the force parameter and a given kind of chip is
-	 * requested, so both the detection and the identification steps
-	 * are skipped.
-	 *
-	 * Currently I can find no way to distinguish between a MAX6650 and
-	 * a MAX6651. This driver has only been tried on the former.
-	 */
-
-	if ((kind < 0) &&
-	   (  (i2c_smbus_read_byte_data(client, MAX6650_REG_CONFIG) & 0xC0)
+	if (((i2c_smbus_read_byte_data(client, MAX6650_REG_CONFIG) & 0xC0)
 	    ||(i2c_smbus_read_byte_data(client, MAX6650_REG_GPIO_STAT) & 0xE0)
 	    ||(i2c_smbus_read_byte_data(client, MAX6650_REG_ALARM_EN) & 0xE0)
 	    ||(i2c_smbus_read_byte_data(client, MAX6650_REG_ALARM) & 0xE0)
@@ -658,6 +719,12 @@ static struct max6650_data *max6650_update_device(struct device *dev)
 		data->count = i2c_smbus_read_byte_data(client,
 							MAX6650_REG_COUNT);
 		data->dac = i2c_smbus_read_byte_data(client, MAX6650_REG_DAC);
+
+		/* Alarms are cleared on read in case the condition that
+		 * caused the alarm is removed. Keep the value latched here
+		 * for providing the register through different alarm files. */
+		data->alarm |= i2c_smbus_read_byte_data(client,
+							MAX6650_REG_ALARM);
 
 		data->last_updated = jiffies;
 		data->valid = 1;

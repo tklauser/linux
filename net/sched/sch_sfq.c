@@ -20,6 +20,7 @@
 #include <linux/ipv6.h>
 #include <linux/skbuff.h>
 #include <linux/jhash.h>
+#include <linux/slab.h>
 #include <net/ip.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
@@ -149,7 +150,7 @@ static unsigned sfq_hash(struct sfq_sched_data *q, struct sk_buff *skb)
 		break;
 	}
 	default:
-		h = (unsigned long)skb->dst ^ skb->protocol;
+		h = (unsigned long)skb_dst(skb) ^ skb->protocol;
 		h2 = (unsigned long)skb->sk;
 	}
 
@@ -496,12 +497,6 @@ nla_put_failure:
 	return -1;
 }
 
-static int sfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
-			    struct nlattr **tca, unsigned long *arg)
-{
-	return -EOPNOTSUPP;
-}
-
 static unsigned long sfq_get(struct Qdisc *sch, u32 classid)
 {
 	return 0;
@@ -560,7 +555,6 @@ static void sfq_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 
 static const struct Qdisc_class_ops sfq_class_ops = {
 	.get		=	sfq_get,
-	.change		=	sfq_change_class,
 	.tcf_chain	=	sfq_find_tcf,
 	.dump		=	sfq_dump_class,
 	.dump_stats	=	sfq_dump_class_stats,

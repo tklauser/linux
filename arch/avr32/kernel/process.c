@@ -11,6 +11,7 @@
 #include <linux/fs.h>
 #include <linux/pm.h>
 #include <linux/ptrace.h>
+#include <linux/slab.h>
 #include <linux/reboot.h>
 #include <linux/tick.h>
 #include <linux/uaccess.h>
@@ -394,8 +395,6 @@ asmlinkage int sys_execve(char __user *ufilename, char __user *__user *uargv,
 		goto out;
 
 	error = do_execve(filename, uargv, uenvp, regs);
-	if (error == 0)
-		current->ptrace &= ~PT_DTRACE;
 	putname(filename);
 
 out:

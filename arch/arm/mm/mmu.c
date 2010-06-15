@@ -21,6 +21,7 @@
 #include <asm/cachetype.h>
 #include <asm/setup.h>
 #include <asm/sizes.h>
+#include <asm/smp_plat.h>
 #include <asm/tlb.h>
 #include <asm/highmem.h>
 
@@ -99,59 +100,66 @@ static struct cachepolicy cache_policies[] __initdata = {
  * writebuffer to be turned off.  (Note: the write
  * buffer should not be on and the cache off).
  */
-static void __init early_cachepolicy(char **p)
+static int __init early_cachepolicy(char *p)
 {
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(cache_policies); i++) {
 		int len = strlen(cache_policies[i].policy);
 
-		if (memcmp(*p, cache_policies[i].policy, len) == 0) {
+		if (memcmp(p, cache_policies[i].policy, len) == 0) {
 			cachepolicy = i;
 			cr_alignment &= ~cache_policies[i].cr_mask;
 			cr_no_alignment &= ~cache_policies[i].cr_mask;
-			*p += len;
 			break;
 		}
 	}
 	if (i == ARRAY_SIZE(cache_policies))
 		printk(KERN_ERR "ERROR: unknown or unsupported cache policy\n");
+	/*
+	 * This restriction is partly to do with the way we boot; it is
+	 * unpredictable to have memory mapped using two different sets of
+	 * memory attributes (shared, type, and cache attribs).  We can not
+	 * change these attributes once the initial assembly has setup the
+	 * page tables.
+	 */
 	if (cpu_architecture() >= CPU_ARCH_ARMv6) {
 		printk(KERN_WARNING "Only cachepolicy=writeback supported on ARMv6 and later\n");
 		cachepolicy = CPOLICY_WRITEBACK;
 	}
 	flush_cache_all();
 	set_cr(cr_alignment);
+	return 0;
 }
-__early_param("cachepolicy=", early_cachepolicy);
+early_param("cachepolicy", early_cachepolicy);
 
-static void __init early_nocache(char **__unused)
+static int __init early_nocache(char *__unused)
 {
 	char *p = "buffered";
 	printk(KERN_WARNING "nocache is deprecated; use cachepolicy=%s\n", p);
-	early_cachepolicy(&p);
+	early_cachepolicy(p);
+	return 0;
 }
-__early_param("nocache", early_nocache);
+early_param("nocache", early_nocache);
 
-static void __init early_nowrite(char **__unused)
+static int __init early_nowrite(char *__unused)
 {
 	char *p = "uncached";
 	printk(KERN_WARNING "nowb is deprecated; use cachepolicy=%s\n", p);
-	early_cachepolicy(&p);
+	early_cachepolicy(p);
+	return 0;
 }
-__early_param("nowb", early_nowrite);
+early_param("nowb", early_nowrite);
 
-static void __init early_ecc(char **p)
+static int __init early_ecc(char *p)
 {
-	if (memcmp(*p, "on", 2) == 0) {
+	if (memcmp(p, "on", 2) == 0)
 		ecc_mask = PMD_PROTECTION;
-		*p += 2;
-	} else if (memcmp(*p, "off", 3) == 0) {
+	else if (memcmp(p, "off", 3) == 0)
 		ecc_mask = 0;
-		*p += 3;
-	}
+	return 0;
 }
-__early_param("ecc=", early_ecc);
+early_param("ecc", early_ecc);
 
 static int __init noalign_setup(char *__unused)
 {
@@ -255,6 +263,7 @@ const struct mem_type *get_mem_type(unsigned int type)
 {
 	return type < ARRAY_SIZE(mem_types) ? &mem_types[type] : NULL;
 }
+EXPORT_SYMBOL(get_mem_type);
 
 /*
  * Adjust the PMD section entries according to the CPU in use.
@@ -411,6 +420,10 @@ static void __init build_mem_type_table(void)
 		user_pgprot |= L_PTE_SHARED;
 		kern_pgprot |= L_PTE_SHARED;
 		vecs_pgprot |= L_PTE_SHARED;
+		mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_S;
+		mem_types[MT_DEVICE_WC].prot_pte |= L_PTE_SHARED;
+		mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_S;
+		mem_types[MT_DEVICE_CACHED].prot_pte |= L_PTE_SHARED;
 		mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
 		mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
 #endif
@@ -444,8 +457,7 @@ static void __init build_mem_type_table(void)
 
 	pgprot_user   = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG | user_pgprot);
 	pgprot_kernel = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG |
-				 L_PTE_DIRTY | L_PTE_WRITE |
-				 L_PTE_EXEC | kern_pgprot);
+				 L_PTE_DIRTY | L_PTE_WRITE | kern_pgprot);
 
 	mem_types[MT_LOW_VECTORS].prot_l1 |= ecc_mask;
 	mem_types[MT_HIGH_VECTORS].prot_l1 |= ecc_mask;
@@ -662,9 +674,9 @@ static unsigned long __initdata vmalloc_reserve = SZ_128M;
  * bytes. This can be used to increase (or decrease) the vmalloc
  * area - the default is 128m.
  */
-static void __init early_vmalloc(char **arg)
+static int __init early_vmalloc(char *arg)
 {
-	vmalloc_reserve = memparse(*arg, arg);
+	vmalloc_reserve = memparse(arg, NULL);
 
 	if (vmalloc_reserve < SZ_16M) {
 		vmalloc_reserve = SZ_16M;
@@ -679,20 +691,27 @@ static void __init early_vmalloc(char **arg)
 			"vmalloc area is too big, limiting to %luMB\n",
 			vmalloc_reserve >> 20);
 	}
+	return 0;
 }
-__early_param("vmalloc=", early_vmalloc);
+early_param("vmalloc", early_vmalloc);
 
 #define VMALLOC_MIN	(void *)(VMALLOC_END - vmalloc_reserve)
 
 static void __init sanity_check_meminfo(void)
 {
-	int i, j;
+	int i, j, highmem = 0;
 
 	for (i = 0, j = 0; i < meminfo.nr_banks; i++) {
 		struct membank *bank = &meminfo.bank[j];
 		*bank = meminfo.bank[i];
 
 #ifdef CONFIG_HIGHMEM
+		if (__va(bank->start) > VMALLOC_MIN ||
+		    __va(bank->start) < (void *)PAGE_OFFSET)
+			highmem = 1;
+
+		bank->highmem = highmem;
+
 		/*
 		 * Split those memory banks which are partially overlapping
 		 * the vmalloc area greatly simplifying things later.
@@ -702,10 +721,6 @@ static void __init sanity_check_meminfo(void)
 			if (meminfo.nr_banks >= NR_BANKS) {
 				printk(KERN_CRIT "NR_BANKS too low, "
 						 "ignoring high memory\n");
-			} else if (cache_is_vipt_aliasing()) {
-				printk(KERN_CRIT "HIGHMEM is not yet supported "
-						 "with VIPT aliasing cache, "
-						 "ignoring high memory\n");
 			} else {
 				memmove(bank + 1, bank,
 					(meminfo.nr_banks - i) * sizeof(*bank));
@@ -713,11 +728,14 @@ static void __init sanity_check_meminfo(void)
 				i++;
 				bank[1].size -= VMALLOC_MIN - __va(bank->start);
 				bank[1].start = __pa(VMALLOC_MIN - 1) + 1;
+				bank[1].highmem = highmem = 1;
 				j++;
 			}
 			bank->size = VMALLOC_MIN - __va(bank->start);
 		}
 #else
+		bank->highmem = highmem;
+
 		/*
 		 * Check whether this memory bank would entirely overlap
 		 * the vmalloc area.
@@ -746,6 +764,38 @@ static void __init sanity_check_meminfo(void)
 #endif
 		j++;
 	}
+#ifdef CONFIG_HIGHMEM
+	if (highmem) {
+		const char *reason = NULL;
+
+		if (cache_is_vipt_aliasing()) {
+			/*
+			 * Interactions between kmap and other mappings
+			 * make highmem support with aliasing VIPT caches
+			 * rather difficult.
+			 */
+			reason = "with VIPT aliasing cache";
+#ifdef CONFIG_SMP
+		} else if (tlb_ops_need_broadcast()) {
+			/*
+			 * kmap_high needs to occasionally flush TLB entries,
+			 * however, if the TLB entries need to be broadcast
+			 * we may deadlock:
+			 *  kmap_high(irqs off)->flush_all_zero_pkmaps->
+			 *  flush_tlb_kernel_range->smp_call_function_many
+			 *   (must not be called with irqs off)
+			 */
+			reason = "without hardware TLB ops broadcasting";
+#endif
+		}
+		if (reason) {
+			printk(KERN_CRIT "HIGHMEM is not supported %s, ignoring high memory\n",
+				reason);
+			while (j > 0 && meminfo.bank[j - 1].highmem)
+				j--;
+		}
+	}
+#endif
 	meminfo.nr_banks = j;
 }
 
@@ -835,9 +885,30 @@ void __init reserve_node_zero(pg_data_t *pgdat)
 				BOOTMEM_EXCLUSIVE);
 	}
 
+	if (machine_is_treo680() || machine_is_centro()) {
+		reserve_bootmem_node(pgdat, 0xa0000000, 0x1000,
+				BOOTMEM_EXCLUSIVE);
+		reserve_bootmem_node(pgdat, 0xa2000000, 0x1000,
+				BOOTMEM_EXCLUSIVE);
+	}
+
 	if (machine_is_palmt5())
 		reserve_bootmem_node(pgdat, 0xa0200000, 0x1000,
 				BOOTMEM_EXCLUSIVE);
+
+	/*
+	 * U300 - This platform family can share physical memory
+	 * between two ARM cpus, one running Linux and the other
+	 * running another OS.
+	 */
+	if (machine_is_u300()) {
+#ifdef CONFIG_MACH_U300_SINGLE_RAM
+#if ((CONFIG_MACH_U300_ACCESS_MEM_SIZE & 1) == 1) &&	\
+	CONFIG_MACH_U300_2MB_ALIGNMENT_FIX
+		res_size = 0x00100000;
+#endif
+#endif
+	}
 
 #ifdef CONFIG_SA1111
 	/*
@@ -969,7 +1040,7 @@ void __init paging_init(struct machine_desc *mdesc)
 	 */
 	zero_page = alloc_bootmem_low_pages(PAGE_SIZE);
 	empty_zero_page = virt_to_page(zero_page);
-	flush_dcache_page(empty_zero_page);
+	__flush_dcache_page(NULL, empty_zero_page);
 }
 
 /*
@@ -983,10 +1054,12 @@ void setup_mm_for_reboot(char mode)
 	pgd_t *pgd;
 	int i;
 
-	if (current->mm && current->mm->pgd)
-		pgd = current->mm->pgd;
-	else
-		pgd = init_mm.pgd;
+	/*
+	 * We need to access to user-mode page tables here. For kernel threads
+	 * we don't have any user-mode mappings so we use the context that we
+	 * "borrowed".
+	 */
+	pgd = current->active_mm->pgd;
 
 	base_pmdval = PMD_SECT_AP_WRITE | PMD_SECT_AP_READ | PMD_TYPE_SECT;
 	if (cpu_architecture() <= CPU_ARCH_ARMv5TEJ && !cpu_is_xscale())
@@ -1001,4 +1074,6 @@ void setup_mm_for_reboot(char mode)
 		pmd[1] = __pmd(pmdval + (1 << (PGDIR_SHIFT - 1)));
 		flush_pmd_entry(pmd);
 	}
+
+	local_flush_tlb_all();
 }

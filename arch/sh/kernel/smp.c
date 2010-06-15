@@ -35,6 +35,8 @@ static inline void __init smp_store_cpu_info(unsigned int cpu)
 {
 	struct sh_cpuinfo *c = cpu_data + cpu;
 
+	memcpy(c, &boot_cpu_data, sizeof(struct sh_cpuinfo));
+
 	c->loops_per_jiffy = loops_per_jiffy;
 }
 
@@ -47,7 +49,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	plat_prepare_cpus(max_cpus);
 
 #ifndef CONFIG_HOTPLUG_CPU
-	cpu_present_map = cpu_possible_map;
+	init_cpu_present(&cpu_possible_map);
 #endif
 }
 
@@ -58,8 +60,8 @@ void __devinit smp_prepare_boot_cpu(void)
 	__cpu_number_map[0] = cpu;
 	__cpu_logical_map[0] = cpu;
 
-	cpu_set(cpu, cpu_online_map);
-	cpu_set(cpu, cpu_possible_map);
+	set_cpu_online(cpu, true);
+	set_cpu_possible(cpu, true);
 }
 
 asmlinkage void __cpuinit start_secondary(void)
@@ -67,6 +69,7 @@ asmlinkage void __cpuinit start_secondary(void)
 	unsigned int cpu;
 	struct mm_struct *mm = &init_mm;
 
+	enable_mmu();
 	atomic_inc(&mm->mm_count);
 	atomic_inc(&mm->mm_users);
 	current->active_mm = mm;
@@ -120,7 +123,9 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	stack_start.bss_start = 0; /* don't clear bss for secondary cpus */
 	stack_start.start_kernel_fn = start_secondary;
 
-	flush_cache_all();
+	flush_icache_range((unsigned long)&stack_start,
+			   (unsigned long)&stack_start + sizeof(stack_start));
+	wmb();
 
 	plat_start_cpu(cpu, (unsigned long)_stext);
 
@@ -157,25 +162,16 @@ void smp_send_reschedule(int cpu)
 	plat_send_ipi(cpu, SMP_MSG_RESCHEDULE);
 }
 
-static void stop_this_cpu(void *unused)
-{
-	cpu_clear(smp_processor_id(), cpu_online_map);
-	local_irq_disable();
-
-	for (;;)
-		cpu_relax();
-}
-
 void smp_send_stop(void)
 {
 	smp_call_function(stop_this_cpu, 0, 0);
 }
 
-void arch_send_call_function_ipi(cpumask_t mask)
+void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 {
 	int cpu;
 
-	for_each_cpu_mask(cpu, mask)
+	for_each_cpu(cpu, mask)
 		plat_send_ipi(cpu, SMP_MSG_FUNCTION);
 }
 

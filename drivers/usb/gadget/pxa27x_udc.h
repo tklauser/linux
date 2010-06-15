@@ -130,6 +130,8 @@
 #define UP2OCR_HXOE	(1 << 17)	/* Transceiver Output Enable */
 #define UP2OCR_SEOS	(1 << 24)	/* Single-Ended Output Select */
 
+#define UDCCSR0_ACM	(1 << 9)	/* Ack Control Mode */
+#define UDCCSR0_AREN	(1 << 8)	/* Ack Response Enable */
 #define UDCCSR0_SA	(1 << 7)	/* Setup Active */
 #define UDCCSR0_RNE	(1 << 6)	/* Receive FIFO Not Empty */
 #define UDCCSR0_FST	(1 << 5)	/* Force Stall */
@@ -316,6 +318,11 @@ struct udc_usb_ep {
  * @queue: requests queue
  * @lock: lock to pxa_ep data (queues and stats)
  * @enabled: true when endpoint enabled (not stopped by gadget layer)
+ * @in_handle_ep: number of recursions of handle_ep() function
+ * 	Prevents deadlocks or infinite recursions of types :
+ *	  irq->handle_ep()->req_done()->req.complete()->pxa_ep_queue()->handle_ep()
+ *      or
+ *        pxa_ep_queue()->handle_ep()->req_done()->req.complete()->pxa_ep_queue()
  * @idx: endpoint index (1 => epA, 2 => epB, ..., 24 => epX)
  * @name: endpoint name (for trace/debug purpose)
  * @dir_in: 1 if IN endpoint, 0 if OUT endpoint
@@ -344,6 +351,7 @@ struct pxa_ep {
 	spinlock_t		lock;		/* Protects this structure */
 						/* (queues, stats) */
 	unsigned		enabled:1;
+	unsigned		in_handle_ep:1;
 
 	unsigned		idx:5;
 	char			*name;

@@ -36,209 +36,56 @@
 */
 #include "../rt_config.h"
 
-// IRQL = PASSIVE_LEVEL
-VOID RaiseClock(
-    IN	PRTMP_ADAPTER	pAd,
-    IN  UINT32 *x)
+int RtmpChipOpsEepromHook(struct rt_rtmp_adapter *pAd, int infType)
 {
-    *x = *x | EESK;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, *x);
-    RTMPusecDelay(1);				// Max frequency = 1MHz in Spec. definition
+	struct rt_rtmp_chip_op *pChipOps = &pAd->chipOps;
+#ifdef RT30xx
+#ifdef RTMP_EFUSE_SUPPORT
+	u32 eFuseCtrl, MacCsr0;
+	int index;
+
+	index = 0;
+	do {
+		RTMP_IO_READ32(pAd, MAC_CSR0, &MacCsr0);
+		pAd->MACVersion = MacCsr0;
+
+		if ((pAd->MACVersion != 0x00)
+		    && (pAd->MACVersion != 0xFFFFFFFF))
+			break;
+
+		RTMPusecDelay(10);
+	} while (index++ < 100);
+
+	pAd->bUseEfuse = FALSE;
+	RTMP_IO_READ32(pAd, EFUSE_CTRL, &eFuseCtrl);
+	pAd->bUseEfuse = ((eFuseCtrl & 0x80000000) == 0x80000000) ? 1 : 0;
+	if (pAd->bUseEfuse) {
+		pChipOps->eeinit = eFuse_init;
+		pChipOps->eeread = rtmp_ee_efuse_read16;
+		return 0;
+	} else
+		DBGPRINT(RT_DEBUG_TRACE, ("NVM is EEPROM\n"));
+#endif /* RTMP_EFUSE_SUPPORT // */
+#endif /* RT30xx // */
+
+	switch (infType) {
+#ifdef RTMP_PCI_SUPPORT
+	case RTMP_DEV_INF_PCI:
+		pChipOps->eeinit = NULL;
+		pChipOps->eeread = rtmp_ee_prom_read16;
+		break;
+#endif /* RTMP_PCI_SUPPORT // */
+#ifdef RTMP_USB_SUPPORT
+	case RTMP_DEV_INF_USB:
+		pChipOps->eeinit = NULL;
+		pChipOps->eeread = RTUSBReadEEPROM16;
+		break;
+#endif /* RTMP_USB_SUPPORT // */
+
+	default:
+		DBGPRINT(RT_DEBUG_ERROR, ("RtmpChipOpsEepromHook() failed!\n"));
+		break;
+	}
+
+	return 0;
 }
-
-// IRQL = PASSIVE_LEVEL
-VOID LowerClock(
-    IN	PRTMP_ADAPTER	pAd,
-    IN  UINT32 *x)
-{
-    *x = *x & ~EESK;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, *x);
-    RTMPusecDelay(1);
-}
-
-// IRQL = PASSIVE_LEVEL
-USHORT ShiftInBits(
-    IN	PRTMP_ADAPTER	pAd)
-{
-    UINT32		x,i;
-	USHORT      data=0;
-
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-
-    x &= ~( EEDO | EEDI);
-
-    for(i=0; i<16; i++)
-    {
-        data = data << 1;
-        RaiseClock(pAd, &x);
-
-        RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-
-        x &= ~(EEDI);
-        if(x & EEDO)
-            data |= 1;
-
-        LowerClock(pAd, &x);
-    }
-
-    return data;
-}
-
-// IRQL = PASSIVE_LEVEL
-VOID ShiftOutBits(
-    IN	PRTMP_ADAPTER	pAd,
-    IN  USHORT data,
-    IN  USHORT count)
-{
-    UINT32       x,mask;
-
-    mask = 0x01 << (count - 1);
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-
-    x &= ~(EEDO | EEDI);
-
-    do
-    {
-        x &= ~EEDI;
-        if(data & mask)		x |= EEDI;
-
-        RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-        RaiseClock(pAd, &x);
-        LowerClock(pAd, &x);
-
-        mask = mask >> 1;
-    } while(mask);
-
-    x &= ~EEDI;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-}
-
-// IRQL = PASSIVE_LEVEL
-VOID EEpromCleanup(
-    IN	PRTMP_ADAPTER	pAd)
-{
-    UINT32 x;
-
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-
-    x &= ~(EECS | EEDI);
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-    RaiseClock(pAd, &x);
-    LowerClock(pAd, &x);
-}
-
-VOID EWEN(
-	IN	PRTMP_ADAPTER	pAd)
-{
-    UINT32	x;
-
-    // reset bits and set EECS
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-    x &= ~(EEDI | EEDO | EESK);
-    x |= EECS;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-	// kick a pulse
-	RaiseClock(pAd, &x);
-	LowerClock(pAd, &x);
-
-    // output the read_opcode and six pulse in that order
-    ShiftOutBits(pAd, EEPROM_EWEN_OPCODE, 5);
-    ShiftOutBits(pAd, 0, 6);
-
-    EEpromCleanup(pAd);
-}
-
-VOID EWDS(
-	IN	PRTMP_ADAPTER	pAd)
-{
-    UINT32	x;
-
-    // reset bits and set EECS
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-    x &= ~(EEDI | EEDO | EESK);
-    x |= EECS;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-	// kick a pulse
-	RaiseClock(pAd, &x);
-	LowerClock(pAd, &x);
-
-    // output the read_opcode and six pulse in that order
-    ShiftOutBits(pAd, EEPROM_EWDS_OPCODE, 5);
-    ShiftOutBits(pAd, 0, 6);
-
-    EEpromCleanup(pAd);
-}
-
-// IRQL = PASSIVE_LEVEL
-USHORT RTMP_EEPROM_READ16(
-    IN	PRTMP_ADAPTER	pAd,
-    IN  USHORT Offset)
-{
-    UINT32		x;
-    USHORT		data;
-
-    Offset /= 2;
-    // reset bits and set EECS
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-    x &= ~(EEDI | EEDO | EESK);
-    x |= EECS;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-	// kick a pulse
-	RaiseClock(pAd, &x);
-	LowerClock(pAd, &x);
-
-    // output the read_opcode and register number in that order
-    ShiftOutBits(pAd, EEPROM_READ_OPCODE, 3);
-    ShiftOutBits(pAd, Offset, pAd->EEPROMAddressNum);
-
-    // Now read the data (16 bits) in from the selected EEPROM word
-    data = ShiftInBits(pAd);
-
-    EEpromCleanup(pAd);
-
-    return data;
-}	//ReadEEprom
-
-VOID RTMP_EEPROM_WRITE16(
-    IN	PRTMP_ADAPTER	pAd,
-    IN  USHORT Offset,
-    IN  USHORT Data)
-{
-    UINT32 x;
-
-	Offset /= 2;
-
-	EWEN(pAd);
-
-    // reset bits and set EECS
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-    x &= ~(EEDI | EEDO | EESK);
-    x |= EECS;
-    RTMP_IO_WRITE32(pAd, E2PROM_CSR, x);
-
-	// kick a pulse
-	RaiseClock(pAd, &x);
-	LowerClock(pAd, &x);
-
-    // output the read_opcode ,register number and data in that order
-    ShiftOutBits(pAd, EEPROM_WRITE_OPCODE, 3);
-    ShiftOutBits(pAd, Offset, pAd->EEPROMAddressNum);
-	ShiftOutBits(pAd, Data, 16);		// 16-bit access
-
-    // read DO status
-    RTMP_IO_READ32(pAd, E2PROM_CSR, &x);
-
-	EEpromCleanup(pAd);
-
-	RTMPusecDelay(10000);	//delay for twp(MAX)=10ms
-
-	EWDS(pAd);
-
-    EEpromCleanup(pAd);
-}
-

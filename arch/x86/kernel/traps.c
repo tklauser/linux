@@ -14,7 +14,6 @@
 #include <linux/spinlock.h>
 #include <linux/kprobes.h>
 #include <linux/uaccess.h>
-#include <linux/utsname.h>
 #include <linux/kdebug.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -45,6 +44,7 @@
 #include <linux/edac.h>
 #endif
 
+#include <asm/kmemcheck.h>
 #include <asm/stacktrace.h>
 #include <asm/processor.h>
 #include <asm/debugreg.h>
@@ -53,18 +53,17 @@
 #include <asm/traps.h>
 #include <asm/desc.h>
 #include <asm/i387.h>
+#include <asm/mce.h>
 
 #include <asm/mach_traps.h>
 
 #ifdef CONFIG_X86_64
+#include <asm/x86_init.h>
 #include <asm/pgalloc.h>
 #include <asm/proto.h>
 #else
 #include <asm/processor-flags.h>
 #include <asm/setup.h>
-#include <asm/traps.h>
-
-#include "cpu/mcheck/mce.h"
 
 asmlinkage int system_call(void);
 
@@ -73,11 +72,9 @@ char ignore_fpu_irq;
 
 /*
  * The IDT has to be page-aligned to simplify the Pentium
- * F0 0F bug workaround.. We have a special link segment
- * for this.
+ * F0 0F bug workaround.
  */
-gate_desc idt_table[256]
-	__attribute__((__section__(".data.idt"))) = { { { { 0, 0 } } }, };
+gate_desc idt_table[NR_VECTORS] __page_aligned_data = { { { { 0, 0 } } }, };
 #endif
 
 DECLARE_BITMAP(used_vectors, NR_VECTORS);
@@ -346,6 +343,9 @@ io_check_error(unsigned char reason, struct pt_regs *regs)
 	printk(KERN_EMERG "NMI: IOCK error (debug interrupt?)\n");
 	show_registers(regs);
 
+	if (panic_on_io_nmi)
+		panic("NMI IOCK error: Not continuing");
+
 	/* Re-enable the IOCK line, wait for a few seconds */
 	reason = (reason & 0xf) | 8;
 	outb(reason, 0x61);
@@ -529,73 +529,59 @@ asmlinkage __kprobes struct pt_regs *sync_regs(struct pt_regs *eregs)
 dotraplinkage void __kprobes do_debug(struct pt_regs *regs, long error_code)
 {
 	struct task_struct *tsk = current;
-	unsigned long condition;
+	unsigned long dr6;
 	int si_code;
 
-	get_debugreg(condition, 6);
+	get_debugreg(dr6, 6);
 
+	/* Filter out all the reserved bits which are preset to 1 */
+	dr6 &= ~DR6_RESERVED;
+
+	/* Catch kmemcheck conditions first of all! */
+	if ((dr6 & DR_STEP) && kmemcheck_trap(regs))
+		return;
+
+	/* DR6 may or may not be cleared by the CPU */
+	set_debugreg(0, 6);
 	/*
 	 * The processor cleared BTF, so don't mark that we need it set.
 	 */
 	clear_tsk_thread_flag(tsk, TIF_DEBUGCTLMSR);
 	tsk->thread.debugctlmsr = 0;
 
-	if (notify_die(DIE_DEBUG, "debug", regs, condition, error_code,
-						SIGTRAP) == NOTIFY_STOP)
+	/* Store the virtualized DR6 value */
+	tsk->thread.debugreg6 = dr6;
+
+	if (notify_die(DIE_DEBUG, "debug", regs, PTR_ERR(&dr6), error_code,
+							SIGTRAP) == NOTIFY_STOP)
 		return;
 
 	/* It's safe to allow irq's after DR6 has been saved */
 	preempt_conditional_sti(regs);
 
-	/* Mask out spurious debug traps due to lazy DR7 setting */
-	if (condition & (DR_TRAP0|DR_TRAP1|DR_TRAP2|DR_TRAP3)) {
-		if (!tsk->thread.debugreg7)
-			goto clear_dr7;
+	if (regs->flags & X86_VM_MASK) {
+		handle_vm86_trap((struct kernel_vm86_regs *) regs,
+				error_code, 1);
+		return;
 	}
 
-#ifdef CONFIG_X86_32
-	if (regs->flags & X86_VM_MASK)
-		goto debug_vm86;
-#endif
-
-	/* Save debug status register where ptrace can see it */
-	tsk->thread.debugreg6 = condition;
-
 	/*
-	 * Single-stepping through TF: make sure we ignore any events in
-	 * kernel space (but re-enable TF when returning to user mode).
+	 * Single-stepping through system calls: ignore any exceptions in
+	 * kernel space, but re-enable TF when returning to user mode.
+	 *
+	 * We already checked v86 mode above, so we can check for kernel mode
+	 * by just checking the CPL of CS.
 	 */
-	if (condition & DR_STEP) {
-		if (!user_mode(regs))
-			goto clear_TF_reenable;
+	if ((dr6 & DR_STEP) && !user_mode(regs)) {
+		tsk->thread.debugreg6 &= ~DR_STEP;
+		set_tsk_thread_flag(tsk, TIF_SINGLESTEP);
+		regs->flags &= ~X86_EFLAGS_TF;
 	}
-
-	si_code = get_si_code(condition);
-	/* Ok, finally something we can handle */
-	send_sigtrap(tsk, regs, error_code, si_code);
-
-	/*
-	 * Disable additional traps. They'll be re-enabled when
-	 * the signal is delivered.
-	 */
-clear_dr7:
-	set_debugreg(0, 7);
+	si_code = get_si_code(tsk->thread.debugreg6);
+	if (tsk->thread.debugreg6 & (DR_STEP | DR_TRAP_BITS))
+		send_sigtrap(tsk, regs, error_code, si_code);
 	preempt_conditional_cli(regs);
-	return;
 
-#ifdef CONFIG_X86_32
-debug_vm86:
-	/* reenable preemption: handle_vm86_trap() might sleep */
-	dec_preempt_count();
-	handle_vm86_trap((struct kernel_vm86_regs *) regs, error_code, 1);
-	conditional_cli(regs);
-	return;
-#endif
-
-clear_TF_reenable:
-	set_tsk_thread_flag(tsk, TIF_SINGLESTEP);
-	regs->flags &= ~X86_EFLAGS_TF;
-	preempt_conditional_cli(regs);
 	return;
 }
 
@@ -779,34 +765,35 @@ do_spurious_interrupt_bug(struct pt_regs *regs, long error_code)
 #endif
 }
 
-#ifdef CONFIG_X86_32
-unsigned long patch_espfix_desc(unsigned long uesp, unsigned long kesp)
-{
-	struct desc_struct *gdt = get_cpu_gdt_table(smp_processor_id());
-	unsigned long base = (kesp - uesp) & -THREAD_SIZE;
-	unsigned long new_kesp = kesp - base;
-	unsigned long lim_pages = (new_kesp | (THREAD_SIZE - 1)) >> PAGE_SHIFT;
-	__u64 desc = *(__u64 *)&gdt[GDT_ENTRY_ESPFIX_SS];
-
-	/* Set up base for espfix segment */
-	desc &= 0x00f0ff0000000000ULL;
-	desc |=	((((__u64)base) << 16) & 0x000000ffffff0000ULL) |
-		((((__u64)base) << 32) & 0xff00000000000000ULL) |
-		((((__u64)lim_pages) << 32) & 0x000f000000000000ULL) |
-		(lim_pages & 0xffff);
-	*(__u64 *)&gdt[GDT_ENTRY_ESPFIX_SS] = desc;
-
-	return new_kesp;
-}
-#else
 asmlinkage void __attribute__((weak)) smp_thermal_interrupt(void)
 {
 }
 
-asmlinkage void __attribute__((weak)) mce_threshold_interrupt(void)
+asmlinkage void __attribute__((weak)) smp_threshold_interrupt(void)
 {
 }
-#endif
+
+/*
+ * __math_state_restore assumes that cr0.TS is already clear and the
+ * fpu state is all ready for use.  Used during context switch.
+ */
+void __math_state_restore(void)
+{
+	struct thread_info *thread = current_thread_info();
+	struct task_struct *tsk = thread->task;
+
+	/*
+	 * Paranoid restore. send a SIGSEGV if we fail to restore the state.
+	 */
+	if (unlikely(restore_fpu_checking(tsk))) {
+		stts();
+		force_sig(SIGSEGV, tsk);
+		return;
+	}
+
+	thread->status |= TS_USEDFPU;	/* So we fnsave on switch_to() */
+	tsk->fpu_counter++;
+}
 
 /*
  * 'math_state_restore()' saves the current math information in the
@@ -839,20 +826,8 @@ asmlinkage void math_state_restore(void)
 	}
 
 	clts();				/* Allow maths ops (or we recurse) */
-#ifdef CONFIG_X86_32
-	restore_fpu(tsk);
-#else
-	/*
-	 * Paranoid restore. send a SIGSEGV if we fail to restore the state.
-	 */
-	if (unlikely(restore_fpu_checking(tsk))) {
-		stts();
-		force_sig(SIGSEGV, tsk);
-		return;
-	}
-#endif
-	thread->status |= TS_USEDFPU;	/* So we fnsave on switch_to() */
-	tsk->fpu_counter++;
+
+	__math_state_restore();
 }
 EXPORT_SYMBOL_GPL(math_state_restore);
 
@@ -945,8 +920,13 @@ void __init trap_init(void)
 #endif
 	set_intr_gate(19, &simd_coprocessor_error);
 
+	/* Reserve all the builtin and the syscall vector: */
+	for (i = 0; i < FIRST_EXTERNAL_VECTOR; i++)
+		set_bit(i, used_vectors);
+
 #ifdef CONFIG_IA32_EMULATION
 	set_system_intr_gate(IA32_SYSCALL_VECTOR, ia32_syscall);
+	set_bit(IA32_SYSCALL_VECTOR, used_vectors);
 #endif
 
 #ifdef CONFIG_X86_32
@@ -963,23 +943,13 @@ void __init trap_init(void)
 	}
 
 	set_system_trap_gate(SYSCALL_VECTOR, &system_call);
-#endif
-
-	/* Reserve all the builtin and the syscall vector: */
-	for (i = 0; i < FIRST_EXTERNAL_VECTOR; i++)
-		set_bit(i, used_vectors);
-
-#ifdef CONFIG_X86_64
-	set_bit(IA32_SYSCALL_VECTOR, used_vectors);
-#else
 	set_bit(SYSCALL_VECTOR, used_vectors);
 #endif
+
 	/*
 	 * Should be a barrier for any external CPU state:
 	 */
 	cpu_init();
 
-#ifdef CONFIG_X86_32
-	x86_quirk_trap_init();
-#endif
+	x86_init.irqs.trap_init();
 }

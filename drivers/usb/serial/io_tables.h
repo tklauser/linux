@@ -14,7 +14,7 @@
 #ifndef IO_TABLES_H
 #define IO_TABLES_H
 
-static struct usb_device_id edgeport_2port_id_table [] = {
+static const struct usb_device_id edgeport_2port_id_table[] = {
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_2) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_2I) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_421) },
@@ -23,7 +23,7 @@ static struct usb_device_id edgeport_2port_id_table [] = {
 	{ }
 };
 
-static struct usb_device_id edgeport_4port_id_table [] = {
+static const struct usb_device_id edgeport_4port_id_table[] = {
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_4) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_RAPIDPORT_4) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_4T) },
@@ -37,7 +37,7 @@ static struct usb_device_id edgeport_4port_id_table [] = {
 	{ }
 };
 
-static struct usb_device_id edgeport_8port_id_table [] = {
+static const struct usb_device_id edgeport_8port_id_table[] = {
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_8) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_16_DUAL_CPU) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION, ION_DEVICE_ID_EDGEPORT_8I) },
@@ -47,7 +47,7 @@ static struct usb_device_id edgeport_8port_id_table [] = {
 	{ }
 };
 
-static struct usb_device_id Epic_port_id_table [] = {
+static const struct usb_device_id Epic_port_id_table[] = {
 	{ USB_DEVICE(USB_VENDOR_ID_NCR, NCR_DEVICE_ID_EPIC_0202) },
 	{ USB_DEVICE(USB_VENDOR_ID_NCR, NCR_DEVICE_ID_EPIC_0203) },
 	{ USB_DEVICE(USB_VENDOR_ID_NCR, NCR_DEVICE_ID_EPIC_0310) },
@@ -60,7 +60,7 @@ static struct usb_device_id Epic_port_id_table [] = {
 };
 
 /* Devices that this driver supports */
-static struct usb_device_id id_table_combined [] = {
+static const struct usb_device_id id_table_combined[] = {
 	{ USB_DEVICE(USB_VENDOR_ID_ION,	ION_DEVICE_ID_EDGEPORT_4) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION,	ION_DEVICE_ID_RAPIDPORT_4) },
 	{ USB_DEVICE(USB_VENDOR_ID_ION,	ION_DEVICE_ID_EDGEPORT_4T) },
@@ -117,7 +117,8 @@ static struct usb_serial_driver edgeport_2port_device = {
 	.throttle		= edge_throttle,
 	.unthrottle		= edge_unthrottle,
 	.attach			= edge_startup,
-	.shutdown		= edge_shutdown,
+	.disconnect		= edge_disconnect,
+	.release		= edge_release,
 	.ioctl			= edge_ioctl,
 	.set_termios		= edge_set_termios,
 	.tiocmget		= edge_tiocmget,
@@ -145,7 +146,8 @@ static struct usb_serial_driver edgeport_4port_device = {
 	.throttle		= edge_throttle,
 	.unthrottle		= edge_unthrottle,
 	.attach			= edge_startup,
-	.shutdown		= edge_shutdown,
+	.disconnect		= edge_disconnect,
+	.release		= edge_release,
 	.ioctl			= edge_ioctl,
 	.set_termios		= edge_set_termios,
 	.tiocmget		= edge_tiocmget,
@@ -173,7 +175,8 @@ static struct usb_serial_driver edgeport_8port_device = {
 	.throttle		= edge_throttle,
 	.unthrottle		= edge_unthrottle,
 	.attach			= edge_startup,
-	.shutdown		= edge_shutdown,
+	.disconnect		= edge_disconnect,
+	.release		= edge_release,
 	.ioctl			= edge_ioctl,
 	.set_termios		= edge_set_termios,
 	.tiocmget		= edge_tiocmget,
@@ -200,7 +203,8 @@ static struct usb_serial_driver epic_device = {
 	.throttle		= edge_throttle,
 	.unthrottle		= edge_unthrottle,
 	.attach			= edge_startup,
-	.shutdown		= edge_shutdown,
+	.disconnect		= edge_disconnect,
+	.release		= edge_release,
 	.ioctl			= edge_ioctl,
 	.set_termios		= edge_set_termios,
 	.tiocmget		= edge_tiocmget,

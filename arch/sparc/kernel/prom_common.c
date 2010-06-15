@@ -22,8 +22,11 @@
 #include <linux/of.h>
 #include <asm/prom.h>
 #include <asm/oplib.h>
+#include <asm/leon.h>
 
 #include "prom.h"
+
+void (*prom_build_more)(struct device_node *dp, struct device_node ***nextp);
 
 struct device_node *of_console_device;
 EXPORT_SYMBOL(of_console_device);
@@ -33,18 +36,6 @@ EXPORT_SYMBOL(of_console_path);
 
 char *of_console_options;
 EXPORT_SYMBOL(of_console_options);
-
-struct device_node *of_find_node_by_phandle(phandle handle)
-{
-	struct device_node *np;
-
-	for (np = allnodes; np; np = np->allnext)
-		if (np->node == handle)
-			break;
-
-	return np;
-}
-EXPORT_SYMBOL(of_find_node_by_phandle);
 
 int of_getintprop_default(struct device_node *np, const char *name, int def)
 {
@@ -76,6 +67,7 @@ int of_set_property(struct device_node *dp, const char *name, void *val, int len
 
 	err = -ENODEV;
 
+	mutex_lock(&of_set_property_mutex);
 	write_lock(&devtree_lock);
 	prevp = &dp->properties;
 	while (*prevp) {
@@ -85,9 +77,7 @@ int of_set_property(struct device_node *dp, const char *name, void *val, int len
 			void *old_val = prop->value;
 			int ret;
 
-			mutex_lock(&of_set_property_mutex);
-			ret = prom_setprop(dp->node, name, val, len);
-			mutex_unlock(&of_set_property_mutex);
+			ret = prom_setprop(dp->phandle, name, val, len);
 
 			err = -EINVAL;
 			if (ret >= 0) {
@@ -106,6 +96,7 @@ int of_set_property(struct device_node *dp, const char *name, void *val, int len
 		prevp = &(*prevp)->next;
 	}
 	write_unlock(&devtree_lock);
+	mutex_unlock(&of_set_property_mutex);
 
 	/* XXX Upate procfs if necessary... */
 
@@ -161,7 +152,7 @@ static struct property * __init build_one_prop(phandle node, char *prev,
 			name = prom_nextprop(node, prev, p->name);
 		}
 
-		if (strlen(name) == 0) {
+		if (!name || strlen(name) == 0) {
 			tmp = p;
 			return NULL;
 		}
@@ -233,7 +224,7 @@ static struct device_node * __init prom_create_node(phandle node,
 
 	dp->name = get_one_property(node, "name");
 	dp->type = get_one_property(node, "device_type");
-	dp->node = node;
+	dp->phandle = node;
 
 	dp->properties = build_prop_list(node);
 
@@ -242,7 +233,7 @@ static struct device_node * __init prom_create_node(phandle node,
 	return dp;
 }
 
-static char * __init build_full_name(struct device_node *dp)
+char * __init build_full_name(struct device_node *dp)
 {
 	int len, ourlen, plen;
 	char *n;
@@ -289,6 +280,9 @@ static struct device_node * __init prom_build_tree(struct device_node *parent,
 
 		dp->child = prom_build_tree(dp, prom_getchild(node), nextp);
 
+		if (prom_build_more)
+			prom_build_more(dp, nextp);
+
 		node = prom_getsibling(node);
 	}
 
@@ -307,12 +301,10 @@ void __init prom_build_devicetree(void)
 
 	nextp = &allnodes->allnext;
 	allnodes->child = prom_build_tree(allnodes,
-					  prom_getchild(allnodes->node),
+					  prom_getchild(allnodes->phandle),
 					  &nextp);
 	of_console_init();
 
 	printk("PROM: Built device tree with %u bytes of memory.\n",
 	       prom_early_allocated);
-
-	of_fill_in_cpu_data();
 }

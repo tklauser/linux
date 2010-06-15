@@ -46,11 +46,11 @@
 #include <linux/mm.h>
 #include <linux/init.h>
 #include <linux/i2c.h>
-#include <linux/smp_lock.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/videotext.h>
 #include <linux/videodev2.h>
+#include <linux/slab.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-ioctl.h>

@@ -61,6 +61,7 @@ enum {
 	MLX4_DEV_CAP_FLAG_BAD_PKEY_CNTR	= 1 <<  8,
 	MLX4_DEV_CAP_FLAG_BAD_QKEY_CNTR	= 1 <<  9,
 	MLX4_DEV_CAP_FLAG_DPDP		= 1 << 12,
+	MLX4_DEV_CAP_FLAG_BLH		= 1 << 15,
 	MLX4_DEV_CAP_FLAG_MEM_WINDOW	= 1 << 16,
 	MLX4_DEV_CAP_FLAG_APM		= 1 << 17,
 	MLX4_DEV_CAP_FLAG_ATOMIC	= 1 << 18,
@@ -210,6 +211,7 @@ struct mlx4_caps {
 	int			num_comp_vectors;
 	int			num_mpts;
 	int			num_mtt_segs;
+	int			mtts_per_seg;
 	int			fmr_reserved_mtts;
 	int			reserved_mtts;
 	int			reserved_mrws;

@@ -1,62 +1,37 @@
 #ifndef _ASM_NIOS2_ELF_H
 #define _ASM_NIOS2_ELF_H
 
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/elf.h
- *
- * Nios2 ELF relocation types
- *
- * Derived from M68knommu
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * Jan/20/2004		dgt	    NiosII
- * Mar/18/2004		xwt		NiosII relocation types added
- *
- ---------------------------------------------------------------------*/
+#define R_NIOS2_NONE		0
+#define R_NIOS2_S16		1
+#define R_NIOS2_U16		2
+#define R_NIOS2_PCREL16		3
+#define R_NIOS2_CALL26		4
+#define R_NIOS2_IMM5		5
+#define R_NIOS2_CACHE_OPX 	6
+#define R_NIOS2_IMM6		7
+#define R_NIOS2_IMM8		8
+#define R_NIOS2_HI16		9
+#define R_NIOS2_LO16		10
+#define R_NIOS2_HIADJ16 	11
+#define R_NIOS2_BFD_RELOC_32	12
+#define R_NIOS2_BFD_RELOC_16	13
+#define R_NIOS2_BFD_RELOC_8	14
+#define R_NIOS2_GPREL		15
+#define R_NIOS2_GNU_VTINHERIT 	16
+#define R_NIOS2_GNU_VTENTRY  	17
+#define R_NIOS2_UJMP		18
+#define R_NIOS2_CJMP		19
+#define R_NIOS2_CALLR		20
+#define R_NIOS2_ALIGN		21
+/* Keep this the last entry.  */
+#define R_NIOS2_NUM		22
 
 #include <asm/ptrace.h>
 #include <asm/user.h>
 
-#define R_NIOS2_NONE			0
-#define R_NIOS2_S16				1
-#define R_NIOS2_U16				2
-#define R_NIOS2_PCREL16			3
-#define R_NIOS2_CALL26			4
-#define R_NIOS2_IMM5			5
-#define R_NIOS2_CACHE_OPX 		6
-#define R_NIOS2_IMM6			7
-#define R_NIOS2_IMM8			8
-#define R_NIOS2_HI16			9
-#define R_NIOS2_LO16			10
-#define R_NIOS2_HIADJ16 		11
-#define R_NIOS2_BFD_RELOC_32	12
-#define R_NIOS2_BFD_RELOC_16	13
-#define R_NIOS2_BFD_RELOC_8 	14
-#define R_NIOS2_GPREL			15
-#define R_NIOS2_GNU_VTINHERIT 	16
-#define R_NIOS2_GNU_VTENTRY  	17
-#define R_NIOS2_UJMP			18
-#define R_NIOS2_CJMP			19
-#define R_NIOS2_CALLR			20
-#define R_NIOS2_ALIGN			21
-/* Keep this the last entry.  */
-#define R_NIOS2_NUM				22
-
 typedef unsigned long elf_greg_t;
 
-#define ELF_NGREG (sizeof (struct user_regs_struct) / sizeof(elf_greg_t))
+#define ELF_NGREG (sizeof (struct pt_regs) / sizeof(elf_greg_t))
 typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 
 typedef unsigned long elf_fpregset_t;
@@ -64,8 +39,7 @@ typedef unsigned long elf_fpregset_t;
 /*
  * This is used to ensure we don't load something for the wrong architecture.
  */
-#define elf_check_arch(x) \
-	((x)->e_machine == EM_ALTERA_NIOS2)
+#define elf_check_arch(x) ((x)->e_machine == EM_ALTERA_NIOS2)
 
 /*
  * These are used to set parameters in the core dumps.
@@ -140,6 +114,6 @@ typedef unsigned long elf_fpregset_t;
 
 #define ELF_PLATFORM  (NULL)
 
-#define SET_PERSONALITY(ex) set_personality(PER_LINUX)
+#define SET_PERSONALITY(ex) set_personality(PER_LINUX_32BIT)
 
 #endif

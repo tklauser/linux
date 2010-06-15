@@ -31,6 +31,7 @@
 #include <linux/string.h>
 #include <linux/init.h>
 #include <linux/seq_file.h>
+#include <linux/slab.h>
 
 #include <asm/byteorder.h>
 #include <asm/unaligned.h>
@@ -44,7 +45,7 @@
 
 #ifdef CONFIG_IRDA_DEBUG
 /* FIXME: This one should go in irlmp.c */
-static const char *ias_charset_types[] = {
+static const char *const ias_charset_types[] = {
 	"CS_ASCII",
 	"CS_ISO_8859_1",
 	"CS_ISO_8859_2",
@@ -966,7 +967,7 @@ static void iriap_watchdog_timer_expired(void *data)
 
 #ifdef CONFIG_PROC_FS
 
-static const char *ias_value_types[] = {
+static const char *const ias_value_types[] = {
 	"IAS_MISSING",
 	"IAS_INTEGER",
 	"IAS_OCT_SEQ",

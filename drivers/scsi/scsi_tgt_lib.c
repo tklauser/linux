@@ -23,6 +23,7 @@
 #include <linux/hash.h>
 #include <linux/module.h>
 #include <linux/pagemap.h>
+#include <linux/slab.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_device.h>
@@ -387,7 +388,7 @@ static int scsi_map_user_pages(struct scsi_tgt_cmd *tcmd, struct scsi_cmnd *cmd,
 	 * we use REQ_TYPE_BLOCK_PC so scsi_init_io doesn't set the
 	 * length for us.
 	 */
-	cmd->sdb.length = rq->data_len;
+	cmd->sdb.length = blk_rq_bytes(rq);
 
 	return 0;
 

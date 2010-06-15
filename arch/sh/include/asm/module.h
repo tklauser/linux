@@ -1,17 +1,22 @@
 #ifndef _ASM_SH_MODULE_H
 #define _ASM_SH_MODULE_H
 
-/*
- * This file contains the SH architecture specific module code.
- */
-
 struct mod_arch_specific {
-	/* Nothing to see here .. */
+#ifdef CONFIG_DWARF_UNWINDER
+	struct list_head fde_list;
+	struct list_head cie_list;
+#endif
 };
 
-#define Elf_Shdr		Elf32_Shdr
-#define Elf_Sym			Elf32_Sym
-#define Elf_Ehdr		Elf32_Ehdr
+#ifdef CONFIG_64BIT
+#define Elf_Shdr Elf64_Shdr
+#define Elf_Sym Elf64_Sym
+#define Elf_Ehdr Elf64_Ehdr
+#else
+#define Elf_Shdr Elf32_Shdr
+#define Elf_Sym Elf32_Sym
+#define Elf_Ehdr Elf32_Ehdr
+#endif
 
 #ifdef CONFIG_CPU_LITTLE_ENDIAN
 # ifdef CONFIG_CPU_SH2

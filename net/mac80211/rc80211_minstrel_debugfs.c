@@ -49,6 +49,7 @@
 #include <linux/skbuff.h>
 #include <linux/debugfs.h>
 #include <linux/ieee80211.h>
+#include <linux/slab.h>
 #include <net/mac80211.h>
 #include "rc80211_minstrel.h"
 
@@ -83,7 +84,7 @@ minstrel_stats_open(struct inode *inode, struct file *file)
 		p += sprintf(p, "%3u%s", mr->bitrate / 2,
 				(mr->bitrate & 1 ? ".5" : "  "));
 
-		tp = ((mr->cur_tp * 96) / 18000) >> 10;
+		tp = mr->cur_tp / ((18000 << 10) / 96);
 		prob = mr->cur_prob / 18;
 		eprob = mr->probability / 18;
 
@@ -139,7 +140,7 @@ minstrel_stats_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static struct file_operations minstrel_stat_fops = {
+static const struct file_operations minstrel_stat_fops = {
 	.owner = THIS_MODULE,
 	.open = minstrel_stats_open,
 	.read = minstrel_stats_read,

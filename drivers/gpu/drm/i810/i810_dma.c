@@ -36,6 +36,7 @@
 #include "i810_drv.h"
 #include <linux/interrupt.h>	/* For task queue support */
 #include <linux/delay.h>
+#include <linux/slab.h>
 #include <linux/pagemap.h>
 
 #define I810_BUF_FREE		2
@@ -115,7 +116,7 @@ static int i810_mmap_buffers(struct file *filp, struct vm_area_struct *vma)
 static const struct file_operations i810_buffer_fops = {
 	.open = drm_open,
 	.release = drm_release,
-	.ioctl = drm_ioctl,
+	.unlocked_ioctl = drm_ioctl,
 	.mmap = i810_mmap_buffers,
 	.fasync = drm_fasync,
 };
@@ -227,8 +228,7 @@ static int i810_dma_cleanup(struct drm_device * dev)
 			/* Need to rewrite hardware status page */
 			I810_WRITE(0x02080, 0x1ffff000);
 		}
-		drm_free(dev->dev_private, sizeof(drm_i810_private_t),
-			 DRM_MEM_DRIVER);
+		kfree(dev->dev_private);
 		dev->dev_private = NULL;
 
 		for (i = 0; i < dma->buf_count; i++) {
@@ -439,8 +439,7 @@ static int i810_dma_init(struct drm_device *dev, void *data,
 	switch (init->func) {
 	case I810_INIT_DMA_1_4:
 		DRM_INFO("Using v1.4 init.\n");
-		dev_priv = drm_alloc(sizeof(drm_i810_private_t),
-				     DRM_MEM_DRIVER);
+		dev_priv = kmalloc(sizeof(drm_i810_private_t), GFP_KERNEL);
 		if (dev_priv == NULL)
 			return -ENOMEM;
 		retcode = i810_dma_initialize(dev, dev_priv, init);

@@ -163,7 +163,7 @@ static void usb_onetouch_pm_hook(struct us_data *us, int action)
 			usb_kill_urb(onetouch->irq);
 			break;
 		case US_RESUME:
-			if (usb_submit_urb(onetouch->irq, GFP_KERNEL) != 0)
+			if (usb_submit_urb(onetouch->irq, GFP_NOIO) != 0)
 				dev_err(&onetouch->irq->dev->dev,
 					"usb_submit_urb failed\n");
 			break;
@@ -202,7 +202,7 @@ static int onetouch_connect_input(struct us_data *ss)
 		goto fail1;
 
 	onetouch->data = usb_buffer_alloc(udev, ONETOUCH_PKT_LEN,
-					  GFP_ATOMIC, &onetouch->data_dma);
+					  GFP_KERNEL, &onetouch->data_dma);
 	if (!onetouch->data)
 		goto fail1;
 

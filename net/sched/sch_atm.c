@@ -3,6 +3,7 @@
 /* Written 1998-2000 by Werner Almesberger, EPFL ICA */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/string.h>
 #include <linux/errno.h>
@@ -49,7 +50,7 @@ struct atm_flow_data {
 	struct socket		*sock;		/* for closing */
 	u32			classid;	/* x:y type ID */
 	int			ref;		/* reference count */
-	struct gnet_stats_basic	bstats;
+	struct gnet_stats_basic_packed	bstats;
 	struct gnet_stats_queue	qstats;
 	struct atm_flow_data	*next;
 	struct atm_flow_data	*excess;	/* flow for excess traffic;

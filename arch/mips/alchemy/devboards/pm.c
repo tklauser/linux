@@ -9,6 +9,8 @@
 #include <linux/suspend.h>
 #include <linux/sysfs.h>
 #include <asm/mach-au1x00/au1000.h>
+#include <asm/mach-au1x00/gpio.h>
+#include <asm/mach-db1x00/bcsr.h>
 
 /*
  * Generic suspend userspace interface for Alchemy development boards.
@@ -25,8 +27,22 @@ static unsigned long db1x_pm_last_wakesrc;
 
 static int db1x_pm_enter(suspend_state_t state)
 {
+	unsigned short bcsrs[16];
+	int i, j, hasint;
+
+	/* save CPLD regs */
+	hasint = bcsr_read(BCSR_WHOAMI);
+	hasint = BCSR_WHOAMI_BOARD(hasint) >= BCSR_WHOAMI_DB1200;
+	j = (hasint) ? BCSR_MASKSET : BCSR_SYSTEM;
+
+	for (i = BCSR_STATUS; i <= j; i++)
+		bcsrs[i] = bcsr_read(i);
+
+	/* shut off hexleds */
+	bcsr_write(BCSR_HEXCLEAR, 3);
+
 	/* enable GPIO based wakeup */
-	au_writel(1, SYS_PININPUTEN);
+	alchemy_gpio1_input_enable();
 
 	/* clear and setup wake cause and source */
 	au_writel(0, SYS_WAKEMSK);
@@ -50,6 +66,23 @@ static int db1x_pm_enter(suspend_state_t state)
 
 	/* ...and now the sandman can come! */
 	au_sleep();
+
+
+	/* restore CPLD regs */
+	for (i = BCSR_STATUS; i <= BCSR_SYSTEM; i++)
+		bcsr_write(i, bcsrs[i]);
+
+	/* restore CPLD int registers */
+	if (hasint) {
+		bcsr_write(BCSR_INTCLR, 0xffff);
+		bcsr_write(BCSR_MASKCLR, 0xffff);
+		bcsr_write(BCSR_INTSTAT, 0xffff);
+		bcsr_write(BCSR_INTSET, bcsrs[BCSR_INTSET]);
+		bcsr_write(BCSR_MASKSET, bcsrs[BCSR_MASKSET]);
+	}
+
+	/* light up hexleds */
+	bcsr_write(BCSR_HEXCLEAR, 0);
 
 	return 0;
 }

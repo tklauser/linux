@@ -76,19 +76,20 @@ struct sil164_priv {
 static bool sil164_readb(struct intel_dvo_device *dvo, int addr, uint8_t *ch)
 {
 	struct sil164_priv *sil = dvo->dev_priv;
-	struct intel_i2c_chan *i2cbus = dvo->i2c_bus;
+	struct i2c_adapter *adapter = dvo->i2c_bus;
+	struct intel_i2c_chan *i2cbus = container_of(adapter, struct intel_i2c_chan, adapter);
 	u8 out_buf[2];
 	u8 in_buf[2];
 
 	struct i2c_msg msgs[] = {
 		{
-			.addr = i2cbus->slave_addr,
+			.addr = dvo->slave_addr,
 			.flags = 0,
 			.len = 1,
 			.buf = out_buf,
 		},
 		{
-			.addr = i2cbus->slave_addr,
+			.addr = dvo->slave_addr,
 			.flags = I2C_M_RD,
 			.len = 1,
 			.buf = in_buf,
@@ -104,8 +105,8 @@ static bool sil164_readb(struct intel_dvo_device *dvo, int addr, uint8_t *ch)
 	};
 
 	if (!sil->quiet) {
-		DRM_DEBUG("Unable to read register 0x%02x from %s:%02x.\n",
-			  addr, i2cbus->adapter.name, i2cbus->slave_addr);
+		DRM_DEBUG_KMS("Unable to read register 0x%02x from %s:%02x.\n",
+			  addr, i2cbus->adapter.name, dvo->slave_addr);
 	}
 	return false;
 }
@@ -113,10 +114,11 @@ static bool sil164_readb(struct intel_dvo_device *dvo, int addr, uint8_t *ch)
 static bool sil164_writeb(struct intel_dvo_device *dvo, int addr, uint8_t ch)
 {
 	struct sil164_priv *sil= dvo->dev_priv;
-	struct intel_i2c_chan *i2cbus = dvo->i2c_bus;
+	struct i2c_adapter *adapter = dvo->i2c_bus;
+	struct intel_i2c_chan *i2cbus = container_of(adapter, struct intel_i2c_chan, adapter);
 	uint8_t out_buf[2];
 	struct i2c_msg msg = {
-		.addr = i2cbus->slave_addr,
+		.addr = dvo->slave_addr,
 		.flags = 0,
 		.len = 2,
 		.buf = out_buf,
@@ -129,8 +131,8 @@ static bool sil164_writeb(struct intel_dvo_device *dvo, int addr, uint8_t ch)
 		return true;
 
 	if (!sil->quiet) {
-		DRM_DEBUG("Unable to write register 0x%02x to %s:%d.\n",
-			  addr, i2cbus->adapter.name, i2cbus->slave_addr);
+		DRM_DEBUG_KMS("Unable to write register 0x%02x to %s:%d.\n",
+			  addr, i2cbus->adapter.name, dvo->slave_addr);
 	}
 
 	return false;
@@ -138,7 +140,7 @@ static bool sil164_writeb(struct intel_dvo_device *dvo, int addr, uint8_t ch)
 
 /* Silicon Image 164 driver for chip on i2c bus */
 static bool sil164_init(struct intel_dvo_device *dvo,
-			struct intel_i2c_chan *i2cbus)
+			struct i2c_adapter *adapter)
 {
 	/* this will detect the SIL164 chip on the specified i2c bus */
 	struct sil164_priv *sil;
@@ -148,8 +150,7 @@ static bool sil164_init(struct intel_dvo_device *dvo,
 	if (sil == NULL)
 		return false;
 
-	dvo->i2c_bus = i2cbus;
-	dvo->i2c_bus->slave_addr = dvo->slave_addr;
+	dvo->i2c_bus = adapter;
 	dvo->dev_priv = sil;
 	sil->quiet = true;
 
@@ -157,8 +158,8 @@ static bool sil164_init(struct intel_dvo_device *dvo,
 		goto out;
 
 	if (ch != (SIL164_VID & 0xff)) {
-		DRM_DEBUG("sil164 not detected got %d: from %s Slave %d.\n",
-			  ch, i2cbus->adapter.name, i2cbus->slave_addr);
+		DRM_DEBUG_KMS("sil164 not detected got %d: from %s Slave %d.\n",
+			  ch, adapter->name, dvo->slave_addr);
 		goto out;
 	}
 
@@ -166,13 +167,13 @@ static bool sil164_init(struct intel_dvo_device *dvo,
 		goto out;
 
 	if (ch != (SIL164_DID & 0xff)) {
-		DRM_DEBUG("sil164 not detected got %d: from %s Slave %d.\n",
-			  ch, i2cbus->adapter.name, i2cbus->slave_addr);
+		DRM_DEBUG_KMS("sil164 not detected got %d: from %s Slave %d.\n",
+			  ch, adapter->name, dvo->slave_addr);
 		goto out;
 	}
 	sil->quiet = false;
 
-	DRM_DEBUG("init sil164 dvo controller successfully!\n");
+	DRM_DEBUG_KMS("init sil164 dvo controller successfully!\n");
 	return true;
 
 out:
@@ -240,15 +241,15 @@ static void sil164_dump_regs(struct intel_dvo_device *dvo)
 	uint8_t val;
 
 	sil164_readb(dvo, SIL164_FREQ_LO, &val);
-	DRM_DEBUG("SIL164_FREQ_LO: 0x%02x\n", val);
+	DRM_LOG_KMS("SIL164_FREQ_LO: 0x%02x\n", val);
 	sil164_readb(dvo, SIL164_FREQ_HI, &val);
-	DRM_DEBUG("SIL164_FREQ_HI: 0x%02x\n", val);
+	DRM_LOG_KMS("SIL164_FREQ_HI: 0x%02x\n", val);
 	sil164_readb(dvo, SIL164_REG8, &val);
-	DRM_DEBUG("SIL164_REG8: 0x%02x\n", val);
+	DRM_LOG_KMS("SIL164_REG8: 0x%02x\n", val);
 	sil164_readb(dvo, SIL164_REG9, &val);
-	DRM_DEBUG("SIL164_REG9: 0x%02x\n", val);
+	DRM_LOG_KMS("SIL164_REG9: 0x%02x\n", val);
 	sil164_readb(dvo, SIL164_REGC, &val);
-	DRM_DEBUG("SIL164_REGC: 0x%02x\n", val);
+	DRM_LOG_KMS("SIL164_REGC: 0x%02x\n", val);
 }
 
 static void sil164_save(struct intel_dvo_device *dvo)

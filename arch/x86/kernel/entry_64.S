@@ -135,6 +135,7 @@ ENTRY(ftrace_graph_caller)
 
 	leaq 8(%rbp), %rdi
 	movq 0x38(%rsp), %rsi
+	movq (%rbp), %rdx
 	subq $MCOUNT_INSN_SIZE, %rsi
 
 	call	prepare_ftrace_return
@@ -145,32 +146,20 @@ ENTRY(ftrace_graph_caller)
 END(ftrace_graph_caller)
 
 GLOBAL(return_to_handler)
-	subq  $80, %rsp
+	subq  $24, %rsp
 
+	/* Save the return values */
 	movq %rax, (%rsp)
-	movq %rcx, 8(%rsp)
-	movq %rdx, 16(%rsp)
-	movq %rsi, 24(%rsp)
-	movq %rdi, 32(%rsp)
-	movq %r8, 40(%rsp)
-	movq %r9, 48(%rsp)
-	movq %r10, 56(%rsp)
-	movq %r11, 64(%rsp)
+	movq %rdx, 8(%rsp)
+	movq %rbp, %rdi
 
 	call ftrace_return_to_handler
 
-	movq %rax, 72(%rsp)
-	movq 64(%rsp), %r11
-	movq 56(%rsp), %r10
-	movq 48(%rsp), %r9
-	movq 40(%rsp), %r8
-	movq 32(%rsp), %rdi
-	movq 24(%rsp), %rsi
-	movq 16(%rsp), %rdx
-	movq 8(%rsp), %rcx
+	movq %rax, %rdi
+	movq 8(%rsp), %rdx
 	movq (%rsp), %rax
-	addq $72, %rsp
-	retq
+	addq $24, %rsp
+	jmp *%rdi
 #endif
 
 
@@ -547,20 +536,13 @@ sysret_signal:
 	bt $TIF_SYSCALL_AUDIT,%edx
 	jc sysret_audit
 #endif
-	/* edx:	work flags (arg3) */
-	leaq -ARGOFFSET(%rsp),%rdi # &pt_regs -> arg1
-	xorl %esi,%esi # oldset -> arg2
-	SAVE_REST
-	FIXUP_TOP_OF_STACK %r11
-	call do_notify_resume
-	RESTORE_TOP_OF_STACK %r11
-	RESTORE_REST
-	movl $_TIF_WORK_MASK,%edi
-	/* Use IRET because user could have changed frame. This
-	   works because ptregscall_common has called FIXUP_TOP_OF_STACK. */
-	DISABLE_INTERRUPTS(CLBR_NONE)
-	TRACE_IRQS_OFF
-	jmp int_with_check
+	/*
+	 * We have a signal, or exit tracing or single-step.
+	 * These all wind up with the iret return path anyway,
+	 * so just join that path right now.
+	 */
+	FIXUP_TOP_OF_STACK %r11, -ARGOFFSET
+	jmp int_check_syscall_exit_work
 
 badsys:
 	movq $-ENOSYS,RAX-ARGOFFSET(%rsp)
@@ -665,6 +647,7 @@ int_careful:
 int_very_careful:
 	TRACE_IRQS_ON
 	ENABLE_INTERRUPTS(CLBR_NONE)
+int_check_syscall_exit_work:
 	SAVE_REST
 	/* Check for syscall exit trace */
 	testl $_TIF_WORK_SYSCALL_EXIT,%edx
@@ -820,6 +803,10 @@ END(interrupt)
 	call \func
 	.endm
 
+/*
+ * Interrupt entry/exit should be protected against kprobes
+ */
+	.pushsection .kprobes.text, "ax"
 	/*
 	 * The interrupt stubs push (~vector+0x80) onto the stack and
 	 * then jump to common_interrupt.
@@ -958,6 +945,10 @@ ENTRY(retint_kernel)
 
 	CFI_ENDPROC
 END(common_interrupt)
+/*
+ * End of kprobes section
+ */
+       .popsection
 
 /*
  * APIC interrupts.
@@ -976,6 +967,8 @@ END(\sym)
 #ifdef CONFIG_SMP
 apicinterrupt IRQ_MOVE_CLEANUP_VECTOR \
 	irq_move_cleanup_interrupt smp_irq_move_cleanup_interrupt
+apicinterrupt REBOOT_VECTOR \
+	reboot_interrupt smp_reboot_interrupt
 #endif
 
 #ifdef CONFIG_X86_UV
@@ -984,8 +977,8 @@ apicinterrupt UV_BAU_MESSAGE \
 #endif
 apicinterrupt LOCAL_TIMER_VECTOR \
 	apic_timer_interrupt smp_apic_timer_interrupt
-apicinterrupt GENERIC_INTERRUPT_VECTOR \
-	generic_interrupt smp_generic_interrupt
+apicinterrupt X86_PLATFORM_IPI_VECTOR \
+	x86_platform_ipi smp_x86_platform_ipi
 
 #ifdef CONFIG_SMP
 apicinterrupt INVALIDATE_TLB_VECTOR_START+0 \
@@ -1007,9 +1000,14 @@ apicinterrupt INVALIDATE_TLB_VECTOR_START+7 \
 #endif
 
 apicinterrupt THRESHOLD_APIC_VECTOR \
-	threshold_interrupt mce_threshold_interrupt
+	threshold_interrupt smp_threshold_interrupt
 apicinterrupt THERMAL_APIC_VECTOR \
 	thermal_interrupt smp_thermal_interrupt
+
+#ifdef CONFIG_X86_MCE
+apicinterrupt MCE_SELF_VECTOR \
+	mce_self_interrupt smp_mce_self_interrupt
+#endif
 
 #ifdef CONFIG_SMP
 apicinterrupt CALL_FUNCTION_SINGLE_VECTOR \
@@ -1024,6 +1022,11 @@ apicinterrupt ERROR_APIC_VECTOR \
 	error_interrupt smp_error_interrupt
 apicinterrupt SPURIOUS_APIC_VECTOR \
 	spurious_interrupt smp_spurious_interrupt
+
+#ifdef CONFIG_PERF_EVENTS
+apicinterrupt LOCAL_PENDING_VECTOR \
+	perf_pending_interrupt smp_perf_pending_interrupt
+#endif
 
 /*
  * Exception entry points.
@@ -1073,10 +1076,10 @@ ENTRY(\sym)
 	TRACE_IRQS_OFF
 	movq %rsp,%rdi		/* pt_regs pointer */
 	xorl %esi,%esi		/* no error code */
-	PER_CPU(init_tss, %rbp)
-	subq $EXCEPTION_STKSZ, TSS_ist + (\ist - 1) * 8(%rbp)
+	PER_CPU(init_tss, %r12)
+	subq $EXCEPTION_STKSZ, TSS_ist + (\ist - 1) * 8(%r12)
 	call \do_sym
-	addq $EXCEPTION_STKSZ, TSS_ist + (\ist - 1) * 8(%rbp)
+	addq $EXCEPTION_STKSZ, TSS_ist + (\ist - 1) * 8(%r12)
 	jmp paranoid_exit	/* %ebx: no swapgs flag */
 	CFI_ENDPROC
 END(\sym)
@@ -1163,63 +1166,20 @@ bad_gs:
 	jmp  2b
 	.previous
 
-/*
- * Create a kernel thread.
- *
- * C extern interface:
- *	extern long kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
- *
- * asm input arguments:
- *	rdi: fn, rsi: arg, rdx: flags
- */
-ENTRY(kernel_thread)
-	CFI_STARTPROC
-	FAKE_STACK_FRAME $child_rip
-	SAVE_ALL
-
-	# rdi: flags, rsi: usp, rdx: will be &pt_regs
-	movq %rdx,%rdi
-	orq  kernel_thread_flags(%rip),%rdi
-	movq $-1, %rsi
-	movq %rsp, %rdx
-
-	xorl %r8d,%r8d
-	xorl %r9d,%r9d
-
-	# clone now
-	call do_fork
-	movq %rax,RAX(%rsp)
-	xorl %edi,%edi
-
-	/*
-	 * It isn't worth to check for reschedule here,
-	 * so internally to the x86_64 port you can rely on kernel_thread()
-	 * not to reschedule the child before returning, this avoids the need
-	 * of hacks for example to fork off the per-CPU idle tasks.
-	 * [Hopefully no generic code relies on the reschedule -AK]
-	 */
-	RESTORE_ALL
-	UNFAKE_STACK_FRAME
-	ret
-	CFI_ENDPROC
-END(kernel_thread)
-
-ENTRY(child_rip)
+ENTRY(kernel_thread_helper)
 	pushq $0		# fake return address
 	CFI_STARTPROC
 	/*
 	 * Here we are in the child and the registers are set as they were
 	 * at kernel_thread() invocation in the parent.
 	 */
-	movq %rdi, %rax
-	movq %rsi, %rdi
-	call *%rax
+	call *%rsi
 	# exit
 	mov %eax, %edi
 	call do_exit
 	ud2			# padding for call trace
 	CFI_ENDPROC
-END(child_rip)
+END(kernel_thread_helper)
 
 /*
  * execve(). This function needs to use IRET, not SYSRET, to set up all state properly.
@@ -1379,10 +1339,15 @@ END(xen_failsafe_callback)
 paranoidzeroentry_ist debug do_debug DEBUG_STACK
 paranoidzeroentry_ist int3 do_int3 DEBUG_STACK
 paranoiderrorentry stack_segment do_stack_segment
+#ifdef CONFIG_XEN
+zeroentry xen_debug do_debug
+zeroentry xen_int3 do_int3
+errorentry xen_stack_segment do_stack_segment
+#endif
 errorentry general_protection do_general_protection
 errorentry page_fault do_page_fault
 #ifdef CONFIG_X86_MCE
-paranoidzeroentry machine_check do_machine_check
+paranoidzeroentry machine_check *machine_check_vector(%rip)
 #endif
 
 	/*
@@ -1491,12 +1456,17 @@ error_kernelspace:
 	leaq irq_return(%rip),%rcx
 	cmpq %rcx,RIP+8(%rsp)
 	je error_swapgs
-	movl %ecx,%ecx	/* zero extend */
-	cmpq %rcx,RIP+8(%rsp)
-	je error_swapgs
+	movl %ecx,%eax	/* zero extend */
+	cmpq %rax,RIP+8(%rsp)
+	je bstep_iret
 	cmpq $gs_change,RIP+8(%rsp)
 	je error_swapgs
 	jmp error_sti
+
+bstep_iret:
+	/* Fix truncated RIP */
+	movq %rcx,RIP+8(%rsp)
+	jmp error_swapgs
 END(error_entry)
 
 

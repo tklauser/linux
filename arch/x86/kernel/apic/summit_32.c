@@ -44,7 +44,6 @@
 #include <asm/ipi.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
-#include <linux/init.h>
 #include <linux/gfp.h>
 #include <linux/smp.h>
 
@@ -173,13 +172,6 @@ static inline int is_WPEG(struct rio_detail *rio){
 		rio->type == LookOutAWPEG || rio->type == LookOutBWPEG);
 }
 
-
-/* In clustered mode, the high nibble of APIC ID is a cluster number.
- * The low nibble is a 4-bit bitmap. */
-#define XAPIC_DEST_CPUS_SHIFT	4
-#define XAPIC_DEST_CPUS_MASK	((1u << XAPIC_DEST_CPUS_SHIFT) - 1)
-#define XAPIC_DEST_CLUSTER_MASK	(XAPIC_DEST_CPUS_MASK << XAPIC_DEST_CPUS_SHIFT)
-
 #define SUMMIT_APIC_DFR_VALUE	(APIC_DFR_CLUSTER)
 
 static const struct cpumask *summit_target_cpus(void)
@@ -191,7 +183,7 @@ static const struct cpumask *summit_target_cpus(void)
 	return cpumask_of(0);
 }
 
-static unsigned long summit_check_apicid_used(physid_mask_t bitmap, int apicid)
+static unsigned long summit_check_apicid_used(physid_mask_t *map, int apicid)
 {
 	return 0;
 }
@@ -269,18 +261,18 @@ static int summit_cpu_present_to_apicid(int mps_cpu)
 		return BAD_APICID;
 }
 
-static physid_mask_t summit_ioapic_phys_id_map(physid_mask_t phys_id_map)
+static void summit_ioapic_phys_id_map(physid_mask_t *phys_id_map, physid_mask_t *retmap)
 {
 	/* For clustered we don't have a good way to do this yet - hack */
-	return physids_promote(0x0F);
+	physids_promote(0x0FL, retmap);
 }
 
-static physid_mask_t summit_apicid_to_cpu_present(int apicid)
+static void summit_apicid_to_cpu_present(int apicid, physid_mask_t *retmap)
 {
-	return physid_mask_of_physid(0);
+	physid_set_mask_of_physid(0, retmap);
 }
 
-static int summit_check_phys_apicid_present(int boot_cpu_physical_apicid)
+static int summit_check_phys_apicid_present(int physical_apicid)
 {
 	return 1;
 }

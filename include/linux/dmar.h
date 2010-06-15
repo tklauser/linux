@@ -108,6 +108,7 @@ struct irte {
 };
 #ifdef CONFIG_INTR_REMAP
 extern int intr_remapping_enabled;
+extern int intr_remapping_supported(void);
 extern int enable_intr_remapping(int);
 extern void disable_intr_remapping(void);
 extern int reenable_intr_remapping(int);
@@ -125,6 +126,10 @@ extern int free_irte(int irq);
 extern int irq_remapped(int irq);
 extern struct intel_iommu *map_dev_to_ir(struct pci_dev *dev);
 extern struct intel_iommu *map_ioapic_to_ir(int apic);
+extern struct intel_iommu *map_hpet_to_ir(u8 id);
+extern int set_ioapic_sid(struct irte *irte, int apic);
+extern int set_hpet_sid(struct irte *irte, u8 id);
+extern int set_msi_sid(struct irte *irte, struct pci_dev *dev);
 #else
 static inline int alloc_irte(struct intel_iommu *iommu, int irq, u16 count)
 {
@@ -155,8 +160,27 @@ static inline struct intel_iommu *map_ioapic_to_ir(int apic)
 {
 	return NULL;
 }
+static inline struct intel_iommu *map_hpet_to_ir(unsigned int hpet_id)
+{
+	return NULL;
+}
+static inline int set_ioapic_sid(struct irte *irte, int apic)
+{
+	return 0;
+}
+static inline int set_hpet_sid(struct irte *irte, u8 id)
+{
+	return -1;
+}
+static inline int set_msi_sid(struct irte *irte, struct pci_dev *dev)
+{
+	return 0;
+}
+
 #define irq_remapped(irq)		(0)
 #define enable_intr_remapping(mode)	(-1)
+#define disable_intr_remapping()	(0)
+#define reenable_intr_remapping(mode)	(0)
 #define intr_remapping_enabled		(0)
 #endif
 
@@ -185,16 +209,18 @@ struct dmar_rmrr_unit {
 
 #define for_each_rmrr_units(rmrr) \
 	list_for_each_entry(rmrr, &dmar_rmrr_units, list)
-/* Intel DMAR  initialization functions */
+
+struct dmar_atsr_unit {
+	struct list_head list;		/* list of ATSR units */
+	struct acpi_dmar_header *hdr;	/* ACPI header */
+	struct pci_dev **devices;	/* target devices */
+	int devices_cnt;		/* target device count */
+	u8 include_all:1;		/* include all ports */
+};
+
 extern int intel_iommu_init(void);
-#else
-static inline int intel_iommu_init(void)
-{
-#ifdef CONFIG_INTR_REMAP
-	return dmar_dev_scope_init();
-#else
-	return -ENODEV;
-#endif
-}
-#endif /* !CONFIG_DMAR */
+#else /* !CONFIG_DMAR: */
+static inline int intel_iommu_init(void) { return -ENODEV; }
+#endif /* CONFIG_DMAR */
+
 #endif /* __DMAR_H__ */

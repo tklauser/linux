@@ -288,8 +288,8 @@ void rds_iw_send_cq_comp_handler(struct ib_cq *cq, void *context)
 
 		rds_iw_ring_free(&ic->i_send_ring, completed);
 
-		if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags)
-		 || test_bit(0, &conn->c_map_queued))
+		if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
+		    test_bit(0, &conn->c_map_queued))
 			queue_delayed_work(rds_wq, &conn->c_send_w, 0);
 
 		/* We expect errors as the qp is drained during shutdown */
@@ -347,7 +347,7 @@ void rds_iw_send_cq_comp_handler(struct ib_cq *cq, void *context)
  * and using atomic_cmpxchg when updating the two counters.
  */
 int rds_iw_send_grab_credits(struct rds_iw_connection *ic,
-			     u32 wanted, u32 *adv_credits, int need_posted)
+			     u32 wanted, u32 *adv_credits, int need_posted, int max_posted)
 {
 	unsigned int avail, posted, got = 0, advertise;
 	long oldval, newval;
@@ -387,7 +387,7 @@ try_again:
 	 * available.
 	 */
 	if (posted && (got || need_posted)) {
-		advertise = min_t(unsigned int, posted, RDS_MAX_ADV_CREDIT);
+		advertise = min_t(unsigned int, posted, max_posted);
 		newval -= IB_SET_POST_CREDITS(advertise);
 	}
 
@@ -519,8 +519,7 @@ int rds_iw_xmit(struct rds_connection *conn, struct rds_message *rm,
 	BUG_ON(hdr_off != 0 && hdr_off != sizeof(struct rds_header));
 
 	/* Fastreg support */
-	if (rds_rdma_cookie_key(rm->m_rdma_cookie)
-	 && !ic->i_fastreg_posted) {
+	if (rds_rdma_cookie_key(rm->m_rdma_cookie) && !ic->i_fastreg_posted) {
 		ret = -EAGAIN;
 		goto out;
 	}
@@ -541,7 +540,7 @@ int rds_iw_xmit(struct rds_connection *conn, struct rds_message *rm,
 
 	credit_alloc = work_alloc;
 	if (ic->i_flowctl) {
-		credit_alloc = rds_iw_send_grab_credits(ic, work_alloc, &posted, 0);
+		credit_alloc = rds_iw_send_grab_credits(ic, work_alloc, &posted, 0, RDS_MAX_ADV_CREDIT);
 		adv_credits += posted;
 		if (credit_alloc < work_alloc) {
 			rds_iw_ring_unalloc(&ic->i_send_ring, work_alloc - credit_alloc);
@@ -549,7 +548,7 @@ int rds_iw_xmit(struct rds_connection *conn, struct rds_message *rm,
 			flow_controlled++;
 		}
 		if (work_alloc == 0) {
-			rds_iw_ring_unalloc(&ic->i_send_ring, work_alloc);
+			set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 			rds_iw_stats_inc(s_iw_tx_throttle);
 			ret = -ENOMEM;
 			goto out;
@@ -614,7 +613,7 @@ int rds_iw_xmit(struct rds_connection *conn, struct rds_message *rm,
 		/*
 		 * Update adv_credits since we reset the ACK_REQUIRED bit.
 		 */
-		rds_iw_send_grab_credits(ic, 0, &posted, 1);
+		rds_iw_send_grab_credits(ic, 0, &posted, 1, RDS_MAX_ADV_CREDIT - adv_credits);
 		adv_credits += posted;
 		BUG_ON(adv_credits > 255);
 	} else if (ic->i_rm != rm)
@@ -779,7 +778,7 @@ static void rds_iw_build_send_fastreg(struct rds_iw_device *rds_iwdev, struct rd
 	send->s_wr.wr.fast_reg.rkey = send->s_mr->rkey;
 	send->s_wr.wr.fast_reg.page_list = send->s_page_list;
 	send->s_wr.wr.fast_reg.page_list_len = nent;
-	send->s_wr.wr.fast_reg.page_shift = rds_iwdev->page_shift;
+	send->s_wr.wr.fast_reg.page_shift = PAGE_SHIFT;
 	send->s_wr.wr.fast_reg.access_flags = IB_ACCESS_REMOTE_WRITE;
 	send->s_wr.wr.fast_reg.iova_start = sg_addr;
 

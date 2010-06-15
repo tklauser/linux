@@ -42,12 +42,12 @@
 #include "xfs_error.h"
 #include "xfs_bmap.h"
 #include "xfs_rw.h"
-#include "xfs_acl.h"
 #include "xfs_attr.h"
 #include "xfs_buf_item.h"
 #include "xfs_trans_space.h"
 #include "xfs_utils.h"
 #include "xfs_qm.h"
+#include "xfs_trace.h"
 
 /*
  * The global quota manager. There is only one of these for the entire
@@ -118,9 +118,14 @@ xfs_Gqm_init(void)
 	 */
 	udqhash = kmem_zalloc_greedy(&hsize,
 				     XFS_QM_HASHSIZE_LOW * sizeof(xfs_dqhash_t),
-				     XFS_QM_HASHSIZE_HIGH * sizeof(xfs_dqhash_t),
-				     KM_SLEEP | KM_MAYFAIL | KM_LARGE);
-	gdqhash = kmem_zalloc(hsize, KM_SLEEP | KM_LARGE);
+				     XFS_QM_HASHSIZE_HIGH * sizeof(xfs_dqhash_t));
+	if (!udqhash)
+		goto out;
+
+	gdqhash = kmem_zalloc_large(hsize);
+	if (!gdqhash)
+		goto out_free_udqhash;
+
 	hsize /= sizeof(xfs_dqhash_t);
 	ndquot = hsize << 8;
 
@@ -170,6 +175,11 @@ xfs_Gqm_init(void)
 	mutex_init(&qcheck_lock);
 #endif
 	return xqm;
+
+ out_free_udqhash:
+	kmem_free_large(udqhash);
+ out:
+	return NULL;
 }
 
 /*
@@ -189,8 +199,8 @@ xfs_qm_destroy(
 		xfs_qm_list_destroy(&(xqm->qm_usr_dqhtable[i]));
 		xfs_qm_list_destroy(&(xqm->qm_grp_dqhtable[i]));
 	}
-	kmem_free(xqm->qm_usr_dqhtable);
-	kmem_free(xqm->qm_grp_dqhtable);
+	kmem_free_large(xqm->qm_usr_dqhtable);
+	kmem_free_large(xqm->qm_grp_dqhtable);
 	xqm->qm_usr_dqhtable = NULL;
 	xqm->qm_grp_dqhtable = NULL;
 	xqm->qm_dqhashmask = 0;
@@ -219,8 +229,12 @@ xfs_qm_hold_quotafs_ref(
 	 */
 	mutex_lock(&xfs_Gqm_lock);
 
-	if (xfs_Gqm == NULL)
+	if (!xfs_Gqm) {
 		xfs_Gqm = xfs_Gqm_init();
+		if (!xfs_Gqm)
+			return ENOMEM;
+	}
+
 	/*
 	 * We can keep a list of all filesystems with quotas mounted for
 	 * debugging and statistical purposes, but ...
@@ -287,11 +301,13 @@ xfs_qm_rele_quotafs_ref(
  * Just destroy the quotainfo structure.
  */
 void
-xfs_qm_unmount_quotadestroy(
-	xfs_mount_t	*mp)
+xfs_qm_unmount(
+	struct xfs_mount	*mp)
 {
-	if (mp->m_quotainfo)
+	if (mp->m_quotainfo) {
+		xfs_qm_dqpurge_all(mp, XFS_QMOPT_QUOTALL | XFS_QMOPT_UMOUNTING);
 		xfs_qm_destroy_quotainfo(mp);
+	}
 }
 
 
@@ -385,8 +401,13 @@ xfs_qm_mount_quotas(
 	if (error) {
 		xfs_fs_cmn_err(CE_WARN, mp,
 			"Failed to initialize disk quotas.");
+		return;
 	}
-	return;
+
+#ifdef QUOTADEBUG
+	if (XFS_IS_QUOTA_ON(mp))
+		xfs_qm_internalqcheck(mp);
+#endif
 }
 
 /*
@@ -429,7 +450,7 @@ xfs_qm_unmount_quotas(
 STATIC int
 xfs_qm_dqflush_all(
 	xfs_mount_t	*mp,
-	int		flags)
+	int		sync_mode)
 {
 	int		recl;
 	xfs_dquot_t	*dqp;
@@ -447,7 +468,7 @@ again:
 			xfs_dqunlock(dqp);
 			continue;
 		}
-		xfs_dqtrace_entry(dqp, "FLUSHALL: DQDIRTY");
+
 		/* XXX a sentinel would be better */
 		recl = XFS_QI_MPLRECLAIMS(mp);
 		if (!xfs_dqflock_nowait(dqp)) {
@@ -465,7 +486,7 @@ again:
 		 * across a disk write.
 		 */
 		xfs_qm_mplist_unlock(mp);
-		error = xfs_qm_dqflush(dqp, flags);
+		error = xfs_qm_dqflush(dqp, sync_mode);
 		xfs_dqunlock(dqp);
 		if (error)
 			return error;
@@ -645,7 +666,7 @@ xfs_qm_dqattach_one(
 	 */
 	dqp = *IO_idqpp;
 	if (dqp) {
-		xfs_dqtrace_entry(dqp, "DQATTACH: found in ip");
+		trace_xfs_dqattach_found(dqp);
 		return 0;
 	}
 
@@ -698,7 +719,7 @@ xfs_qm_dqattach_one(
 	if (error)
 		return error;
 
-	xfs_dqtrace_entry(dqp, "DQATTACH: found by dqget");
+	trace_xfs_dqattach_get(dqp);
 
 	/*
 	 * dqget may have dropped and re-acquired the ilock, but it guarantees
@@ -774,12 +795,11 @@ xfs_qm_dqattach_grouphint(
  * Given a locked inode, attach dquot(s) to it, taking U/G/P-QUOTAON
  * into account.
  * If XFS_QMOPT_DQALLOC, the dquot(s) will be allocated if needed.
- * If XFS_QMOPT_ILOCKED, then inode sent is already locked EXCL.
  * Inode may get unlocked and relocked in here, and the caller must deal with
  * the consequences.
  */
 int
-xfs_qm_dqattach(
+xfs_qm_dqattach_locked(
 	xfs_inode_t	*ip,
 	uint		flags)
 {
@@ -787,17 +807,14 @@ xfs_qm_dqattach(
 	uint		nquotas = 0;
 	int		error = 0;
 
-	if ((! XFS_IS_QUOTA_ON(mp)) ||
-	    (! XFS_NOT_DQATTACHED(mp, ip)) ||
-	    (ip->i_ino == mp->m_sb.sb_uquotino) ||
-	    (ip->i_ino == mp->m_sb.sb_gquotino))
+	if (!XFS_IS_QUOTA_RUNNING(mp) ||
+	    !XFS_IS_QUOTA_ON(mp) ||
+	    !XFS_NOT_DQATTACHED(mp, ip) ||
+	    ip->i_ino == mp->m_sb.sb_uquotino ||
+	    ip->i_ino == mp->m_sb.sb_gquotino)
 		return 0;
 
-	ASSERT((flags & XFS_QMOPT_ILOCKED) == 0 ||
-	       xfs_isilocked(ip, XFS_ILOCK_EXCL));
-
-	if (! (flags & XFS_QMOPT_ILOCKED))
-		xfs_ilock(ip, XFS_ILOCK_EXCL);
+	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 
 	if (XFS_IS_UQUOTA_ON(mp)) {
 		error = xfs_qm_dqattach_one(ip, ip->i_d.di_uid, XFS_DQ_USER,
@@ -849,8 +866,7 @@ xfs_qm_dqattach(
 		xfs_qm_dqattach_grouphint(ip->i_udquot, ip->i_gdquot);
 	}
 
-      done:
-
+ done:
 #ifdef QUOTADEBUG
 	if (! error) {
 		if (XFS_IS_UQUOTA_ON(mp))
@@ -858,15 +874,22 @@ xfs_qm_dqattach(
 		if (XFS_IS_OQUOTA_ON(mp))
 			ASSERT(ip->i_gdquot);
 	}
+	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 #endif
+	return error;
+}
 
-	if (! (flags & XFS_QMOPT_ILOCKED))
-		xfs_iunlock(ip, XFS_ILOCK_EXCL);
+int
+xfs_qm_dqattach(
+	struct xfs_inode	*ip,
+	uint			flags)
+{
+	int			error;
 
-#ifdef QUOTADEBUG
-	else
-		ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
-#endif
+	xfs_ilock(ip, XFS_ILOCK_EXCL);
+	error = xfs_qm_dqattach_locked(ip, flags);
+	xfs_iunlock(ip, XFS_ILOCK_EXCL);
+
 	return error;
 }
 
@@ -882,25 +905,20 @@ xfs_qm_dqdetach(
 	if (!(ip->i_udquot || ip->i_gdquot))
 		return;
 
+	trace_xfs_dquot_dqdetach(ip);
+
 	ASSERT(ip->i_ino != ip->i_mount->m_sb.sb_uquotino);
 	ASSERT(ip->i_ino != ip->i_mount->m_sb.sb_gquotino);
 	if (ip->i_udquot) {
-		xfs_dqtrace_entry_ino(ip->i_udquot, "DQDETTACH", ip);
 		xfs_qm_dqrele(ip->i_udquot);
 		ip->i_udquot = NULL;
 	}
 	if (ip->i_gdquot) {
-		xfs_dqtrace_entry_ino(ip->i_gdquot, "DQDETTACH", ip);
 		xfs_qm_dqrele(ip->i_gdquot);
 		ip->i_gdquot = NULL;
 	}
 }
 
-/*
- * This is called to sync quotas. We can be told to use non-blocking
- * semantics by either the SYNC_BDFLUSH flag or the absence of the
- * SYNC_WAIT flag.
- */
 int
 xfs_qm_sync(
 	xfs_mount_t	*mp,
@@ -908,18 +926,12 @@ xfs_qm_sync(
 {
 	int		recl, restarts;
 	xfs_dquot_t	*dqp;
-	uint		flush_flags;
-	boolean_t	nowait;
 	int		error;
 
-	if (! XFS_IS_QUOTA_ON(mp))
+	if (!XFS_IS_QUOTA_RUNNING(mp) || !XFS_IS_QUOTA_ON(mp))
 		return 0;
 
 	restarts = 0;
-	/*
-	 * We won't block unless we are asked to.
-	 */
-	nowait = (boolean_t)(flags & SYNC_BDFLUSH || (flags & SYNC_WAIT) == 0);
 
   again:
 	xfs_qm_mplist_lock(mp);
@@ -939,18 +951,10 @@ xfs_qm_sync(
 		 * don't 'seem' to be dirty. ie. don't acquire dqlock.
 		 * This is very similar to what xfs_sync does with inodes.
 		 */
-		if (flags & SYNC_BDFLUSH) {
-			if (! XFS_DQ_IS_DIRTY(dqp))
+		if (flags & SYNC_TRYLOCK) {
+			if (!XFS_DQ_IS_DIRTY(dqp))
 				continue;
-		}
-
-		if (nowait) {
-			/*
-			 * Try to acquire the dquot lock. We are NOT out of
-			 * lock order, but we just don't want to wait for this
-			 * lock, unless somebody wanted us to.
-			 */
-			if (! xfs_qm_dqlock_nowait(dqp))
+			if (!xfs_qm_dqlock_nowait(dqp))
 				continue;
 		} else {
 			xfs_dqlock(dqp);
@@ -967,7 +971,7 @@ xfs_qm_sync(
 		/* XXX a sentinel would be better */
 		recl = XFS_QI_MPLRECLAIMS(mp);
 		if (!xfs_dqflock_nowait(dqp)) {
-			if (nowait) {
+			if (flags & SYNC_TRYLOCK) {
 				xfs_dqunlock(dqp);
 				continue;
 			}
@@ -985,10 +989,8 @@ xfs_qm_sync(
 		 * Let go of the mplist lock. We don't want to hold it
 		 * across a disk write
 		 */
-		flush_flags = (nowait) ? XFS_QMOPT_DELWRI : XFS_QMOPT_SYNC;
 		xfs_qm_mplist_unlock(mp);
-		xfs_dqtrace_entry(dqp, "XQM_SYNC: DQFLUSH");
-		error = xfs_qm_dqflush(dqp, flush_flags);
+		error = xfs_qm_dqflush(dqp, flags);
 		xfs_dqunlock(dqp);
 		if (error && XFS_FORCED_SHUTDOWN(mp))
 			return 0;	/* Need to prevent umount failure */
@@ -1360,7 +1362,8 @@ xfs_qm_reset_dqcounts(
 	xfs_disk_dquot_t	*ddq;
 	int			j;
 
-	xfs_buftrace("RESET DQUOTS", bp);
+	trace_xfs_reset_dqcounts(bp, _RET_IP_);
+
 	/*
 	 * Reset all counters and timers. They'll be
 	 * started afresh by xfs_qm_quotacheck.
@@ -1553,7 +1556,9 @@ xfs_qm_quotacheck_dqadjust(
 	xfs_qcnt_t		rtblks)
 {
 	ASSERT(XFS_DQ_IS_LOCKED(dqp));
-	xfs_dqtrace_entry(dqp, "QCHECK DQADJUST");
+
+	trace_xfs_dqadjust(dqp);
+
 	/*
 	 * Adjust the inode count and the block count to reflect this inode's
 	 * resource usage.
@@ -1789,7 +1794,7 @@ xfs_qm_quotacheck(
 	 * successfully.
 	 */
 	if (!error)
-		error = xfs_qm_dqflush_all(mp, XFS_QMOPT_DELWRI);
+		error = xfs_qm_dqflush_all(mp, 0);
 
 	/*
 	 * We can get this error if we couldn't do a dquot allocation inside
@@ -2004,12 +2009,14 @@ xfs_qm_shake_freelist(
 		 */
 		if (XFS_DQ_IS_DIRTY(dqp)) {
 			int	error;
-			xfs_dqtrace_entry(dqp, "DQSHAKE: DQDIRTY");
+
+			trace_xfs_dqshake_dirty(dqp);
+
 			/*
 			 * We flush it delayed write, so don't bother
 			 * releasing the mplock.
 			 */
-			error = xfs_qm_dqflush(dqp, XFS_QMOPT_DELWRI);
+			error = xfs_qm_dqflush(dqp, 0);
 			if (error) {
 				xfs_fs_cmn_err(CE_WARN, dqp->q_mount,
 			"xfs_qm_dqflush_all: dquot %p flush failed", dqp);
@@ -2048,7 +2055,9 @@ xfs_qm_shake_freelist(
 				return nreclaimed;
 			goto tryagain;
 		}
-		xfs_dqtrace_entry(dqp, "DQSHAKE: UNLINKING");
+
+		trace_xfs_dqshake_unlink(dqp);
+
 #ifdef QUOTADEBUG
 		cmn_err(CE_DEBUG, "Shake 0x%p, ID 0x%x\n",
 			dqp, be32_to_cpu(dqp->q_core.d_id));
@@ -2135,7 +2144,9 @@ xfs_qm_dqreclaim_one(void)
 		 */
 		if (dqp->dq_flags & XFS_DQ_WANT) {
 			ASSERT(! (dqp->dq_flags & XFS_DQ_INACTIVE));
-			xfs_dqtrace_entry(dqp, "DQRECLAIM: DQWANT");
+
+			trace_xfs_dqreclaim_want(dqp);
+
 			xfs_dqunlock(dqp);
 			xfs_qm_freelist_unlock(xfs_Gqm);
 			if (++restarts >= XFS_QM_RECLAIM_MAX_RESTARTS)
@@ -2181,12 +2192,14 @@ xfs_qm_dqreclaim_one(void)
 		 */
 		if (XFS_DQ_IS_DIRTY(dqp)) {
 			int	error;
-			xfs_dqtrace_entry(dqp, "DQRECLAIM: DQDIRTY");
+
+			trace_xfs_dqreclaim_dirty(dqp);
+
 			/*
 			 * We flush it delayed write, so don't bother
 			 * releasing the freelist lock.
 			 */
-			error = xfs_qm_dqflush(dqp, XFS_QMOPT_DELWRI);
+			error = xfs_qm_dqflush(dqp, 0);
 			if (error) {
 				xfs_fs_cmn_err(CE_WARN, dqp->q_mount,
 			"xfs_qm_dqreclaim: dquot %p flush failed", dqp);
@@ -2204,8 +2217,9 @@ xfs_qm_dqreclaim_one(void)
 		if (!mutex_trylock(&dqp->q_hash->qh_lock))
 			goto mplistunlock;
 
+		trace_xfs_dqreclaim_unlink(dqp);
+
 		ASSERT(dqp->q_nrefs == 0);
-		xfs_dqtrace_entry(dqp, "DQRECLAIM: UNLINKING");
 		XQM_MPLIST_REMOVE(&(XFS_QI_MPL_LIST(dqp->q_mount)), dqp);
 		XQM_HASHLIST_REMOVE(dqp->q_hash, dqp);
 		XQM_FREELIST_REMOVE(dqp);
@@ -2319,20 +2333,20 @@ xfs_qm_write_sb_changes(
  */
 int
 xfs_qm_vop_dqalloc(
-	xfs_mount_t	*mp,
-	xfs_inode_t	*ip,
-	uid_t		uid,
-	gid_t		gid,
-	prid_t		prid,
-	uint		flags,
-	xfs_dquot_t	**O_udqpp,
-	xfs_dquot_t	**O_gdqpp)
+	struct xfs_inode	*ip,
+	uid_t			uid,
+	gid_t			gid,
+	prid_t			prid,
+	uint			flags,
+	struct xfs_dquot	**O_udqpp,
+	struct xfs_dquot	**O_gdqpp)
 {
-	int		error;
-	xfs_dquot_t	*uq, *gq;
-	uint		lockflags;
+	struct xfs_mount	*mp = ip->i_mount;
+	struct xfs_dquot	*uq, *gq;
+	int			error;
+	uint			lockflags;
 
-	if (!XFS_IS_QUOTA_ON(mp))
+	if (!XFS_IS_QUOTA_RUNNING(mp) || !XFS_IS_QUOTA_ON(mp))
 		return 0;
 
 	lockflags = XFS_ILOCK_EXCL;
@@ -2346,8 +2360,8 @@ xfs_qm_vop_dqalloc(
 	 * if necessary. The dquot(s) will not be locked.
 	 */
 	if (XFS_NOT_DQATTACHED(mp, ip)) {
-		if ((error = xfs_qm_dqattach(ip, XFS_QMOPT_DQALLOC |
-					    XFS_QMOPT_ILOCKED))) {
+		error = xfs_qm_dqattach_locked(ip, XFS_QMOPT_DQALLOC);
+		if (error) {
 			xfs_iunlock(ip, lockflags);
 			return error;
 		}
@@ -2440,7 +2454,7 @@ xfs_qm_vop_dqalloc(
 		}
 	}
 	if (uq)
-		xfs_dqtrace_entry_ino(uq, "DQALLOC", ip);
+		trace_xfs_dquot_dqalloc(ip);
 
 	xfs_iunlock(ip, lockflags);
 	if (O_udqpp)
@@ -2468,6 +2482,7 @@ xfs_qm_vop_chown(
 	xfs_dquot_t	*prevdq;
 	uint		bfield = XFS_IS_REALTIME_INODE(ip) ?
 				 XFS_TRANS_DQ_RTBCOUNT : XFS_TRANS_DQ_BCOUNT;
+
 
 	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 	ASSERT(XFS_IS_QUOTA_RUNNING(ip->i_mount));
@@ -2508,13 +2523,13 @@ xfs_qm_vop_chown_reserve(
 	xfs_dquot_t	*gdqp,
 	uint		flags)
 {
-	int		error;
-	xfs_mount_t	*mp;
+	xfs_mount_t	*mp = ip->i_mount;
 	uint		delblks, blkflags, prjflags = 0;
 	xfs_dquot_t	*unresudq, *unresgdq, *delblksudq, *delblksgdq;
+	int		error;
+
 
 	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL|XFS_ILOCK_SHARED));
-	mp = ip->i_mount;
 	ASSERT(XFS_IS_QUOTA_RUNNING(mp));
 
 	delblks = ip->i_delayed_blks;
@@ -2582,28 +2597,23 @@ xfs_qm_vop_chown_reserve(
 
 int
 xfs_qm_vop_rename_dqattach(
-	xfs_inode_t	**i_tab)
+	struct xfs_inode	**i_tab)
 {
-	xfs_inode_t	*ip;
-	int		i;
-	int		error;
+	struct xfs_mount	*mp = i_tab[0]->i_mount;
+	int			i;
 
-	ip = i_tab[0];
-
-	if (! XFS_IS_QUOTA_ON(ip->i_mount))
+	if (!XFS_IS_QUOTA_RUNNING(mp) || !XFS_IS_QUOTA_ON(mp))
 		return 0;
 
-	if (XFS_NOT_DQATTACHED(ip->i_mount, ip)) {
-		error = xfs_qm_dqattach(ip, 0);
-		if (error)
-			return error;
-	}
-	for (i = 1; (i < 4 && i_tab[i]); i++) {
+	for (i = 0; (i < 4 && i_tab[i]); i++) {
+		struct xfs_inode	*ip = i_tab[i];
+		int			error;
+
 		/*
 		 * Watch out for duplicate entries in the table.
 		 */
-		if ((ip = i_tab[i]) != i_tab[i-1]) {
-			if (XFS_NOT_DQATTACHED(ip->i_mount, ip)) {
+		if (i == 0 || ip != i_tab[i-1]) {
+			if (XFS_NOT_DQATTACHED(mp, ip)) {
 				error = xfs_qm_dqattach(ip, 0);
 				if (error)
 					return error;
@@ -2614,17 +2624,19 @@ xfs_qm_vop_rename_dqattach(
 }
 
 void
-xfs_qm_vop_dqattach_and_dqmod_newinode(
-	xfs_trans_t	*tp,
-	xfs_inode_t	*ip,
-	xfs_dquot_t	*udqp,
-	xfs_dquot_t	*gdqp)
+xfs_qm_vop_create_dqattach(
+	struct xfs_trans	*tp,
+	struct xfs_inode	*ip,
+	struct xfs_dquot	*udqp,
+	struct xfs_dquot	*gdqp)
 {
-	if (!XFS_IS_QUOTA_ON(tp->t_mountp))
+	struct xfs_mount	*mp = tp->t_mountp;
+
+	if (!XFS_IS_QUOTA_RUNNING(mp) || !XFS_IS_QUOTA_ON(mp))
 		return;
 
 	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
-	ASSERT(XFS_IS_QUOTA_RUNNING(tp->t_mountp));
+	ASSERT(XFS_IS_QUOTA_RUNNING(mp));
 
 	if (udqp) {
 		xfs_dqlock(udqp);
@@ -2632,7 +2644,7 @@ xfs_qm_vop_dqattach_and_dqmod_newinode(
 		xfs_dqunlock(udqp);
 		ASSERT(ip->i_udquot == NULL);
 		ip->i_udquot = udqp;
-		ASSERT(XFS_IS_UQUOTA_ON(tp->t_mountp));
+		ASSERT(XFS_IS_UQUOTA_ON(mp));
 		ASSERT(ip->i_d.di_uid == be32_to_cpu(udqp->q_core.d_id));
 		xfs_trans_mod_dquot(tp, udqp, XFS_TRANS_DQ_ICOUNT, 1);
 	}
@@ -2642,8 +2654,8 @@ xfs_qm_vop_dqattach_and_dqmod_newinode(
 		xfs_dqunlock(gdqp);
 		ASSERT(ip->i_gdquot == NULL);
 		ip->i_gdquot = gdqp;
-		ASSERT(XFS_IS_OQUOTA_ON(tp->t_mountp));
-		ASSERT((XFS_IS_GQUOTA_ON(tp->t_mountp) ?
+		ASSERT(XFS_IS_OQUOTA_ON(mp));
+		ASSERT((XFS_IS_GQUOTA_ON(mp) ?
 			ip->i_d.di_gid : ip->i_d.di_projid) ==
 				be32_to_cpu(gdqp->q_core.d_id));
 		xfs_trans_mod_dquot(tp, gdqp, XFS_TRANS_DQ_ICOUNT, 1);

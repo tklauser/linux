@@ -11,6 +11,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -128,7 +129,7 @@ struct cbq_class
 	long			avgidle;
 	long			deficit;	/* Saved deficit for WRR */
 	psched_time_t		penalized;
-	struct gnet_stats_basic bstats;
+	struct gnet_stats_basic_packed bstats;
 	struct gnet_stats_queue qstats;
 	struct gnet_stats_rate_est rate_est;
 	struct tc_cbq_xstats	xstats;
@@ -509,7 +510,7 @@ static void cbq_ovl_delay(struct cbq_class *cl)
 			q->pmask |= (1<<TC_CBQ_MAXPRIO);
 
 			expires = ktime_set(0, 0);
-			expires = ktime_add_ns(expires, PSCHED_US2NS(sched));
+			expires = ktime_add_ns(expires, PSCHED_TICKS2NS(sched));
 			if (hrtimer_try_to_cancel(&q->delay_timer) &&
 			    ktime_to_ns(ktime_sub(
 					hrtimer_get_expires(&q->delay_timer),
@@ -620,7 +621,7 @@ static enum hrtimer_restart cbq_undelay(struct hrtimer *timer)
 		ktime_t time;
 
 		time = ktime_set(0, 0);
-		time = ktime_add_ns(time, PSCHED_US2NS(now + delay));
+		time = ktime_add_ns(time, PSCHED_TICKS2NS(now + delay));
 		hrtimer_start(&q->delay_timer, time, HRTIMER_MODE_ABS);
 	}
 
@@ -1609,7 +1610,7 @@ cbq_dump_class_stats(struct Qdisc *sch, unsigned long arg,
 		cl->xstats.undertime = cl->undertime - q->now;
 
 	if (gnet_stats_copy_basic(d, &cl->bstats) < 0 ||
-	    gnet_stats_copy_rate_est(d, &cl->rate_est) < 0 ||
+	    gnet_stats_copy_rate_est(d, &cl->bstats, &cl->rate_est) < 0 ||
 	    gnet_stats_copy_queue(d, &cl->qstats) < 0)
 		return -1;
 
@@ -1621,29 +1622,25 @@ static int cbq_graft(struct Qdisc *sch, unsigned long arg, struct Qdisc *new,
 {
 	struct cbq_class *cl = (struct cbq_class*)arg;
 
-	if (cl) {
-		if (new == NULL) {
-			new = qdisc_create_dflt(qdisc_dev(sch), sch->dev_queue,
-						&pfifo_qdisc_ops,
-						cl->common.classid);
-			if (new == NULL)
-				return -ENOBUFS;
-		} else {
+	if (new == NULL) {
+		new = qdisc_create_dflt(qdisc_dev(sch), sch->dev_queue,
+					&pfifo_qdisc_ops, cl->common.classid);
+		if (new == NULL)
+			return -ENOBUFS;
+	} else {
 #ifdef CONFIG_NET_CLS_ACT
-			if (cl->police == TC_POLICE_RECLASSIFY)
-				new->reshape_fail = cbq_reshape_fail;
+		if (cl->police == TC_POLICE_RECLASSIFY)
+			new->reshape_fail = cbq_reshape_fail;
 #endif
-		}
-		sch_tree_lock(sch);
-		*old = cl->q;
-		cl->q = new;
-		qdisc_tree_decrease_qlen(*old, (*old)->q.qlen);
-		qdisc_reset(*old);
-		sch_tree_unlock(sch);
-
-		return 0;
 	}
-	return -ENOENT;
+	sch_tree_lock(sch);
+	*old = cl->q;
+	cl->q = new;
+	qdisc_tree_decrease_qlen(*old, (*old)->q.qlen);
+	qdisc_reset(*old);
+	sch_tree_unlock(sch);
+
+	return 0;
 }
 
 static struct Qdisc *
@@ -1651,7 +1648,7 @@ cbq_leaf(struct Qdisc *sch, unsigned long arg)
 {
 	struct cbq_class *cl = (struct cbq_class*)arg;
 
-	return cl ? cl->q : NULL;
+	return cl->q;
 }
 
 static void cbq_qlen_notify(struct Qdisc *sch, unsigned long arg)

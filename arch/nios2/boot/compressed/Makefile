@@ -1,11 +1,10 @@
 #
-# linux/arch/sh/boot/compressed/Makefile
+# linux/arch/nios2/boot/compressed/Makefile
 #
 # create a compressed vmlinux image from the original vmlinux
 #
 
-targets		:= vmlinux head.o misc.o \
-		   piggy.o vmlinux.lds
+targets		:= vmlinux head.o misc.o piggy.o vmlinux.lds
 EXTRA_AFLAGS	:=
 
 OBJECTS = $(obj)/head.o $(obj)/misc.o

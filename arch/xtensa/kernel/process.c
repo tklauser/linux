@@ -23,7 +23,6 @@
 #include <linux/stddef.h>
 #include <linux/unistd.h>
 #include <linux/ptrace.h>
-#include <linux/slab.h>
 #include <linux/elf.h>
 #include <linux/init.h>
 #include <linux/prctl.h>
@@ -31,6 +30,7 @@
 #include <linux/module.h>
 #include <linux/mqueue.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
 
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
@@ -331,11 +331,6 @@ long xtensa_execve(char __user *name, char __user * __user *argv,
 	if (IS_ERR(filename))
 		goto out;
 	error = do_execve(filename, argv, envp, regs);
-	if (error == 0) {
-		task_lock(current);
-		current->ptrace &= ~PT_DTRACE;
-		task_unlock(current);
-	}
 	putname(filename);
 out:
 	return error;

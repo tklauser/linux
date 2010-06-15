@@ -70,7 +70,8 @@ struct hci_dev {
 	char		name[8];
 	unsigned long	flags;
 	__u16		id;
-	__u8		type;
+	__u8		bus;
+	__u8		dev_type;
 	bdaddr_t	bdaddr;
 	__u8		dev_name[248];
 	__u8		dev_class[3];
@@ -117,7 +118,7 @@ struct hci_dev {
 	struct sk_buff		*sent_cmd;
 	struct sk_buff		*reassembly[3];
 
-	struct semaphore	req_lock;
+	struct mutex		req_lock;
 	wait_queue_head_t	req_wait_q;
 	__u32			req_status;
 	__u32			req_result;
@@ -134,8 +135,12 @@ struct hci_dev {
 
 	atomic_t 		promisc;
 
+	struct dentry		*debugfs;
+
 	struct device		*parent;
 	struct device		dev;
+
+	struct rfkill		*rfkill;
 
 	struct module 		*owner;
 
@@ -185,6 +190,7 @@ struct hci_conn {
 	struct work_struct work_del;
 
 	struct device	dev;
+	atomic_t	devref;
 
 	struct hci_dev	*hdev;
 	void		*l2cap_data;
@@ -337,6 +343,9 @@ int hci_conn_switch_role(struct hci_conn *conn, __u8 role);
 void hci_conn_enter_active_mode(struct hci_conn *conn);
 void hci_conn_enter_sniff_mode(struct hci_conn *conn);
 
+void hci_conn_hold_device(struct hci_conn *conn);
+void hci_conn_put_device(struct hci_conn *conn);
+
 static inline void hci_conn_hold(struct hci_conn *conn)
 {
 	atomic_inc(&conn->refcnt);
@@ -359,22 +368,6 @@ static inline void hci_conn_put(struct hci_conn *conn)
 			timeo = msecs_to_jiffies(10);
 		mod_timer(&conn->disc_timer, jiffies + timeo);
 	}
-}
-
-/* ----- HCI tasks ----- */
-static inline void hci_sched_cmd(struct hci_dev *hdev)
-{
-	tasklet_schedule(&hdev->cmd_task);
-}
-
-static inline void hci_sched_rx(struct hci_dev *hdev)
-{
-	tasklet_schedule(&hdev->rx_task);
-}
-
-static inline void hci_sched_tx(struct hci_dev *hdev)
-{
-	tasklet_schedule(&hdev->tx_task);
 }
 
 /* ----- HCI Devices ----- */
@@ -431,28 +424,7 @@ int hci_inquiry(void __user *arg);
 
 void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb);
 
-/* Receive frame from HCI drivers */
-static inline int hci_recv_frame(struct sk_buff *skb)
-{
-	struct hci_dev *hdev = (struct hci_dev *) skb->dev;
-	if (!hdev || (!test_bit(HCI_UP, &hdev->flags) 
-			&& !test_bit(HCI_INIT, &hdev->flags))) {
-		kfree_skb(skb);
-		return -ENXIO;
-	}
-
-	/* Incomming skb */
-	bt_cb(skb)->incoming = 1;
-
-	/* Time stamp */
-	__net_timestamp(skb);
-
-	/* Queue frame for rx task */
-	skb_queue_tail(&hdev->rx_q, skb);
-	hci_sched_rx(hdev);
-	return 0;
-}
-
+int hci_recv_frame(struct sk_buff *skb);
 int hci_recv_fragment(struct hci_dev *hdev, int type, void *data, int count);
 
 int hci_register_sysfs(struct hci_dev *hdev);
@@ -698,8 +670,8 @@ struct hci_sec_filter {
 #define HCI_REQ_PEND	  1
 #define HCI_REQ_CANCELED  2
 
-#define hci_req_lock(d)		down(&d->req_lock)
-#define hci_req_unlock(d)	up(&d->req_lock)
+#define hci_req_lock(d)		mutex_lock(&d->req_lock)
+#define hci_req_unlock(d)	mutex_unlock(&d->req_lock)
 
 void hci_req_complete(struct hci_dev *hdev, int result);
 

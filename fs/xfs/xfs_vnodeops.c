@@ -42,6 +42,7 @@
 #include "xfs_ialloc.h"
 #include "xfs_alloc.h"
 #include "xfs_bmap.h"
+#include "xfs_acl.h"
 #include "xfs_attr.h"
 #include "xfs_rw.h"
 #include "xfs_error.h"
@@ -52,6 +53,7 @@
 #include "xfs_log_priv.h"
 #include "xfs_filestream.h"
 #include "xfs_vnodeops.h"
+#include "xfs_trace.h"
 
 int
 xfs_setattr(
@@ -68,7 +70,6 @@ xfs_setattr(
 	uint			commit_flags=0;
 	uid_t			uid=0, iuid=0;
 	gid_t			gid=0, igid=0;
-	int			timeflags = 0;
 	struct xfs_dquot	*udqp, *gdqp, *olddquot1, *olddquot2;
 	int			need_iolock = 1;
 
@@ -118,7 +119,7 @@ xfs_setattr(
 		 */
 		ASSERT(udqp == NULL);
 		ASSERT(gdqp == NULL);
-		code = XFS_QM_DQVOPALLOC(mp, ip, uid, gid, ip->i_d.di_projid,
+		code = xfs_qm_vop_dqalloc(ip, uid, gid, ip->i_d.di_projid,
 					 qflags, &udqp, &gdqp);
 		if (code)
 			return code;
@@ -133,16 +134,13 @@ xfs_setattr(
 	if (flags & XFS_ATTR_NOLOCK)
 		need_iolock = 0;
 	if (!(mask & ATTR_SIZE)) {
-		if ((mask != (ATTR_CTIME|ATTR_ATIME|ATTR_MTIME)) ||
-		    (mp->m_flags & XFS_MOUNT_WSYNC)) {
-			tp = xfs_trans_alloc(mp, XFS_TRANS_SETATTR_NOT_SIZE);
-			commit_flags = 0;
-			if ((code = xfs_trans_reserve(tp, 0,
-						     XFS_ICHANGE_LOG_RES(mp), 0,
-						     0, 0))) {
-				lock_flags = 0;
-				goto error_return;
-			}
+		tp = xfs_trans_alloc(mp, XFS_TRANS_SETATTR_NOT_SIZE);
+		commit_flags = 0;
+		code = xfs_trans_reserve(tp, 0, XFS_ICHANGE_LOG_RES(mp),
+					 0, 0, 0);
+		if (code) {
+			lock_flags = 0;
+			goto error_return;
 		}
 	} else {
 		if (DM_EVENT_ENABLED(ip, DM_EVENT_TRUNCATE) &&
@@ -180,10 +178,11 @@ xfs_setattr(
 		 * Do a quota reservation only if uid/gid is actually
 		 * going to change.
 		 */
-		if ((XFS_IS_UQUOTA_ON(mp) && iuid != uid) ||
-		    (XFS_IS_GQUOTA_ON(mp) && igid != gid)) {
+		if (XFS_IS_QUOTA_RUNNING(mp) &&
+		    ((XFS_IS_UQUOTA_ON(mp) && iuid != uid) ||
+		     (XFS_IS_GQUOTA_ON(mp) && igid != gid))) {
 			ASSERT(tp);
-			code = XFS_QM_DQVOPCHOWNRESV(mp, tp, ip, udqp, gdqp,
+			code = xfs_qm_vop_chown_reserve(tp, ip, udqp, gdqp,
 						capable(CAP_FOWNER) ?
 						XFS_QMOPT_FORCE_RES : 0);
 			if (code)	/* out of quota */
@@ -217,7 +216,7 @@ xfs_setattr(
 		/*
 		 * Make sure that the dquots are attached to the inode.
 		 */
-		code = XFS_QM_DQATTACH(mp, ip, XFS_QMOPT_ILOCKED);
+		code = xfs_qm_dqattach_locked(ip, 0);
 		if (code)
 			goto error_return;
 
@@ -257,7 +256,7 @@ xfs_setattr(
 		    iattr->ia_size > ip->i_d.di_size) {
 			code = xfs_flush_pages(ip,
 					ip->i_d.di_size, iattr->ia_size,
-					XFS_B_ASYNC, FI_NONE);
+					XBF_ASYNC, FI_NONE);
 		}
 
 		/* wait for all I/O to complete */
@@ -292,15 +291,23 @@ xfs_setattr(
 		 * or we are explicitly asked to change it. This handles
 		 * the semantic difference between truncate() and ftruncate()
 		 * as implemented in the VFS.
+		 *
+		 * The regular truncate() case without ATTR_CTIME and ATTR_MTIME
+		 * is a special case where we need to update the times despite
+		 * not having these flags set.  For all other operations the
+		 * VFS set these flags explicitly if it wants a timestamp
+		 * update.
 		 */
-		if (iattr->ia_size != ip->i_size || (mask & ATTR_CTIME))
-			timeflags |= XFS_ICHGTIME_MOD | XFS_ICHGTIME_CHG;
+		if (iattr->ia_size != ip->i_size &&
+		    (!(mask & (ATTR_CTIME | ATTR_MTIME)))) {
+			iattr->ia_ctime = iattr->ia_mtime =
+				current_fs_time(inode->i_sb);
+			mask |= ATTR_CTIME | ATTR_MTIME;
+		}
 
 		if (iattr->ia_size > ip->i_size) {
 			ip->i_d.di_size = iattr->ia_size;
 			ip->i_size = iattr->ia_size;
-			if (!(flags & XFS_ATTR_DMI))
-				xfs_ichgtime(ip, XFS_ICHGTIME_CHG);
 			xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 		} else if (iattr->ia_size <= ip->i_size ||
 			   (iattr->ia_size == 0 && ip->i_d.di_nextents)) {
@@ -351,29 +358,26 @@ xfs_setattr(
 		 * in the transaction.
 		 */
 		if (iuid != uid) {
-			if (XFS_IS_UQUOTA_ON(mp)) {
+			if (XFS_IS_QUOTA_RUNNING(mp) && XFS_IS_UQUOTA_ON(mp)) {
 				ASSERT(mask & ATTR_UID);
 				ASSERT(udqp);
-				olddquot1 = XFS_QM_DQVOPCHOWN(mp, tp, ip,
+				olddquot1 = xfs_qm_vop_chown(tp, ip,
 							&ip->i_udquot, udqp);
 			}
 			ip->i_d.di_uid = uid;
 			inode->i_uid = uid;
 		}
 		if (igid != gid) {
-			if (XFS_IS_GQUOTA_ON(mp)) {
+			if (XFS_IS_QUOTA_RUNNING(mp) && XFS_IS_GQUOTA_ON(mp)) {
 				ASSERT(!XFS_IS_PQUOTA_ON(mp));
 				ASSERT(mask & ATTR_GID);
 				ASSERT(gdqp);
-				olddquot2 = XFS_QM_DQVOPCHOWN(mp, tp, ip,
+				olddquot2 = xfs_qm_vop_chown(tp, ip,
 							&ip->i_gdquot, gdqp);
 			}
 			ip->i_d.di_gid = gid;
 			inode->i_gid = gid;
 		}
-
-		xfs_trans_log_inode (tp, ip, XFS_ILOG_CORE);
-		timeflags |= XFS_ICHGTIME_CHG;
 	}
 
 	/*
@@ -390,51 +394,37 @@ xfs_setattr(
 
 		inode->i_mode &= S_IFMT;
 		inode->i_mode |= mode & ~S_IFMT;
-
-		xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
-		timeflags |= XFS_ICHGTIME_CHG;
 	}
 
 	/*
 	 * Change file access or modified times.
 	 */
-	if (mask & (ATTR_ATIME|ATTR_MTIME)) {
-		if (mask & ATTR_ATIME) {
-			inode->i_atime = iattr->ia_atime;
-			ip->i_d.di_atime.t_sec = iattr->ia_atime.tv_sec;
-			ip->i_d.di_atime.t_nsec = iattr->ia_atime.tv_nsec;
-			ip->i_update_core = 1;
-		}
-		if (mask & ATTR_MTIME) {
-			inode->i_mtime = iattr->ia_mtime;
-			ip->i_d.di_mtime.t_sec = iattr->ia_mtime.tv_sec;
-			ip->i_d.di_mtime.t_nsec = iattr->ia_mtime.tv_nsec;
-			timeflags &= ~XFS_ICHGTIME_MOD;
-			timeflags |= XFS_ICHGTIME_CHG;
-		}
-		if (tp && (mask & (ATTR_MTIME_SET|ATTR_ATIME_SET)))
-			xfs_trans_log_inode (tp, ip, XFS_ILOG_CORE);
+	if (mask & ATTR_ATIME) {
+		inode->i_atime = iattr->ia_atime;
+		ip->i_d.di_atime.t_sec = iattr->ia_atime.tv_sec;
+		ip->i_d.di_atime.t_nsec = iattr->ia_atime.tv_nsec;
+		ip->i_update_core = 1;
 	}
-
-	/*
-	 * Change file inode change time only if ATTR_CTIME set
-	 * AND we have been called by a DMI function.
-	 */
-
-	if ((flags & XFS_ATTR_DMI) && (mask & ATTR_CTIME)) {
+	if (mask & ATTR_CTIME) {
 		inode->i_ctime = iattr->ia_ctime;
 		ip->i_d.di_ctime.t_sec = iattr->ia_ctime.tv_sec;
 		ip->i_d.di_ctime.t_nsec = iattr->ia_ctime.tv_nsec;
 		ip->i_update_core = 1;
-		timeflags &= ~XFS_ICHGTIME_CHG;
+	}
+	if (mask & ATTR_MTIME) {
+		inode->i_mtime = iattr->ia_mtime;
+		ip->i_d.di_mtime.t_sec = iattr->ia_mtime.tv_sec;
+		ip->i_d.di_mtime.t_nsec = iattr->ia_mtime.tv_nsec;
+		ip->i_update_core = 1;
 	}
 
 	/*
-	 * Send out timestamp changes that need to be set to the
-	 * current time.  Not done when called by a DMI function.
+	 * And finally, log the inode core if any attribute in it
+	 * has been changed.
 	 */
-	if (timeflags && !(flags & XFS_ATTR_DMI))
-		xfs_ichgtime(ip, timeflags);
+	if (mask & (ATTR_UID|ATTR_GID|ATTR_MODE|
+		    ATTR_ATIME|ATTR_CTIME|ATTR_MTIME))
+		xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	XFS_STATS_INC(xs_ig_attrchg);
 
@@ -449,25 +439,35 @@ xfs_setattr(
 	 * mix so this probably isn't worth the trouble to optimize.
 	 */
 	code = 0;
-	if (tp) {
-		if (mp->m_flags & XFS_MOUNT_WSYNC)
-			xfs_trans_set_sync(tp);
+	if (mp->m_flags & XFS_MOUNT_WSYNC)
+		xfs_trans_set_sync(tp);
 
-		code = xfs_trans_commit(tp, commit_flags);
-	}
+	code = xfs_trans_commit(tp, commit_flags);
 
 	xfs_iunlock(ip, lock_flags);
 
 	/*
 	 * Release any dquot(s) the inode had kept before chown.
 	 */
-	XFS_QM_DQRELE(mp, olddquot1);
-	XFS_QM_DQRELE(mp, olddquot2);
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(olddquot1);
+	xfs_qm_dqrele(olddquot2);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 
-	if (code) {
+	if (code)
 		return code;
+
+	/*
+	 * XXX(hch): Updating the ACL entries is not atomic vs the i_mode
+	 * 	     update.  We could avoid this with linked transactions
+	 * 	     and passing down the transaction pointer all the way
+	 *	     to attr_set.  No previous user of the generic
+	 * 	     Posix ACL code seems to care about this issue either.
+	 */
+	if ((mask & ATTR_MODE) && !(flags & XFS_ATTR_NOACL)) {
+		code = -xfs_acl_chmod(inode);
+		if (code)
+			return XFS_ERROR(code);
 	}
 
 	if (DM_EVENT_ENABLED(ip, DM_EVENT_ATTRIBUTE) &&
@@ -482,8 +482,8 @@ xfs_setattr(
 	commit_flags |= XFS_TRANS_ABORT;
 	/* FALLTHROUGH */
  error_return:
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 	if (tp) {
 		xfs_trans_cancel(tp, commit_flags);
 	}
@@ -524,7 +524,8 @@ xfs_readlink_bmap(
 		d = XFS_FSB_TO_DADDR(mp, mval[n].br_startblock);
 		byte_cnt = XFS_FSB_TO_B(mp, mval[n].br_blockcount);
 
-		bp = xfs_buf_read(mp->m_ddev_targp, d, BTOBB(byte_cnt), 0);
+		bp = xfs_buf_read(mp->m_ddev_targp, d, BTOBB(byte_cnt),
+				  XBF_LOCK | XBF_MAPPED | XBF_DONT_BLOCK);
 		error = XFS_BUF_GETERROR(bp);
 		if (error) {
 			xfs_ioerror_alert("xfs_readlink",
@@ -583,126 +584,16 @@ xfs_readlink(
 }
 
 /*
- * xfs_fsync
- *
- * This is called to sync the inode and its data out to disk.  We need to hold
- * the I/O lock while flushing the data, and the inode lock while flushing the
- * inode.  The inode lock CANNOT be held while flushing the data, so acquire
- * after we're done with that.
+ * Flags for xfs_free_eofblocks
  */
-int
-xfs_fsync(
-	xfs_inode_t	*ip)
-{
-	xfs_trans_t	*tp;
-	int		error;
-	int		log_flushed = 0, changed = 1;
-
-	xfs_itrace_entry(ip);
-
-	if (XFS_FORCED_SHUTDOWN(ip->i_mount))
-		return XFS_ERROR(EIO);
-
-	/* capture size updates in I/O completion before writing the inode. */
-	error = xfs_wait_on_pages(ip, 0, -1);
-	if (error)
-		return XFS_ERROR(error);
-
-	/*
-	 * We always need to make sure that the required inode state is safe on
-	 * disk.  The vnode might be clean but we still might need to force the
-	 * log because of committed transactions that haven't hit the disk yet.
-	 * Likewise, there could be unflushed non-transactional changes to the
-	 * inode core that have to go to disk and this requires us to issue
-	 * a synchronous transaction to capture these changes correctly.
-	 *
-	 * This code relies on the assumption that if the update_* fields
-	 * of the inode are clear and the inode is unpinned then it is clean
-	 * and no action is required.
-	 */
-	xfs_ilock(ip, XFS_ILOCK_SHARED);
-
-	if (!(ip->i_update_size || ip->i_update_core)) {
-		/*
-		 * Timestamps/size haven't changed since last inode flush or
-		 * inode transaction commit.  That means either nothing got
-		 * written or a transaction committed which caught the updates.
-		 * If the latter happened and the transaction hasn't hit the
-		 * disk yet, the inode will be still be pinned.  If it is,
-		 * force the log.
-		 */
-
-		xfs_iunlock(ip, XFS_ILOCK_SHARED);
-
-		if (xfs_ipincount(ip)) {
-			error = _xfs_log_force(ip->i_mount, (xfs_lsn_t)0,
-				      XFS_LOG_FORCE | XFS_LOG_SYNC,
-				      &log_flushed);
-		} else {
-			/*
-			 * If the inode is not pinned and nothing has changed
-			 * we don't need to flush the cache.
-			 */
-			changed = 0;
-		}
-	} else	{
-		/*
-		 * Kick off a transaction to log the inode core to get the
-		 * updates.  The sync transaction will also force the log.
-		 */
-		xfs_iunlock(ip, XFS_ILOCK_SHARED);
-		tp = xfs_trans_alloc(ip->i_mount, XFS_TRANS_FSYNC_TS);
-		error = xfs_trans_reserve(tp, 0,
-				XFS_FSYNC_TS_LOG_RES(ip->i_mount), 0, 0, 0);
-		if (error) {
-			xfs_trans_cancel(tp, 0);
-			return error;
-		}
-		xfs_ilock(ip, XFS_ILOCK_EXCL);
-
-		/*
-		 * Note - it's possible that we might have pushed ourselves out
-		 * of the way during trans_reserve which would flush the inode.
-		 * But there's no guarantee that the inode buffer has actually
-		 * gone out yet (it's delwri).	Plus the buffer could be pinned
-		 * anyway if it's part of an inode in another recent
-		 * transaction.	 So we play it safe and fire off the
-		 * transaction anyway.
-		 */
-		xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
-		xfs_trans_ihold(tp, ip);
-		xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
-		xfs_trans_set_sync(tp);
-		error = _xfs_trans_commit(tp, 0, &log_flushed);
-
-		xfs_iunlock(ip, XFS_ILOCK_EXCL);
-	}
-
-	if ((ip->i_mount->m_flags & XFS_MOUNT_BARRIER) && changed) {
-		/*
-		 * If the log write didn't issue an ordered tag we need
-		 * to flush the disk cache for the data device now.
-		 */
-		if (!log_flushed)
-			xfs_blkdev_issue_flush(ip->i_mount->m_ddev_targp);
-
-		/*
-		 * If this inode is on the RT dev we need to flush that
-		 * cache as well.
-		 */
-		if (XFS_IS_REALTIME_INODE(ip))
-			xfs_blkdev_issue_flush(ip->i_mount->m_rtdev_targp);
-	}
-
-	return error;
-}
+#define XFS_FREE_EOF_TRYLOCK	(1<<0)
 
 /*
  * This is called by xfs_inactive to free any blocks beyond eof
  * when the link count isn't zero and by xfs_dm_punch_hole() when
  * punching a hole to EOF.
  */
-int
+STATIC int
 xfs_free_eofblocks(
 	xfs_mount_t	*mp,
 	xfs_inode_t	*ip,
@@ -715,7 +606,6 @@ xfs_free_eofblocks(
 	xfs_filblks_t	map_len;
 	int		nimaps;
 	xfs_bmbt_irec_t	imap;
-	int		use_iolock = (flags & XFS_FREE_EOF_LOCK);
 
 	/*
 	 * Figure out if there are any blocks beyond the end
@@ -739,7 +629,8 @@ xfs_free_eofblocks(
 		/*
 		 * Attach the dquots to the inode up front.
 		 */
-		if ((error = XFS_QM_DQATTACH(mp, ip, 0)))
+		error = xfs_qm_dqattach(ip, 0);
+		if (error)
 			return error;
 
 		/*
@@ -756,14 +647,19 @@ xfs_free_eofblocks(
 		 * cache and we can't
 		 * do that within a transaction.
 		 */
-		if (use_iolock)
+		if (flags & XFS_FREE_EOF_TRYLOCK) {
+			if (!xfs_ilock_nowait(ip, XFS_IOLOCK_EXCL)) {
+				xfs_trans_cancel(tp, 0);
+				return 0;
+			}
+		} else {
 			xfs_ilock(ip, XFS_IOLOCK_EXCL);
+		}
 		error = xfs_itruncate_start(ip, XFS_ITRUNC_DEFINITE,
 				    ip->i_size);
 		if (error) {
 			xfs_trans_cancel(tp, 0);
-			if (use_iolock)
-				xfs_iunlock(ip, XFS_IOLOCK_EXCL);
+			xfs_iunlock(ip, XFS_IOLOCK_EXCL);
 			return error;
 		}
 
@@ -800,8 +696,7 @@ xfs_free_eofblocks(
 			error = xfs_trans_commit(tp,
 						XFS_TRANS_RELEASE_LOG_RES);
 		}
-		xfs_iunlock(ip, (use_iolock ? (XFS_IOLOCK_EXCL|XFS_ILOCK_EXCL)
-					    : XFS_ILOCK_EXCL));
+		xfs_iunlock(ip, XFS_IOLOCK_EXCL|XFS_ILOCK_EXCL);
 	}
 	return error;
 }
@@ -1091,7 +986,7 @@ xfs_release(
 		 */
 		truncated = xfs_iflags_test_and_clear(ip, XFS_ITRUNCATED);
 		if (truncated && VN_DIRTY(VFS_I(ip)) && ip->i_delayed_blks > 0)
-			xfs_flush_pages(ip, 0, -1, XFS_B_ASYNC, FI_NONE);
+			xfs_flush_pages(ip, 0, -1, XBF_ASYNC, FI_NONE);
 	}
 
 	if (ip->i_d.di_nlink != 0) {
@@ -1101,7 +996,17 @@ xfs_release(
 		     (ip->i_df.if_flags & XFS_IFEXTENTS))  &&
 		    (!(ip->i_d.di_flags &
 				(XFS_DIFLAG_PREALLOC | XFS_DIFLAG_APPEND)))) {
-			error = xfs_free_eofblocks(mp, ip, XFS_FREE_EOF_LOCK);
+
+			/*
+			 * If we can't get the iolock just skip truncating
+			 * the blocks past EOF because we could deadlock
+			 * with the mmap_sem otherwise.  We'll get another
+			 * chance to drop them once the last reference to
+			 * the inode is dropped, so we'll never leak blocks
+			 * permanently.
+			 */
+			error = xfs_free_eofblocks(mp, ip,
+						   XFS_FREE_EOF_TRYLOCK);
 			if (error)
 				return error;
 		}
@@ -1172,7 +1077,7 @@ xfs_inactive(
 		     (!(ip->i_d.di_flags &
 				(XFS_DIFLAG_PREALLOC | XFS_DIFLAG_APPEND)) ||
 		      (ip->i_delayed_blks != 0)))) {
-			error = xfs_free_eofblocks(mp, ip, XFS_FREE_EOF_LOCK);
+			error = xfs_free_eofblocks(mp, ip, 0);
 			if (error)
 				return VN_INACTIVE_CACHE;
 		}
@@ -1181,7 +1086,8 @@ xfs_inactive(
 
 	ASSERT(ip->i_d.di_nlink == 0);
 
-	if ((error = XFS_QM_DQATTACH(mp, ip, 0)))
+	error = xfs_qm_dqattach(ip, 0);
+	if (error)
 		return VN_INACTIVE_CACHE;
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_INACTIVE);
@@ -1307,7 +1213,7 @@ xfs_inactive(
 		/*
 		 * Credit the quota account(s). The inode is gone.
 		 */
-		XFS_TRANS_MOD_DQUOT_BYINO(mp, tp, ip, XFS_TRANS_DQ_ICOUNT, -1);
+		xfs_trans_mod_dquot_byino(tp, ip, XFS_TRANS_DQ_ICOUNT, -1);
 
 		/*
 		 * Just ignore errors at this point.  There is nothing we can
@@ -1323,11 +1229,11 @@ xfs_inactive(
 			xfs_fs_cmn_err(CE_NOTE, mp, "xfs_inactive: "
 				"xfs_trans_commit() returned error %d", error);
 	}
+
 	/*
 	 * Release the dquots held by inode, if any.
 	 */
-	XFS_QM_DQDETACH(mp, ip);
-
+	xfs_qm_dqdetach(ip);
 	xfs_iunlock(ip, XFS_IOLOCK_EXCL | XFS_ILOCK_EXCL);
 
  out:
@@ -1367,7 +1273,6 @@ xfs_lookup(
 	if (error)
 		goto out_free_name;
 
-	xfs_itrace_ref(*ipp);
 	return 0;
 
 out_free_name:
@@ -1427,8 +1332,7 @@ xfs_create(
 	/*
 	 * Make sure that we have allocated dquot(s) on disk.
 	 */
-	error = XFS_QM_DQVOPALLOC(mp, dp,
-			current_fsuid(), current_fsgid(), prid,
+	error = xfs_qm_vop_dqalloc(dp, current_fsuid(), current_fsgid(), prid,
 			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT, &udqp, &gdqp);
 	if (error)
 		goto std_return;
@@ -1459,8 +1363,8 @@ xfs_create(
 	if (error == ENOSPC) {
 		/* flush outstanding delalloc blocks and retry */
 		xfs_flush_inodes(dp);
-		error = xfs_trans_reserve(tp, resblks, XFS_CREATE_LOG_RES(mp), 0,
-			XFS_TRANS_PERM_LOG_RES, XFS_CREATE_LOG_COUNT);
+		error = xfs_trans_reserve(tp, resblks, log_res, 0,
+				XFS_TRANS_PERM_LOG_RES, log_count);
 	}
 	if (error == ENOSPC) {
 		/* No space at all so try a "no-allocation" reservation */
@@ -1489,7 +1393,7 @@ xfs_create(
 	/*
 	 * Reserve disk quota and the inode.
 	 */
-	error = XFS_TRANS_RESERVE_QUOTA(mp, tp, udqp, gdqp, resblks, 1, 0);
+	error = xfs_trans_reserve_quota(tp, mp, udqp, gdqp, resblks, 1, 0);
 	if (error)
 		goto out_trans_cancel;
 
@@ -1514,7 +1418,6 @@ xfs_create(
 	 * At this point, we've gotten a newly allocated inode.
 	 * It is locked (and joined to the transaction).
 	 */
-	xfs_itrace_ref(ip);
 	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 
 	/*
@@ -1561,7 +1464,7 @@ xfs_create(
 	 * These ids of the inode couldn't have changed since the new
 	 * inode has been locked ever since it was created.
 	 */
-	XFS_QM_DQVOPCREATE(mp, tp, ip, udqp, gdqp);
+	xfs_qm_vop_create_dqattach(tp, ip, udqp, gdqp);
 
 	/*
 	 * xfs_trans_commit normally decrements the vnode ref count
@@ -1580,8 +1483,8 @@ xfs_create(
 		goto out_dqrele;
 	}
 
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 
 	*ipp = ip;
 
@@ -1602,8 +1505,8 @@ xfs_create(
  out_trans_cancel:
 	xfs_trans_cancel(tp, cancel_flags);
  out_dqrele:
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 
 	if (unlock_dp_on_error)
 		xfs_iunlock(dp, XFS_ILOCK_EXCL);
@@ -1837,11 +1740,11 @@ xfs_remove(
 			return error;
 	}
 
-	error = XFS_QM_DQATTACH(mp, dp, 0);
+	error = xfs_qm_dqattach(dp, 0);
 	if (error)
 		goto std_return;
 
-	error = XFS_QM_DQATTACH(mp, ip, 0);
+	error = xfs_qm_dqattach(ip, 0);
 	if (error)
 		goto std_return;
 
@@ -1974,9 +1877,6 @@ xfs_remove(
 	if (!is_dir && link_zero && xfs_inode_is_filestream(ip))
 		xfs_filestream_deassociate(ip);
 
-	xfs_itrace_exit(ip);
-	xfs_itrace_exit(dp);
-
  std_return:
 	if (DM_EVENT_ENABLED(dp, DM_EVENT_POSTREMOVE)) {
 		XFS_SEND_NAMESP(mp, DM_EVENT_POSTREMOVE, dp, DM_RIGHT_NULL,
@@ -2028,11 +1928,11 @@ xfs_link(
 
 	/* Return through std_return after this point. */
 
-	error = XFS_QM_DQATTACH(mp, sip, 0);
+	error = xfs_qm_dqattach(sip, 0);
 	if (error)
 		goto std_return;
 
-	error = XFS_QM_DQATTACH(mp, tdp, 0);
+	error = xfs_qm_dqattach(tdp, 0);
 	if (error)
 		goto std_return;
 
@@ -2189,7 +2089,8 @@ xfs_symlink(
 	if (DM_EVENT_ENABLED(dp, DM_EVENT_SYMLINK)) {
 		error = XFS_SEND_NAMESP(mp, DM_EVENT_SYMLINK, dp,
 					DM_RIGHT_NULL, NULL, DM_RIGHT_NULL,
-					link_name->name, target_path, 0, 0, 0);
+					link_name->name,
+					(unsigned char *)target_path, 0, 0, 0);
 		if (error)
 			return error;
 	}
@@ -2205,8 +2106,7 @@ xfs_symlink(
 	/*
 	 * Make sure that we have allocated dquot(s) on disk.
 	 */
-	error = XFS_QM_DQVOPALLOC(mp, dp,
-			current_fsuid(), current_fsgid(), prid,
+	error = xfs_qm_vop_dqalloc(dp, current_fsuid(), current_fsgid(), prid,
 			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT, &udqp, &gdqp);
 	if (error)
 		goto std_return;
@@ -2248,7 +2148,7 @@ xfs_symlink(
 	/*
 	 * Reserve disk quota : blocks and inode.
 	 */
-	error = XFS_TRANS_RESERVE_QUOTA(mp, tp, udqp, gdqp, resblks, 1, 0);
+	error = xfs_trans_reserve_quota(tp, mp, udqp, gdqp, resblks, 1, 0);
 	if (error)
 		goto error_return;
 
@@ -2274,7 +2174,6 @@ xfs_symlink(
 			goto error_return;
 		goto error1;
 	}
-	xfs_itrace_ref(ip);
 
 	/*
 	 * An error after we've joined dp to the transaction will result in the
@@ -2288,7 +2187,7 @@ xfs_symlink(
 	/*
 	 * Also attach the dquot(s) to it, if applicable.
 	 */
-	XFS_QM_DQVOPCREATE(mp, tp, ip, udqp, gdqp);
+	xfs_qm_vop_create_dqattach(tp, ip, udqp, gdqp);
 
 	if (resblks)
 		resblks -= XFS_IALLOC_SPACE_RES(mp);
@@ -2376,8 +2275,8 @@ xfs_symlink(
 		goto error2;
 	}
 	error = xfs_trans_commit(tp, XFS_TRANS_RELEASE_LOG_RES);
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 
 	/* Fall through to std_return with error = 0 or errno from
 	 * xfs_trans_commit	*/
@@ -2387,7 +2286,8 @@ std_return:
 					dp, DM_RIGHT_NULL,
 					error ? NULL : ip,
 					DM_RIGHT_NULL, link_name->name,
-					target_path, 0, error, 0);
+					(unsigned char *)target_path,
+					0, error, 0);
 	}
 
 	if (!error)
@@ -2401,8 +2301,8 @@ std_return:
 	cancel_flags |= XFS_TRANS_ABORT;
  error_return:
 	xfs_trans_cancel(tp, cancel_flags);
-	XFS_QM_DQRELE(mp, udqp);
-	XFS_QM_DQRELE(mp, gdqp);
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
 
 	if (unlock_dp_on_error)
 		xfs_iunlock(dp, XFS_ILOCK_EXCL);
@@ -2443,52 +2343,6 @@ xfs_set_dmattrs(
 	error = xfs_trans_commit(tp, 0);
 
 	return error;
-}
-
-int
-xfs_reclaim(
-	xfs_inode_t	*ip)
-{
-
-	xfs_itrace_entry(ip);
-
-	ASSERT(!VN_MAPPED(VFS_I(ip)));
-
-	/* bad inode, get out here ASAP */
-	if (is_bad_inode(VFS_I(ip))) {
-		xfs_ireclaim(ip);
-		return 0;
-	}
-
-	xfs_ioend_wait(ip);
-
-	ASSERT(XFS_FORCED_SHUTDOWN(ip->i_mount) || ip->i_delayed_blks == 0);
-
-	/*
-	 * Make sure the atime in the XFS inode is correct before freeing the
-	 * Linux inode.
-	 */
-	xfs_synchronize_atime(ip);
-
-	/*
-	 * If we have nothing to flush with this inode then complete the
-	 * teardown now, otherwise break the link between the xfs inode and the
-	 * linux inode and clean up the xfs inode later. This avoids flushing
-	 * the inode to disk during the delete operation itself.
-	 *
-	 * When breaking the link, we need to set the XFS_IRECLAIMABLE flag
-	 * first to ensure that xfs_iunpin() will never see an xfs inode
-	 * that has a linux inode being reclaimed. Synchronisation is provided
-	 * by the i_flags_lock.
-	 */
-	if (!ip->i_update_core && (ip->i_itemp == NULL)) {
-		xfs_ilock(ip, XFS_ILOCK_EXCL);
-		xfs_iflock(ip);
-		xfs_iflags_set(ip, XFS_IRECLAIMABLE);
-		return xfs_reclaim_inode(ip, 1, XFS_IFLUSH_DELWRI_ELSE_SYNC);
-	}
-	xfs_inode_set_reclaim_tag(ip);
-	return 0;
 }
 
 /*
@@ -2541,7 +2395,8 @@ xfs_alloc_file_space(
 	if (XFS_FORCED_SHUTDOWN(mp))
 		return XFS_ERROR(EIO);
 
-	if ((error = XFS_QM_DQATTACH(mp, ip, 0)))
+	error = xfs_qm_dqattach(ip, 0);
+	if (error)
 		return error;
 
 	if (len <= 0)
@@ -2628,8 +2483,8 @@ retry:
 			break;
 		}
 		xfs_ilock(ip, XFS_ILOCK_EXCL);
-		error = XFS_TRANS_RESERVE_QUOTA_NBLKS(mp, tp, ip,
-						      qblocks, 0, quota_flag);
+		error = xfs_trans_reserve_quota_nblks(tp, ip, qblocks,
+						      0, quota_flag);
 		if (error)
 			goto error1;
 
@@ -2688,7 +2543,7 @@ dmapi_enospc_check:
 
 error0:	/* Cancel bmap, unlock inode, unreserve quota blocks, cancel trans */
 	xfs_bmap_cancel(&free_list);
-	XFS_TRANS_UNRESERVE_QUOTA_NBLKS(mp, tp, ip, qblocks, 0, quota_flag);
+	xfs_trans_unreserve_quota_nblks(tp, ip, qblocks, 0, quota_flag);
 
 error1:	/* Just cancel transaction */
 	xfs_trans_cancel(tp, XFS_TRANS_RELEASE_LOG_RES | XFS_TRANS_ABORT);
@@ -2827,7 +2682,8 @@ xfs_free_file_space(
 
 	xfs_itrace_entry(ip);
 
-	if ((error = XFS_QM_DQATTACH(mp, ip, 0)))
+	error = xfs_qm_dqattach(ip, 0);
+	if (error)
 		return error;
 
 	error = 0;
@@ -2861,7 +2717,6 @@ xfs_free_file_space(
 	ioffset = offset & ~(rounding - 1);
 
 	if (VN_CACHED(VFS_I(ip)) != 0) {
-		xfs_inval_cached_trace(ip, ioffset, -1, ioffset, -1);
 		error = xfs_flushinval_pages(ip, ioffset, -1, FI_REMAPF_LOCKED);
 		if (error)
 			goto out_unlock_iolock;
@@ -2953,9 +2808,9 @@ xfs_free_file_space(
 			break;
 		}
 		xfs_ilock(ip, XFS_ILOCK_EXCL);
-		error = XFS_TRANS_RESERVE_QUOTA(mp, tp,
-				ip->i_udquot, ip->i_gdquot, resblks, 0,
-				XFS_QMOPT_RES_REGBLKS);
+		error = xfs_trans_reserve_quota(tp, mp,
+				ip->i_udquot, ip->i_gdquot,
+				resblks, 0, XFS_QMOPT_RES_REGBLKS);
 		if (error)
 			goto error1;
 

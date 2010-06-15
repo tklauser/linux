@@ -30,6 +30,7 @@
 
 #include <linux/module.h>
 #include <linux/ioctl.h>
+#include <linux/slab.h>
 #include <linux/i2c.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
@@ -141,7 +142,6 @@ static const struct v4l2_subdev_ops tea6415c_ops = {
 	.video = &tea6415c_video_ops,
 };
 
-/* this function is called by i2c_probe */
 static int tea6415c_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {

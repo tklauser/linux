@@ -528,6 +528,25 @@ static int ubifs_link(struct dentry *old_dentry, struct inode *dir,
 		inode->i_nlink, dir->i_ino);
 	ubifs_assert(mutex_is_locked(&dir->i_mutex));
 	ubifs_assert(mutex_is_locked(&inode->i_mutex));
+
+	/*
+	 * Return -ENOENT if we've raced with unlink and i_nlink is 0.  Doing
+	 * otherwise has the potential to corrupt the orphan inode list.
+	 *
+	 * Indeed, consider a scenario when 'vfs_link(dirA/fileA)' and
+	 * 'vfs_unlink(dirA/fileA, dirB/fileB)' race. 'vfs_link()' does not
+	 * lock 'dirA->i_mutex', so this is possible. Both of the functions
+	 * lock 'fileA->i_mutex' though. Suppose 'vfs_unlink()' wins, and takes
+	 * 'fileA->i_mutex' mutex first. Suppose 'fileA->i_nlink' is 1. In this
+	 * case 'ubifs_unlink()' will drop the last reference, and put 'inodeA'
+	 * to the list of orphans. After this, 'vfs_link()' will link
+	 * 'dirB/fileB' to 'inodeA'. This is a problem because, for example,
+	 * the subsequent 'vfs_unlink(dirB/fileB)' will add the same inode
+	 * to the list of orphans.
+	 */
+	 if (inode->i_nlink == 0)
+		 return -ENOENT;
+
 	err = dbg_check_synced_i_size(inode);
 	if (err)
 		return err;
@@ -1101,7 +1120,7 @@ static int ubifs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (release)
 		ubifs_release_budget(c, &ino_req);
 	if (IS_SYNC(old_inode))
-		err = old_inode->i_sb->s_op->write_inode(old_inode, 1);
+		err = old_inode->i_sb->s_op->write_inode(old_inode, NULL);
 	return err;
 
 out_cancel:

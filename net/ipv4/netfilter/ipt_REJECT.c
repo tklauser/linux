@@ -12,6 +12,7 @@
 
 #include <linux/module.h>
 #include <linux/skbuff.h>
+#include <linux/slab.h>
 #include <linux/ip.h>
 #include <linux/udp.h>
 #include <linux/icmp.h>
@@ -108,17 +109,16 @@ static void send_reset(struct sk_buff *oldskb, int hook)
 		addr_type = RTN_LOCAL;
 
 	/* ip_route_me_harder expects skb->dst to be set */
-	dst_hold(oldskb->dst);
-	nskb->dst = oldskb->dst;
+	skb_dst_set(nskb, dst_clone(skb_dst(oldskb)));
 
 	if (ip_route_me_harder(nskb, addr_type))
 		goto free_nskb;
 
-	niph->ttl	= dst_metric(nskb->dst, RTAX_HOPLIMIT);
+	niph->ttl	= dst_metric(skb_dst(nskb), RTAX_HOPLIMIT);
 	nskb->ip_summed = CHECKSUM_NONE;
 
 	/* "Never happens" */
-	if (nskb->len > dst_mtu(nskb->dst))
+	if (nskb->len > dst_mtu(skb_dst(nskb)))
 		goto free_nskb;
 
 	nf_ct_attach(nskb, oldskb);
@@ -185,8 +185,8 @@ static bool reject_tg_check(const struct xt_tgchk_param *par)
 		return false;
 	} else if (rejinfo->with == IPT_TCP_RESET) {
 		/* Must specify that it's a TCP packet */
-		if (e->ip.proto != IPPROTO_TCP
-		    || (e->ip.invflags & XT_INV_PROTO)) {
+		if (e->ip.proto != IPPROTO_TCP ||
+		    (e->ip.invflags & XT_INV_PROTO)) {
 			printk("ipt_REJECT: TCP_RESET invalid for non-tcp\n");
 			return false;
 		}

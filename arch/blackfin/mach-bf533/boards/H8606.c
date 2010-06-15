@@ -1,32 +1,11 @@
 /*
- * File:         arch/blackfin/mach-bf533/H8606.c
- * Based on:     arch/blackfin/mach-bf533/stamp.c
- * Author:       Javier Herrero <jherrero@hvsistemas.es>
+ * Copyright 2004-2009 Analog Devices Inc.
+ *           2007-2008 HV Sistemas S.L.
+ *                      Javier Herrero <jherrero@hvsistemas.es>
+ *                2005 National ICT Australia (NICTA)
+ *                      Aidan Williams <aidan@nicta.com.au>
  *
- * Created:      2007
- * Description:  Board Info File for the HV Sistemas H8606 board
- *
- * Modified:
- *               Copyright 2005 National ICT Australia (NICTA)
- *               Copyright 2004-2006 Analog Devices Inc
- *		 Copyright 2007,2008 HV Sistemas S.L.
- *
- * Bugs:         Enter bugs at http://blackfin.uclinux.org/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see the file COPYING, or write
- * to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Licensed under the GPL-2 or later.
  */
 
 #include <linux/device.h>
@@ -88,6 +67,14 @@ static struct platform_device dm9000_device = {
 #endif
 
 #if defined(CONFIG_SMC91X) || defined(CONFIG_SMC91X_MODULE)
+#include <linux/smc91x.h>
+
+static struct smc91x_platdata smc91x_info = {
+	.flags = SMC91X_USE_16BIT | SMC91X_NOWAIT,
+	.leda = RPC_LED_100_10,
+	.ledb = RPC_LED_TX_RX,
+};
+
 static struct resource smc91x_resources[] = {
 	{
 		.name = "smc91x-regs",
@@ -110,6 +97,9 @@ static struct platform_device smc91x_device = {
 	.id = 0,
 	.num_resources = ARRAY_SIZE(smc91x_resources),
 	.resource = smc91x_resources,
+	.dev	= {
+		.platform_data	= &smc91x_info,
+	},
 };
 #endif
 
@@ -173,29 +163,18 @@ static struct bfin5xx_spi_chip spi_flash_chip_info = {
 };
 #endif
 
-#if defined(CONFIG_SPI_ADC_BF533) || defined(CONFIG_SPI_ADC_BF533_MODULE)
+#if defined(CONFIG_BFIN_SPI_ADC) || defined(CONFIG_BFIN_SPI_ADC_MODULE)
 /* SPI ADC chip */
 static struct bfin5xx_spi_chip spi_adc_chip_info = {
-	.ctl_reg = 0x1000,
 	.enable_dma = 1,         /* use dma transfer with this chip*/
 	.bits_per_word = 16,
 };
 #endif
 
-#if defined(CONFIG_SND_BLACKFIN_AD1836) || defined(CONFIG_SND_BLACKFIN_AD1836_MODULE)
+#if defined(CONFIG_SND_BLACKFIN_AD183X) || defined(CONFIG_SND_BLACKFIN_AD183X_MODULE)
 static struct bfin5xx_spi_chip ad1836_spi_chip_info = {
-	.ctl_reg = 0x1000,
 	.enable_dma = 0,
 	.bits_per_word = 16,
-};
-#endif
-
-#if defined(CONFIG_PBX)
-static struct bfin5xx_spi_chip spi_si3xxx_chip_info = {
-	.ctl_reg	= 0x1c04,
-	.enable_dma	= 0,
-	.bits_per_word	= 8,
-	.cs_change_per_word = 1,
 };
 #endif
 
@@ -216,7 +195,7 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 	},
 #endif
 
-#if defined(CONFIG_SPI_ADC_BF533) || defined(CONFIG_SPI_ADC_BF533_MODULE)
+#if defined(CONFIG_BFIN_SPI_ADC) || defined(CONFIG_BFIN_SPI_ADC_MODULE)
 	{
 		.modalias = "bfin_spi_adc", /* Name of spi_driver for this device */
 		.max_speed_hz = 4,     /* actual baudrate is SCLK/(2xspeed_hz) */
@@ -227,9 +206,9 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 	},
 #endif
 
-#if defined(CONFIG_SND_BLACKFIN_AD1836) || defined(CONFIG_SND_BLACKFIN_AD1836_MODULE)
+#if defined(CONFIG_SND_BLACKFIN_AD183X) || defined(CONFIG_SND_BLACKFIN_AD183X_MODULE)
 	{
-		.modalias = "ad1836-spi",
+		.modalias = "ad1836",
 		.max_speed_hz = 16,
 		.bus_num = 1,
 		.chip_select = CONFIG_SND_BLACKFIN_SPI_PFBIT,
@@ -237,23 +216,6 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 	},
 #endif
 
-#if defined(CONFIG_PBX)
-	{
-		.modalias	 = "fxs-spi",
-		.max_speed_hz	 = 4,
-		.bus_num	 = 1,
-		.chip_select	 = 3,
-		.controller_data = &spi_si3xxx_chip_info,
-	},
-
-	{
-		.modalias	 = "fxo-spi",
-		.max_speed_hz	 = 4,
-		.bus_num	 = 1,
-		.chip_select	 = 2,
-		.controller_data = &spi_si3xxx_chip_info,
-	},
-#endif
 };
 
 /* SPI (0) */
@@ -266,6 +228,11 @@ static struct resource bfin_spi0_resource[] = {
 	[1] = {
 		.start = CH_SPI,
 		.end   = CH_SPI,
+		.flags = IORESOURCE_DMA,
+	},
+	[2] = {
+		.start = IRQ_SPI,
+		.end   = IRQ_SPI,
 		.flags = IORESOURCE_IRQ,
 	}
 };
@@ -289,27 +256,50 @@ static struct platform_device bfin_spi0_device = {
 };
 #endif  /* spi master and devices */
 
-#if defined(CONFIG_FB_BF537_LQ035) || defined(CONFIG_FB_BF537_LQ035_MODULE)
-static struct platform_device bfin_fb_device = {
-	.name = "bf537-fb",
-};
-#endif
-
 #if defined(CONFIG_SERIAL_BFIN) || defined(CONFIG_SERIAL_BFIN_MODULE)
-static struct resource bfin_uart_resources[] = {
+#ifdef CONFIG_SERIAL_BFIN_UART0
+static struct resource bfin_uart0_resources[] = {
 	{
-		.start = 0xFFC00400,
-		.end = 0xFFC004FF,
+		.start = BFIN_UART_THR,
+		.end = BFIN_UART_GCTL+2,
 		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = IRQ_UART0_RX,
+		.end = IRQ_UART0_RX + 1,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = IRQ_UART0_ERROR,
+		.end = IRQ_UART0_ERROR,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = CH_UART0_TX,
+		.end = CH_UART0_TX,
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = CH_UART0_RX,
+		.end = CH_UART0_RX,
+		.flags = IORESOURCE_DMA,
 	},
 };
 
-static struct platform_device bfin_uart_device = {
-	.name = "bfin-uart",
-	.id = 1,
-	.num_resources = ARRAY_SIZE(bfin_uart_resources),
-	.resource = bfin_uart_resources,
+unsigned short bfin_uart0_peripherals[] = {
+	P_UART0_TX, P_UART0_RX, 0
 };
+
+static struct platform_device bfin_uart0_device = {
+	.name = "bfin-uart",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(bfin_uart0_resources),
+	.resource = bfin_uart0_resources,
+	.dev = {
+		.platform_data = &bfin_uart0_peripherals, /* Passed to driver */
+	},
+};
+#endif
 #endif
 
 #if defined(CONFIG_BFIN_SIR) || defined(CONFIG_BFIN_SIR_MODULE)
@@ -433,7 +423,9 @@ static struct platform_device *h8606_devices[] __initdata = {
 #endif
 
 #if defined(CONFIG_SERIAL_BFIN) || defined(CONFIG_SERIAL_BFIN_MODULE)
-	&bfin_uart_device,
+#ifdef CONFIG_SERIAL_BFIN_UART0
+	&bfin_uart0_device,
+#endif
 #endif
 
 #if defined(CONFIG_SERIAL_8250) || defined(CONFIG_SERIAL_8250_MODULE)
@@ -463,3 +455,18 @@ static int __init H8606_init(void)
 }
 
 arch_initcall(H8606_init);
+
+static struct platform_device *H8606_early_devices[] __initdata = {
+#if defined(CONFIG_SERIAL_BFIN_CONSOLE) || defined(CONFIG_EARLY_PRINTK)
+#ifdef CONFIG_SERIAL_BFIN_UART0
+	&bfin_uart0_device,
+#endif
+#endif
+};
+
+void __init native_machine_early_platform_add_devices(void)
+{
+	printk(KERN_INFO "register early platform devices\n");
+	early_platform_add_devices(H8606_early_devices,
+		ARRAY_SIZE(H8606_early_devices));
+}

@@ -27,6 +27,7 @@
 #include <linux/screen_info.h>
 #include <linux/ioport.h>
 #include <linux/acpi.h>
+#include <linux/sfi.h>
 #include <linux/apm_bios.h>
 #include <linux/initrd.h>
 #include <linux/bootmem.h>
@@ -54,7 +55,6 @@
 #include <linux/stddef.h>
 #include <linux/unistd.h>
 #include <linux/ptrace.h>
-#include <linux/slab.h>
 #include <linux/user.h>
 #include <linux/delay.h>
 
@@ -66,11 +66,13 @@
 
 #include <linux/percpu.h>
 #include <linux/crash_dump.h>
+#include <linux/tboot.h>
 
 #include <video/edid.h>
 
 #include <asm/mtrr.h>
 #include <asm/apic.h>
+#include <asm/trampoline.h>
 #include <asm/e820.h>
 #include <asm/mpspec.h>
 #include <asm/setup.h>
@@ -104,15 +106,23 @@
 #include <asm/percpu.h>
 #include <asm/topology.h>
 #include <asm/apicdef.h>
+#include <asm/k8.h>
 #ifdef CONFIG_X86_64
 #include <asm/numa_64.h>
 #endif
+#include <asm/mce.h>
 
-#ifndef ARCH_SETUP
-#define ARCH_SETUP
-#endif
+/*
+ * end_pfn only includes RAM, while max_pfn_mapped includes all e820 entries.
+ * The direct mapping extends to max_pfn_mapped, so that we can directly access
+ * apertures, ACPI and other tables without having to play with fixmaps.
+ */
+unsigned long max_low_pfn_mapped;
+unsigned long max_pfn_mapped;
 
+#ifdef CONFIG_DMI
 RESERVE_BRK(dmi_alloc, 65536);
+#endif
 
 unsigned int boot_cpu_id __read_mostly;
 
@@ -125,9 +135,9 @@ int default_cpu_present_to_apicid(int mps_cpu)
 	return __default_cpu_present_to_apicid(mps_cpu);
 }
 
-int default_check_phys_apicid_present(int boot_cpu_physical_apicid)
+int default_check_phys_apicid_present(int phys_apicid)
 {
-	return __default_check_phys_apicid_present(boot_cpu_physical_apicid);
+	return __default_check_phys_apicid_present(phys_apicid);
 }
 #endif
 
@@ -163,13 +173,6 @@ static struct resource bss_resource = {
 
 
 #ifdef CONFIG_X86_32
-static struct resource video_ram_resource = {
-	.name	= "Video RAM area",
-	.start	= 0xa0000,
-	.end	= 0xbffff,
-	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
-};
-
 /* cpu data as detected by the assembly code in head.S */
 struct cpuinfo_x86 new_cpu_data __cpuinitdata = {0, 0, 0, 0, -1, 1, 0, 0, -1};
 /* common cpu data for all cpus */
@@ -214,8 +217,8 @@ unsigned long mmu_cr4_features;
 unsigned long mmu_cr4_features = X86_CR4_PAE;
 #endif
 
-/* Boot loader ID as an integer, for the benefit of proc_dointvec */
-int bootloader_type;
+/* Boot loader ID and version as integers, for the benefit of proc_dointvec */
+int bootloader_type, bootloader_version;
 
 /*
  * Setup options
@@ -248,7 +251,7 @@ EXPORT_SYMBOL(edd);
  *              from boot_params into a safe place.
  *
  */
-static inline void copy_edd(void)
+static inline void __init copy_edd(void)
 {
      memcpy(edd.mbr_signature, boot_params.edd_mbr_sig_buffer,
 	    sizeof(edd.mbr_signature));
@@ -257,7 +260,7 @@ static inline void copy_edd(void)
      edd.edd_info_nr = boot_params.eddbuf_entries;
 }
 #else
-static inline void copy_edd(void)
+static inline void __init copy_edd(void)
 {
 }
 #endif
@@ -281,6 +284,20 @@ void * __init extend_brk(size_t size, size_t align)
 	return ret;
 }
 
+#ifdef CONFIG_X86_64
+static void __init init_gbpages(void)
+{
+	if (direct_gbpages && cpu_has_gbpages)
+		printk(KERN_INFO "Using GB pages for direct mapping\n");
+	else
+		direct_gbpages = 0;
+}
+#else
+static inline void init_gbpages(void)
+{
+}
+#endif
+
 static void __init reserve_brk(void)
 {
 	if (_brk_end > _brk_start)
@@ -293,21 +310,20 @@ static void __init reserve_brk(void)
 
 #ifdef CONFIG_BLK_DEV_INITRD
 
-#ifdef CONFIG_X86_32
-
 #define MAX_MAP_CHUNK	(NR_FIX_BTMAPS << PAGE_SHIFT)
 static void __init relocate_initrd(void)
 {
-
+	/* Assume only end is not page aligned */
 	u64 ramdisk_image = boot_params.hdr.ramdisk_image;
 	u64 ramdisk_size  = boot_params.hdr.ramdisk_size;
-	u64 end_of_lowmem = max_low_pfn << PAGE_SHIFT;
+	u64 area_size     = PAGE_ALIGN(ramdisk_size);
+	u64 end_of_lowmem = max_low_pfn_mapped << PAGE_SHIFT;
 	u64 ramdisk_here;
 	unsigned long slop, clen, mapaddr;
 	char *p, *q;
 
 	/* We need to move the initrd down into lowmem */
-	ramdisk_here = find_e820_area(0, end_of_lowmem, ramdisk_size,
+	ramdisk_here = find_e820_area(0, end_of_lowmem, area_size,
 					 PAGE_SIZE);
 
 	if (ramdisk_here == -1ULL)
@@ -316,7 +332,7 @@ static void __init relocate_initrd(void)
 
 	/* Note: this includes all the lowmem currently occupied by
 	   the initrd, we rely on that fact to keep the data intact. */
-	reserve_early(ramdisk_here, ramdisk_here + ramdisk_size,
+	reserve_early(ramdisk_here, ramdisk_here + area_size,
 			 "NEW RAMDISK");
 	initrd_start = ramdisk_here + PAGE_OFFSET;
 	initrd_end   = initrd_start + ramdisk_size;
@@ -357,14 +373,14 @@ static void __init relocate_initrd(void)
 		ramdisk_image, ramdisk_image + ramdisk_size - 1,
 		ramdisk_here, ramdisk_here + ramdisk_size - 1);
 }
-#endif
 
 static void __init reserve_initrd(void)
 {
+	/* Assume only end is not page aligned */
 	u64 ramdisk_image = boot_params.hdr.ramdisk_image;
 	u64 ramdisk_size  = boot_params.hdr.ramdisk_size;
-	u64 ramdisk_end   = ramdisk_image + ramdisk_size;
-	u64 end_of_lowmem = max_low_pfn << PAGE_SHIFT;
+	u64 ramdisk_end   = PAGE_ALIGN(ramdisk_image + ramdisk_size);
+	u64 end_of_lowmem = max_low_pfn_mapped << PAGE_SHIFT;
 
 	if (!boot_params.hdr.type_of_loader ||
 	    !ramdisk_image || !ramdisk_size)
@@ -394,14 +410,8 @@ static void __init reserve_initrd(void)
 		return;
 	}
 
-#ifdef CONFIG_X86_32
 	relocate_initrd();
-#else
-	printk(KERN_ERR "initrd extends beyond end of memory "
-	       "(0x%08llx > 0x%08llx)\ndisabling initrd\n",
-	       ramdisk_end, end_of_lowmem);
-	initrd_start = 0;
-#endif
+
 	free_early(ramdisk_image, ramdisk_end);
 }
 #else
@@ -482,42 +492,11 @@ static void __init reserve_early_setup_data(void)
 
 #ifdef CONFIG_KEXEC
 
-/**
- * Reserve @size bytes of crashkernel memory at any suitable offset.
- *
- * @size: Size of the crashkernel memory to reserve.
- * Returns the base address on success, and -1ULL on failure.
- */
-static
-unsigned long long __init find_and_reserve_crashkernel(unsigned long long size)
-{
-	const unsigned long long alignment = 16<<20; 	/* 16M */
-	unsigned long long start = 0LL;
-
-	while (1) {
-		int ret;
-
-		start = find_e820_area(start, ULONG_MAX, size, alignment);
-		if (start == -1ULL)
-			return start;
-
-		/* try to reserve it */
-		ret = reserve_bootmem_generic(start, size, BOOTMEM_EXCLUSIVE);
-		if (ret >= 0)
-			return start;
-
-		start += alignment;
-	}
-}
-
 static inline unsigned long long get_total_mem(void)
 {
 	unsigned long long total;
 
-	total = max_low_pfn - min_low_pfn;
-#ifdef CONFIG_HIGHMEM
-	total += highend_pfn - highstart_pfn;
-#endif
+	total = max_pfn - min_low_pfn;
 
 	return total << PAGE_SHIFT;
 }
@@ -537,21 +516,25 @@ static void __init reserve_crashkernel(void)
 
 	/* 0 means: find the address automatically */
 	if (crash_base <= 0) {
-		crash_base = find_and_reserve_crashkernel(crash_size);
+		const unsigned long long alignment = 16<<20;	/* 16M */
+
+		crash_base = find_e820_area(alignment, ULONG_MAX, crash_size,
+				 alignment);
 		if (crash_base == -1ULL) {
-			pr_info("crashkernel reservation failed. "
-				"No suitable area found.\n");
+			pr_info("crashkernel reservation failed - No suitable area found.\n");
 			return;
 		}
 	} else {
-		ret = reserve_bootmem_generic(crash_base, crash_size,
-					BOOTMEM_EXCLUSIVE);
-		if (ret < 0) {
-			pr_info("crashkernel reservation failed - "
-				"memory is in use\n");
+		unsigned long long start;
+
+		start = find_e820_area(crash_base, ULONG_MAX, crash_size,
+				 1<<20);
+		if (start != crash_base) {
+			pr_info("crashkernel reservation failed - memory is in use.\n");
 			return;
 		}
 	}
+	reserve_early(crash_base, crash_base + crash_size, "CRASH KERNEL");
 
 	printk(KERN_INFO "Reserving %ldMB of memory at %ldMB "
 			"for crashkernel (System RAM: %ldMB)\n",
@@ -592,7 +575,7 @@ static struct resource standard_io_resources[] = {
 		.flags = IORESOURCE_BUSY | IORESOURCE_IO }
 };
 
-static void __init reserve_standard_io_resources(void)
+void __init reserve_standard_io_resources(void)
 {
 	int i;
 
@@ -624,9 +607,15 @@ static int __init setup_elfcorehdr(char *arg)
 early_param("elfcorehdr", setup_elfcorehdr);
 #endif
 
-static struct x86_quirks default_x86_quirks __initdata;
+static __init void reserve_ibft_region(void)
+{
+	unsigned long addr, size = 0;
 
-struct x86_quirks *x86_quirks __initdata = &default_x86_quirks;
+	addr = find_ibft_region(&size);
+
+	if (size)
+		reserve_early_overlap_ok(addr, addr + size, "ibft");
+}
 
 #ifdef CONFIG_X86_RESERVE_LOW_64K
 static int __init dmi_low_memory_corruption(const struct dmi_system_id *d)
@@ -659,9 +648,54 @@ static struct dmi_system_id __initdata bad_bios_dmi_table[] = {
 			DMI_MATCH(DMI_BIOS_VENDOR, "Phoenix Technologies"),
 		},
 	},
+	{
+		.callback = dmi_low_memory_corruption,
+		.ident = "Phoenix/MSC BIOS",
+		.matches = {
+			DMI_MATCH(DMI_BIOS_VENDOR, "Phoenix/MSC"),
+		},
+	},
+	/*
+	 * AMI BIOS with low memory corruption was found on Intel DG45ID and
+	 * DG45FC boards.
+	 * It has a different DMI_BIOS_VENDOR = "Intel Corp.", for now we will
+	 * match only DMI_BOARD_NAME and see if there is more bad products
+	 * with this vendor.
+	 */
+	{
+		.callback = dmi_low_memory_corruption,
+		.ident = "AMI BIOS",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_NAME, "DG45ID"),
+		},
+	},
+	{
+		.callback = dmi_low_memory_corruption,
+		.ident = "AMI BIOS",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_NAME, "DG45FC"),
+		},
+	},
 #endif
 	{}
 };
+
+static void __init trim_bios_range(void)
+{
+	/*
+	 * A special case is the first 4Kb of memory;
+	 * This is a BIOS owned area, not kernel ram, but generally
+	 * not listed as such in the E820 table.
+	 */
+	e820_update_range(0, PAGE_SIZE, E820_RAM, E820_RESERVED);
+	/*
+	 * special case: Some BIOSen report the PC BIOS
+	 * area (640->1Mb) as ram even though it is not.
+	 * take them out.
+	 */
+	e820_remove_range(BIOS_BEGIN, BIOS_END - BIOS_BEGIN, E820_RAM, 1);
+	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
+}
 
 /*
  * Determine if we were loaded by an EFI loader.  If so, then we have also been
@@ -678,6 +712,9 @@ static struct dmi_system_id __initdata bad_bios_dmi_table[] = {
 
 void __init setup_arch(char **cmdline_p)
 {
+	int acpi = 0;
+	int k8 = 0;
+
 #ifdef CONFIG_X86_32
 	memcpy(&boot_cpu_data, &new_cpu_data, sizeof(new_cpu_data));
 	visws_early_detect();
@@ -706,6 +743,12 @@ void __init setup_arch(char **cmdline_p)
 #endif
 	saved_video_mode = boot_params.hdr.vid_mode;
 	bootloader_type = boot_params.hdr.type_of_loader;
+	if ((bootloader_type >> 4) == 0xe) {
+		bootloader_type &= 0xf;
+		bootloader_type |= (boot_params.hdr.ext_loader_type+0x10) << 4;
+	}
+	bootloader_version  = bootloader_type & 0xf;
+	bootloader_version |= boot_params.hdr.ext_loader_ver << 4;
 
 #ifdef CONFIG_BLK_DEV_RAM
 	rd_image_start = boot_params.hdr.ram_size & RAMDISK_IMAGE_START_MASK;
@@ -725,7 +768,7 @@ void __init setup_arch(char **cmdline_p)
 	}
 #endif
 
-	ARCH_SETUP
+	x86_init.oem.arch_setup();
 
 	setup_memory_map();
 	parse_setup_data();
@@ -764,11 +807,18 @@ void __init setup_arch(char **cmdline_p)
 	strlcpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
+	/*
+	 * x86_configure_nx() is called before parse_early_param() to detect
+	 * whether hardware doesn't support NX (so that the early EHCI debug
+	 * console setup can safely call set_fixmap()). It may then be called
+	 * again from within noexec_setup() during parsing early parameters
+	 * to honor the respective command line option.
+	 */
+	x86_configure_nx();
+
 	parse_early_param();
 
-#ifdef CONFIG_X86_64
-	check_efer();
-#endif
+	x86_report_nx();
 
 	/* Must be before kernel pagetables are setup */
 	vmi_activate();
@@ -801,18 +851,16 @@ void __init setup_arch(char **cmdline_p)
 	 * VMware detection requires dmi to be available, so this
 	 * needs to be done after dmi_scan_machine, for the BP.
 	 */
-	init_hypervisor(&boot_cpu_data);
+	init_hypervisor_platform();
 
-#ifdef CONFIG_X86_32
-	probe_roms();
-#endif
+	x86_init.resources.probe_roms();
 
 	/* after parse_early_param, so could debug it */
 	insert_resource(&iomem_resource, &code_resource);
 	insert_resource(&iomem_resource, &data_resource);
 	insert_resource(&iomem_resource, &bss_resource);
 
-
+	trim_bios_range();
 #ifdef CONFIG_X86_32
 	if (ppro_with_ram_bug()) {
 		e820_update_range(0x70000000ULL, 0x40000ULL, E820_RAM,
@@ -854,13 +902,35 @@ void __init setup_arch(char **cmdline_p)
 		max_low_pfn = max_pfn;
 
 	high_memory = (void *)__va(max_pfn * PAGE_SIZE - 1) + 1;
+	max_pfn_mapped = KERNEL_IMAGE_SIZE >> PAGE_SHIFT;
 #endif
 
 #ifdef CONFIG_X86_CHECK_BIOS_CORRUPTION
 	setup_bios_corruption_check();
 #endif
 
+	printk(KERN_DEBUG "initial memory mapped : 0 - %08lx\n",
+			max_pfn_mapped<<PAGE_SHIFT);
+
 	reserve_brk();
+
+	/*
+	 * Find and reserve possible boot-time SMP configuration:
+	 */
+	find_smp_config();
+
+	reserve_ibft_region();
+
+	reserve_trampoline_memory();
+
+#ifdef CONFIG_ACPI_SLEEP
+	/*
+	 * Reserve low memory region for sleep support.
+	 * even before init_memory_mapping
+	 */
+	acpi_reserve_wakeup_memory();
+#endif
+	init_gbpages();
 
 	/* max_pfn_mapped is updated here */
 	max_low_pfn_mapped = init_memory_mapping(0, max_low_pfn<<PAGE_SHIFT);
@@ -886,6 +956,8 @@ void __init setup_arch(char **cmdline_p)
 
 	reserve_initrd();
 
+	reserve_crashkernel();
+
 	vsmp_init();
 
 	io_delay_init();
@@ -901,43 +973,30 @@ void __init setup_arch(char **cmdline_p)
 	/*
 	 * Parse SRAT to discover nodes.
 	 */
-	acpi_numa_init();
+	acpi = acpi_numa_init();
 #endif
 
-	initmem_init(0, max_pfn);
-
-#ifdef CONFIG_ACPI_SLEEP
-	/*
-	 * Reserve low memory region for sleep support.
-	 */
-	acpi_reserve_bootmem();
+#ifdef CONFIG_K8_NUMA
+	if (!acpi)
+		k8 = !k8_numa_init(0, max_pfn);
 #endif
-	/*
-	 * Find and reserve possible boot-time SMP configuration:
-	 */
-	find_smp_config();
 
-	reserve_crashkernel();
+	initmem_init(0, max_pfn, acpi, k8);
+#ifndef CONFIG_NO_BOOTMEM
+	early_res_to_bootmem(0, max_low_pfn<<PAGE_SHIFT);
+#endif
 
-#ifdef CONFIG_X86_64
-	/*
-	 * dma32_reserve_bootmem() allocates bootmem which may conflict
-	 * with the crashkernel command line, so do that after
-	 * reserve_crashkernel()
-	 */
 	dma32_reserve_bootmem();
-#endif
-
-	reserve_ibft_region();
 
 #ifdef CONFIG_KVM_CLOCK
 	kvmclock_init();
 #endif
 
-	paravirt_pagetable_setup_start(swapper_pg_dir);
+	x86_init.paging.pagetable_setup_start(swapper_pg_dir);
 	paging_init();
-	paravirt_pagetable_setup_done(swapper_pg_dir);
-	paravirt_post_allocator_init();
+	x86_init.paging.pagetable_setup_done(swapper_pg_dir);
+
+	tboot_probe();
 
 #ifdef CONFIG_X86_64
 	map_vsyscall();
@@ -952,13 +1011,13 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	acpi_boot_init();
 
-#if defined(CONFIG_X86_MPPARSE) || defined(CONFIG_X86_VISWS)
+	sfi_init();
+
 	/*
 	 * get boot-time SMP configuration:
 	 */
 	if (smp_found_config)
 		get_smp_config();
-#endif
 
 	prefill_possible_map();
 
@@ -977,10 +1036,7 @@ void __init setup_arch(char **cmdline_p)
 	e820_reserve_resources();
 	e820_mark_nosave_regions(max_low_pfn);
 
-#ifdef CONFIG_X86_32
-	request_resource(&iomem_resource, &video_ram_resource);
-#endif
-	reserve_standard_io_resources();
+	x86_init.resources.reserve_resources();
 
 	e820_setup_gap();
 
@@ -992,96 +1048,24 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
+	x86_init.oem.banner();
+
+	mcheck_init();
 }
 
 #ifdef CONFIG_X86_32
 
-/**
- * x86_quirk_pre_intr_init - initialisation prior to setting up interrupt vectors
- *
- * Description:
- *	Perform any necessary interrupt initialisation prior to setting up
- *	the "ordinary" interrupt call gates.  For legacy reasons, the ISA
- *	interrupts should be initialised here if the machine emulates a PC
- *	in any way.
- **/
-void __init x86_quirk_pre_intr_init(void)
-{
-	if (x86_quirks->arch_pre_intr_init) {
-		if (x86_quirks->arch_pre_intr_init())
-			return;
-	}
-	init_ISA_irqs();
-}
-
-/**
- * x86_quirk_intr_init - post gate setup interrupt initialisation
- *
- * Description:
- *	Fill in any interrupts that may have been left out by the general
- *	init_IRQ() routine.  interrupts having to do with the machine rather
- *	than the devices on the I/O bus (like APIC interrupts in intel MP
- *	systems) are started here.
- **/
-void __init x86_quirk_intr_init(void)
-{
-	if (x86_quirks->arch_intr_init) {
-		if (x86_quirks->arch_intr_init())
-			return;
-	}
-}
-
-/**
- * x86_quirk_trap_init - initialise system specific traps
- *
- * Description:
- *	Called as the final act of trap_init().  Used in VISWS to initialise
- *	the various board specific APIC traps.
- **/
-void __init x86_quirk_trap_init(void)
-{
-	if (x86_quirks->arch_trap_init) {
-		if (x86_quirks->arch_trap_init())
-			return;
-	}
-}
-
-static struct irqaction irq0  = {
-	.handler = timer_interrupt,
-	.flags = IRQF_DISABLED | IRQF_NOBALANCING | IRQF_IRQPOLL | IRQF_TIMER,
-	.name = "timer"
+static struct resource video_ram_resource = {
+	.name	= "Video RAM area",
+	.start	= 0xa0000,
+	.end	= 0xbffff,
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
 };
 
-/**
- * x86_quirk_pre_time_init - do any specific initialisations before.
- *
- **/
-void __init x86_quirk_pre_time_init(void)
+void __init i386_reserve_resources(void)
 {
-	if (x86_quirks->arch_pre_time_init)
-		x86_quirks->arch_pre_time_init();
+	request_resource(&iomem_resource, &video_ram_resource);
+	reserve_standard_io_resources();
 }
 
-/**
- * x86_quirk_time_init - do any specific initialisations for the system timer.
- *
- * Description:
- *	Must plug the system timer interrupt source at HZ into the IRQ listed
- *	in irq_vectors.h:TIMER_IRQ
- **/
-void __init x86_quirk_time_init(void)
-{
-	if (x86_quirks->arch_time_init) {
-		/*
-		 * A nonzero return code does not mean failure, it means
-		 * that the architecture quirk does not want any
-		 * generic (timer) setup to be performed after this:
-		 */
-		if (x86_quirks->arch_time_init())
-			return;
-	}
-
-	irq0.mask = cpumask_of_cpu(0);
-	setup_irq(0, &irq0);
-}
 #endif /* CONFIG_X86_32 */

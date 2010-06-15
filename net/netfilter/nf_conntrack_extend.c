@@ -59,7 +59,6 @@ nf_ct_ext_create(struct nf_ct_ext **ext, enum nf_ct_ext_id id, gfp_t gfp)
 	if (!*ext)
 		return NULL;
 
-	INIT_RCU_HEAD(&(*ext)->rcu);
 	(*ext)->offset[id] = off;
 	(*ext)->len = len;
 
@@ -186,6 +185,6 @@ void nf_ct_extend_unregister(struct nf_ct_ext_type *type)
 	rcu_assign_pointer(nf_ct_ext_types[type->id], NULL);
 	update_alloc_size(type);
 	mutex_unlock(&nf_ct_ext_type_mutex);
-	synchronize_rcu();
+	rcu_barrier(); /* Wait for completion of call_rcu()'s */
 }
 EXPORT_SYMBOL_GPL(nf_ct_extend_unregister);

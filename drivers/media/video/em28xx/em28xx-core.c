@@ -24,6 +24,7 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/vmalloc.h>
 #include <media/v4l2-common.h>
@@ -50,9 +51,13 @@ MODULE_PARM_DESC(reg_debug, "enable debug messages [URB reg]");
 		printk(KERN_INFO "%s %s :"fmt, \
 			 dev->name, __func__ , ##arg); } while (0)
 
-static int alt = EM28XX_PINOUT;
+static int alt;
 module_param(alt, int, 0644);
 MODULE_PARM_DESC(alt, "alternate setting to use for video endpoint");
+
+static unsigned int disable_vbi;
+module_param(disable_vbi, int, 0644);
+MODULE_PARM_DESC(disable_vbi, "disable vbi support");
 
 /* FIXME */
 #define em28xx_isocdbg(fmt, arg...) do {\
@@ -212,7 +217,7 @@ int em28xx_write_reg(struct em28xx *dev, u16 reg, u8 val)
  * sets only some bits (specified by bitmask) of a register, by first reading
  * the actual value
  */
-static int em28xx_write_reg_bits(struct em28xx *dev, u16 reg, u8 val,
+int em28xx_write_reg_bits(struct em28xx *dev, u16 reg, u8 val,
 				 u8 bitmask)
 {
 	int oldval;
@@ -500,18 +505,21 @@ int em28xx_audio_setup(struct em28xx *dev)
 
 	/* See how this device is configured */
 	cfg = em28xx_read_reg(dev, EM28XX_R00_CHIPCFG);
-	if (cfg < 0)
+	em28xx_info("Config register raw data: 0x%02x\n", cfg);
+	if (cfg < 0) {
+		/* Register read error?  */
 		cfg = EM28XX_CHIPCFG_AC97; /* Be conservative */
-	else
-		em28xx_info("Config register raw data: 0x%02x\n", cfg);
-
-	if ((cfg & EM28XX_CHIPCFG_AUDIOMASK) ==
-		    EM28XX_CHIPCFG_I2S_3_SAMPRATES) {
+	} else if ((cfg & EM28XX_CHIPCFG_AUDIOMASK) == 0x00) {
+		/* The device doesn't have vendor audio at all */
+		dev->has_alsa_audio = 0;
+		dev->audio_mode.has_audio = 0;
+		return 0;
+	} else if ((cfg & EM28XX_CHIPCFG_AUDIOMASK) ==
+		   EM28XX_CHIPCFG_I2S_3_SAMPRATES) {
 		em28xx_info("I2S Audio (3 sample rates)\n");
 		dev->audio_mode.i2s_3rates = 1;
-	}
-	if ((cfg & EM28XX_CHIPCFG_AUDIOMASK) ==
-		    EM28XX_CHIPCFG_I2S_5_SAMPRATES) {
+	} else if ((cfg & EM28XX_CHIPCFG_AUDIOMASK) ==
+		   EM28XX_CHIPCFG_I2S_5_SAMPRATES) {
 		em28xx_info("I2S Audio (5 sample rates)\n");
 		dev->audio_mode.i2s_5rates = 1;
 	}
@@ -526,8 +534,15 @@ int em28xx_audio_setup(struct em28xx *dev)
 
 	vid1 = em28xx_read_ac97(dev, AC97_VENDOR_ID1);
 	if (vid1 < 0) {
-		/* Device likely doesn't support AC97 */
+		/*
+		 * Device likely doesn't support AC97
+		 * Note: (some) em2800 devices without eeprom reports 0x91 on
+		 *	 CHIPCFG register, even not having an AC97 chip
+		 */
 		em28xx_warn("AC97 chip type couldn't be determined\n");
+		dev->audio_mode.ac97 = EM28XX_NO_AC97;
+		dev->has_alsa_audio = 0;
+		dev->audio_mode.has_audio = 0;
 		goto init_audio;
 	}
 
@@ -629,6 +644,9 @@ int em28xx_capture_start(struct em28xx *dev, int start)
 		return rc;
 	}
 
+	if (dev->board.is_webcam)
+		rc = em28xx_write_reg(dev, 0x13, 0x0c);
+
 	/* enable video capture */
 	rc = em28xx_write_reg(dev, 0x48, 0x00);
 
@@ -642,20 +660,50 @@ int em28xx_capture_start(struct em28xx *dev, int start)
 	return rc;
 }
 
+int em28xx_vbi_supported(struct em28xx *dev)
+{
+	/* Modprobe option to manually disable */
+	if (disable_vbi == 1)
+		return 0;
+
+	if (dev->chip_id == CHIP_ID_EM2860 ||
+	    dev->chip_id == CHIP_ID_EM2883)
+		return 1;
+
+	/* Version of em28xx that does not support VBI */
+	return 0;
+}
+
 int em28xx_set_outfmt(struct em28xx *dev)
 {
 	int ret;
+	u8 vinctrl;
 
 	ret = em28xx_write_reg_bits(dev, EM28XX_R27_OUTFMT,
-				    dev->format->reg | 0x20, 0x3f);
+				dev->format->reg | 0x20, 0xff);
+	if (ret < 0)
+			return ret;
+
+	ret = em28xx_write_reg(dev, EM28XX_R10_VINMODE, dev->vinmode);
 	if (ret < 0)
 		return ret;
 
-	ret = em28xx_write_reg(dev, EM28XX_R10_VINMODE, 0x10);
-	if (ret < 0)
-		return ret;
+	vinctrl = dev->vinctl;
+	if (em28xx_vbi_supported(dev) == 1) {
+		vinctrl |= EM28XX_VINCTRL_VBI_RAW;
+		em28xx_write_reg(dev, EM28XX_R34_VBI_START_H, 0x00);
+		em28xx_write_reg(dev, EM28XX_R36_VBI_WIDTH, dev->vbi_width/4);
+		em28xx_write_reg(dev, EM28XX_R37_VBI_HEIGHT, dev->vbi_height);
+		if (dev->norm & V4L2_STD_525_60) {
+			/* NTSC */
+			em28xx_write_reg(dev, EM28XX_R35_VBI_START_V, 0x09);
+		} else if (dev->norm & V4L2_STD_625_50) {
+			/* PAL */
+			em28xx_write_reg(dev, EM28XX_R35_VBI_START_V, 0x07);
+		}
+	}
 
-	return em28xx_write_reg(dev, EM28XX_R11_VINCTRL, 0x11);
+	return em28xx_write_reg(dev, EM28XX_R11_VINCTRL, vinctrl);
 }
 
 static int em28xx_accumulator_set(struct em28xx *dev, u8 xmin, u8 xmax,
@@ -692,13 +740,16 @@ static int em28xx_scaler_set(struct em28xx *dev, u16 h, u16 v)
 {
 	u8 mode;
 	/* the em2800 scaler only supports scaling down to 50% */
-	if (dev->board.is_em2800)
+
+	if (dev->board.is_em2800) {
 		mode = (v ? 0x20 : 0x00) | (h ? 0x10 : 0x00);
-	else {
+	} else {
 		u8 buf[2];
+
 		buf[0] = h;
 		buf[1] = h >> 8;
 		em28xx_write_regs(dev, EM28XX_R30_HSCALELOW, (char *)buf, 2);
+
 		buf[0] = v;
 		buf[1] = v >> 8;
 		em28xx_write_regs(dev, EM28XX_R32_VSCALELOW, (char *)buf, 2);
@@ -714,11 +765,31 @@ int em28xx_resolution_set(struct em28xx *dev)
 {
 	int width, height;
 	width = norm_maxw(dev);
-	height = norm_maxh(dev) >> 1;
+	height = norm_maxh(dev);
+
+	/* Properly setup VBI */
+	dev->vbi_width = 720;
+	if (dev->norm & V4L2_STD_525_60)
+		dev->vbi_height = 12;
+	else
+		dev->vbi_height = 18;
+
+	if (!dev->progressive)
+		height >>= norm_maxh(dev);
 
 	em28xx_set_outfmt(dev);
+
+
 	em28xx_accumulator_set(dev, 1, (width - 4) >> 2, 1, (height - 4) >> 2);
-	em28xx_capture_area_set(dev, 0, 0, width >> 2, height >> 2);
+
+	/* If we don't set the start position to 4 in VBI mode, we end up
+	   with line 21 being YUYV encoded instead of being in 8-bit
+	   greyscale */
+	if (em28xx_vbi_supported(dev) == 1)
+		em28xx_capture_area_set(dev, 0, 4, width >> 2, height >> 2);
+	else
+		em28xx_capture_area_set(dev, 0, 0, width >> 2, height >> 2);
+
 	return em28xx_scaler_set(dev, dev->hscale, dev->vscale);
 }
 
@@ -727,6 +798,16 @@ int em28xx_set_alternate(struct em28xx *dev)
 	int errCode, prev_alt = dev->alt;
 	int i;
 	unsigned int min_pkt_size = dev->width * 2 + 4;
+
+	/*
+	 * alt = 0 is used only for control messages, so, only values
+	 * greater than 0 can be used for streaming.
+	 */
+	if (alt && alt < dev->num_alt) {
+		em28xx_coredbg("alternate forced to %d\n", dev->alt);
+		dev->alt = alt;
+		goto set_alt;
+	}
 
 	/* When image size is bigger than a certain value,
 	   the frame size should be increased, otherwise, only
@@ -748,6 +829,7 @@ int em28xx_set_alternate(struct em28xx *dev)
 			dev->alt = i;
 	}
 
+set_alt:
 	if (dev->alt != prev_alt) {
 		em28xx_coredbg("minimum isoc packet size: %u (alt=%d)\n",
 				min_pkt_size, dev->alt);
@@ -829,8 +911,7 @@ EXPORT_SYMBOL_GPL(em28xx_set_mode);
  */
 static void em28xx_irq_callback(struct urb *urb)
 {
-	struct em28xx_dmaqueue  *dma_q = urb->context;
-	struct em28xx *dev = container_of(dma_q, struct em28xx, vidq);
+	struct em28xx *dev = urb->context;
 	int rc, i;
 
 	switch (urb->status) {
@@ -915,6 +996,7 @@ int em28xx_init_isoc(struct em28xx *dev, int max_packets,
 		     int (*isoc_copy) (struct em28xx *dev, struct urb *urb))
 {
 	struct em28xx_dmaqueue *dma_q = &dev->vidq;
+	struct em28xx_dmaqueue *vbi_dma_q = &dev->vbiq;
 	int i;
 	int sb_size, pipe;
 	struct urb *urb;
@@ -938,13 +1020,14 @@ int em28xx_init_isoc(struct em28xx *dev, int max_packets,
 	dev->isoc_ctl.transfer_buffer = kzalloc(sizeof(void *)*num_bufs,
 					      GFP_KERNEL);
 	if (!dev->isoc_ctl.transfer_buffer) {
-		em28xx_errdev("cannot allocate memory for usbtransfer\n");
+		em28xx_errdev("cannot allocate memory for usb transfer\n");
 		kfree(dev->isoc_ctl.urb);
 		return -ENOMEM;
 	}
 
 	dev->isoc_ctl.max_pkt_size = max_pkt_size;
-	dev->isoc_ctl.buf = NULL;
+	dev->isoc_ctl.vid_buf = NULL;
+	dev->isoc_ctl.vbi_buf = NULL;
 
 	sb_size = max_packets * dev->isoc_ctl.max_pkt_size;
 
@@ -979,7 +1062,7 @@ int em28xx_init_isoc(struct em28xx *dev, int max_packets,
 
 		usb_fill_int_urb(urb, dev->udev, pipe,
 				 dev->isoc_ctl.transfer_buffer[i], sb_size,
-				 em28xx_irq_callback, dma_q, 1);
+				 em28xx_irq_callback, dev, 1);
 
 		urb->number_of_packets = max_packets;
 		urb->transfer_flags = URB_ISO_ASAP | URB_NO_TRANSFER_DMA_MAP;
@@ -994,6 +1077,7 @@ int em28xx_init_isoc(struct em28xx *dev, int max_packets,
 	}
 
 	init_waitqueue_head(&dma_q->wq);
+	init_waitqueue_head(&vbi_dma_q->wq);
 
 	em28xx_capture_start(dev, 1);
 
@@ -1011,6 +1095,41 @@ int em28xx_init_isoc(struct em28xx *dev, int max_packets,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(em28xx_init_isoc);
+
+/* Determine the packet size for the DVB stream for the given device
+   (underlying value programmed into the eeprom) */
+int em28xx_isoc_dvb_max_packetsize(struct em28xx *dev)
+{
+	unsigned int chip_cfg2;
+	unsigned int packet_size = 564;
+
+	if (dev->chip_id == CHIP_ID_EM2874) {
+		/* FIXME - for now assume 564 like it was before, but the
+		   em2874 code should be added to return the proper value... */
+		packet_size = 564;
+	} else {
+		/* TS max packet size stored in bits 1-0 of R01 */
+		chip_cfg2 = em28xx_read_reg(dev, EM28XX_R01_CHIPCFG2);
+		switch (chip_cfg2 & EM28XX_CHIPCFG2_TS_PACKETSIZE_MASK) {
+		case EM28XX_CHIPCFG2_TS_PACKETSIZE_188:
+			packet_size = 188;
+			break;
+		case EM28XX_CHIPCFG2_TS_PACKETSIZE_376:
+			packet_size = 376;
+			break;
+		case EM28XX_CHIPCFG2_TS_PACKETSIZE_564:
+			packet_size = 564;
+			break;
+		case EM28XX_CHIPCFG2_TS_PACKETSIZE_752:
+			packet_size = 752;
+			break;
+		}
+	}
+
+	em28xx_coredbg("dvb max packet size=%d\n", packet_size);
+	return packet_size;
+}
+EXPORT_SYMBOL_GPL(em28xx_isoc_dvb_max_packetsize);
 
 /*
  * em28xx_wake_i2c()
@@ -1030,34 +1149,6 @@ void em28xx_wake_i2c(struct em28xx *dev)
 
 static LIST_HEAD(em28xx_devlist);
 static DEFINE_MUTEX(em28xx_devlist_mutex);
-
-struct em28xx *em28xx_get_device(int minor,
-				 enum v4l2_buf_type *fh_type,
-				 int *has_radio)
-{
-	struct em28xx *h, *dev = NULL;
-
-	*fh_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	*has_radio = 0;
-
-	mutex_lock(&em28xx_devlist_mutex);
-	list_for_each_entry(h, &em28xx_devlist, devlist) {
-		if (h->vdev->minor == minor)
-			dev = h;
-		if (h->vbi_dev->minor == minor) {
-			dev = h;
-			*fh_type = V4L2_BUF_TYPE_VBI_CAPTURE;
-		}
-		if (h->radio_dev &&
-		    h->radio_dev->minor == minor) {
-			dev = h;
-			*has_radio = 1;
-		}
-	}
-	mutex_unlock(&em28xx_devlist_mutex);
-
-	return dev;
-}
 
 /*
  * em28xx_realease_resources()

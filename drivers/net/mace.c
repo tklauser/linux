@@ -16,6 +16,7 @@
 #include <linux/crc32.h>
 #include <linux/spinlock.h>
 #include <linux/bitrev.h>
+#include <linux/slab.h>
 #include <asm/prom.h>
 #include <asm/dbdma.h>
 #include <asm/io.h>
@@ -93,6 +94,16 @@ static void __mace_set_address(struct net_device *dev, void *addr);
  * If we can't get a skbuff when we need it, we use this area for DMA.
  */
 static unsigned char *dummy_buf;
+
+static const struct net_device_ops mace_netdev_ops = {
+	.ndo_open		= mace_open,
+	.ndo_stop		= mace_close,
+	.ndo_start_xmit		= mace_xmit_start,
+	.ndo_set_multicast_list	= mace_set_multicast,
+	.ndo_set_mac_address	= mace_set_address,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_validate_addr	= eth_validate_addr,
+};
 
 static int __devinit mace_probe(struct macio_dev *mdev, const struct of_device_id *match)
 {
@@ -196,7 +207,7 @@ static int __devinit mace_probe(struct macio_dev *mdev, const struct of_device_i
 		mp->port_aaui = port_aaui;
 	else {
 		/* Apple Network Server uses the AAUI port */
-		if (machine_is_compatible("AAPL,ShinerESB"))
+		if (of_machine_is_compatible("AAPL,ShinerESB"))
 			mp->port_aaui = 1;
 		else {
 #ifdef CONFIG_MACE_AAUI_PORT
@@ -207,11 +218,7 @@ static int __devinit mace_probe(struct macio_dev *mdev, const struct of_device_i
 		}
 	}
 
-	dev->open = mace_open;
-	dev->stop = mace_close;
-	dev->hard_start_xmit = mace_xmit_start;
-	dev->set_multicast_list = mace_set_multicast;
-	dev->set_mac_address = mace_set_address;
+	dev->netdev_ops = &mace_netdev_ops;
 
 	/*
 	 * Most of what is below could be moved to mace_open()
@@ -541,7 +548,7 @@ static int mace_xmit_start(struct sk_buff *skb, struct net_device *dev)
 	netif_stop_queue(dev);
 	mp->tx_fullup = 1;
 	spin_unlock_irqrestore(&mp->lock, flags);
-	return 1;		/* can't take it at the moment */
+	return NETDEV_TX_BUSY;		/* can't take it at the moment */
     }
     spin_unlock_irqrestore(&mp->lock, flags);
 
@@ -575,14 +582,14 @@ static int mace_xmit_start(struct sk_buff *skb, struct net_device *dev)
 	netif_stop_queue(dev);
     spin_unlock_irqrestore(&mp->lock, flags);
 
-    return 0;
+    return NETDEV_TX_OK;
 }
 
 static void mace_set_multicast(struct net_device *dev)
 {
     struct mace_data *mp = netdev_priv(dev);
     volatile struct mace __iomem *mb = mp->mace;
-    int i, j;
+    int i;
     u32 crc;
     unsigned long flags;
 
@@ -592,7 +599,7 @@ static void mace_set_multicast(struct net_device *dev)
 	mp->maccc |= PROM;
     } else {
 	unsigned char multicast_filter[8];
-	struct dev_mc_list *dmi = dev->mc_list;
+	struct dev_mc_list *dmi;
 
 	if (dev->flags & IFF_ALLMULTI) {
 	    for (i = 0; i < 8; i++)
@@ -600,11 +607,10 @@ static void mace_set_multicast(struct net_device *dev)
 	} else {
 	    for (i = 0; i < 8; i++)
 		multicast_filter[i] = 0;
-	    for (i = 0; i < dev->mc_count; i++) {
+	    netdev_for_each_mc_addr(dmi, dev) {
 	        crc = ether_crc_le(6, dmi->dmi_addr);
-		j = crc >> 26;	/* bit number in multicast_filter */
-		multicast_filter[j >> 3] |= 1 << (j & 7);
-		dmi = dmi->next;
+		i = crc >> 26;	/* bit number in multicast_filter */
+		multicast_filter[i >> 3] |= 1 << (i & 7);
 	    }
 	}
 #if 0
@@ -891,8 +897,8 @@ static irqreturn_t mace_rxdma_intr(int irq, void *dev_id)
 	    if (next >= N_RX_RING)
 		next = 0;
 	    np = mp->rx_cmds + next;
-	    if (next != mp->rx_fill
-		&& (ld_le16(&np->xfer_status) & ACTIVE) != 0) {
+	    if (next != mp->rx_fill &&
+		(ld_le16(&np->xfer_status) & ACTIVE) != 0) {
 		printk(KERN_DEBUG "mace: lost a status word\n");
 		++mace_lost_status;
 	    } else

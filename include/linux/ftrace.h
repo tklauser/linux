@@ -19,7 +19,7 @@
 extern int ftrace_enabled;
 extern int
 ftrace_enable_sysctl(struct ctl_table *table, int write,
-		     struct file *filp, void __user *buffer, size_t *lenp,
+		     void __user *buffer, size_t *lenp,
 		     loff_t *ppos);
 
 typedef void (*ftrace_func_t)(unsigned long ip, unsigned long parent_ip);
@@ -94,7 +94,7 @@ static inline void ftrace_start(void) { }
 extern int stack_tracer_enabled;
 int
 stack_trace_sysctl(struct ctl_table *table, int write,
-		   struct file *file, void __user *buffer, size_t *lenp,
+		   void __user *buffer, size_t *lenp,
 		   loff_t *ppos);
 #endif
 
@@ -134,6 +134,8 @@ extern void
 unregister_ftrace_function_probe_func(char *glob, struct ftrace_probe_ops *ops);
 extern void unregister_ftrace_function_probe_all(char *glob);
 
+extern int ftrace_text_reserved(void *start, void *end);
+
 enum {
 	FTRACE_FL_FREE		= (1 << 0),
 	FTRACE_FL_FAILED	= (1 << 1),
@@ -141,7 +143,6 @@ enum {
 	FTRACE_FL_ENABLED	= (1 << 3),
 	FTRACE_FL_NOTRACE	= (1 << 4),
 	FTRACE_FL_CONVERTED	= (1 << 5),
-	FTRACE_FL_FROZEN	= (1 << 6),
 };
 
 struct dyn_ftrace {
@@ -233,8 +234,6 @@ extern int ftrace_arch_read_dyn_info(char *buf, int size);
 
 extern int skip_trace(unsigned long ip);
 
-extern void ftrace_release(void *start, unsigned long size);
-
 extern void ftrace_disable_daemon(void);
 extern void ftrace_enable_daemon(void);
 #else
@@ -243,7 +242,7 @@ extern void ftrace_enable_daemon(void);
 # define ftrace_set_filter(buf, len, reset)	do { } while (0)
 # define ftrace_disable_daemon()		do { } while (0)
 # define ftrace_enable_daemon()			do { } while (0)
-static inline void ftrace_release(void *start, unsigned long size) { }
+static inline void ftrace_release_mod(struct module *mod) {}
 static inline int register_ftrace_command(struct ftrace_func_command *cmd)
 {
 	return -EINVAL;
@@ -251,6 +250,10 @@ static inline int register_ftrace_command(struct ftrace_func_command *cmd)
 static inline int unregister_ftrace_command(char *cmd_name)
 {
 	return -EINVAL;
+}
+static inline int ftrace_text_reserved(void *start, void *end)
+{
+	return 0;
 }
 #endif /* CONFIG_DYNAMIC_FTRACE */
 
@@ -325,13 +328,8 @@ static inline void __ftrace_enabled_restore(int enabled)
 
 #ifdef CONFIG_FTRACE_MCOUNT_RECORD
 extern void ftrace_init(void);
-extern void ftrace_init_module(struct module *mod,
-			       unsigned long *start, unsigned long *end);
 #else
 static inline void ftrace_init(void) { }
-static inline void
-ftrace_init_module(struct module *mod,
-		   unsigned long *start, unsigned long *end) { }
 #endif
 
 /*
@@ -368,6 +366,8 @@ struct ftrace_ret_stack {
 	unsigned long ret;
 	unsigned long func;
 	unsigned long long calltime;
+	unsigned long long subtime;
+	unsigned long fp;
 };
 
 /*
@@ -378,9 +378,8 @@ struct ftrace_ret_stack {
 extern void return_to_handler(void);
 
 extern int
-ftrace_push_return_trace(unsigned long ret, unsigned long func, int *depth);
-extern void
-ftrace_pop_return_trace(struct ftrace_graph_ret *trace, unsigned long *ret);
+ftrace_push_return_trace(unsigned long ret, unsigned long func, int *depth,
+			 unsigned long frame_pointer);
 
 /*
  * Sometimes we don't want to trace a function with the function
@@ -452,7 +451,6 @@ static inline void unpause_graph_tracing(void) { }
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 
 #ifdef CONFIG_TRACING
-#include <linux/sched.h>
 
 /* flags for current->trace */
 enum {
@@ -496,8 +494,15 @@ static inline int test_tsk_trace_graph(struct task_struct *tsk)
 
 extern int ftrace_dump_on_oops;
 
+#ifdef CONFIG_PREEMPT
+#define INIT_TRACE_RECURSION		.trace_recursion = 0,
+#endif
+
 #endif /* CONFIG_TRACING */
 
+#ifndef INIT_TRACE_RECURSION
+#define INIT_TRACE_RECURSION
+#endif
 
 #ifdef CONFIG_HW_BRANCH_TRACER
 
@@ -510,5 +515,11 @@ static inline void trace_hw_branch(u64 from, u64 to) {}
 static inline void trace_hw_branch_oops(void) {}
 
 #endif /* CONFIG_HW_BRANCH_TRACER */
+
+#ifdef CONFIG_FTRACE_SYSCALLS
+
+unsigned long arch_syscall_addr(int nr);
+
+#endif /* CONFIG_FTRACE_SYSCALLS */
 
 #endif /* _LINUX_FTRACE_H */

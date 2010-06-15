@@ -51,13 +51,14 @@
 #include <linux/freezer.h>
 
 #include <linux/ieee80211.h>
+#include <net/iw_handler.h>
 
 #include "airo.h"
 
 #define DRV_NAME "airo"
 
 #ifdef CONFIG_PCI
-static struct pci_device_id card_ids[] = {
+static DEFINE_PCI_DEVICE_TABLE(card_ids) = {
 	{ 0x14b9, 1, PCI_ANY_ID, PCI_ANY_ID, },
 	{ 0x14b9, 0x4500, PCI_ANY_ID, PCI_ANY_ID },
 	{ 0x14b9, 0x4800, PCI_ANY_ID, PCI_ANY_ID, },
@@ -1920,14 +1921,16 @@ static int airo_open(struct net_device *dev) {
 	return 0;
 }
 
-static int mpi_start_xmit(struct sk_buff *skb, struct net_device *dev) {
+static netdev_tx_t mpi_start_xmit(struct sk_buff *skb,
+					struct net_device *dev)
+{
 	int npacks, pending;
 	unsigned long flags;
 	struct airo_info *ai = dev->ml_priv;
 
 	if (!skb) {
 		airo_print_err(dev->name, "%s: skb == NULL!",__func__);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 	npacks = skb_queue_len (&ai->txq);
 
@@ -1935,10 +1938,10 @@ static int mpi_start_xmit(struct sk_buff *skb, struct net_device *dev) {
 		netif_stop_queue (dev);
 		if (npacks > MAXTXQ) {
 			dev->stats.tx_fifo_errors++;
-			return 1;
+			return NETDEV_TX_BUSY;
 		}
 		skb_queue_tail (&ai->txq, skb);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 
 	spin_lock_irqsave(&ai->aux_lock, flags);
@@ -1951,7 +1954,7 @@ static int mpi_start_xmit(struct sk_buff *skb, struct net_device *dev) {
 		set_bit(FLAG_PENDING_XMIT, &ai->flags);
 		mpi_send_packet (dev);
 	}
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -2119,7 +2122,9 @@ static void airo_end_xmit(struct net_device *dev) {
 	dev_kfree_skb(skb);
 }
 
-static int airo_start_xmit(struct sk_buff *skb, struct net_device *dev) {
+static netdev_tx_t airo_start_xmit(struct sk_buff *skb,
+					 struct net_device *dev)
+{
 	s16 len;
 	int i, j;
 	struct airo_info *priv = dev->ml_priv;
@@ -2127,7 +2132,7 @@ static int airo_start_xmit(struct sk_buff *skb, struct net_device *dev) {
 
 	if ( skb == NULL ) {
 		airo_print_err(dev->name, "%s: skb == NULL!", __func__);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 
 	/* Find a vacant FID */
@@ -2139,7 +2144,7 @@ static int airo_start_xmit(struct sk_buff *skb, struct net_device *dev) {
 
 		if (i == MAX_FIDS / 2) {
 			dev->stats.tx_fifo_errors++;
-			return 1;
+			return NETDEV_TX_BUSY;
 		}
 	}
 	/* check min length*/
@@ -2155,7 +2160,7 @@ static int airo_start_xmit(struct sk_buff *skb, struct net_device *dev) {
 		wake_up_interruptible(&priv->thr_wait);
 	} else
 		airo_end_xmit(dev);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void airo_end_xmit11(struct net_device *dev) {
@@ -2184,7 +2189,9 @@ static void airo_end_xmit11(struct net_device *dev) {
 	dev_kfree_skb(skb);
 }
 
-static int airo_start_xmit11(struct sk_buff *skb, struct net_device *dev) {
+static netdev_tx_t airo_start_xmit11(struct sk_buff *skb,
+					   struct net_device *dev)
+{
 	s16 len;
 	int i, j;
 	struct airo_info *priv = dev->ml_priv;
@@ -2193,12 +2200,13 @@ static int airo_start_xmit11(struct sk_buff *skb, struct net_device *dev) {
 	if (test_bit(FLAG_MPI, &priv->flags)) {
 		/* Not implemented yet for MPI350 */
 		netif_stop_queue(dev);
-		return -ENETDOWN;
+		dev_kfree_skb_any(skb);
+		return NETDEV_TX_OK;
 	}
 
 	if ( skb == NULL ) {
 		airo_print_err(dev->name, "%s: skb == NULL!", __func__);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 
 	/* Find a vacant FID */
@@ -2210,7 +2218,7 @@ static int airo_start_xmit11(struct sk_buff *skb, struct net_device *dev) {
 
 		if (i == MAX_FIDS) {
 			dev->stats.tx_fifo_errors++;
-			return 1;
+			return NETDEV_TX_BUSY;
 		}
 	}
 	/* check min length*/
@@ -2226,7 +2234,7 @@ static int airo_start_xmit11(struct sk_buff *skb, struct net_device *dev) {
 		wake_up_interruptible(&priv->thr_wait);
 	} else
 		airo_end_xmit11(dev);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void airo_read_stats(struct net_device *dev)
@@ -2303,7 +2311,7 @@ static void airo_set_multicast_list(struct net_device *dev) {
 			airo_set_promisc(ai);
 	}
 
-	if ((dev->flags&IFF_ALLMULTI)||dev->mc_count>0) {
+	if ((dev->flags&IFF_ALLMULTI) || !netdev_mc_empty(dev)) {
 		/* Turn on multicast.  (Should be already setup...) */
 	}
 }
@@ -4783,9 +4791,8 @@ static int proc_stats_rid_open( struct inode *inode,
 static int get_dec_u16( char *buffer, int *start, int limit ) {
 	u16 value;
 	int valid = 0;
-	for( value = 0; buffer[*start] >= '0' &&
-		     buffer[*start] <= '9' &&
-		     *start < limit; (*start)++ ) {
+	for (value = 0; *start < limit && buffer[*start] >= '0' &&
+			buffer[*start] <= '9'; (*start)++) {
 		valid = 1;
 		value *= 10;
 		value += buffer[*start] - '0';
@@ -4800,7 +4807,7 @@ static int airo_config_commit(struct net_device *dev,
 
 static inline int sniffing_mode(struct airo_info *ai)
 {
-	return le16_to_cpu(ai->config.rmode & RXMODE_MASK) >=
+	return (le16_to_cpu(ai->config.rmode) & le16_to_cpu(RXMODE_MASK)) >=
 		le16_to_cpu(RXMODE_RFMON);
 }
 
@@ -5248,11 +5255,8 @@ static int set_wep_key(struct airo_info *ai, u16 index, const char *key,
 	WepKeyRid wkr;
 	int rc;
 
-	if (keylen == 0) {
-		airo_print_err(ai->dev->name, "%s: key length to set was zero",
-			       __func__);
+	if (WARN_ON(keylen == 0))
 		return -1;
-	}
 
 	memset(&wkr, 0, sizeof(wkr));
 	wkr.len = cpu_to_le16(sizeof(wkr));
@@ -5653,7 +5657,8 @@ static int airo_pci_suspend(struct pci_dev *pdev, pm_message_t state)
 
 	pci_enable_wake(pdev, pci_choose_state(pdev, state), 1);
 	pci_save_state(pdev);
-	return pci_set_power_state(pdev, pci_choose_state(pdev, state));
+	pci_set_power_state(pdev, pci_choose_state(pdev, state));
+	return 0;
 }
 
 static int airo_pci_resume(struct pci_dev *pdev)
@@ -5917,20 +5922,19 @@ static int airo_set_essid(struct net_device *dev,
 	readSsidRid(local, &SSID_rid);
 
 	/* Check if we asked for `any' */
-	if(dwrq->flags == 0) {
+	if (dwrq->flags == 0) {
 		/* Just send an empty SSID list */
 		memset(&SSID_rid, 0, sizeof(SSID_rid));
 	} else {
-		int	index = (dwrq->flags & IW_ENCODE_INDEX) - 1;
+		unsigned index = (dwrq->flags & IW_ENCODE_INDEX) - 1;
 
 		/* Check the size of the string */
-		if(dwrq->length > IW_ESSID_MAX_SIZE) {
+		if (dwrq->length > IW_ESSID_MAX_SIZE)
 			return -E2BIG ;
-		}
+
 		/* Check if index is valid */
-		if((index < 0) || (index >= 4)) {
+		if (index >= ARRAY_SIZE(SSID_rid.ssids))
 			return -EINVAL;
-		}
 
 		/* Set the SSID */
 		memset(SSID_rid.ssids[index].ssid, 0,
@@ -6399,11 +6403,7 @@ static int airo_set_encode(struct net_device *dev,
 		if (dwrq->length > MIN_KEY_SIZE)
 			key.len = MAX_KEY_SIZE;
 		else
-			if (dwrq->length > 0)
-				key.len = MIN_KEY_SIZE;
-			else
-				/* Disable the key */
-				key.len = 0;
+			key.len = MIN_KEY_SIZE;
 		/* Check if the key is not marked as invalid */
 		if(!(dwrq->flags & IW_ENCODE_NOKEY)) {
 			/* Cleanup */
@@ -6584,12 +6584,22 @@ static int airo_set_encodeext(struct net_device *dev,
 		default:
 			return -EINVAL;
 		}
-		/* Send the key to the card */
-		rc = set_wep_key(local, idx, key.key, key.len, perm, 1);
-		if (rc < 0) {
-			airo_print_err(local->dev->name, "failed to set WEP key"
-			               " at index %d: %d.", idx, rc);
-			return rc;
+		if (key.len == 0) {
+			rc = set_wep_tx_idx(local, idx, perm, 1);
+			if (rc < 0) {
+				airo_print_err(local->dev->name,
+					       "failed to set WEP transmit index to %d: %d.",
+					       idx, rc);
+				return rc;
+			}
+		} else {
+			rc = set_wep_key(local, idx, key.key, key.len, perm, 1);
+			if (rc < 0) {
+				airo_print_err(local->dev->name,
+					       "failed to set WEP key at index %d: %d.",
+					       idx, rc);
+				return rc;
+			}
 		}
 	}
 
@@ -6818,7 +6828,7 @@ static int airo_set_txpow(struct net_device *dev,
 		return -EINVAL;
 	}
 	clear_bit (FLAG_RADIO_OFF, &local->flags);
-	for (i = 0; cap_rid.txPowerLevels[i] && (i < 8); i++)
+	for (i = 0; i < 8 && cap_rid.txPowerLevels[i]; i++)
 		if (v == cap_rid.txPowerLevels[i]) {
 			readConfigRid(local, 1);
 			local->config.txPower = v;

@@ -35,6 +35,8 @@
  * SOFTWARE.
  *
  */
+#include <linux/gfp.h>
+
 #include "c2.h"
 #include "c2_vq.h"
 #include "c2_status.h"
@@ -133,7 +135,7 @@ static inline int c2_poll_one(struct c2_dev *c2dev,
 	struct c2_qp *qp;
 	int is_recv = 0;
 
-	ce = (struct c2wr_ce *) c2_mq_consume(&cq->mq);
+	ce = c2_mq_consume(&cq->mq);
 	if (!ce) {
 		return -EAGAIN;
 	}
@@ -146,7 +148,7 @@ static inline int c2_poll_one(struct c2_dev *c2dev,
 	while ((qp =
 		(struct c2_qp *) (unsigned long) ce->qp_user_context) == NULL) {
 		c2_mq_free(&cq->mq);
-		ce = (struct c2wr_ce *) c2_mq_consume(&cq->mq);
+		ce = c2_mq_consume(&cq->mq);
 		if (!ce)
 			return -EAGAIN;
 	}

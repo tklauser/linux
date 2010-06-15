@@ -325,7 +325,7 @@ static int vidioc_enum_input(struct file *file, void *fh, struct v4l2_input *i)
 {
 	DEB_EE(("VIDIOC_ENUMINPUT %d.\n", i->index));
 
-	if (i->index < 0 || i->index >= HEXIUM_INPUTS)
+	if (i->index >= HEXIUM_INPUTS)
 		return -EINVAL;
 
 	memcpy(i, &hexium_inputs[i->index], sizeof(struct v4l2_input));
@@ -350,7 +350,7 @@ static int vidioc_s_input(struct file *file, void *fh, unsigned int input)
 	struct saa7146_dev *dev = ((struct saa7146_fh *)fh)->dev;
 	struct hexium *hexium = (struct hexium *) dev->ext_priv;
 
-	if (input < 0 || input >= HEXIUM_INPUTS)
+	if (input >= HEXIUM_INPUTS)
 		return -EINVAL;
 
 	hexium->cur_input = input;

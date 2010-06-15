@@ -12,7 +12,7 @@
 
 #include <linux/types.h>
 #include <linux/time.h>
-#include <asm/machtypes.h>
+#include <generated/machtypes.h>
 
 struct sh_machine_vector {
 	void (*mv_setup)(char **cmdline_p);
@@ -46,6 +46,9 @@ struct sh_machine_vector {
 
 	void __iomem *(*mv_ioport_map)(unsigned long port, unsigned int size);
 	void (*mv_ioport_unmap)(void __iomem *);
+
+	int (*mv_clk_init)(void);
+	int (*mv_mode_pins)(void);
 };
 
 extern struct sh_machine_vector sh_mv;

@@ -10,6 +10,7 @@
  * or implied.
  */
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/i2c.h>
@@ -293,13 +294,13 @@ mv64xxx_i2c_do_action(struct mv64xxx_i2c_data *drv_data)
 	}
 }
 
-static int
+static irqreturn_t
 mv64xxx_i2c_intr(int irq, void *dev_id)
 {
 	struct mv64xxx_i2c_data	*drv_data = dev_id;
 	unsigned long	flags;
 	u32		status;
-	int		rc = IRQ_NONE;
+	irqreturn_t	rc = IRQ_NONE;
 
 	spin_lock_irqsave(&drv_data->lock, flags);
 	while (readl(drv_data->reg_base + MV64XXX_I2C_REG_CONTROL) &
@@ -337,9 +338,6 @@ mv64xxx_i2c_prepare_for_io(struct mv64xxx_i2c_data *drv_data,
 
 	if (msg->flags & I2C_M_RD)
 		dir = 1;
-
-	if (msg->flags & I2C_M_REV_DIR_ADDR)
-		dir ^= 1;
 
 	if (msg->flags & I2C_M_TEN) {
 		drv_data->addr1 = 0xf0 | (((u32)msg->addr & 0x300) >> 7) | dir;
@@ -469,7 +467,7 @@ mv64xxx_i2c_map_regs(struct platform_device *pd,
 	if (!r)
 		return -ENODEV;
 
-	size = r->end - r->start + 1;
+	size = resource_size(r);
 
 	if (!request_mem_region(r->start, size, drv_data->adapter.name))
 		return -EBUSY;

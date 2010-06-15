@@ -485,7 +485,7 @@ static int at91_ep_enable(struct usb_ep *_ep,
 		return -ESHUTDOWN;
 	}
 
-	tmp = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
+	tmp = usb_endpoint_type(desc);
 	switch (tmp) {
 	case USB_ENDPOINT_XFER_CONTROL:
 		DBG("only one control endpoint\n");
@@ -517,7 +517,7 @@ ok:
 	local_irq_save(flags);
 
 	/* initialize endpoint to match this descriptor */
-	ep->is_in = (desc->bEndpointAddress & USB_DIR_IN) != 0;
+	ep->is_in = usb_endpoint_dir_in(desc);
 	ep->is_iso = (tmp == USB_ENDPOINT_XFER_ISOC);
 	ep->stopped = 0;
 	if (ep->is_in)
@@ -892,7 +892,7 @@ static void pullup(struct at91_udc *udc, int is_on)
 
 			txvc |= AT91_UDP_TXVC_PUON;
 			at91_udp_write(udc, AT91_UDP_TXVC, txvc);
-		} else if (cpu_is_at91sam9261()) {
+		} else if (cpu_is_at91sam9261() || cpu_is_at91sam9g10()) {
 			u32	usbpucr;
 
 			usbpucr = at91_sys_read(AT91_MATRIX_USBPUCR);
@@ -910,7 +910,7 @@ static void pullup(struct at91_udc *udc, int is_on)
 
 			txvc &= ~AT91_UDP_TXVC_PUON;
 			at91_udp_write(udc, AT91_UDP_TXVC, txvc);
-		} else if (cpu_is_at91sam9261()) {
+		} else if (cpu_is_at91sam9261() || cpu_is_at91sam9g10()) {
 			u32	usbpucr;
 
 			usbpucr = at91_sys_read(AT91_MATRIX_USBPUCR);
@@ -1370,6 +1370,12 @@ static irqreturn_t at91_udc_irq (int irq, void *_udc)
 {
 	struct at91_udc		*udc = _udc;
 	u32			rescans = 5;
+	int			disable_clock = 0;
+
+	if (!udc->clocked) {
+		clk_on(udc);
+		disable_clock = 1;
+	}
 
 	while (rescans--) {
 		u32 status;
@@ -1457,6 +1463,9 @@ static irqreturn_t at91_udc_irq (int irq, void *_udc)
 			}
 		}
 	}
+
+	if (disable_clock)
+		clk_off(udc);
 
 	return IRQ_HANDLED;
 }
@@ -1574,7 +1583,7 @@ int usb_gadget_register_driver (struct usb_gadget_driver *driver)
 
 	udc->driver = driver;
 	udc->gadget.dev.driver = &driver->driver;
-	udc->gadget.dev.driver_data = &driver->driver;
+	dev_set_drvdata(&udc->gadget.dev, &driver->driver);
 	udc->enabled = 1;
 	udc->selfpowered = 1;
 
@@ -1583,7 +1592,7 @@ int usb_gadget_register_driver (struct usb_gadget_driver *driver)
 		DBG("driver->bind() returned %d\n", retval);
 		udc->driver = NULL;
 		udc->gadget.dev.driver = NULL;
-		udc->gadget.dev.driver_data = NULL;
+		dev_set_drvdata(&udc->gadget.dev, NULL);
 		udc->enabled = 0;
 		udc->selfpowered = 0;
 		return retval;
@@ -1613,7 +1622,7 @@ int usb_gadget_unregister_driver (struct usb_gadget_driver *driver)
 
 	driver->unbind(&udc->gadget);
 	udc->gadget.dev.driver = NULL;
-	udc->gadget.dev.driver_data = NULL;
+	dev_set_drvdata(&udc->gadget.dev, NULL);
 	udc->driver = NULL;
 
 	DBG("unbound from %s\n", driver->driver.name);
@@ -1656,9 +1665,7 @@ static int __init at91udc_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENXIO;
 
-	if (!request_mem_region(res->start,
-			res->end - res->start + 1,
-			driver_name)) {
+	if (!request_mem_region(res->start, resource_size(res), driver_name)) {
 		DBG("someone's using UDC memory\n");
 		return -EBUSY;
 	}
@@ -1692,14 +1699,14 @@ static int __init at91udc_probe(struct platform_device *pdev)
 		udc->ep[3].maxpacket = 64;
 		udc->ep[4].maxpacket = 512;
 		udc->ep[5].maxpacket = 512;
-	} else if (cpu_is_at91sam9261()) {
+	} else if (cpu_is_at91sam9261() || cpu_is_at91sam9g10()) {
 		udc->ep[3].maxpacket = 64;
 	} else if (cpu_is_at91sam9263()) {
 		udc->ep[0].maxpacket = 64;
 		udc->ep[3].maxpacket = 64;
 	}
 
-	udc->udp_baseaddr = ioremap(res->start, res->end - res->start + 1);
+	udc->udp_baseaddr = ioremap(res->start, resource_size(res));
 	if (!udc->udp_baseaddr) {
 		retval = -ENOMEM;
 		goto fail0a;
@@ -1754,7 +1761,6 @@ static int __init at91udc_probe(struct platform_device *pdev)
 				IRQF_DISABLED, driver_name, udc)) {
 			DBG("request vbus irq %d failed\n",
 					udc->board.vbus_pin);
-			free_irq(udc->udp_irq, udc);
 			retval = -EBUSY;
 			goto fail3;
 		}
@@ -1782,7 +1788,7 @@ fail0a:
 	if (cpu_is_at91rm9200())
 		gpio_free(udc->board.pullup_pin);
 fail0:
-	release_mem_region(res->start, res->end - res->start + 1);
+	release_mem_region(res->start, resource_size(res));
 	DBG("%s probe failed, %d\n", driver_name, retval);
 	return retval;
 }
@@ -1814,7 +1820,7 @@ static int __exit at91udc_remove(struct platform_device *pdev)
 		gpio_free(udc->board.pullup_pin);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(res->start, res->end - res->start + 1);
+	release_mem_region(res->start, resource_size(res));
 
 	clk_put(udc->iclk);
 	clk_put(udc->fclk);

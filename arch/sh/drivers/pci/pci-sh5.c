@@ -89,8 +89,20 @@ static irqreturn_t pcish5_serr_irq(int irq, void *dev_id)
 	return IRQ_NONE;
 }
 
-int __init sh5pci_init(unsigned long memStart, unsigned long memSize)
+static struct resource sh5_pci_resources[2];
+
+static struct pci_channel sh5pci_controller = {
+	.pci_ops		= &sh5_pci_ops,
+	.resources		= sh5_pci_resources,
+	.nr_resources		= ARRAY_SIZE(sh5_pci_resources),
+	.mem_offset		= 0x00000000,
+	.io_offset		= 0x00000000,
+};
+
+static int __init sh5pci_init(void)
 {
+	unsigned long memStart = __pa(memory_start);
+	unsigned long memSize = __pa(memory_end) - memStart;
 	u32 lsr0;
 	u32 uval;
 
@@ -106,12 +118,12 @@ int __init sh5pci_init(unsigned long memStart, unsigned long memSize)
                 return -EINVAL;
         }
 
-	pcicr_virt = onchip_remap(SH5PCI_ICR_BASE, 1024, "PCICR");
+	pcicr_virt = (unsigned long)ioremap_nocache(SH5PCI_ICR_BASE, 1024);
 	if (!pcicr_virt) {
 		panic("Unable to remap PCICR\n");
 	}
 
-	PCI_IO_AREA = onchip_remap(SH5PCI_IO_BASE, 0x10000, "PCIIO");
+	PCI_IO_AREA = (unsigned long)ioremap_nocache(SH5PCI_IO_BASE, 0x10000);
 	if (!PCI_IO_AREA) {
 		panic("Unable to remap PCIIO\n");
 	}
@@ -197,32 +209,12 @@ int __init sh5pci_init(unsigned long memStart, unsigned long memSize)
         SH5PCI_WRITE(AINTM, ~0);
         SH5PCI_WRITE(PINTM, ~0);
 
-	return 0;
+	sh5_pci_resources[0].start = PCI_IO_AREA;
+	sh5_pci_resources[0].end = PCI_IO_AREA + 0x10000;
+
+	sh5_pci_resources[1].start = memStart;
+	sh5_pci_resources[1].end = memStart + memSize;
+
+	return register_pci_controller(&sh5pci_controller);
 }
-
-void __devinit pcibios_fixup_bus(struct pci_bus *bus)
-{
-	struct pci_dev *dev = bus->self;
-	int i;
-
-	if (dev) {
-		for (i= 0; i < 3; i++) {
-			bus->resource[i] =
-				&dev->resource[PCI_BRIDGE_RESOURCES+i];
-			bus->resource[i]->name = bus->name;
-		}
-		bus->resource[0]->flags |= IORESOURCE_IO;
-		bus->resource[1]->flags |= IORESOURCE_MEM;
-
-		/* For now, propagate host limits to the bus;
-		 * we'll adjust them later. */
-		bus->resource[0]->end = 64*1024 - 1 ;
-		bus->resource[1]->end = PCIBIOS_MIN_MEM+(256*1024*1024)-1;
-		bus->resource[0]->start = PCIBIOS_MIN_IO;
-		bus->resource[1]->start = PCIBIOS_MIN_MEM;
-
-		/* Turn off downstream PF memory address range by default */
-		bus->resource[2]->start = 1024*1024;
-		bus->resource[2]->end = bus->resource[2]->start - 1;
-	}
-}
+arch_initcall(sh5pci_init);

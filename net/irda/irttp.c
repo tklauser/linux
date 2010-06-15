@@ -28,6 +28,7 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/seq_file.h>
+#include <linux/slab.h>
 
 #include <asm/byteorder.h>
 #include <asm/unaligned.h>
@@ -1453,6 +1454,7 @@ struct tsap_cb *irttp_dup(struct tsap_cb *orig, void *instance)
 	}
 	/* Dup */
 	memcpy(new, orig, sizeof(struct tsap_cb));
+	spin_lock_init(&new->lock);
 
 	/* We don't need the old instance any more */
 	spin_unlock_irqrestore(&irttp->tsaps->hb_spinlock, flags);

@@ -31,21 +31,6 @@ config HID
 
 	  If unsure, say Y.
 
-config HID_DEBUG
-	bool "HID debugging support"
-	default y
-	depends on HID
-	---help---
-	This option lets the HID layer output diagnostics about its internal
-	state, resolve HID usages, dump HID fields, etc. Individual HID drivers
-	use this debugging facility to output information about individual HID
-	devices, etc.
-
-	This feature is useful for those who are either debugging the HID parser
-	or any HID hardware device.
-
-	If unsure, say Y.
-
 config HIDRAW
 	bool "/dev/hidraw raw HID device support"
 	depends on HID
@@ -69,6 +54,12 @@ source "drivers/hid/usbhid/Kconfig"
 
 menu "Special HID drivers"
 	depends on HID
+
+config HID_3M_PCT
+	tristate "3M PCT"
+	depends on USB_HID
+	---help---
+	Support for 3M PCT touch screens.
 
 config HID_A4TECH
 	tristate "A4 tech" if EMBEDDED
@@ -116,9 +107,16 @@ config HID_CYPRESS
 	---help---
 	Support for cypress mouse and barcode readers.
 
-config DRAGONRISE_FF
-	tristate "DragonRise Inc. force feedback support"
+config HID_DRAGONRISE
+	tristate "DragonRise Inc. support" if EMBEDDED
 	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	Say Y here if you have DragonRise Inc.game controllers.
+
+config DRAGONRISE_FF
+	bool "DragonRise Inc. force feedback support"
+	depends on HID_DRAGONRISE
 	select INPUT_FF_MEMLESS
 	---help---
 	Say Y here if you want to enable force feedback support for DragonRise Inc.
@@ -145,6 +143,13 @@ config HID_GYRATION
 	---help---
 	Support for Gyration remote control.
 
+config HID_TWINHAN
+	tristate "Twinhan" if EMBEDDED
+	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	Support for Twinhan IR remote control.
+
 config HID_KENSINGTON
 	tristate "Kensington" if EMBEDDED
 	depends on USB_HID
@@ -160,7 +165,7 @@ config HID_LOGITECH
 	Support for Logitech devices that are not fully compliant with HID standard.
 
 config LOGITECH_FF
-	bool "Logitech force feedback"
+	bool "Logitech force feedback support"
 	depends on HID_LOGITECH
 	select INPUT_FF_MEMLESS
 	help
@@ -169,6 +174,7 @@ config LOGITECH_FF
 	  - Logitech WingMan Cordless RumblePad 2
 	  - Logitech WingMan Force 3D
 	  - Logitech Formula Force EX
+	  - Logitech WingMan Formula Force GP
 	  - Logitech MOMO Force wheel
 
 	  and if you want to enable force feedback for them.
@@ -176,12 +182,29 @@ config LOGITECH_FF
 	  force feedback.
 
 config LOGIRUMBLEPAD2_FF
-	bool "Logitech Rumblepad 2 force feedback"
+	bool "Logitech Rumblepad 2 force feedback support"
 	depends on HID_LOGITECH
 	select INPUT_FF_MEMLESS
 	help
 	  Say Y here if you want to enable force feedback support for Logitech
 	  Rumblepad 2 devices.
+
+config LOGIG940_FF
+	bool "Logitech Flight System G940 force feedback support"
+	depends on HID_LOGITECH
+	select INPUT_FF_MEMLESS
+	help
+	  Say Y here if you want to enable force feedback support for Logitech
+	  Flight System G940 devices.
+
+config HID_MAGICMOUSE
+	tristate "Apple MagicMouse multi-touch support"
+	depends on BT_HIDP
+	---help---
+	Support for the Apple Magic Mouse multi-touch.
+
+	Say Y here if you want support for the multi-touch features of the
+	Apple Wireless "Magic" Mouse.
 
 config HID_MICROSOFT
 	tristate "Microsoft" if EMBEDDED
@@ -189,6 +212,12 @@ config HID_MICROSOFT
 	default !EMBEDDED
 	---help---
 	Support for Microsoft devices that are not fully compliant with HID standard.
+
+config HID_MOSART
+	tristate "MosArt"
+	depends on USB_HID
+	---help---
+	Support for MosArt dual-touch panels.
 
 config HID_MONTEREY
 	tristate "Monterey" if EMBEDDED
@@ -198,24 +227,31 @@ config HID_MONTEREY
 	Support for Monterey Genius KB29E.
 
 config HID_NTRIG
-	tristate "NTrig" if EMBEDDED
+	tristate "NTrig"
 	depends on USB_HID
-	default !EMBEDDED
 	---help---
 	Support for N-Trig touch screen.
 
-config HID_PANTHERLORD
-	tristate "Pantherlord devices support" if EMBEDDED
+config HID_ORTEK
+	tristate "Ortek" if EMBEDDED
 	depends on USB_HID
 	default !EMBEDDED
 	---help---
-	Support for PantherLord/GreenAsia based device support.
+	Support for Ortek WKB-2000 wireless keyboard + mouse trackpad.
+
+config HID_PANTHERLORD
+	tristate "Pantherlord support" if EMBEDDED
+	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	  Say Y here if you have a PantherLord/GreenAsia based game controller
+	  or adapter.
 
 config PANTHERLORD_FF
 	bool "Pantherlord force feedback support"
 	depends on HID_PANTHERLORD
 	select INPUT_FF_MEMLESS
-	help
+	---help---
 	  Say Y here if you have a PantherLord/GreenAsia based game controller
 	  or adapter and want to enable force feedback support for it.
 
@@ -225,6 +261,12 @@ config HID_PETALYNX
 	default !EMBEDDED
 	---help---
 	Support for Petalynx Maxter remote control.
+
+config HID_QUANTA
+	tristate "Quanta Optical Touch"
+	depends on USB_HID
+	---help---
+	Support for Quanta Optical Touch dual-touch panels.
 
 config HID_SAMSUNG
 	tristate "Samsung" if EMBEDDED
@@ -240,6 +282,12 @@ config HID_SONY
 	---help---
 	Support for Sony PS3 controller.
 
+config HID_STANTUM
+	tristate "Stantum"
+	depends on USB_HID
+	---help---
+	Support for Stantum multitouch panel.
+
 config HID_SUNPLUS
 	tristate "Sunplus" if EMBEDDED
 	depends on USB_HID
@@ -247,14 +295,37 @@ config HID_SUNPLUS
 	---help---
 	Support for Sunplus wireless desktop.
 
-config GREENASIA_FF
-	tristate "GreenAsia (Product ID 0x12) force feedback support"
+config HID_GREENASIA
+	tristate "GreenAsia (Product ID 0x12) support" if EMBEDDED
 	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	  Say Y here if you have a GreenAsia (Product ID 0x12) based game
+	  controller or adapter.
+
+config GREENASIA_FF
+	bool "GreenAsia (Product ID 0x12) force feedback support"
+	depends on HID_GREENASIA
 	select INPUT_FF_MEMLESS
 	---help---
 	Say Y here if you have a GreenAsia (Product ID 0x12) based game controller
 	(like MANTA Warrior MM816 and SpeedLink Strike2 SL-6635) or adapter
 	and want to enable force feedback support for it.
+
+config HID_SMARTJOYPLUS
+	tristate "SmartJoy PLUS PS2/USB adapter support" if EMBEDDED
+	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	Support for SmartJoy PLUS PS2/USB adapter.
+
+config SMARTJOYPLUS_FF
+	bool "SmartJoy PLUS PS2/USB adapter force feedback support"
+	depends on HID_SMARTJOYPLUS
+	select INPUT_FF_MEMLESS
+	---help---
+	Say Y here if you have a SmartJoy PLUS PS2/USB adapter and want to
+	enable force feedback support for it.
 
 config HID_TOPSEED
 	tristate "TopSeed Cyberlink remote control support" if EMBEDDED
@@ -263,20 +334,43 @@ config HID_TOPSEED
 	---help---
 	Say Y if you have a TopSeed Cyberlink remote control.
 
-config THRUSTMASTER_FF
-	tristate "ThrustMaster devices support"
+config HID_THRUSTMASTER
+	tristate "ThrustMaster devices support" if EMBEDDED
 	depends on USB_HID
-	select INPUT_FF_MEMLESS
-	help
+	default !EMBEDDED
+	---help---
 	  Say Y here if you have a THRUSTMASTER FireStore Dual Power 2 or
-	  a THRUSTMASTER Ferrari GT Rumble Force or Force Feedback Wheel.
+	  a THRUSTMASTER Ferrari GT Rumble Wheel.
+
+config THRUSTMASTER_FF
+	bool "ThrustMaster devices force feedback support"
+	depends on HID_THRUSTMASTER
+	select INPUT_FF_MEMLESS
+	---help---
+	  Say Y here if you have a THRUSTMASTER FireStore Dual Power 2 or 3,
+	  a THRUSTMASTER Dual Trigger 3-in-1 or a THRUSTMASTER Ferrari GT
+	  Rumble Force or Force Feedback Wheel.
+
+config HID_WACOM
+	tristate "Wacom Bluetooth devices support"
+	depends on BT_HIDP
+	---help---
+	Support for Wacom Graphire Bluetooth tablet.
+
+config HID_ZEROPLUS
+	tristate "Zeroplus based game controller support" if EMBEDDED
+	depends on USB_HID
+	default !EMBEDDED
+	---help---
+	  Say Y here if you have a Zeroplus based game controller.
 
 config ZEROPLUS_FF
-	tristate "Zeroplus based game controller support"
-	depends on USB_HID
+	bool "Zeroplus based game controller force feedback support"
+	depends on HID_ZEROPLUS
 	select INPUT_FF_MEMLESS
-	help
-	  Say Y here if you have a Zeroplus based game controller.
+	---help---
+	  Say Y here if you have a Zeroplus based game controller and want
+	  to have force feedback support for it.
 
 endmenu
 

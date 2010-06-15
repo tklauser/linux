@@ -77,7 +77,6 @@ static int get_latch_status	(struct hotplug_slot *slot, u8 *value);
 static int get_adapter_status	(struct hotplug_slot *slot, u8 *value);
 
 static struct hotplug_slot_ops acpi_hotplug_slot_ops = {
-	.owner			= THIS_MODULE,
 	.enable_slot		= enable_slot,
 	.disable_slot		= disable_slot,
 	.set_attention_status	= set_attention_status,
@@ -333,8 +332,6 @@ int acpiphp_register_hotplug_slot(struct acpiphp_slot *acpiphp_slot)
 	slot->hotplug_slot->info->attention_status = 0;
 	slot->hotplug_slot->info->latch_status = acpiphp_get_latch_status(slot->acpi_slot);
 	slot->hotplug_slot->info->adapter_status = acpiphp_get_adapter_status(slot->acpi_slot);
-	slot->hotplug_slot->info->max_bus_speed = PCI_SPEED_UNKNOWN;
-	slot->hotplug_slot->info->cur_bus_speed = PCI_SPEED_UNKNOWN;
 
 	acpiphp_slot->slot = slot;
 	snprintf(name, SLOT_NAME_SIZE, "%llu", slot->acpi_slot->sun);

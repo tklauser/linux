@@ -424,7 +424,7 @@ extern void audit_syscall_exit(int failed, long return_code);
 extern void __audit_getname(const char *name);
 extern void audit_putname(const char *name);
 extern void __audit_inode(const char *name, const struct dentry *dentry);
-extern void __audit_inode_child(const char *dname, const struct dentry *dentry,
+extern void __audit_inode_child(const struct dentry *dentry,
 				const struct inode *parent);
 extern void __audit_ptrace(struct task_struct *t);
 
@@ -442,11 +442,10 @@ static inline void audit_inode(const char *name, const struct dentry *dentry) {
 	if (unlikely(!audit_dummy_context()))
 		__audit_inode(name, dentry);
 }
-static inline void audit_inode_child(const char *dname, 
-				     const struct dentry *dentry,
+static inline void audit_inode_child(const struct dentry *dentry,
 				     const struct inode *parent) {
 	if (unlikely(!audit_dummy_context()))
-		__audit_inode_child(dname, dentry, parent);
+		__audit_inode_child(dentry, parent);
 }
 void audit_core_dumps(long signr);
 
@@ -544,9 +543,9 @@ extern int audit_signals;
 #define audit_getname(n) do { ; } while (0)
 #define audit_putname(n) do { ; } while (0)
 #define __audit_inode(n,d) do { ; } while (0)
-#define __audit_inode_child(d,i,p) do { ; } while (0)
+#define __audit_inode_child(i,p) do { ; } while (0)
 #define audit_inode(n,d) do { ; } while (0)
-#define audit_inode_child(d,i,p) do { ; } while (0)
+#define audit_inode_child(i,p) do { ; } while (0)
 #define audit_core_dumps(i) do { ; } while (0)
 #define auditsc_get_stamp(c,t,s) (0)
 #define audit_get_loginuid(t) (-1)
@@ -599,6 +598,8 @@ extern void		    audit_log_untrustedstring(struct audit_buffer *ab,
 extern void		    audit_log_d_path(struct audit_buffer *ab,
 					     const char *prefix,
 					     struct path *path);
+extern void		    audit_log_key(struct audit_buffer *ab,
+					  char *key);
 extern void		    audit_log_lost(const char *message);
 extern int		    audit_update_lsm_rules(void);
 
@@ -621,6 +622,7 @@ extern int audit_enabled;
 #define audit_log_n_untrustedstring(a,n,s) do { ; } while (0)
 #define audit_log_untrustedstring(a,s) do { ; } while (0)
 #define audit_log_d_path(b, p, d) do { ; } while (0)
+#define audit_log_key(b, k) do { ; } while (0)
 #define audit_enabled 0
 #endif
 #endif

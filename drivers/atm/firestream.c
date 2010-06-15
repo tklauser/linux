@@ -46,6 +46,7 @@
 #include <linux/init.h>
 #include <linux/capability.h>
 #include <linux/bitops.h>
+#include <linux/slab.h>
 #include <asm/byteorder.h>
 #include <asm/system.h>
 #include <asm/string.h>
@@ -1244,7 +1245,7 @@ static int fs_getsockopt(struct atm_vcc *vcc,int level,int optname,
 
 
 static int fs_setsockopt(struct atm_vcc *vcc,int level,int optname,
-			 void __user *optval,int optlen)
+			 void __user *optval,unsigned int optlen)
 {
 	func_enter ();
 	func_exit ();

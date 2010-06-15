@@ -52,6 +52,7 @@
 #include <linux/ctype.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 
 #include <asm/mach-au1x00/au1000.h>
 
@@ -715,8 +716,11 @@ int au1100fb_setup(char *options)
 			}
 			/* Mode option (only option that start with digit) */
 			else if (isdigit(this_opt[0])) {
-				mode = kmalloc(strlen(this_opt) + 1, GFP_KERNEL);
-				strncpy(mode, this_opt, strlen(this_opt) + 1);
+				mode = kstrdup(this_opt, GFP_KERNEL);
+				if (!mode) {
+					print_err("memory allocation failed");
+					return -ENOMEM;
+				}
 			}
 			/* Unsupported option */
 			else {

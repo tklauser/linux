@@ -41,6 +41,7 @@
 #include <linux/rcupdate.h>
 #include <linux/completion.h>
 #include <linux/tracehook.h>
+#include <linux/slab.h>
 
 #include <asm/errno.h>
 #include <asm/intrinsics.h>
@@ -312,7 +313,7 @@ typedef struct pfm_context {
 	unsigned long		th_pmcs[PFM_NUM_PMC_REGS];	/* PMC thread save state */
 	unsigned long		th_pmds[PFM_NUM_PMD_REGS];	/* PMD thread save state */
 
-	u64			ctx_saved_psr_up;	/* only contains psr.up value */
+	unsigned long		ctx_saved_psr_up;	/* only contains psr.up value */
 
 	unsigned long		ctx_last_activation;	/* context last activation number for last_cpu */
 	unsigned int		ctx_last_cpu;		/* CPU id of current or last CPU used (SMP only) */
@@ -522,42 +523,37 @@ EXPORT_SYMBOL(pfm_sysctl);
 
 static ctl_table pfm_ctl_table[]={
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "debug",
 		.data		= &pfm_sysctl.debug,
 		.maxlen		= sizeof(int),
 		.mode		= 0666,
-		.proc_handler	= &proc_dointvec,
+		.proc_handler	= proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "debug_ovfl",
 		.data		= &pfm_sysctl.debug_ovfl,
 		.maxlen		= sizeof(int),
 		.mode		= 0666,
-		.proc_handler	= &proc_dointvec,
+		.proc_handler	= proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "fastctxsw",
 		.data		= &pfm_sysctl.fastctxsw,
 		.maxlen		= sizeof(int),
 		.mode		= 0600,
-		.proc_handler	=  &proc_dointvec,
+		.proc_handler	= proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "expert_mode",
 		.data		= &pfm_sysctl.expert_mode,
 		.maxlen		= sizeof(int),
 		.mode		= 0600,
-		.proc_handler	= &proc_dointvec,
+		.proc_handler	= proc_dointvec,
 	},
 	{}
 };
 static ctl_table pfm_sysctl_dir[] = {
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "perfmon",
 		.mode		= 0555,
 		.child		= pfm_ctl_table,
@@ -566,7 +562,6 @@ static ctl_table pfm_sysctl_dir[] = {
 };
 static ctl_table pfm_sysctl_root[] = {
 	{
-		.ctl_name	= CTL_KERN,
 		.procname	= "kernel",
 		.mode		= 0555,
 		.child		= pfm_sysctl_dir,
@@ -2206,7 +2201,7 @@ pfm_alloc_file(pfm_context_t *ctx)
 {
 	struct file *file;
 	struct inode *inode;
-	struct dentry *dentry;
+	struct path path;
 	char name[32];
 	struct qstr this;
 
@@ -2231,18 +2226,19 @@ pfm_alloc_file(pfm_context_t *ctx)
 	/*
 	 * allocate a new dcache entry
 	 */
-	dentry = d_alloc(pfmfs_mnt->mnt_sb->s_root, &this);
-	if (!dentry) {
+	path.dentry = d_alloc(pfmfs_mnt->mnt_sb->s_root, &this);
+	if (!path.dentry) {
 		iput(inode);
 		return ERR_PTR(-ENOMEM);
 	}
+	path.mnt = mntget(pfmfs_mnt);
 
-	dentry->d_op = &pfmfs_dentry_operations;
-	d_add(dentry, inode);
+	path.dentry->d_op = &pfmfs_dentry_operations;
+	d_add(path.dentry, inode);
 
-	file = alloc_file(pfmfs_mnt, dentry, FMODE_READ, &pfm_file_ops);
+	file = alloc_file(&path, FMODE_READ, &pfm_file_ops);
 	if (!file) {
-		dput(dentry);
+		path_put(&path);
 		return ERR_PTR(-ENFILE);
 	}
 
@@ -2298,7 +2294,7 @@ pfm_smpl_buffer_alloc(struct task_struct *task, struct file *filp, pfm_context_t
 	 * if ((mm->total_vm << PAGE_SHIFT) + len> task->rlim[RLIMIT_AS].rlim_cur)
 	 * 	return -ENOMEM;
 	 */
-	if (size > task->signal->rlim[RLIMIT_MEMLOCK].rlim_cur)
+	if (size > task_rlimit(task, RLIMIT_MEMLOCK))
 		return -ENOMEM;
 
 	/*
@@ -2320,6 +2316,7 @@ pfm_smpl_buffer_alloc(struct task_struct *task, struct file *filp, pfm_context_t
 		DPRINT(("Cannot allocate vma\n"));
 		goto error_kmem;
 	}
+	INIT_LIST_HEAD(&vma->anon_vma_chain);
 
 	/*
 	 * partially initialize the vma for the sampling buffer
@@ -2718,7 +2715,7 @@ pfm_context_create(pfm_context_t *ctx, void *arg, int count, struct pt_regs *reg
 			goto buffer_error;
 	}
 
-	DPRINT(("ctx=%p flags=0x%x system=%d notify_block=%d excl_idle=%d no_msg=%d ctx_fd=%d \n",
+	DPRINT(("ctx=%p flags=0x%x system=%d notify_block=%d excl_idle=%d no_msg=%d ctx_fd=%d\n",
 		ctx,
 		ctx_flags,
 		ctx->ctx_fl_system,
@@ -3523,7 +3520,7 @@ pfm_use_debug_registers(struct task_struct *task)
  * IA64_THREAD_DBG_VALID set. This indicates a task which was
  * able to use the debug registers for debugging purposes via
  * ptrace(). Therefore we know it was not using them for
- * perfmormance monitoring, so we only decrement the number
+ * performance monitoring, so we only decrement the number
  * of "ptraced" debug register users to keep the count up to date
  */
 int
@@ -3682,7 +3679,7 @@ pfm_restart(pfm_context_t *ctx, void *arg, int count, struct pt_regs *regs)
 	 * "self-monitoring".
 	 */
 	if (CTX_OVFL_NOBLOCK(ctx) == 0 && state == PFM_CTX_MASKED) {
-		DPRINT(("unblocking [%d] \n", task_pid_nr(task)));
+		DPRINT(("unblocking [%d]\n", task_pid_nr(task)));
 		complete(&ctx->ctx_restart_done);
 	} else {
 		DPRINT(("[%d] armed exit trap\n", task_pid_nr(task)));
@@ -5213,8 +5210,8 @@ pfm_end_notify_user(pfm_context_t *ctx)
  * main overflow processing routine.
  * it can be called from the interrupt path or explicitly during the context switch code
  */
-static void
-pfm_overflow_handler(struct task_struct *task, pfm_context_t *ctx, u64 pmc0, struct pt_regs *regs)
+static void pfm_overflow_handler(struct task_struct *task, pfm_context_t *ctx,
+				unsigned long pmc0, struct pt_regs *regs)
 {
 	pfm_ovfl_arg_t *ovfl_arg;
 	unsigned long mask;
@@ -5595,7 +5592,7 @@ pfm_interrupt_handler(int irq, void *arg)
 		(*pfm_alt_intr_handler->handler)(irq, arg, regs);
 	}
 
-	put_cpu_no_resched();
+	put_cpu();
 	return IRQ_HANDLED;
 }
 
@@ -5603,7 +5600,7 @@ pfm_interrupt_handler(int irq, void *arg)
  * /proc/perfmon interface, for debug only
  */
 
-#define PFM_PROC_SHOW_HEADER	((void *)nr_cpu_ids+1)
+#define PFM_PROC_SHOW_HEADER	((void *)(long)nr_cpu_ids+1)
 
 static void *
 pfm_proc_start(struct seq_file *m, loff_t *pos)

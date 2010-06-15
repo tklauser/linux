@@ -22,7 +22,7 @@
 #include <asm/cpm.h>
 #include <asm/immap_qe.h>
 
-#define QE_NUM_OF_SNUM	28
+#define QE_NUM_OF_SNUM	256	/* There are 256 serial number in QE */
 #define QE_NUM_OF_BRGS	16
 #define QE_NUM_OF_PORTS	1024
 
@@ -87,7 +87,7 @@ extern spinlock_t cmxgcr_lock;
 
 /* Export QE common operations */
 #ifdef CONFIG_QUICC_ENGINE
-extern void __init qe_reset(void);
+extern void qe_reset(void);
 #else
 static inline void qe_reset(void) {}
 #endif
@@ -145,13 +145,47 @@ static inline void qe_pin_set_gpio(struct qe_pin *qe_pin) {}
 static inline void qe_pin_set_dedicated(struct qe_pin *pin) {}
 #endif /* CONFIG_QE_GPIO */
 
-/* QE internal API */
+#ifdef CONFIG_QUICC_ENGINE
 int qe_issue_cmd(u32 cmd, u32 device, u8 mcn_protocol, u32 cmd_input);
+#else
+static inline int qe_issue_cmd(u32 cmd, u32 device, u8 mcn_protocol,
+			       u32 cmd_input)
+{
+	return -ENOSYS;
+}
+#endif /* CONFIG_QUICC_ENGINE */
+
+/* QE internal API */
 enum qe_clock qe_clock_source(const char *source);
 unsigned int qe_get_brg_clk(void);
 int qe_setbrg(enum qe_clock brg, unsigned int rate, unsigned int multiplier);
 int qe_get_snum(void);
 void qe_put_snum(u8 snum);
+unsigned int qe_get_num_of_risc(void);
+unsigned int qe_get_num_of_snums(void);
+
+static inline int qe_alive_during_sleep(void)
+{
+	/*
+	 * MPC8568E reference manual says:
+	 *
+	 * "...power down sequence waits for all I/O interfaces to become idle.
+	 *  In some applications this may happen eventually without actively
+	 *  shutting down interfaces, but most likely, software will have to
+	 *  take steps to shut down the eTSEC, QUICC Engine Block, and PCI
+	 *  interfaces before issuing the command (either the write to the core
+	 *  MSR[WE] as described above or writing to POWMGTCSR) to put the
+	 *  device into sleep state."
+	 *
+	 * MPC8569E reference manual has a similar paragraph.
+	 */
+#ifdef CONFIG_PPC_85xx
+	return 0;
+#else
+	return 1;
+#endif
+}
+
 /* we actually use cpm_muram implementation, define this for convenience */
 #define qe_muram_init cpm_muram_init
 #define qe_muram_alloc cpm_muram_alloc
@@ -206,8 +240,15 @@ struct qe_firmware_info {
 	u64 extended_modes;	/* Extended modes */
 };
 
+#ifdef CONFIG_QUICC_ENGINE
 /* Upload a firmware to the QE */
 int qe_upload_firmware(const struct qe_firmware *firmware);
+#else
+static inline int qe_upload_firmware(const struct qe_firmware *firmware)
+{
+	return -ENOSYS;
+}
+#endif /* CONFIG_QUICC_ENGINE */
 
 /* Obtain information on the uploaded firmware */
 struct qe_firmware_info *qe_get_firmware_info(void);
@@ -231,12 +272,16 @@ struct qe_bd {
 #define QE_ALIGNMENT_OF_PRAM	64
 
 /* RISC allocation */
-enum qe_risc_allocation {
-	QE_RISC_ALLOCATION_RISC1 = 1,	/* RISC 1 */
-	QE_RISC_ALLOCATION_RISC2 = 2,	/* RISC 2 */
-	QE_RISC_ALLOCATION_RISC1_AND_RISC2 = 3	/* Dynamically choose
-						   RISC 1 or RISC 2 */
-};
+#define QE_RISC_ALLOCATION_RISC1	0x1  /* RISC 1 */
+#define QE_RISC_ALLOCATION_RISC2	0x2  /* RISC 2 */
+#define QE_RISC_ALLOCATION_RISC3	0x4  /* RISC 3 */
+#define QE_RISC_ALLOCATION_RISC4	0x8  /* RISC 4 */
+#define QE_RISC_ALLOCATION_RISC1_AND_RISC2	(QE_RISC_ALLOCATION_RISC1 | \
+						 QE_RISC_ALLOCATION_RISC2)
+#define QE_RISC_ALLOCATION_FOUR_RISCS	(QE_RISC_ALLOCATION_RISC1 | \
+					 QE_RISC_ALLOCATION_RISC2 | \
+					 QE_RISC_ALLOCATION_RISC3 | \
+					 QE_RISC_ALLOCATION_RISC4)
 
 /* QE extended filtering Table Lookup Key Size */
 enum qe_fltr_tbl_lookup_key_size {
@@ -668,6 +713,8 @@ struct ucc_slow_pram {
 #define UCC_GETH_UPSMR_RMM      0x00001000
 #define UCC_GETH_UPSMR_CAM      0x00000400
 #define UCC_GETH_UPSMR_BRO      0x00000200
+#define UCC_GETH_UPSMR_SMM	0x00000080
+#define UCC_GETH_UPSMR_SGMM	0x00000020
 
 /* UCC Transmit On Demand Register (UTODR) */
 #define UCC_SLOW_TOD	0x8000

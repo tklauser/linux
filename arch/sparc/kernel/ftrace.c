@@ -4,33 +4,26 @@
 #include <linux/percpu.h>
 #include <linux/init.h>
 #include <linux/list.h>
+#include <trace/syscall.h>
 
 #include <asm/ftrace.h>
 
+#ifdef CONFIG_DYNAMIC_FTRACE
 static const u32 ftrace_nop = 0x01000000;
 
-unsigned char *ftrace_nop_replace(void)
+static u32 ftrace_call_replace(unsigned long ip, unsigned long addr)
 {
-	return (char *)&ftrace_nop;
-}
-
-unsigned char *ftrace_call_replace(unsigned long ip, unsigned long addr)
-{
-	static u32 call;
+	u32 call;
 	s32 off;
 
 	off = ((s32)addr - (s32)ip);
 	call = 0x40000000 | ((u32)off >> 2);
 
-	return (unsigned char *) &call;
+	return call;
 }
 
-int
-ftrace_modify_code(unsigned long ip, unsigned char *old_code,
-		   unsigned char *new_code)
+static int ftrace_modify_code(unsigned long ip, u32 old, u32 new)
 {
-	u32 old = *(u32 *)old_code;
-	u32 new = *(u32 *)new_code;
 	u32 replaced;
 	int faulted;
 
@@ -59,18 +52,100 @@ ftrace_modify_code(unsigned long ip, unsigned char *old_code,
 	return faulted;
 }
 
+int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long addr)
+{
+	unsigned long ip = rec->ip;
+	u32 old, new;
+
+	old = ftrace_call_replace(ip, addr);
+	new = ftrace_nop;
+	return ftrace_modify_code(ip, old, new);
+}
+
+int ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr)
+{
+	unsigned long ip = rec->ip;
+	u32 old, new;
+
+	old = ftrace_nop;
+	new = ftrace_call_replace(ip, addr);
+	return ftrace_modify_code(ip, old, new);
+}
+
 int ftrace_update_ftrace_func(ftrace_func_t func)
 {
 	unsigned long ip = (unsigned long)(&ftrace_call);
-	unsigned char old[MCOUNT_INSN_SIZE], *new;
+	u32 old, new;
 
-	memcpy(old, &ftrace_call, MCOUNT_INSN_SIZE);
+	old = *(u32 *) &ftrace_call;
 	new = ftrace_call_replace(ip, (unsigned long)func);
 	return ftrace_modify_code(ip, old, new);
 }
 
 int __init ftrace_dyn_arch_init(void *data)
 {
-	ftrace_mcount_set(data);
+	unsigned long *p = data;
+
+	*p = 0;
+
 	return 0;
 }
+#endif
+
+#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+
+#ifdef CONFIG_DYNAMIC_FTRACE
+extern void ftrace_graph_call(void);
+
+int ftrace_enable_ftrace_graph_caller(void)
+{
+	unsigned long ip = (unsigned long)(&ftrace_graph_call);
+	u32 old, new;
+
+	old = *(u32 *) &ftrace_graph_call;
+	new = ftrace_call_replace(ip, (unsigned long) &ftrace_graph_caller);
+	return ftrace_modify_code(ip, old, new);
+}
+
+int ftrace_disable_ftrace_graph_caller(void)
+{
+	unsigned long ip = (unsigned long)(&ftrace_graph_call);
+	u32 old, new;
+
+	old = *(u32 *) &ftrace_graph_call;
+	new = ftrace_call_replace(ip, (unsigned long) &ftrace_stub);
+
+	return ftrace_modify_code(ip, old, new);
+}
+
+#endif /* !CONFIG_DYNAMIC_FTRACE */
+
+/*
+ * Hook the return address and push it in the stack of return addrs
+ * in current thread info.
+ */
+unsigned long prepare_ftrace_return(unsigned long parent,
+				    unsigned long self_addr,
+				    unsigned long frame_pointer)
+{
+	unsigned long return_hooker = (unsigned long) &return_to_handler;
+	struct ftrace_graph_ent trace;
+
+	if (unlikely(atomic_read(&current->tracing_graph_pause)))
+		return parent + 8UL;
+
+	if (ftrace_push_return_trace(parent, self_addr, &trace.depth,
+				     frame_pointer) == -EBUSY)
+		return parent + 8UL;
+
+	trace.func = self_addr;
+
+	/* Only trace if the calling function expects to */
+	if (!ftrace_graph_entry(&trace)) {
+		current->curr_ret_stack--;
+		return parent + 8UL;
+	}
+
+	return return_hooker;
+}
+#endif /* CONFIG_FUNCTION_GRAPH_TRACER */

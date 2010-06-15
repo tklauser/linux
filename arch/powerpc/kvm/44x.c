@@ -18,6 +18,7 @@
  */
 
 #include <linux/kvm_host.h>
+#include <linux/slab.h>
 #include <linux/err.h>
 
 #include <asm/reg.h>
@@ -138,7 +139,7 @@ void kvmppc_core_vcpu_free(struct kvm_vcpu *vcpu)
 	kmem_cache_free(kvm_vcpu_cache, vcpu_44x);
 }
 
-static int kvmppc_44x_init(void)
+static int __init kvmppc_44x_init(void)
 {
 	int r;
 
@@ -149,7 +150,7 @@ static int kvmppc_44x_init(void)
 	return kvm_init(NULL, sizeof(struct kvmppc_vcpu_44x), THIS_MODULE);
 }
 
-static void kvmppc_44x_exit(void)
+static void __exit kvmppc_44x_exit(void)
 {
 	kvmppc_booke_exit();
 }

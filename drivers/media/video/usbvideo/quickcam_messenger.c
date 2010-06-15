@@ -34,6 +34,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/usb/input.h>
+#include <linux/slab.h>
 
 #include "usbvideo.h"
 #include "quickcam_messenger.h"
@@ -89,7 +90,7 @@ static void qcm_register_input(struct qcm *cam, struct usb_device *dev)
 	int error;
 
 	usb_make_path(dev, cam->input_physname, sizeof(cam->input_physname));
-	strncat(cam->input_physname, "/input0", sizeof(cam->input_physname));
+	strlcat(cam->input_physname, "/input0", sizeof(cam->input_physname));
 
 	cam->input = input_dev = input_allocate_device();
 	if (!input_dev) {
@@ -103,7 +104,7 @@ static void qcm_register_input(struct qcm *cam, struct usb_device *dev)
 	input_dev->dev.parent = &dev->dev;
 
 	input_dev->evbit[0] = BIT_MASK(EV_KEY);
-	input_dev->keybit[BIT_WORD(BTN_0)] = BIT_MASK(BTN_0);
+	input_dev->keybit[BIT_WORD(KEY_CAMERA)] = BIT_MASK(KEY_CAMERA);
 
 	error = input_register_device(cam->input);
 	if (error) {
@@ -126,7 +127,7 @@ static void qcm_unregister_input(struct qcm *cam)
 static void qcm_report_buttonstat(struct qcm *cam)
 {
 	if (cam->input) {
-		input_report_key(cam->input, BTN_0, cam->button_sts);
+		input_report_key(cam->input, KEY_CAMERA, cam->button_sts);
 		input_sync(cam->input);
 	}
 }

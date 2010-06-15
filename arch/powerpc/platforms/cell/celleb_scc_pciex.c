@@ -23,6 +23,7 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/string.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/bootmem.h>
 #include <linux/delay.h>
@@ -366,11 +367,7 @@ static void config_write_pciex_rc(unsigned int __iomem *base, uint32_t where,
 static int scc_pciex_read_config(struct pci_bus *bus, unsigned int devfn,
 				 int where, int size, unsigned int *val)
 {
-	struct device_node *dn;
-	struct pci_controller *phb;
-
-	dn = bus->sysdata;
-	phb = pci_find_hose_for_OF_device(dn);
+	struct pci_controller *phb = pci_bus_to_host(bus);
 
 	if (bus->number == phb->first_busno && PCI_SLOT(devfn) != 1) {
 		*val = ~0;
@@ -389,11 +386,7 @@ static int scc_pciex_read_config(struct pci_bus *bus, unsigned int devfn,
 static int scc_pciex_write_config(struct pci_bus *bus, unsigned int devfn,
 				  int where, int size, unsigned int val)
 {
-	struct device_node *dn;
-	struct pci_controller *phb;
-
-	dn = bus->sysdata;
-	phb = pci_find_hose_for_OF_device(dn);
+	struct pci_controller *phb = pci_bus_to_host(bus);
 
 	if (bus->number == phb->first_busno && PCI_SLOT(devfn) != 1)
 		return PCIBIOS_DEVICE_NOT_FOUND;

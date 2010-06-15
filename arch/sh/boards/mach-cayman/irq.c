@@ -66,9 +66,9 @@ static void enable_cayman_irq(unsigned int irq)
 	reg = EPLD_MASK_BASE + ((irq / 8) << 2);
 	bit = 1<<(irq % 8);
 	local_irq_save(flags);
-	mask = ctrl_inl(reg);
+	mask = __raw_readl(reg);
 	mask |= bit;
-	ctrl_outl(mask, reg);
+	__raw_writel(mask, reg);
 	local_irq_restore(flags);
 }
 
@@ -83,9 +83,9 @@ void disable_cayman_irq(unsigned int irq)
 	reg = EPLD_MASK_BASE + ((irq / 8) << 2);
 	bit = 1<<(irq % 8);
 	local_irq_save(flags);
-	mask = ctrl_inl(reg);
+	mask = __raw_readl(reg);
 	mask &= ~bit;
-	ctrl_outl(mask, reg);
+	__raw_writel(mask, reg);
 	local_irq_restore(flags);
 }
 
@@ -109,8 +109,8 @@ int cayman_irq_demux(int evt)
 		unsigned long status;
 		int i;
 
-		status = ctrl_inl(EPLD_STATUS_BASE) &
-			 ctrl_inl(EPLD_MASK_BASE) & 0xff;
+		status = __raw_readl(EPLD_STATUS_BASE) &
+			 __raw_readl(EPLD_MASK_BASE) & 0xff;
 		if (status == 0) {
 			irq = -1;
 		} else {
@@ -126,8 +126,8 @@ int cayman_irq_demux(int evt)
 		unsigned long status;
 		int i;
 
-		status = ctrl_inl(EPLD_STATUS_BASE + 3 * sizeof(u32)) &
-			 ctrl_inl(EPLD_MASK_BASE + 3 * sizeof(u32)) & 0xff;
+		status = __raw_readl(EPLD_STATUS_BASE + 3 * sizeof(u32)) &
+			 __raw_readl(EPLD_MASK_BASE + 3 * sizeof(u32)) & 0xff;
 		if (status == 0) {
 			irq = -1;
 		} else {
@@ -142,26 +142,11 @@ int cayman_irq_demux(int evt)
 	return irq;
 }
 
-#if defined(CONFIG_PROC_FS) && defined(CONFIG_SYSCTL)
-int cayman_irq_describe(char* p, int irq)
-{
-	if (irq < NR_INTC_IRQS) {
-		return intc_irq_describe(p, irq);
-	} else if (irq < NR_INTC_IRQS + 8) {
-		return sprintf(p, "(SMSC %d)", irq - NR_INTC_IRQS);
-	} else if ((irq >= NR_INTC_IRQS + 24) && (irq < NR_INTC_IRQS + 32)) {
-		return sprintf(p, "(PCI2 %d)", irq - (NR_INTC_IRQS + 24));
-	}
-
-	return 0;
-}
-#endif
-
 void init_cayman_irq(void)
 {
 	int i;
 
-	epld_virt = onchip_remap(EPLD_BASE, 1024, "EPLD");
+	epld_virt = (unsigned long)ioremap_nocache(EPLD_BASE, 1024);
 	if (!epld_virt) {
 		printk(KERN_ERR "Cayman IRQ: Unable to remap EPLD\n");
 		return;

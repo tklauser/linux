@@ -6,11 +6,13 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/poll.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
 #include <linux/skbuff.h>
+#include <linux/slab.h>
 
 #include <net/mac80211.h>
 #include "rate.h"
@@ -198,7 +200,7 @@ static ssize_t rate_control_pid_events_read(struct file *file, char __user *buf,
 
 #undef RC_PID_PRINT_BUF_SIZE
 
-static struct file_operations rc_pid_fop_events = {
+static const struct file_operations rc_pid_fop_events = {
 	.owner = THIS_MODULE,
 	.read = rate_control_pid_events_read,
 	.poll = rate_control_pid_events_poll,

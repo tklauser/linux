@@ -18,15 +18,18 @@
  * - The machine driver's 'startup' function must call
  *   cs4270_set_dai_sysclk() with the value of MCLK.
  * - Only I2S and left-justified modes are supported
- * - Power management is not supported
+ * - Power management is supported
  */
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/initval.h>
 #include <linux/i2c.h>
+#include <linux/delay.h>
+#include <linux/regulator/consumer.h>
 
 #include "cs4270.h"
 
@@ -56,6 +59,7 @@
 #define CS4270_FIRSTREG	0x01
 #define CS4270_LASTREG	0x08
 #define CS4270_NUMREGS	(CS4270_LASTREG - CS4270_FIRSTREG + 1)
+#define CS4270_I2C_INCR	0x80
 
 /* Bit masks for the CS4270 registers */
 #define CS4270_CHIPID_ID	0xF0
@@ -64,6 +68,8 @@
 #define CS4270_PWRCTL_PDN_ADC	0x20
 #define CS4270_PWRCTL_PDN_DAC	0x02
 #define CS4270_PWRCTL_PDN	0x01
+#define CS4270_PWRCTL_PDN_ALL	\
+	(CS4270_PWRCTL_PDN_ADC | CS4270_PWRCTL_PDN_DAC | CS4270_PWRCTL_PDN)
 #define CS4270_MODE_SPEED_MASK	0x30
 #define CS4270_MODE_1X		0x00
 #define CS4270_MODE_2X		0x10
@@ -102,6 +108,10 @@
 #define CS4270_MUTE_DAC_A	0x01
 #define CS4270_MUTE_DAC_B	0x02
 
+static const char *supply_names[] = {
+	"va", "vd", "vlc"
+};
+
 /* Private data for the CS4270 */
 struct cs4270_private {
 	struct snd_soc_codec codec;
@@ -109,6 +119,10 @@ struct cs4270_private {
 	unsigned int mclk; /* Input frequency of the MCLK pin */
 	unsigned int mode; /* The mode (I2S or left-justified) */
 	unsigned int slave_mode;
+	unsigned int manual_mute;
+
+	/* power domain regulators */
+	struct regulator_bulk_data supplies[ARRAY_SIZE(supply_names)];
 };
 
 /**
@@ -187,6 +201,11 @@ static struct cs4270_mode_ratios cs4270_mode_ratios[] = {
  * This function must be called by the machine driver's 'startup' function,
  * otherwise the list of supported sample rates will not be available in
  * time for ALSA.
+ *
+ * For setups with variable MCLKs, pass 0 as 'freq' argument. This will cause
+ * theoretically possible sample rates to be enabled. Call it again with a
+ * proper value set one the external clock is set (most probably you would do
+ * that from a machine's driver 'hw_param' hook.
  */
 static int cs4270_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 				 int clk_id, unsigned int freq, int dir)
@@ -200,20 +219,27 @@ static int cs4270_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 
 	cs4270->mclk = freq;
 
-	for (i = 0; i < NUM_MCLK_RATIOS; i++) {
-		unsigned int rate = freq / cs4270_mode_ratios[i].ratio;
-		rates |= snd_pcm_rate_to_rate_bit(rate);
-		if (rate < rate_min)
-			rate_min = rate;
-		if (rate > rate_max)
-			rate_max = rate;
-	}
-	/* FIXME: soc should support a rate list */
-	rates &= ~SNDRV_PCM_RATE_KNOT;
+	if (cs4270->mclk) {
+		for (i = 0; i < NUM_MCLK_RATIOS; i++) {
+			unsigned int rate = freq / cs4270_mode_ratios[i].ratio;
+			rates |= snd_pcm_rate_to_rate_bit(rate);
+			if (rate < rate_min)
+				rate_min = rate;
+			if (rate > rate_max)
+				rate_max = rate;
+		}
+		/* FIXME: soc should support a rate list */
+		rates &= ~SNDRV_PCM_RATE_KNOT;
 
-	if (!rates) {
-		dev_err(codec->dev, "could not find a valid sample rate\n");
-		return -EINVAL;
+		if (!rates) {
+			dev_err(codec->dev, "could not find a valid sample rate\n");
+			return -EINVAL;
+		}
+	} else {
+		/* enable all possible rates */
+		rates = SNDRV_PCM_RATE_8000_192000;
+		rate_min = 8000;
+		rate_max = 192000;
 	}
 
 	codec_dai->playback.rates = rates;
@@ -295,7 +321,7 @@ static int cs4270_fill_cache(struct snd_soc_codec *codec)
 	s32 length;
 
 	length = i2c_smbus_read_i2c_block_data(i2c_client,
-		CS4270_FIRSTREG | 0x80, CS4270_NUMREGS, cache);
+		CS4270_FIRSTREG | CS4270_I2C_INCR, CS4270_NUMREGS, cache);
 
 	if (length != CS4270_NUMREGS) {
 		dev_err(codec->dev, "i2c read failure, addr=0x%x\n",
@@ -453,7 +479,7 @@ static int cs4270_hw_params(struct snd_pcm_substream *substream,
 }
 
 /**
- * cs4270_mute - enable/disable the CS4270 external mute
+ * cs4270_dai_mute - enable/disable the CS4270 external mute
  * @dai: the SOC DAI
  * @mute: 0 = disable mute, 1 = enable mute
  *
@@ -462,19 +488,50 @@ static int cs4270_hw_params(struct snd_pcm_substream *substream,
  * board does not have the MUTEA or MUTEB pins connected to such circuitry,
  * then this function will do nothing.
  */
-static int cs4270_mute(struct snd_soc_dai *dai, int mute)
+static int cs4270_dai_mute(struct snd_soc_dai *dai, int mute)
 {
 	struct snd_soc_codec *codec = dai->codec;
+	struct cs4270_private *cs4270 = codec->private_data;
 	int reg6;
 
 	reg6 = snd_soc_read(codec, CS4270_MUTE);
 
 	if (mute)
 		reg6 |= CS4270_MUTE_DAC_A | CS4270_MUTE_DAC_B;
-	else
+	else {
 		reg6 &= ~(CS4270_MUTE_DAC_A | CS4270_MUTE_DAC_B);
+		reg6 |= cs4270->manual_mute;
+	}
 
 	return snd_soc_write(codec, CS4270_MUTE, reg6);
+}
+
+/**
+ * cs4270_soc_put_mute - put callback for the 'Master Playback switch'
+ * 			 alsa control.
+ * @kcontrol: mixer control
+ * @ucontrol: control element information
+ *
+ * This function basically passes the arguments on to the generic
+ * snd_soc_put_volsw() function and saves the mute information in
+ * our private data structure. This is because we want to prevent
+ * cs4270_dai_mute() neglecting the user's decision to manually
+ * mute the codec's output.
+ *
+ * Returns 0 for success.
+ */
+static int cs4270_soc_put_mute(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct cs4270_private *cs4270 = codec->private_data;
+	int left = !ucontrol->value.integer.value[0];
+	int right = !ucontrol->value.integer.value[1];
+
+	cs4270->manual_mute = (left ? CS4270_MUTE_DAC_A : 0) |
+			      (right ? CS4270_MUTE_DAC_B : 0);
+
+	return snd_soc_put_volsw(kcontrol, ucontrol);
 }
 
 /* A list of non-DAPM controls that the CS4270 supports */
@@ -484,9 +541,12 @@ static const struct snd_kcontrol_new cs4270_snd_controls[] = {
 	SOC_SINGLE("Digital Sidetone Switch", CS4270_FORMAT, 5, 1, 0),
 	SOC_SINGLE("Soft Ramp Switch", CS4270_TRANS, 6, 1, 0),
 	SOC_SINGLE("Zero Cross Switch", CS4270_TRANS, 5, 1, 0),
+	SOC_SINGLE("De-emphasis filter", CS4270_TRANS, 0, 1, 0),
 	SOC_SINGLE("Popguard Switch", CS4270_MODE, 0, 1, 1),
 	SOC_SINGLE("Auto-Mute Switch", CS4270_MUTE, 5, 1, 0),
-	SOC_DOUBLE("Master Capture Switch", CS4270_MUTE, 3, 4, 1, 0)
+	SOC_DOUBLE("Master Capture Switch", CS4270_MUTE, 3, 4, 1, 1),
+	SOC_DOUBLE_EXT("Master Playback Switch", CS4270_MUTE, 0, 1, 1, 1,
+		snd_soc_get_volsw, cs4270_soc_put_mute),
 };
 
 /*
@@ -506,7 +566,7 @@ static struct snd_soc_dai_ops cs4270_dai_ops = {
 	.hw_params	= cs4270_hw_params,
 	.set_sysclk	= cs4270_set_dai_sysclk,
 	.set_fmt	= cs4270_set_dai_fmt,
-	.digital_mute	= cs4270_mute,
+	.digital_mute	= cs4270_dai_mute,
 };
 
 struct snd_soc_dai cs4270_dai = {
@@ -540,7 +600,8 @@ static int cs4270_probe(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_codec *codec = cs4270_codec;
-	int ret;
+	struct cs4270_private *cs4270 = codec->private_data;
+	int i, ret;
 
 	/* Connect the codec to the socdev.  snd_soc_new_pcms() needs this. */
 	socdev->card->codec = codec;
@@ -560,14 +621,25 @@ static int cs4270_probe(struct platform_device *pdev)
 		goto error_free_pcms;
 	}
 
-	/* And finally, register the socdev */
-	ret = snd_soc_init_card(socdev);
-	if (ret < 0) {
-		dev_err(codec->dev, "failed to register card\n");
+	/* get the power supply regulators */
+	for (i = 0; i < ARRAY_SIZE(supply_names); i++)
+		cs4270->supplies[i].supply = supply_names[i];
+
+	ret = regulator_bulk_get(codec->dev, ARRAY_SIZE(cs4270->supplies),
+				 cs4270->supplies);
+	if (ret < 0)
 		goto error_free_pcms;
-	}
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(cs4270->supplies),
+				    cs4270->supplies);
+	if (ret < 0)
+		goto error_free_regulators;
 
 	return 0;
+
+error_free_regulators:
+	regulator_bulk_free(ARRAY_SIZE(cs4270->supplies),
+			    cs4270->supplies);
 
 error_free_pcms:
 	snd_soc_free_pcms(socdev);
@@ -584,8 +656,12 @@ error_free_pcms:
 static int cs4270_remove(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
+	struct snd_soc_codec *codec = cs4270_codec;
+	struct cs4270_private *cs4270 = codec->private_data;
 
 	snd_soc_free_pcms(socdev);
+	regulator_bulk_disable(ARRAY_SIZE(cs4270->supplies), cs4270->supplies);
+	regulator_bulk_free(ARRAY_SIZE(cs4270->supplies), cs4270->supplies);
 
 	return 0;
 };
@@ -753,6 +829,72 @@ static struct i2c_device_id cs4270_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, cs4270_id);
 
+#ifdef CONFIG_PM
+
+/* This suspend/resume implementation can handle both - a simple standby
+ * where the codec remains powered, and a full suspend, where the voltage
+ * domain the codec is connected to is teared down and/or any other hardware
+ * reset condition is asserted.
+ *
+ * The codec's own power saving features are enabled in the suspend callback,
+ * and all registers are written back to the hardware when resuming.
+ */
+
+static int cs4270_soc_suspend(struct platform_device *pdev, pm_message_t mesg)
+{
+	struct snd_soc_codec *codec = cs4270_codec;
+	struct cs4270_private *cs4270 = codec->private_data;
+	int reg, ret;
+
+	reg = snd_soc_read(codec, CS4270_PWRCTL) | CS4270_PWRCTL_PDN_ALL;
+	if (reg < 0)
+		return reg;
+
+	ret = snd_soc_write(codec, CS4270_PWRCTL, reg);
+	if (ret < 0)
+		return ret;
+
+	regulator_bulk_disable(ARRAY_SIZE(cs4270->supplies),
+			       cs4270->supplies);
+
+	return 0;
+}
+
+static int cs4270_soc_resume(struct platform_device *pdev)
+{
+	struct snd_soc_codec *codec = cs4270_codec;
+	struct cs4270_private *cs4270 = codec->private_data;
+	struct i2c_client *i2c_client = codec->control_data;
+	int reg;
+
+	regulator_bulk_enable(ARRAY_SIZE(cs4270->supplies),
+			      cs4270->supplies);
+
+	/* In case the device was put to hard reset during sleep, we need to
+	 * wait 500ns here before any I2C communication. */
+	ndelay(500);
+
+	/* first restore the entire register cache ... */
+	for (reg = CS4270_FIRSTREG; reg <= CS4270_LASTREG; reg++) {
+		u8 val = snd_soc_read(codec, reg);
+
+		if (i2c_smbus_write_byte_data(i2c_client, reg, val)) {
+			dev_err(codec->dev, "i2c write failed\n");
+			return -EIO;
+		}
+	}
+
+	/* ... then disable the power-down bits */
+	reg = snd_soc_read(codec, CS4270_PWRCTL);
+	reg &= ~CS4270_PWRCTL_PDN_ALL;
+
+	return snd_soc_write(codec, CS4270_PWRCTL, reg);
+}
+#else
+#define cs4270_soc_suspend	NULL
+#define cs4270_soc_resume	NULL
+#endif /* CONFIG_PM */
+
 /*
  * cs4270_i2c_driver - I2C device identification
  *
@@ -777,7 +919,9 @@ static struct i2c_driver cs4270_i2c_driver = {
  */
 struct snd_soc_codec_device soc_codec_device_cs4270 = {
 	.probe = 	cs4270_probe,
-	.remove = 	cs4270_remove
+	.remove = 	cs4270_remove,
+	.suspend =	cs4270_soc_suspend,
+	.resume =	cs4270_soc_resume,
 };
 EXPORT_SYMBOL_GPL(soc_codec_device_cs4270);
 

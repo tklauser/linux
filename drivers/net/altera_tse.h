@@ -26,34 +26,18 @@
  */
 
 #ifndef _ALTERA_TSE_H_
-  #define _ALTERA_TSE_H_
+#define _ALTERA_TSE_H_
 
-  
 #include <linux/kernel.h>
-#include <linux/sched.h>
 #include <linux/string.h>
-#include <linux/errno.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
-#include <linux/init.h>
-#include <linux/delay.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
-#include <linux/mm.h>
 #include <linux/mii.h>
 #include <linux/phy.h>
-
-#include <asm/io.h>
-#include <asm/irq.h>
-#include <asm/uaccess.h>
-#include <linux/module.h>
-#include <linux/crc32.h>
-#include <linux/workqueue.h>
 #include <linux/ethtool.h>
-#include <linux/fsl_devices.h>  
-
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
 //#define REMAP_CACHED(address) ((unsigned int) address | 0x80000000)
@@ -65,7 +49,6 @@
 #define SOURCE_BUSY       -23
 
 #define ALT_TSE_NAME               "altera_tse"
-#define ALT_TSE_MDIO_NAME               "altera_tse_mdio"
 #define TSE_RESOURCE_MAC_DEV       "Altera_tse_resource_mac_dev"
 #define TSE_RESOURCE_SGDMA_RX_DEV  "Altera_tse_resource_sgdma_rx_dev"
 #define TSE_RESOURCE_SGDMA_TX_DEV  "Altera_tse_resource_sgdma_tx_dev"
@@ -85,9 +68,6 @@
 #define ALT_TSE_TOTAL_SGDMA_DESC_SIZE   (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
 #define ALT_TX_RING_MOD_MASK 		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
 #define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
-
-
-#define ALIGNED_BYTES                        2
 
 #define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
 
@@ -393,7 +373,7 @@ struct alt_tse_private {
 
 /* NAPI struct for NAPI interface */
 	struct napi_struct napi;
-	                           
+
 	alt_tse_mac *mac_dev;
 
 	volatile struct alt_sgdma_registers *rx_sgdma_dev;
@@ -408,9 +388,8 @@ struct alt_tse_private {
 	unsigned char rx_shift_16_ok;
 	unsigned char last_tx_shift_16;
 	unsigned char last_rx_shift_16;
-	
+
 	unsigned int desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
-	unsigned int chain_loop;
 
 	unsigned int tse_tx_depth;	/* TX Receive FIFO depth                                 */
 	unsigned int tse_rx_depth;	/* RX Receive FIFO depth                                 */
@@ -444,7 +423,6 @@ struct alt_tse_private {
 
 /* system info */
 	struct phy_device *phydev;
-	struct mii_bus *mii_bus;
 	int oldspeed;
 	int oldduplex;
 	int oldlink;
@@ -462,10 +440,8 @@ struct alt_tse_private {
 /*link info */
 //	unsigned int alarm_irq;
 //	struct timer_reg *alarm_link_check;
-	unsigned int tse_up;
-	
-	uint32_t msg_enable;
 
+	u32 msg_enable;
 };
 
 /*----------------------------------------------------------------------*/
@@ -574,12 +550,7 @@ struct alt_sgdma_registers {
   unsigned int      descriptor_pad[3];
 };
 
-/*----------------------------------------------------------------------*/
-//MDIO stuff
-
-struct alt_tse_mdio_private {
-	int irq[32];
-};
+/* Function prototypes */
 
 extern void tse_set_ethtool_ops(struct net_device *netdev);
 

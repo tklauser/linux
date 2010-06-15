@@ -1,3 +1,9 @@
+/*
+ * Copyright 2007-2008 Analog Devices Inc.
+ *
+ * Licensed under the GPL-2 or later.
+ */
+
 #ifndef _MACH_BF561_SMP
 #define _MACH_BF561_SMP
 
@@ -18,5 +24,7 @@ void platform_send_ipi(cpumask_t callmap);
 void platform_send_ipi_cpu(unsigned int cpu);
 
 void platform_clear_ipi(unsigned int cpu);
+
+void bfin_local_timer_setup(void);
 
 #endif /* !_MACH_BF561_SMP */

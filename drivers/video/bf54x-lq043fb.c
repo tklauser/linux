@@ -82,7 +82,6 @@ struct bfin_bf54xfb_info {
 	unsigned char *fb_buffer;	/* RGB Buffer */
 
 	dma_addr_t dma_handle;
-	int lq043_mmap;
 	int lq043_open_cnt;
 	int irq;
 	spinlock_t lock;	/* lock */
@@ -316,14 +315,12 @@ static int bfin_bf54x_fb_release(struct fb_info *info, int user)
 	spin_lock(&fbi->lock);
 
 	fbi->lq043_open_cnt--;
-	fbi->lq043_mmap = 0;
 
 	if (fbi->lq043_open_cnt <= 0) {
 
 		bfin_write_EPPI0_CONTROL(0);
 		SSYNC();
 		disable_dma(CH_EPPI0);
-		memset(fbi->fb_buffer, 0, info->fix.smem_len);
 	}
 
 	spin_unlock(&fbi->lock);
@@ -371,33 +368,6 @@ static int bfin_bf54x_fb_check_var(struct fb_var_screeninfo *var,
 			 __func__, var->yres_virtual);
 		return -ENOMEM;
 	}
-
-	return 0;
-}
-
-static int bfin_bf54x_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
-{
-
-	struct bfin_bf54xfb_info *fbi = info->par;
-
-	if (fbi->lq043_mmap)
-		return -1;
-
-	spin_lock(&fbi->lock);
-	fbi->lq043_mmap = 1;
-	spin_unlock(&fbi->lock);
-
-	vma->vm_start = (unsigned long)(fbi->fb_buffer);
-
-	vma->vm_end = vma->vm_start + info->fix.smem_len;
-	/* For those who don't understand how mmap works, go read
-	 *   Documentation/nommu-mmap.txt.
-	 * For those that do, you will know that the VM_MAYSHARE flag
-	 * must be set in the vma->vm_flags structure on noMMU
-	 *   Other flags can be set, and are documented in
-	 *   include/linux/mm.h
-	 */
-	vma->vm_flags |=  VM_MAYSHARE | VM_SHARED;
 
 	return 0;
 }
@@ -453,7 +423,6 @@ static struct fb_ops bfin_bf54x_fb_ops = {
 	.fb_fillrect = cfb_fillrect,
 	.fb_copyarea = cfb_copyarea,
 	.fb_imageblit = cfb_imageblit,
-	.fb_mmap = bfin_bf54x_fb_mmap,
 	.fb_cursor = bfin_bf54x_fb_cursor,
 	.fb_setcolreg = bfin_bf54x_fb_setcolreg,
 };
@@ -464,7 +433,7 @@ static int bl_get_brightness(struct backlight_device *bd)
 	return 0;
 }
 
-static struct backlight_ops bfin_lq043fb_bl_ops = {
+static const struct backlight_ops bfin_lq043fb_bl_ops = {
 	.get_brightness = bl_get_brightness,
 };
 
@@ -530,8 +499,9 @@ static irqreturn_t bfin_bf54x_irq_error(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int __init bfin_bf54x_probe(struct platform_device *pdev)
+static int __devinit bfin_bf54x_probe(struct platform_device *pdev)
 {
+	struct backlight_properties props;
 	struct bfin_bf54xfb_info *info;
 	struct fb_info *fbinfo;
 	int ret;
@@ -626,14 +596,12 @@ static int __init bfin_bf54x_probe(struct platform_device *pdev)
 		goto out3;
 	}
 
-	memset(info->fb_buffer, 0, fbinfo->fix.smem_len);
-
 	fbinfo->screen_base = (void *)info->fb_buffer;
 	fbinfo->fix.smem_start = (int)info->fb_buffer;
 
 	fbinfo->fbops = &bfin_bf54x_fb_ops;
 
-	fbinfo->pseudo_palette = kmalloc(sizeof(u32) * 16, GFP_KERNEL);
+	fbinfo->pseudo_palette = kzalloc(sizeof(u32) * 16, GFP_KERNEL);
 	if (!fbinfo->pseudo_palette) {
 		printk(KERN_ERR DRIVER_NAME
 		       "Fail to allocate pseudo_palette\n");
@@ -641,8 +609,6 @@ static int __init bfin_bf54x_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto out4;
 	}
-
-	memset(fbinfo->pseudo_palette, 0, sizeof(u32) * 16);
 
 	if (fb_alloc_cmap(&fbinfo->cmap, BFIN_LCD_NBR_PALETTE_ENTRIES, 0)
 	    < 0) {
@@ -680,10 +646,16 @@ static int __init bfin_bf54x_probe(struct platform_device *pdev)
 		goto out8;
 	}
 #ifndef NO_BL_SUPPORT
-	bl_dev =
-	    backlight_device_register("bf54x-bl", NULL, NULL,
-				      &bfin_lq043fb_bl_ops);
-	bl_dev->props.max_brightness = 255;
+	memset(&props, 0, sizeof(struct backlight_properties));
+	props.max_brightness = 255;
+	bl_dev = backlight_device_register("bf54x-bl", NULL, NULL,
+					   &bfin_lq043fb_bl_ops, &props);
+	if (IS_ERR(bl_dev)) {
+		printk(KERN_ERR DRIVER_NAME
+			": unable to register backlight.\n");
+		ret = -EINVAL;
+		goto out9;
+	}
 
 	lcd_dev = lcd_device_register(DRIVER_NAME, &pdev->dev, NULL, &bfin_lcd_ops);
 	lcd_dev->props.max_contrast = 255, printk(KERN_INFO "Done.\n");
@@ -691,6 +663,8 @@ static int __init bfin_bf54x_probe(struct platform_device *pdev)
 
 	return 0;
 
+out9:
+	unregister_framebuffer(fbinfo);
 out8:
 	free_irq(info->irq, info);
 out7:
@@ -712,7 +686,7 @@ out1:
 	return ret;
 }
 
-static int bfin_bf54x_remove(struct platform_device *pdev)
+static int __devexit bfin_bf54x_remove(struct platform_device *pdev)
 {
 
 	struct fb_info *fbinfo = platform_get_drvdata(pdev);
@@ -781,7 +755,7 @@ static int bfin_bf54x_resume(struct platform_device *pdev)
 
 static struct platform_driver bfin_bf54x_driver = {
 	.probe = bfin_bf54x_probe,
-	.remove = bfin_bf54x_remove,
+	.remove = __devexit_p(bfin_bf54x_remove),
 	.suspend = bfin_bf54x_suspend,
 	.resume = bfin_bf54x_resume,
 	.driver = {
@@ -790,7 +764,7 @@ static struct platform_driver bfin_bf54x_driver = {
 		   },
 };
 
-static int __devinit bfin_bf54x_driver_init(void)
+static int __init bfin_bf54x_driver_init(void)
 {
 	return platform_driver_register(&bfin_bf54x_driver);
 }

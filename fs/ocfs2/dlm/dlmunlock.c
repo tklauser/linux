@@ -28,9 +28,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/highmem.h>
-#include <linux/utsname.h>
 #include <linux/init.h>
 #include <linux/sysctl.h>
 #include <linux/random.h>
@@ -122,7 +120,7 @@ static enum dlm_status dlmunlock_common(struct dlm_ctxt *dlm,
 	 * that still has AST's pending... */
 	in_use = !list_empty(&lock->ast_list);
 	spin_unlock(&dlm->ast_lock);
-	if (in_use) {
+	if (in_use && !(flags & LKM_CANCEL)) {
 	       mlog(ML_ERROR, "lockres %.*s: Someone is calling dlmunlock "
 		    "while waiting for an ast!", res->lockname.len,
 		    res->lockname.name);
@@ -131,7 +129,7 @@ static enum dlm_status dlmunlock_common(struct dlm_ctxt *dlm,
 
 	spin_lock(&res->spinlock);
 	if (res->state & DLM_LOCK_RES_IN_PROGRESS) {
-		if (master_node) {
+		if (master_node && !(flags & LKM_CANCEL)) {
 			mlog(ML_ERROR, "lockres in progress!\n");
 			spin_unlock(&res->spinlock);
 			return DLM_FORWARD;
@@ -191,8 +189,8 @@ static enum dlm_status dlmunlock_common(struct dlm_ctxt *dlm,
 			actions &= ~(DLM_UNLOCK_REMOVE_LOCK|
 				     DLM_UNLOCK_REGRANT_LOCK|
 				     DLM_UNLOCK_CLEAR_CONVERT_TYPE);
-		} else if (status == DLM_RECOVERING || 
-			   status == DLM_MIGRATING || 
+		} else if (status == DLM_RECOVERING ||
+			   status == DLM_MIGRATING ||
 			   status == DLM_FORWARD) {
 			/* must clear the actions because this unlock
 			 * is about to be retried.  cannot free or do
@@ -662,14 +660,14 @@ retry:
 	if (call_ast) {
 		mlog(0, "calling unlockast(%p, %d)\n", data, status);
 		if (is_master) {
-			/* it is possible that there is one last bast 
+			/* it is possible that there is one last bast
 			 * pending.  make sure it is flushed, then
 			 * call the unlockast.
 			 * not an issue if this is a mastered remotely,
 			 * since this lock has been removed from the
 			 * lockres queues and cannot be found. */
 			dlm_kick_thread(dlm, NULL);
-			wait_event(dlm->ast_wq, 
+			wait_event(dlm->ast_wq,
 				   dlm_lock_basts_flushed(dlm, lock));
 		}
 		(*unlockast)(data, status);

@@ -119,6 +119,7 @@ struct rds_iw_connection {
 	struct rds_iw_send_work *i_sends;
 
 	/* rx */
+	struct tasklet_struct	i_recv_tasklet;
 	struct mutex		i_recv_mutex;
 	struct rds_iw_work_ring	i_recv_ring;
 	struct rds_iw_incoming	*i_iwinc;
@@ -181,7 +182,6 @@ struct rds_iw_device {
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
 	struct rds_iw_mr_pool	*mr_pool;
-	int			page_shift;
 	int			max_sge;
 	unsigned int		max_wrs;
 	unsigned int		dma_local_lkey:1;
@@ -331,6 +331,7 @@ void rds_iw_inc_free(struct rds_incoming *inc);
 int rds_iw_inc_copy_to_user(struct rds_incoming *inc, struct iovec *iov,
 			     size_t size);
 void rds_iw_recv_cq_comp_handler(struct ib_cq *cq, void *context);
+void rds_iw_recv_tasklet_fn(unsigned long data);
 void rds_iw_recv_init_ring(struct rds_iw_connection *ic);
 void rds_iw_recv_clear_ring(struct rds_iw_connection *ic);
 void rds_iw_recv_init_ack(struct rds_iw_connection *ic);
@@ -361,7 +362,7 @@ int rds_iw_xmit_rdma(struct rds_connection *conn, struct rds_rdma_op *op);
 void rds_iw_send_add_credits(struct rds_connection *conn, unsigned int credits);
 void rds_iw_advertise_credits(struct rds_connection *conn, unsigned int posted);
 int rds_iw_send_grab_credits(struct rds_iw_connection *ic, u32 wanted,
-			     u32 *adv_credits, int need_posted);
+			     u32 *adv_credits, int need_posted, int max_posted);
 
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_iw_statistics, rds_iw_stats);

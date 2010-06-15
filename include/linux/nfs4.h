@@ -21,6 +21,7 @@
 #define NFS4_FHSIZE		128
 #define NFS4_MAXPATHLEN		PATH_MAX
 #define NFS4_MAXNAMLEN		NAME_MAX
+#define NFS4_OPAQUE_LIMIT	1024
 #define NFS4_MAX_SESSIONID_LEN	16
 
 #define NFS4_ACCESS_READ        0x0001
@@ -127,8 +128,20 @@
 #define SEQ4_STATUS_RECALLABLE_STATE_REVOKED	0x00000040
 #define SEQ4_STATUS_LEASE_MOVED			0x00000080
 #define SEQ4_STATUS_RESTART_RECLAIM_NEEDED	0x00000100
+#define SEQ4_STATUS_CB_PATH_DOWN_SESSION	0x00000200
+#define SEQ4_STATUS_BACKCHANNEL_FAULT		0x00000400
 
 #define NFS4_MAX_UINT64	(~(u64)0)
+
+/* An NFS4 sessions server must support at least NFS4_MAX_OPS operations.
+ * If a compound requires more operations, adjust NFS4_MAX_OPS accordingly.
+ */
+#define NFS4_MAX_OPS   8
+
+/* Our NFS4 client back channel server only wants the cb_sequene and the
+ * actual operation per compound
+ */
+#define NFS4_MAX_BACK_CHANNEL_OPS 2
 
 enum nfs4_acl_whotype {
 	NFS4_ACL_WHO_NAMED = 0,
@@ -223,7 +236,7 @@ enum nfs_opnum4 {
 Needs to be updated if more operations are defined in future.*/
 
 #define FIRST_NFS4_OP	OP_ACCESS
-#define LAST_NFS4_OP 	OP_RELEASE_LOCKOWNER
+#define LAST_NFS4_OP 	OP_RECLAIM_COMPLETE
 
 enum nfsstat4 {
 	NFS4_OK = 0,
@@ -461,7 +474,15 @@ enum lock_type4 {
 
 #define NFSPROC4_NULL 0
 #define NFSPROC4_COMPOUND 1
+#define NFS4_VERSION 4
 #define NFS4_MINOR_VERSION 0
+
+#if defined(CONFIG_NFS_V4_1)
+#define NFS4_MAX_MINOR_VERSION 1
+#else
+#define NFS4_MAX_MINOR_VERSION 0
+#endif /* CONFIG_NFS_V4_1 */
+
 #define NFS4_DEBUG 1
 
 /* Index of predefined Linux client operations */
@@ -509,6 +530,7 @@ enum {
 	NFSPROC4_CLNT_DESTROY_SESSION,
 	NFSPROC4_CLNT_SEQUENCE,
 	NFSPROC4_CLNT_GET_LEASE_TIME,
+	NFSPROC4_CLNT_RECLAIM_COMPLETE,
 };
 
 /* nfs41 types */

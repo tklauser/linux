@@ -121,7 +121,7 @@ static int at91_wdt_settimeout(int new_time)
 	return 0;
 }
 
-static struct watchdog_info at91_wdt_info = {
+static const struct watchdog_info at91_wdt_info = {
 	.identity	= "at91 watchdog",
 	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
 };
@@ -268,7 +268,8 @@ static int __init at91_wdt_init(void)
 	   if not reset to the default */
 	if (at91_wdt_settimeout(wdt_time)) {
 		at91_wdt_settimeout(WDT_DEFAULT_TIME);
-		pr_info("at91_wdt: wdt_time value must be 1 <= wdt_time <= 256, using %d\n", wdt_time);
+		pr_info("at91_wdt: wdt_time value must be 1 <= wdt_time <= 256"
+						", using %d\n", wdt_time);
 	}
 
 	return platform_driver_register(&at91wdt_driver);

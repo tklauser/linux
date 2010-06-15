@@ -14,13 +14,13 @@
 struct wbsoft_priv {
 	u32 adapterIndex;	// 20060703.4 Add for using padapterContext global adapter point
 
-	WB_LOCALDESCRIPT sLocalPara;	// Myself connected parameters
+	struct wb_local_para sLocalPara;	// Myself connected parameters
 
 	MLME_FRAME sMlmeFrame;	// connect to peerSTA parameters
 
-	MTO_PARAMETERS sMtoPara;	// MTO_struct ...
+	struct wb35_mto_params sMtoPara;	// MTO_struct ...
 	struct hw_data sHwData;	//For HAL
-	MDS Mds;
+	struct wb35_mds Mds;
 
 	spinlock_t SpinLock;
 

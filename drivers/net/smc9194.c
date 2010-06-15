@@ -64,7 +64,6 @@ static const char version[] =
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/init.h>
 #include <linux/crc32.h>
@@ -299,7 +298,8 @@ static void smc_hardware_send_packet( struct net_device * dev );
  . to store the packet, I call this routine, which either sends it
  . now, or generates an interrupt when the card is ready for the
  . packet */
-static int  smc_wait_to_send_packet( struct sk_buff * skb, struct net_device *dev );
+static netdev_tx_t  smc_wait_to_send_packet( struct sk_buff * skb,
+					     struct net_device *dev );
 
 /* this does a soft reset on the device */
 static void smc_reset( int ioaddr );
@@ -433,18 +433,18 @@ static void smc_shutdown( int ioaddr )
 */
 
 
-static void smc_setmulticast( int ioaddr, int count, struct dev_mc_list * addrs ) {
+static void smc_setmulticast(int ioaddr, struct net_device *dev)
+{
 	int			i;
 	unsigned char		multicast_table[ 8 ];
-	struct dev_mc_list	* cur_addr;
+	struct dev_mc_list *cur_addr;
 	/* table for flipping the order of 3 bits */
 	unsigned char invert3[] = { 0, 4, 2, 6, 1, 5, 3, 7 };
 
 	/* start with a table of all zeros: reject all */
 	memset( multicast_table, 0, sizeof( multicast_table ) );
 
-	cur_addr = addrs;
-	for ( i = 0; i < count ; i ++, cur_addr = cur_addr->next  ) {
+	netdev_for_each_mc_addr(cur_addr, dev) {
 		int position;
 
 		/* do we have a pointer here? */
@@ -487,7 +487,8 @@ static void smc_setmulticast( int ioaddr, int count, struct dev_mc_list * addrs 
  . o 	(NO): Enable interrupts and let the interrupt handler deal with it.
  . o	(YES):Send it now.
 */
-static int smc_wait_to_send_packet( struct sk_buff * skb, struct net_device * dev )
+static netdev_tx_t smc_wait_to_send_packet(struct sk_buff *skb,
+					   struct net_device *dev)
 {
 	struct smc_local *lp = netdev_priv(dev);
 	unsigned int ioaddr 	= dev->base_addr;
@@ -503,7 +504,7 @@ static int smc_wait_to_send_packet( struct sk_buff * skb, struct net_device * de
 		/* THIS SHOULD NEVER HAPPEN. */
 		dev->stats.tx_aborted_errors++;
 		printk(CARDNAME": Bad Craziness - sent packet while busy.\n" );
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 	lp->saved_skb = skb;
 
@@ -512,7 +513,7 @@ static int smc_wait_to_send_packet( struct sk_buff * skb, struct net_device * de
 	if (length < ETH_ZLEN) {
 		if (skb_padto(skb, ETH_ZLEN)) {
 			netif_wake_queue(dev);
-			return 0;
+			return NETDEV_TX_OK;
 		}
 		length = ETH_ZLEN;
 	}
@@ -534,7 +535,7 @@ static int smc_wait_to_send_packet( struct sk_buff * skb, struct net_device * de
 		lp->saved_skb = NULL;
 		/* this IS an error, but, i don't want the skb saved */
 		netif_wake_queue(dev);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 	/* either way, a packet is waiting now */
 	lp->packets_waiting++;
@@ -571,12 +572,12 @@ static int smc_wait_to_send_packet( struct sk_buff * skb, struct net_device * de
 		SMC_ENABLE_INT( IM_ALLOC_INT );
       		PRINTK2((CARDNAME": memory allocation deferred. \n"));
 		/* it's deferred, but I'll handle it later */
-      		return 0;
+      		return NETDEV_TX_OK;
    	}
 	/* or YES! I can send the packet now.. */
 	smc_hardware_send_packet(dev);
 	netif_wake_queue(dev);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -1048,7 +1049,7 @@ static int __init smc_probe(struct net_device *dev, int ioaddr)
 	memset(netdev_priv(dev), 0, sizeof(struct smc_local));
 
 	/* Grab the IRQ */
-      	retval = request_irq(dev->irq, &smc_interrupt, 0, DRV_NAME, dev);
+      	retval = request_irq(dev->irq, smc_interrupt, 0, DRV_NAME, dev);
       	if (retval) {
 		printk("%s: unable to get IRQ %d (irqval=%d).\n", DRV_NAME,
 			dev->irq, retval);
@@ -1540,7 +1541,7 @@ static void smc_set_multicast_list(struct net_device *dev)
 	/* We just get all multicast packets even if we only want them
 	 . from one source.  This will be changed at some future
 	 . point. */
-	else if (dev->mc_count )  {
+	else if (!netdev_mc_empty(dev)) {
 		/* support hardware multicasting */
 
 		/* be sure I get rid of flags I might have set */
@@ -1548,7 +1549,7 @@ static void smc_set_multicast_list(struct net_device *dev)
 			ioaddr + RCR );
 		/* NOTE: this has to set the bank, so make sure it is the
 		   last thing called.  The bank is set to zero at the top */
-		smc_setmulticast( ioaddr, dev->mc_count, dev->mc_list );
+		smc_setmulticast(ioaddr, dev);
 	}
 	else  {
 		outw( inw( ioaddr + RCR ) & ~(RCR_PROMISC | RCR_ALMUL),

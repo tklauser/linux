@@ -155,7 +155,7 @@ static int mts_usb_probe(struct usb_interface *intf,
 			 const struct usb_device_id *id);
 static void mts_usb_disconnect(struct usb_interface *intf);
 
-static struct usb_device_id mts_usb_ids [];
+static const struct usb_device_id mts_usb_ids[];
 
 static struct usb_driver mts_usb_driver = {
 	.name =		"microtekX6",
@@ -653,37 +653,10 @@ static struct scsi_host_template mts_scsi_host_template = {
 	.max_sectors=		256, /* 128 K */
 };
 
-struct vendor_product
-{
-	char* name;
-	enum
-	{
-		mts_sup_unknown=0,
-		mts_sup_alpha,
-		mts_sup_full
-	}
-	support_status;
-} ;
-
-
-/* These are taken from the msmUSB.inf file on the Windows driver CD */
-static const struct vendor_product mts_supported_products[] =
-{
-	{ "Phantom 336CX",	mts_sup_unknown},
-	{ "Phantom 336CX",	mts_sup_unknown},
-	{ "Scanmaker X6",	mts_sup_alpha},
-	{ "Phantom C6",		mts_sup_unknown},
-	{ "Phantom 336CX",	mts_sup_unknown},
-	{ "ScanMaker V6USL",	mts_sup_unknown},
-	{ "ScanMaker V6USL",	mts_sup_unknown},
-	{ "Scanmaker V6UL",	mts_sup_unknown},
-	{ "Scanmaker V6UPL",	mts_sup_alpha},
-};
-
 /* The entries of microtek_table must correspond, line-by-line to
    the entries of mts_supported_products[]. */
 
-static struct usb_device_id mts_usb_ids [] =
+static const struct usb_device_id mts_usb_ids[] =
 {
 	{ USB_DEVICE(0x4ce, 0x0300) },
 	{ USB_DEVICE(0x5da, 0x0094) },
@@ -711,7 +684,6 @@ static int mts_usb_probe(struct usb_interface *intf,
 	int err_retval = -ENOMEM;
 
 	struct mts_desc * new_desc;
-	struct vendor_product const* p;
 	struct usb_device *dev = interface_to_usbdev (intf);
 
 	/* the current altsetting on the interface we're probing */
@@ -725,15 +697,6 @@ static int mts_usb_probe(struct usb_interface *intf,
 		   le16_to_cpu(dev->descriptor.idVendor) );
 
 	MTS_DEBUG_GOT_HERE();
-
-	p = &mts_supported_products[id - mts_usb_ids];
-
-	MTS_DEBUG_GOT_HERE();
-
-	MTS_DEBUG( "found model %s\n", p->name );
-	if ( p->support_status != mts_sup_full )
-		MTS_MESSAGE( "model %s is not known to be fully supported, reports welcome!\n",
-			     p->name );
 
 	/* the current altsetting on the interface we're probing */
 	altsetting = intf->cur_altsetting;

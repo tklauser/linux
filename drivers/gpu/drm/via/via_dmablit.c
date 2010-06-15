@@ -40,6 +40,7 @@
 #include "via_dmablit.h"
 
 #include <linux/pagemap.h>
+#include <linux/slab.h>
 
 #define VIA_PGDN(x)	     (((unsigned long)(x)) & PAGE_MASK)
 #define VIA_PGOFF(x)	    (((unsigned long)(x)) & ~PAGE_MASK)
@@ -195,10 +196,8 @@ via_free_sg_info(struct pci_dev *pdev, drm_via_sg_info_t *vsg)
 	default:
 		vsg->state = dr_via_sg_init;
 	}
-	if (vsg->bounce_buffer) {
-		vfree(vsg->bounce_buffer);
-		vsg->bounce_buffer = NULL;
-	}
+	vfree(vsg->bounce_buffer);
+	vsg->bounce_buffer = NULL;
 	vsg->free_on_sequence = 0;
 }
 

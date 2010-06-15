@@ -127,7 +127,7 @@ clear_bit_unlock (int nr, volatile void *addr)
  * @addr: Address to start counting from
  *
  * Similarly to clear_bit_unlock, the implementation uses a store
- * with release semantics. See also __raw_spin_unlock().
+ * with release semantics. See also arch_spin_unlock().
  */
 static __inline__ void
 __clear_bit_unlock(int nr, void *addr)
@@ -286,7 +286,7 @@ __test_and_clear_bit(int nr, volatile void * addr)
 {
 	__u32 *p = (__u32 *) addr + (nr >> 5);
 	__u32 m = 1 << (nr & 31);
-	int oldbitset = *p & m;
+	int oldbitset = (*p & m) != 0;
 
 	*p &= ~m;
 	return oldbitset;

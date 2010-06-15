@@ -24,6 +24,7 @@
 #include <linux/notifier.h>
 #include <linux/ioctl.h>
 #include <linux/fb.h>
+#include <linux/slab.h>
 
 #include <asm/firmware.h>
 #include <asm/ps3av.h>
@@ -80,12 +81,12 @@ static const struct avset_video_mode {
 	{     0, }, /* auto */
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_480I,       A_N,  720,  480},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_480P,       A_N,  720,  480},
-	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_720P_60HZ,  A_N, 1280,  720},
+	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_720P_60HZ,  A_W, 1280,  720},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_1080I_60HZ, A_W, 1920, 1080},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_1080P_60HZ, A_W, 1920, 1080},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_576I,       A_N,  720,  576},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_576P,       A_N,  720,  576},
-	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_720P_50HZ,  A_N, 1280,  720},
+	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_720P_50HZ,  A_W, 1280,  720},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_1080I_50HZ, A_W, 1920, 1080},
 	{YUV444, XRGB, PS3AV_CMD_VIDEO_VID_1080P_50HZ, A_W, 1920, 1080},
 	{  RGB8, XRGB, PS3AV_CMD_VIDEO_VID_WXGA,       A_W, 1280,  768},
@@ -532,7 +533,7 @@ static void ps3av_set_videomode_packet(u32 id)
 	res = ps3av_cmd_avb_param(&avb_param, len);
 	if (res == PS3AV_STATUS_NO_SYNC_HEAD)
 		printk(KERN_WARNING
-		       "%s: Command failed. Please try your request again. \n",
+		       "%s: Command failed. Please try your request again.\n",
 		       __func__);
 	else if (res)
 		dev_dbg(&ps3av->dev->core, "ps3av_cmd_avb_param failed\n");
@@ -937,7 +938,7 @@ int ps3av_audio_mute(int mute)
 
 EXPORT_SYMBOL_GPL(ps3av_audio_mute);
 
-static int ps3av_probe(struct ps3_system_bus_device *dev)
+static int __devinit ps3av_probe(struct ps3_system_bus_device *dev)
 {
 	int res;
 	int id;
@@ -1048,7 +1049,7 @@ static struct ps3_vuart_port_driver ps3av_driver = {
 	.shutdown = ps3av_shutdown,
 };
 
-static int ps3av_module_init(void)
+static int __init ps3av_module_init(void)
 {
 	int error;
 

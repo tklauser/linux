@@ -98,6 +98,7 @@ struct snd_pcm_ops {
 #define SNDRV_PCM_IOCTL1_INFO		1
 #define SNDRV_PCM_IOCTL1_CHANNEL_INFO	2
 #define SNDRV_PCM_IOCTL1_GSTATE		3
+#define SNDRV_PCM_IOCTL1_FIFO_SIZE	4
 
 #define SNDRV_PCM_TRIGGER_STOP		0
 #define SNDRV_PCM_TRIGGER_START		1
@@ -261,6 +262,8 @@ struct snd_pcm_hw_constraint_list {
 	unsigned int mask;
 };
 
+struct snd_pcm_hwptr_log;
+
 struct snd_pcm_runtime {
 	/* -- Status -- */
 	struct snd_pcm_substream *trigger_master;
@@ -270,6 +273,7 @@ struct snd_pcm_runtime {
 	snd_pcm_uframes_t hw_ptr_base;	/* Position at buffer restart */
 	snd_pcm_uframes_t hw_ptr_interrupt; /* Position at interrupt time */
 	unsigned long hw_ptr_jiffies;	/* Time when hw_ptr is updated */
+	snd_pcm_sframes_t delay;	/* extra delay; typically FIFO size */
 
 	/* -- HW params -- */
 	snd_pcm_access_t access;	/* access mode */
@@ -308,7 +312,9 @@ struct snd_pcm_runtime {
 	struct snd_pcm_mmap_control *control;
 
 	/* -- locking / scheduling -- */
-	wait_queue_head_t sleep;
+	unsigned int twake: 1;		/* do transfer (!poll) wakeup */
+	wait_queue_head_t sleep;	/* poll sleep */
+	wait_queue_head_t tsleep;	/* transfer sleep */
 	struct fasync_struct *fasync;
 
 	/* -- private section -- */
@@ -338,6 +344,10 @@ struct snd_pcm_runtime {
 	/* -- OSS things -- */
 	struct snd_pcm_oss_runtime oss;
 #endif
+
+#ifdef CONFIG_SND_PCM_XRUN_DEBUG
+	struct snd_pcm_hwptr_log *hwptr_log;
+#endif
 };
 
 struct snd_pcm_group {		/* keep linked substreams */
@@ -345,6 +355,8 @@ struct snd_pcm_group {		/* keep linked substreams */
 	struct list_head substreams;
 	int count;
 };
+
+struct pid;
 
 struct snd_pcm_substream {
 	struct snd_pcm *pcm;
@@ -377,6 +389,7 @@ struct snd_pcm_substream {
 	atomic_t mmap_count;
 	unsigned int f_flags;
 	void (*pcm_release)(struct snd_pcm_substream *);
+	struct pid *pid;
 #if defined(CONFIG_SND_PCM_OSS) || defined(CONFIG_SND_PCM_OSS_MODULE)
 	/* -- OSS things -- */
 	struct snd_pcm_oss_substream oss;
@@ -485,80 +498,6 @@ int snd_pcm_attach_substream(struct snd_pcm *pcm, int stream, struct file *file,
 void snd_pcm_detach_substream(struct snd_pcm_substream *substream);
 void snd_pcm_vma_notify_data(void *client, void *data);
 int snd_pcm_mmap_data(struct snd_pcm_substream *substream, struct file *file, struct vm_area_struct *area);
-
-#if BITS_PER_LONG >= 64
-
-static inline void div64_32(u_int64_t *n, u_int32_t div, u_int32_t *rem)
-{
-	*rem = *n % div;
-	*n /= div;
-}
-
-#elif defined(i386)
-
-static inline void div64_32(u_int64_t *n, u_int32_t div, u_int32_t *rem)
-{
-	u_int32_t low, high;
-	low = *n & 0xffffffff;
-	high = *n >> 32;
-	if (high) {
-		u_int32_t high1 = high % div;
-		high /= div;
-		asm("divl %2":"=a" (low), "=d" (*rem):"rm" (div), "a" (low), "d" (high1));
-		*n = (u_int64_t)high << 32 | low;
-	} else {
-		*n = low / div;
-		*rem = low % div;
-	}
-}
-#else
-
-static inline void divl(u_int32_t high, u_int32_t low,
-			u_int32_t div,
-			u_int32_t *q, u_int32_t *r)
-{
-	u_int64_t n = (u_int64_t)high << 32 | low;
-	u_int64_t d = (u_int64_t)div << 31;
-	u_int32_t q1 = 0;
-	int c = 32;
-	while (n > 0xffffffffU) {
-		q1 <<= 1;
-		if (n >= d) {
-			n -= d;
-			q1 |= 1;
-		}
-		d >>= 1;
-		c--;
-	}
-	q1 <<= c;
-	if (n) {
-		low = n;
-		*q = q1 | (low / div);
-		*r = low % div;
-	} else {
-		*r = 0;
-		*q = q1;
-	}
-	return;
-}
-
-static inline void div64_32(u_int64_t *n, u_int32_t div, u_int32_t *rem)
-{
-	u_int32_t low, high;
-	low = *n & 0xffffffff;
-	high = *n >> 32;
-	if (high) {
-		u_int32_t high1 = high % div;
-		u_int32_t low1 = low;
-		high /= div;
-		divl(high1, low1, div, &low, rem);
-		*n = (u_int64_t)high << 32 | low;
-	} else {
-		*n = low / div;
-		*rem = low % div;
-	}
-}
-#endif
 
 /*
  *  PCM library
@@ -903,6 +842,8 @@ void snd_pcm_set_sync(struct snd_pcm_substream *substream);
 int snd_pcm_lib_interleave_len(struct snd_pcm_substream *substream);
 int snd_pcm_lib_ioctl(struct snd_pcm_substream *substream,
 		      unsigned int cmd, void *arg);                      
+int snd_pcm_update_state(struct snd_pcm_substream *substream,
+			 struct snd_pcm_runtime *runtime);
 int snd_pcm_update_hw_ptr(struct snd_pcm_substream *substream);
 int snd_pcm_playback_xrun_check(struct snd_pcm_substream *substream);
 int snd_pcm_capture_xrun_check(struct snd_pcm_substream *substream);
@@ -974,6 +915,45 @@ int snd_pcm_lib_preallocate_pages_for_all(struct snd_pcm *pcm,
 int snd_pcm_lib_malloc_pages(struct snd_pcm_substream *substream, size_t size);
 int snd_pcm_lib_free_pages(struct snd_pcm_substream *substream);
 
+int _snd_pcm_lib_alloc_vmalloc_buffer(struct snd_pcm_substream *substream,
+				      size_t size, gfp_t gfp_flags);
+int snd_pcm_lib_free_vmalloc_buffer(struct snd_pcm_substream *substream);
+struct page *snd_pcm_lib_get_vmalloc_page(struct snd_pcm_substream *substream,
+					  unsigned long offset);
+#if 0 /* for kernel-doc */
+/**
+ * snd_pcm_lib_alloc_vmalloc_buffer - allocate virtual DMA buffer
+ * @substream: the substream to allocate the buffer to
+ * @size: the requested buffer size, in bytes
+ *
+ * Allocates the PCM substream buffer using vmalloc(), i.e., the memory is
+ * contiguous in kernel virtual space, but not in physical memory.  Use this
+ * if the buffer is accessed by kernel code but not by device DMA.
+ *
+ * Returns 1 if the buffer was changed, 0 if not changed, or a negative error
+ * code.
+ */
+static int snd_pcm_lib_alloc_vmalloc_buffer
+			(struct snd_pcm_substream *substream, size_t size);
+/**
+ * snd_pcm_lib_alloc_vmalloc_32_buffer - allocate 32-bit-addressable buffer
+ * @substream: the substream to allocate the buffer to
+ * @size: the requested buffer size, in bytes
+ *
+ * This function works like snd_pcm_lib_alloc_vmalloc_buffer(), but uses
+ * vmalloc_32(), i.e., the pages are allocated from 32-bit-addressable memory.
+ */
+static int snd_pcm_lib_alloc_vmalloc_32_buffer
+			(struct snd_pcm_substream *substream, size_t size);
+#endif
+#define snd_pcm_lib_alloc_vmalloc_buffer(subs, size) \
+	_snd_pcm_lib_alloc_vmalloc_buffer \
+			(subs, size, GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO)
+#define snd_pcm_lib_alloc_vmalloc_32_buffer(subs, size) \
+	_snd_pcm_lib_alloc_vmalloc_buffer \
+			(subs, size, GFP_KERNEL | GFP_DMA32 | __GFP_ZERO)
+
+#ifdef CONFIG_SND_DMA_SGBUF
 /*
  * SG-buffer handling
  */
@@ -999,6 +979,28 @@ struct page *snd_pcm_sgbuf_ops_page(struct snd_pcm_substream *substream,
 unsigned int snd_pcm_sgbuf_get_chunk_size(struct snd_pcm_substream *substream,
 					  unsigned int ofs, unsigned int size);
 
+#else /* !SND_DMA_SGBUF */
+/*
+ * fake using a continuous buffer
+ */
+static inline dma_addr_t
+snd_pcm_sgbuf_get_addr(struct snd_pcm_substream *substream, unsigned int ofs)
+{
+	return substream->runtime->dma_addr + ofs;
+}
+
+static inline void *
+snd_pcm_sgbuf_get_ptr(struct snd_pcm_substream *substream, unsigned int ofs)
+{
+	return substream->runtime->dma_area + ofs;
+}
+
+#define snd_pcm_sgbuf_ops_page	NULL
+
+#define snd_pcm_sgbuf_get_chunk_size(subs, ofs, size)	(size)
+
+#endif /* SND_DMA_SGBUF */
+
 /* handle mmap counter - PCM mmap callback should handle this counter properly */
 static inline void snd_pcm_mmap_data_open(struct vm_area_struct *area)
 {
@@ -1021,6 +1023,10 @@ int snd_pcm_lib_mmap_iomem(struct snd_pcm_substream *substream, struct vm_area_s
 #define snd_pcm_lib_mmap_iomem	NULL
 #endif
 
+int snd_pcm_lib_mmap_noncached(struct snd_pcm_substream *substream,
+			       struct vm_area_struct *area);
+#define snd_pcm_lib_mmap_vmalloc	snd_pcm_lib_mmap_noncached
+
 static inline void snd_pcm_limit_isa_dma_size(int dma, size_t *max)
 {
 	*max = dma < 4 ? 64 * 1024 : 128 * 1024;
@@ -1036,5 +1042,7 @@ static inline void snd_pcm_limit_isa_dma_size(int dma, size_t *max)
 					 (IEC958_AES3_CON_FS_48000<<24))
 
 #define PCM_RUNTIME_CHECK(sub) snd_BUG_ON(!(sub) || !(sub)->runtime)
+
+const char *snd_pcm_format_name(snd_pcm_format_t format);
 
 #endif /* __SOUND_PCM_H */

@@ -14,14 +14,15 @@
  */
 
 #include <linux/ieee80211.h>
+#include <linux/slab.h>
 #include <net/mac80211.h>
 #include "ieee80211_i.h"
+#include "driver-ops.h"
 
 void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 				    u16 initiator, u16 reason)
 {
 	struct ieee80211_local *local = sta->local;
-	struct ieee80211_hw *hw = &local->hw;
 	int i;
 
 	/* check if TID is in operational state */
@@ -41,8 +42,8 @@ void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 	       sta->sta.addr, tid);
 #endif /* CONFIG_MAC80211_HT_DEBUG */
 
-	if (local->ops->ampdu_action(hw, IEEE80211_AMPDU_RX_STOP,
-				     &sta->sta, tid, NULL))
+	if (drv_ampdu_action(local, sta->sdata, IEEE80211_AMPDU_RX_STOP,
+			     &sta->sta, tid, NULL))
 		printk(KERN_DEBUG "HW problem - can not stop rx "
 				"aggregation for tid %d\n", tid);
 
@@ -68,6 +69,7 @@ void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 	spin_lock_bh(&sta->lock);
 	/* free resources */
 	kfree(sta->ampdu_mlme.tid_rx[tid]->reorder_buf);
+	kfree(sta->ampdu_mlme.tid_rx[tid]->reorder_time);
 
 	if (!sta->ampdu_mlme.tid_rx[tid]->shutdown) {
 		kfree(sta->ampdu_mlme.tid_rx[tid]);
@@ -81,16 +83,11 @@ void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
 void ieee80211_sta_stop_rx_ba_session(struct ieee80211_sub_if_data *sdata, u8 *ra, u16 tid,
 					u16 initiator, u16 reason)
 {
-	struct ieee80211_local *local = sdata->local;
 	struct sta_info *sta;
-
-	/* stop HW Rx aggregation. ampdu_action existence
-	 * already verified in session init so we add the BUG_ON */
-	BUG_ON(!local->ops->ampdu_action);
 
 	rcu_read_lock();
 
-	sta = sta_info_get(local, ra);
+	sta = sta_info_get(sdata, ra);
 	if (!sta) {
 		rcu_read_unlock();
 		return;
@@ -138,7 +135,7 @@ static void ieee80211_send_addba_resp(struct ieee80211_sub_if_data *sdata, u8 *d
 
 	if (!skb) {
 		printk(KERN_DEBUG "%s: failed to allocate buffer "
-		       "for addba resp frame\n", sdata->dev->name);
+		       "for addba resp frame\n", sdata->name);
 		return;
 	}
 
@@ -146,10 +143,10 @@ static void ieee80211_send_addba_resp(struct ieee80211_sub_if_data *sdata, u8 *d
 	mgmt = (struct ieee80211_mgmt *) skb_put(skb, 24);
 	memset(mgmt, 0, 24);
 	memcpy(mgmt->da, da, ETH_ALEN);
-	memcpy(mgmt->sa, sdata->dev->dev_addr, ETH_ALEN);
+	memcpy(mgmt->sa, sdata->vif.addr, ETH_ALEN);
 	if (sdata->vif.type == NL80211_IFTYPE_AP ||
 	    sdata->vif.type == NL80211_IFTYPE_AP_VLAN)
-		memcpy(mgmt->bssid, sdata->dev->dev_addr, ETH_ALEN);
+		memcpy(mgmt->bssid, sdata->vif.addr, ETH_ALEN);
 	else if (sdata->vif.type == NL80211_IFTYPE_STATION)
 		memcpy(mgmt->bssid, sdata->u.mgd.bssid, ETH_ALEN);
 
@@ -169,7 +166,7 @@ static void ieee80211_send_addba_resp(struct ieee80211_sub_if_data *sdata, u8 *d
 	mgmt->u.action.u.addba_resp.timeout = cpu_to_le16(timeout);
 	mgmt->u.action.u.addba_resp.status = cpu_to_le16(status);
 
-	ieee80211_tx_skb(sdata, skb, 1);
+	ieee80211_tx_skb(sdata, skb);
 }
 
 void ieee80211_process_addba_request(struct ieee80211_local *local,
@@ -209,9 +206,9 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	 * check if configuration can support the BA policy
 	 * and if buffer size does not exceeds max value */
 	/* XXX: check own ht delayed BA capability?? */
-	if (((ba_policy != 1)
-		&& (!(sta->sta.ht_cap.cap & IEEE80211_HT_CAP_DELAY_BA)))
-		|| (buf_size > IEEE80211_MAX_AMPDU_BUF)) {
+	if (((ba_policy != 1) &&
+	     (!(sta->sta.ht_cap.cap & IEEE80211_HT_CAP_DELAY_BA))) ||
+	    (buf_size > IEEE80211_MAX_AMPDU_BUF)) {
 		status = WLAN_STATUS_INVALID_QOS_PARAM;
 #ifdef CONFIG_MAC80211_HT_DEBUG
 		if (net_ratelimit())
@@ -268,19 +265,23 @@ void ieee80211_process_addba_request(struct ieee80211_local *local,
 	/* prepare reordering buffer */
 	tid_agg_rx->reorder_buf =
 		kcalloc(buf_size, sizeof(struct sk_buff *), GFP_ATOMIC);
-	if (!tid_agg_rx->reorder_buf) {
+	tid_agg_rx->reorder_time =
+		kcalloc(buf_size, sizeof(unsigned long), GFP_ATOMIC);
+	if (!tid_agg_rx->reorder_buf || !tid_agg_rx->reorder_time) {
 #ifdef CONFIG_MAC80211_HT_DEBUG
 		if (net_ratelimit())
 			printk(KERN_ERR "can not allocate reordering buffer "
 			       "to tid %d\n", tid);
 #endif
+		kfree(tid_agg_rx->reorder_buf);
+		kfree(tid_agg_rx->reorder_time);
 		kfree(sta->ampdu_mlme.tid_rx[tid]);
+		sta->ampdu_mlme.tid_rx[tid] = NULL;
 		goto end;
 	}
 
-	if (local->ops->ampdu_action)
-		ret = local->ops->ampdu_action(hw, IEEE80211_AMPDU_RX_START,
-					       &sta->sta, tid, &start_seq_num);
+	ret = drv_ampdu_action(local, sta->sdata, IEEE80211_AMPDU_RX_START,
+			       &sta->sta, tid, &start_seq_num);
 #ifdef CONFIG_MAC80211_HT_DEBUG
 	printk(KERN_DEBUG "Rx A-MPDU request on tid %d result %d\n", tid, ret);
 #endif /* CONFIG_MAC80211_HT_DEBUG */

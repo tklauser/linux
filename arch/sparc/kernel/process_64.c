@@ -251,7 +251,7 @@ static void __global_reg_poll(struct global_reg_snapshot *gp)
 	}
 }
 
-void __trigger_all_cpu_backtrace(void)
+void arch_trigger_all_cpu_backtrace(void)
 {
 	struct thread_info *tp = current_thread_info();
 	struct pt_regs *regs = get_irq_regs();
@@ -304,7 +304,7 @@ void __trigger_all_cpu_backtrace(void)
 
 static void sysrq_handle_globreg(int key, struct tty_struct *tty)
 {
-	__trigger_all_cpu_backtrace();
+	arch_trigger_all_cpu_backtrace();
 }
 
 static struct sysrq_key_op sparc_globalreg_op = {
@@ -352,12 +352,6 @@ void exit_thread(void)
 		else
 			t->utraps[0]--;
 	}
-
-	if (test_and_clear_thread_flag(TIF_PERFCTR)) {
-		t->user_cntd0 = t->user_cntd1 = NULL;
-		t->pcr_reg = 0;
-		write_pcr(0);
-	}
 }
 
 void flush_thread(void)
@@ -365,26 +359,11 @@ void flush_thread(void)
 	struct thread_info *t = current_thread_info();
 	struct mm_struct *mm;
 
-	if (test_ti_thread_flag(t, TIF_ABI_PENDING)) {
-		clear_ti_thread_flag(t, TIF_ABI_PENDING);
-		if (test_ti_thread_flag(t, TIF_32BIT))
-			clear_ti_thread_flag(t, TIF_32BIT);
-		else
-			set_ti_thread_flag(t, TIF_32BIT);
-	}
-
 	mm = t->task->mm;
 	if (mm)
 		tsb_context_switch(mm);
 
 	set_thread_wsaved(0);
-
-	/* Turn off performance counters if on. */
-	if (test_and_clear_thread_flag(TIF_PERFCTR)) {
-		t->user_cntd0 = t->user_cntd1 = NULL;
-		t->pcr_reg = 0;
-		write_pcr(0);
-	}
 
 	/* Clear FPU register state. */
 	t->fpsaved[0] = 0;
@@ -406,11 +385,11 @@ static unsigned long clone_stackframe(unsigned long csp, unsigned long psp)
 	} else
 		__get_user(fp, &(((struct reg_window32 __user *)psp)->ins[6]));
 
-	/* Now 8-byte align the stack as this is mandatory in the
-	 * Sparc ABI due to how register windows work.  This hides
-	 * the restriction from thread libraries etc.  -DaveM
+	/* Now align the stack as this is mandatory in the Sparc ABI
+	 * due to how register windows work.  This hides the
+	 * restriction from thread libraries etc.
 	 */
-	csp &= ~7UL;
+	csp &= ~15UL;
 
 	distance = fp - psp;
 	rval = (csp - distance);
@@ -599,16 +578,6 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 		t->kregs->u_regs[UREG_FP] =
 		  ((unsigned long) child_sf) - STACK_BIAS;
 
-		/* Special case, if we are spawning a kernel thread from
-		 * a userspace task (usermode helper, NFS or similar), we
-		 * must disable performance counters in the child because
-		 * the address space and protection realm are changing.
-		 */
-		if (t->flags & _TIF_PERFCTR) {
-			t->user_cntd0 = t->user_cntd1 = NULL;
-			t->pcr_reg = 0;
-			t->flags &= ~_TIF_PERFCTR;
-		}
 		t->flags |= ((long)ASI_P << TI_FLAG_CURRENT_DS_SHIFT);
 		t->kregs->u_regs[UREG_G6] = (unsigned long) t;
 		t->kregs->u_regs[UREG_G4] = (unsigned long) t->task;

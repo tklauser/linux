@@ -166,7 +166,7 @@ static void palm_bk3710_setpiomode(void __iomem *base, ide_drive_t *mate,
 	writel(val32, base + BK3710_DATRCVR);
 
 	if (mate) {
-		u8 mode2 = ide_get_best_pio_mode(mate, 255, 4);
+		u8 mode2 = mate->pio_mode - XFER_PIO_0;
 
 		if (mode2 < mode)
 			mode = mode2;
@@ -188,10 +188,11 @@ static void palm_bk3710_setpiomode(void __iomem *base, ide_drive_t *mate,
 	writel(val32, base + BK3710_REGRCVR);
 }
 
-static void palm_bk3710_set_dma_mode(ide_drive_t *drive, u8 xferspeed)
+static void palm_bk3710_set_dma_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
 	int is_slave = drive->dn & 1;
-	void __iomem *base = (void *)drive->hwif->dma_base;
+	void __iomem *base = (void *)hwif->dma_base;
+	const u8 xferspeed = drive->dma_mode;
 
 	if (xferspeed >= XFER_UDMA_0) {
 		palm_bk3710_setudmamode(base, is_slave,
@@ -203,12 +204,13 @@ static void palm_bk3710_set_dma_mode(ide_drive_t *drive, u8 xferspeed)
 	}
 }
 
-static void palm_bk3710_set_pio_mode(ide_drive_t *drive, u8 pio)
+static void palm_bk3710_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
 	unsigned int cycle_time;
 	int is_slave = drive->dn & 1;
 	ide_drive_t *mate;
-	void __iomem *base = (void *)drive->hwif->dma_base;
+	void __iomem *base = (void *)hwif->dma_base;
+	const u8 pio = drive->pio_mode - XFER_PIO_0;
 
 	/*
 	 * Obtain the drive PIO data for tuning the Palm Chip registers
@@ -306,6 +308,7 @@ static struct ide_port_info __devinitdata palm_bk3710_port_info = {
 	.host_flags		= IDE_HFLAG_MMIO,
 	.pio_mask		= ATA_PIO4,
 	.mwdma_mask		= ATA_MWDMA2,
+	.chipset		= ide_palm3710,
 };
 
 static int __init palm_bk3710_probe(struct platform_device *pdev)
@@ -315,9 +318,9 @@ static int __init palm_bk3710_probe(struct platform_device *pdev)
 	void __iomem *base;
 	unsigned long rate, mem_size;
 	int i, rc;
-	hw_regs_t hw, *hws[] = { &hw, NULL, NULL, NULL };
+	struct ide_hw hw, *hws[] = { &hw };
 
-	clk = clk_get(&pdev->dev, "IDECLK");
+	clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(clk))
 		return -ENODEV;
 
@@ -363,13 +366,12 @@ static int __init palm_bk3710_probe(struct platform_device *pdev)
 			(base + IDE_PALM_ATA_PRI_CTL_OFFSET);
 	hw.irq = irq->start;
 	hw.dev = &pdev->dev;
-	hw.chipset = ide_palm3710;
 
 	palm_bk3710_port_info.udma_mask = rate < 100000000 ? ATA_UDMA4 :
 							     ATA_UDMA5;
 
 	/* Register the IDE interface with Linux */
-	rc = ide_host_add(&palm_bk3710_port_info, hws, NULL);
+	rc = ide_host_add(&palm_bk3710_port_info, hws, 1, NULL);
 	if (rc)
 		goto out;
 

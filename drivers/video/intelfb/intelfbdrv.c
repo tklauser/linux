@@ -874,6 +874,9 @@ static int __devinit intelfb_pci_register(struct pci_dev *pdev,
 	if (bailearly == 18)
 		bailout(dinfo);
 
+	/* read active pipe */
+	dinfo->pipe = intelfbhw_active_pipe(&dinfo->save_state);
+
 	/* Cursor initialisation */
 	if (dinfo->hwcursor) {
 		intelfbhw_cursor_init(dinfo);
@@ -1364,6 +1367,11 @@ static int intelfb_set_par(struct fb_info *info)
 
 	DBG_MSG("intelfb_set_par (%dx%d-%d)\n", info->var.xres,
 		info->var.yres, info->var.bits_per_pixel);
+
+	/*
+	 * Disable VCO prior to timing register change.
+	 */
+	OUTREG(DPLL_A, INREG(DPLL_A) & ~DPLL_VCO_ENABLE);
 
 	intelfb_blank(FB_BLANK_POWERDOWN, info);
 

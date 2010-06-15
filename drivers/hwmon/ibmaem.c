@@ -29,6 +29,7 @@
 #include <linux/kdev_t.h>
 #include <linux/spinlock.h>
 #include <linux/idr.h>
+#include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/platform_device.h>
 #include <linux/math64.h>
@@ -1127,3 +1128,4 @@ MODULE_ALIAS("dmi:bvnIBM:*:pnIBMSystemx3650-*");
 MODULE_ALIAS("dmi:bvnIBM:*:pnIBMSystemx3655-*");
 MODULE_ALIAS("dmi:bvnIBM:*:pnIBMSystemx3755-*");
 MODULE_ALIAS("dmi:bvnIBM:*:pnIBM3850M2/x3950M2-*");
+MODULE_ALIAS("dmi:bvnIBM:*:pnIBMBladeHC10-*");

@@ -20,6 +20,11 @@
 #define _ASM_POWERPC_LPPACA_H
 #ifdef __KERNEL__
 
+/* These definitions relate to hypervisors that only exist when using
+ * a server type processor
+ */
+#ifdef CONFIG_PPC_BOOK3S
+
 //=============================================================================
 //
 //	This control block contains the data that is shared between the
@@ -95,7 +100,14 @@ struct lppaca {
 	// Used to pass parms from the OS to PLIC for SetAsrAndRfid
 	u64	saved_gpr3;		// Saved GPR3                   x20-x27
 	u64	saved_gpr4;		// Saved GPR4                   x28-x2F
-	u64	saved_gpr5;		// Saved GPR5                   x30-x37
+	union {
+		u64	saved_gpr5;	/* Saved GPR5               x30-x37 */
+		struct {
+			u8	cede_latency_hint;  /*			x30 */
+			u8	reserved[7];        /*		    x31-x36 */
+		} fields;
+	} gpr5_dword;
+
 
 	u8	dtl_enable_mask;	// Dispatch Trace Log mask	x38-x38
 	u8	donate_dedicated_cpu;	// Donate dedicated CPU cycles  x39-x39
@@ -158,5 +170,6 @@ struct slb_shadow {
 
 extern struct slb_shadow slb_shadow[];
 
+#endif /* CONFIG_PPC_BOOK3S */
 #endif /* __KERNEL__ */
 #endif /* _ASM_POWERPC_LPPACA_H */

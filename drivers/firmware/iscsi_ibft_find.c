@@ -27,7 +27,6 @@
 #include <linux/limits.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <linux/slab.h>
 #include <linux/stat.h>
 #include <linux/string.h>
 #include <linux/types.h>
@@ -52,7 +51,7 @@ EXPORT_SYMBOL_GPL(ibft_addr);
  * Routine used to find the iSCSI Boot Format Table. The logical
  * kernel address is set in the ibft_addr global variable.
  */
-void __init reserve_ibft_region(void)
+unsigned long __init find_ibft_region(unsigned long *sizep)
 {
 	unsigned long pos;
 	unsigned int len = 0;
@@ -65,10 +64,10 @@ void __init reserve_ibft_region(void)
 		 * so skip that area */
 		if (pos == VGA_MEM)
 			pos += VGA_SIZE;
-		virt = phys_to_virt(pos);
+		virt = isa_bus_to_virt(pos);
 		if (memcmp(virt, IBFT_SIGN, IBFT_SIGN_LEN) == 0) {
 			unsigned long *addr =
-			    (unsigned long *)phys_to_virt(pos + 4);
+			    (unsigned long *)isa_bus_to_virt(pos + 4);
 			len = *addr;
 			/* if the length of the table extends past 1M,
 			 * the table cannot be valid. */
@@ -78,6 +77,11 @@ void __init reserve_ibft_region(void)
 			}
 		}
 	}
-	if (ibft_addr)
-		reserve_bootmem(pos, PAGE_ALIGN(len), BOOTMEM_DEFAULT);
+	if (ibft_addr) {
+		*sizep = PAGE_ALIGN(len);
+		return pos;
+	}
+
+	*sizep = 0;
+	return 0;
 }

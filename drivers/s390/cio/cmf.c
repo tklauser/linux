@@ -462,7 +462,7 @@ static struct cmb_area cmb_area = {
  * block of memory, which can not be moved as long as any channel
  * is active. Therefore, a maximum number of subchannels needs to
  * be defined somewhere. This is a module parameter, defaulting to
- * a resonable value of 1024, or 32 kb of memory.
+ * a reasonable value of 1024, or 32 kb of memory.
  * Current kernels don't allow kmalloc with more than 128kb, so the
  * maximum is 4096.
  */
@@ -1203,6 +1203,11 @@ static ssize_t cmb_enable_store(struct device *dev,
 }
 
 DEVICE_ATTR(cmb_enable, 0644, cmb_enable_show, cmb_enable_store);
+
+int ccw_set_cmf(struct ccw_device *cdev, int enable)
+{
+	return cmbops->set(cdev, enable ? 2 : 0);
+}
 
 /**
  * enable_cmf() - switch on the channel measurement for a specific device

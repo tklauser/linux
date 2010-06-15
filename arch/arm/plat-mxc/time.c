@@ -29,22 +29,96 @@
 #include <mach/hardware.h>
 #include <asm/mach/time.h>
 #include <mach/common.h>
-#include <mach/mxc_timer.h>
+
+/*
+ * There are 2 versions of the timer hardware on Freescale MXC hardware.
+ * Version 1: MX1/MXL, MX21, MX27.
+ * Version 2: MX25, MX31, MX35, MX37, MX51
+ */
+
+/* defines common for all i.MX */
+#define MXC_TCTL		0x00
+#define MXC_TCTL_TEN		(1 << 0) /* Enable module */
+#define MXC_TPRER		0x04
+
+/* MX1, MX21, MX27 */
+#define MX1_2_TCTL_CLK_PCLK1	(1 << 1)
+#define MX1_2_TCTL_IRQEN	(1 << 4)
+#define MX1_2_TCTL_FRR		(1 << 8)
+#define MX1_2_TCMP		0x08
+#define MX1_2_TCN		0x10
+#define MX1_2_TSTAT		0x14
+
+/* MX21, MX27 */
+#define MX2_TSTAT_CAPT		(1 << 1)
+#define MX2_TSTAT_COMP		(1 << 0)
+
+/* MX31, MX35, MX25, MXC91231, MX5 */
+#define MX3_TCTL_WAITEN		(1 << 3) /* Wait enable mode */
+#define MX3_TCTL_CLK_IPG	(1 << 6)
+#define MX3_TCTL_FRR		(1 << 9)
+#define MX3_IR			0x0c
+#define MX3_TSTAT		0x08
+#define MX3_TSTAT_OF1		(1 << 0)
+#define MX3_TCN			0x24
+#define MX3_TCMP		0x10
+
+#define timer_is_v1()	(cpu_is_mx1() || cpu_is_mx21() || cpu_is_mx27())
+#define timer_is_v2()	(!timer_is_v1())
 
 static struct clock_event_device clockevent_mxc;
 static enum clock_event_mode clockevent_mode = CLOCK_EVT_MODE_UNUSED;
 
-/* clock source */
+static void __iomem *timer_base;
 
-static cycle_t mxc_get_cycles(struct clocksource *cs)
+static inline void gpt_irq_disable(void)
 {
-	return __raw_readl(TIMER_BASE + MXC_TCN);
+	unsigned int tmp;
+
+	if (timer_is_v2())
+		__raw_writel(0, timer_base + MX3_IR);
+	else {
+		tmp = __raw_readl(timer_base + MXC_TCTL);
+		__raw_writel(tmp & ~MX1_2_TCTL_IRQEN, timer_base + MXC_TCTL);
+	}
+}
+
+static inline void gpt_irq_enable(void)
+{
+	if (timer_is_v2())
+		__raw_writel(1<<0, timer_base + MX3_IR);
+	else {
+		__raw_writel(__raw_readl(timer_base + MXC_TCTL) | MX1_2_TCTL_IRQEN,
+			timer_base + MXC_TCTL);
+	}
+}
+
+static void gpt_irq_acknowledge(void)
+{
+	if (timer_is_v1()) {
+		if (cpu_is_mx1())
+			__raw_writel(0, timer_base + MX1_2_TSTAT);
+		else
+			__raw_writel(MX2_TSTAT_CAPT | MX2_TSTAT_COMP,
+				timer_base + MX1_2_TSTAT);
+	} else if (timer_is_v2())
+		__raw_writel(MX3_TSTAT_OF1, timer_base + MX3_TSTAT);
+}
+
+static cycle_t mx1_2_get_cycles(struct clocksource *cs)
+{
+	return __raw_readl(timer_base + MX1_2_TCN);
+}
+
+static cycle_t mx3_get_cycles(struct clocksource *cs)
+{
+	return __raw_readl(timer_base + MX3_TCN);
 }
 
 static struct clocksource clocksource_mxc = {
 	.name 		= "mxc_timer1",
 	.rating		= 200,
-	.read		= mxc_get_cycles,
+	.read		= mx1_2_get_cycles,
 	.mask		= CLOCKSOURCE_MASK(32),
 	.shift 		= 20,
 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
@@ -53,6 +127,9 @@ static struct clocksource clocksource_mxc = {
 static int __init mxc_clocksource_init(struct clk *timer_clk)
 {
 	unsigned int c = clk_get_rate(timer_clk);
+
+	if (timer_is_v2())
+		clocksource_mxc.read = mx3_get_cycles;
 
 	clocksource_mxc.mult = clocksource_hz2mult(c,
 					clocksource_mxc.shift);
@@ -63,15 +140,29 @@ static int __init mxc_clocksource_init(struct clk *timer_clk)
 
 /* clock event */
 
-static int mxc_set_next_event(unsigned long evt,
+static int mx1_2_set_next_event(unsigned long evt,
 			      struct clock_event_device *unused)
 {
 	unsigned long tcmp;
 
-	tcmp = __raw_readl(TIMER_BASE + MXC_TCN) + evt;
-	__raw_writel(tcmp, TIMER_BASE + MXC_TCMP);
+	tcmp = __raw_readl(timer_base + MX1_2_TCN) + evt;
 
-	return (int)(tcmp - __raw_readl(TIMER_BASE + MXC_TCN)) < 0 ?
+	__raw_writel(tcmp, timer_base + MX1_2_TCMP);
+
+	return (int)(tcmp - __raw_readl(timer_base + MX1_2_TCN)) < 0 ?
+				-ETIME : 0;
+}
+
+static int mx3_set_next_event(unsigned long evt,
+			      struct clock_event_device *unused)
+{
+	unsigned long tcmp;
+
+	tcmp = __raw_readl(timer_base + MX3_TCN) + evt;
+
+	__raw_writel(tcmp, timer_base + MX3_TCMP);
+
+	return (int)(tcmp - __raw_readl(timer_base + MX3_TCN)) < 0 ?
 				-ETIME : 0;
 }
 
@@ -100,8 +191,13 @@ static void mxc_set_mode(enum clock_event_mode mode,
 
 	if (mode != clockevent_mode) {
 		/* Set event time into far-far future */
-		__raw_writel(__raw_readl(TIMER_BASE + MXC_TCN) - 3,
-				TIMER_BASE + MXC_TCMP);
+		if (timer_is_v2())
+			__raw_writel(__raw_readl(timer_base + MX3_TCN) - 3,
+					timer_base + MX3_TCMP);
+		else
+			__raw_writel(__raw_readl(timer_base + MX1_2_TCN) - 3,
+					timer_base + MX1_2_TCMP);
+
 		/* Clear pending interrupt */
 		gpt_irq_acknowledge();
 	}
@@ -148,7 +244,10 @@ static irqreturn_t mxc_timer_interrupt(int irq, void *dev_id)
 	struct clock_event_device *evt = &clockevent_mxc;
 	uint32_t tstat;
 
-	tstat = __raw_readl(TIMER_BASE + MXC_TSTAT);
+	if (timer_is_v2())
+		tstat = __raw_readl(timer_base + MX3_TSTAT);
+	else
+		tstat = __raw_readl(timer_base + MX1_2_TSTAT);
 
 	gpt_irq_acknowledge();
 
@@ -168,13 +267,16 @@ static struct clock_event_device clockevent_mxc = {
 	.features	= CLOCK_EVT_FEAT_ONESHOT,
 	.shift		= 32,
 	.set_mode	= mxc_set_mode,
-	.set_next_event	= mxc_set_next_event,
+	.set_next_event	= mx1_2_set_next_event,
 	.rating		= 200,
 };
 
 static int __init mxc_clockevent_init(struct clk *timer_clk)
 {
 	unsigned int c = clk_get_rate(timer_clk);
+
+	if (timer_is_v2())
+		clockevent_mxc.set_next_event = mx3_set_next_event;
 
 	clockevent_mxc.mult = div_sc(c, NSEC_PER_SEC,
 					clockevent_mxc.shift);
@@ -190,25 +292,32 @@ static int __init mxc_clockevent_init(struct clk *timer_clk)
 	return 0;
 }
 
-void __init mxc_timer_init(struct clk *timer_clk)
+void __init mxc_timer_init(struct clk *timer_clk, void __iomem *base, int irq)
 {
+	uint32_t tctl_val;
+
 	clk_enable(timer_clk);
+
+	timer_base = base;
 
 	/*
 	 * Initialise to a known state (all timers off, and timing reset)
 	 */
-	__raw_writel(0, TIMER_BASE + MXC_TCTL);
-	__raw_writel(0, TIMER_BASE + MXC_TPRER); /* see datasheet note */
 
-	__raw_writel(TCTL_FRR |	/* free running */
-		     TCTL_VAL |	/* set clocksource and arch specific bits */
-		     TCTL_TEN,	/* start the timer */
-		     TIMER_BASE + MXC_TCTL);
+	__raw_writel(0, timer_base + MXC_TCTL);
+	__raw_writel(0, timer_base + MXC_TPRER); /* see datasheet note */
+
+	if (timer_is_v2())
+		tctl_val = MX3_TCTL_CLK_IPG | MX3_TCTL_FRR | MX3_TCTL_WAITEN | MXC_TCTL_TEN;
+	else
+		tctl_val = MX1_2_TCTL_FRR | MX1_2_TCTL_CLK_PCLK1 | MXC_TCTL_TEN;
+
+	__raw_writel(tctl_val, timer_base + MXC_TCTL);
 
 	/* init and register the timer to the framework */
 	mxc_clocksource_init(timer_clk);
 	mxc_clockevent_init(timer_clk);
 
 	/* Make irqs happen */
-	setup_irq(TIMER_INTERRUPT, &mxc_timer_irq);
+	setup_irq(irq, &mxc_timer_irq);
 }

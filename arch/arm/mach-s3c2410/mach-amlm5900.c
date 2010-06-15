@@ -32,6 +32,7 @@
 #include <linux/list.h>
 #include <linux/timer.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
@@ -152,7 +153,7 @@ static struct platform_device *amlm5900_devices[] __initdata = {
 	&s3c_device_adc,
 	&s3c_device_wdt,
 	&s3c_device_i2c0,
-	&s3c_device_usb,
+	&s3c_device_ohci,
  	&s3c_device_rtc,
 	&s3c_device_usbgadget,
         &s3c_device_sdi,
@@ -224,8 +225,8 @@ static void amlm5900_init_pm(void)
 	} else {
 		enable_irq_wake(IRQ_EINT9);
 		/* configure the suspend/resume status pin */
-		s3c2410_gpio_cfgpin(S3C2410_GPF2, S3C2410_GPF2_OUTP);
-		s3c2410_gpio_pullup(S3C2410_GPF2, 0);
+		s3c2410_gpio_cfgpin(S3C2410_GPF(2), S3C2410_GPIO_OUTPUT);
+		s3c2410_gpio_pullup(S3C2410_GPF(2), 0);
 	}
 }
 static void __init amlm5900_init(void)

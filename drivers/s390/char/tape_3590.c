@@ -2,15 +2,17 @@
  *  drivers/s390/char/tape_3590.c
  *    tape device discipline for 3590 tapes.
  *
- *    Copyright IBM Corp. 2001,2006
+ *    Copyright IBM Corp. 2001, 2009
  *    Author(s): Stefan Bader <shbader@de.ibm.com>
  *		 Michael Holzheu <holzheu@de.ibm.com>
  *		 Martin Schwidefsky <schwidefsky@de.ibm.com>
  */
 
-#define KMSG_COMPONENT "tape"
+#define KMSG_COMPONENT "tape_3590"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/bio.h>
 #include <asm/ebcdic.h>
@@ -38,8 +40,6 @@ EXPORT_SYMBOL(TAPE_DBF_AREA);
  * - Special Intercept:		 BRA
  * - Read Alternate:		 implemented
  *******************************************************************/
-
-#define KMSG_COMPONENT "tape"
 
 static const char *tape_3590_msg[TAPE_3590_MAX_MSG] = {
 	[0x00] = "",
@@ -138,7 +138,7 @@ static void int_to_ext_kekl(struct tape3592_kekl *in,
 		out->type_on_tape = TAPE390_KEKL_TYPE_LABEL;
 	memcpy(out->label, in->label, sizeof(in->label));
 	EBCASC(out->label, sizeof(in->label));
-	strstrip(out->label);
+	strim(out->label);
 }
 
 static void int_to_ext_kekl_pair(struct tape3592_kekl_pair *in,
@@ -610,7 +610,7 @@ tape_3590_schedule_work(struct tape_device *device, enum tape_op op)
 
 	INIT_WORK(&p->work, tape_3590_work_handler);
 
-	p->device = tape_get_device_reference(device);
+	p->device = tape_get_device(device);
 	p->op = op;
 
 	schedule_work(&p->work);
@@ -633,7 +633,7 @@ tape_3590_bread(struct tape_device *device, struct request *req)
 	struct req_iterator iter;
 
 	DBF_EVENT(6, "xBREDid:");
-	start_block = req->sector >> TAPEBLOCK_HSEC_S2B;
+	start_block = blk_rq_pos(req) >> TAPEBLOCK_HSEC_S2B;
 	DBF_EVENT(6, "start_block = %i\n", start_block);
 
 	rq_for_each_segment(bv, req, iter)
@@ -1703,7 +1703,7 @@ static struct ccw_device_id tape_3590_ids[] = {
 static int
 tape_3590_online(struct ccw_device *cdev)
 {
-	return tape_generic_online(cdev->dev.driver_data,
+	return tape_generic_online(dev_get_drvdata(&cdev->dev),
 				   &tape_discipline_3590);
 }
 
@@ -1715,6 +1715,7 @@ static struct ccw_driver tape_3590_driver = {
 	.remove = tape_generic_remove,
 	.set_offline = tape_generic_offline,
 	.set_online = tape_3590_online,
+	.freeze = tape_generic_pm_suspend,
 };
 
 /*

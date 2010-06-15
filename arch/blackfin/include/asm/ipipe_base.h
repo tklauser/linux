@@ -51,23 +51,15 @@
 
 extern unsigned long __ipipe_root_status; /* Alias to ipipe_root_cpudom_var(status) */
 
-static inline void __ipipe_stall_root(void)
-{
-	volatile unsigned long *p = &__ipipe_root_status;
-	set_bit(0, p);
-}
+void __ipipe_stall_root(void);
 
-static inline unsigned long __ipipe_test_and_stall_root(void)
-{
-	volatile unsigned long *p = &__ipipe_root_status;
-	return test_and_set_bit(0, p);
-}
+unsigned long __ipipe_test_and_stall_root(void);
 
-static inline unsigned long __ipipe_test_root(void)
-{
-	const unsigned long *p = &__ipipe_root_status;
-	return test_bit(0, p);
-}
+unsigned long __ipipe_test_root(void);
+
+void __ipipe_lock_root(void);
+
+void __ipipe_unlock_root(void);
 
 #endif /* !__ASSEMBLY__ */
 

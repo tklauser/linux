@@ -94,6 +94,7 @@ static const char version[] = "NET3 PLIP version 2.4-parport gniibe@mri.co.jp\n"
 #include <linux/fcntl.h>
 #include <linux/interrupt.h>
 #include <linux/string.h>
+#include <linux/slab.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/errno.h>
@@ -270,6 +271,9 @@ static const struct net_device_ops plip_netdev_ops = {
 	.ndo_stop		 = plip_close,
 	.ndo_start_xmit		 = plip_tx_packet,
 	.ndo_do_ioctl		 = plip_ioctl,
+	.ndo_change_mtu		 = eth_change_mtu,
+	.ndo_set_mac_address	 = eth_mac_addr,
+	.ndo_validate_addr	 = eth_validate_addr,
 };
 
 /* Entry point of PLIP driver.
@@ -369,8 +373,8 @@ plip_bh(struct work_struct *work)
 
 	nl->is_deferred = 0;
 	f = connection_state_table[nl->connection];
-	if ((r = (*f)(nl->dev, nl, snd, rcv)) != OK
-	    && (r = plip_bh_timeout_error(nl->dev, nl, snd, rcv, r)) != OK) {
+	if ((r = (*f)(nl->dev, nl, snd, rcv)) != OK &&
+	    (r = plip_bh_timeout_error(nl->dev, nl, snd, rcv, r)) != OK) {
 		nl->is_deferred = 1;
 		schedule_delayed_work(&nl->deferred, 1);
 	}
@@ -413,9 +417,8 @@ plip_bh_timeout_error(struct net_device *dev, struct net_local *nl,
 
 		if (error != ERROR) { /* Timeout */
 			nl->timeout_count++;
-			if ((error == HS_TIMEOUT
-			     && nl->timeout_count <= 10)
-			    || nl->timeout_count <= 3) {
+			if ((error == HS_TIMEOUT && nl->timeout_count <= 10) ||
+			    nl->timeout_count <= 3) {
 				spin_unlock_irq(&nl->lock);
 				/* Try again later */
 				return TIMEOUT;
@@ -621,8 +624,8 @@ plip_receive_packet(struct net_device *dev, struct net_local *nl,
 		if (plip_receive(nibble_timeout, dev,
 				 &rcv->nibble, &rcv->length.b.msb))
 			return TIMEOUT;
-		if (rcv->length.h > dev->mtu + dev->hard_header_len
-		    || rcv->length.h < 8) {
+		if (rcv->length.h > dev->mtu + dev->hard_header_len ||
+		    rcv->length.h < 8) {
 			printk(KERN_WARNING "%s: bogus packet size %d.\n", dev->name, rcv->length.h);
 			return ERROR;
 		}
@@ -955,12 +958,12 @@ plip_tx_packet(struct sk_buff *skb, struct net_device *dev)
 	struct plip_local *snd = &nl->snd_data;
 
 	if (netif_queue_stopped(dev))
-		return 1;
+		return NETDEV_TX_BUSY;
 
 	/* We may need to grab the bus */
 	if (!nl->port_owner) {
 		if (parport_claim(nl->pardev))
-			return 1;
+			return NETDEV_TX_BUSY;
 		nl->port_owner = 1;
 	}
 
@@ -969,7 +972,7 @@ plip_tx_packet(struct sk_buff *skb, struct net_device *dev)
 	if (skb->len > dev->mtu + dev->hard_header_len) {
 		printk(KERN_WARNING "%s: packet too big, %d.\n", dev->name, (int)skb->len);
 		netif_start_queue (dev);
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 
 	if (net_debug > 2)
@@ -987,7 +990,7 @@ plip_tx_packet(struct sk_buff *skb, struct net_device *dev)
 	schedule_work(&nl->immediate);
 	spin_unlock_irq(&nl->lock);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void

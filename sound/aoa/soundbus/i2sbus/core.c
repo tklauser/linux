@@ -7,6 +7,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
@@ -358,14 +359,14 @@ static int i2sbus_probe(struct macio_dev* dev, const struct of_device_id *match)
 		return -ENODEV;
 	}
 
-	dev->ofdev.dev.driver_data = control;
+	dev_set_drvdata(&dev->ofdev.dev, control);
 
 	return 0;
 }
 
 static int i2sbus_remove(struct macio_dev* dev)
 {
-	struct i2sbus_control *control = dev->ofdev.dev.driver_data;
+	struct i2sbus_control *control = dev_get_drvdata(&dev->ofdev.dev);
 	struct i2sbus_dev *i2sdev, *tmp;
 
 	list_for_each_entry_safe(i2sdev, tmp, &control->list, item)
@@ -377,7 +378,7 @@ static int i2sbus_remove(struct macio_dev* dev)
 #ifdef CONFIG_PM
 static int i2sbus_suspend(struct macio_dev* dev, pm_message_t state)
 {
-	struct i2sbus_control *control = dev->ofdev.dev.driver_data;
+	struct i2sbus_control *control = dev_get_drvdata(&dev->ofdev.dev);
 	struct codec_info_item *cii;
 	struct i2sbus_dev* i2sdev;
 	int err, ret = 0;
@@ -407,7 +408,7 @@ static int i2sbus_suspend(struct macio_dev* dev, pm_message_t state)
 
 static int i2sbus_resume(struct macio_dev* dev)
 {
-	struct i2sbus_control *control = dev->ofdev.dev.driver_data;
+	struct i2sbus_control *control = dev_get_drvdata(&dev->ofdev.dev);
 	struct codec_info_item *cii;
 	struct i2sbus_dev* i2sdev;
 	int err, ret = 0;

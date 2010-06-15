@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
@@ -915,7 +916,6 @@ static int wm8400_add_widgets(struct snd_soc_codec *codec)
 
 	snd_soc_dapm_add_routes(codec, audio_map, ARRAY_SIZE(audio_map));
 
-	snd_soc_dapm_new_widgets(codec);
 	return 0;
 }
 
@@ -954,7 +954,7 @@ static int fll_factors(struct wm8400_priv *wm8400, struct fll_factors *factors,
 		factors->outdiv *= 2;
 		if (factors->outdiv > 32) {
 			dev_err(wm8400->wm8400->dev,
-				"Unsupported FLL output frequency %dHz\n",
+				"Unsupported FLL output frequency %uHz\n",
 				Fout);
 			return -EINVAL;
 		}
@@ -1003,7 +1003,7 @@ static int fll_factors(struct wm8400_priv *wm8400, struct fll_factors *factors,
 	factors->k = K / 10;
 
 	dev_dbg(wm8400->wm8400->dev,
-		"FLL: Fref=%d Fout=%d N=%x K=%x, FRATIO=%x OUTDIV=%x\n",
+		"FLL: Fref=%u Fout=%u N=%x K=%x, FRATIO=%x OUTDIV=%x\n",
 		Fref, Fout,
 		factors->n, factors->k, factors->fratio, factors->outdiv);
 
@@ -1011,7 +1011,8 @@ static int fll_factors(struct wm8400_priv *wm8400, struct fll_factors *factors,
 }
 
 static int wm8400_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
-			      unsigned int freq_in, unsigned int freq_out)
+			      int source, unsigned int freq_in,
+			      unsigned int freq_out)
 {
 	struct snd_soc_codec *codec = codec_dai->codec;
 	struct wm8400_priv *wm8400 = codec->private_data;
@@ -1022,10 +1023,15 @@ static int wm8400_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	if (freq_in == wm8400->fll_in && freq_out == wm8400->fll_out)
 		return 0;
 
-	if (freq_out != 0) {
+	if (freq_out) {
 		ret = fll_factors(wm8400, &factors, freq_in, freq_out);
 		if (ret != 0)
 			return ret;
+	} else {
+		/* Bodge GCC 4.4.0 uninitialised variable warning - it
+		 * doesn't seem capable of working out that we exit if
+		 * freq_out is 0 before any of the uses. */
+		memset(&factors, 0, sizeof(factors));
 	}
 
 	wm8400->fll_out = freq_out;
@@ -1040,7 +1046,7 @@ static int wm8400_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	reg &= ~WM8400_FLL_OSC_ENA;
 	wm8400_write(codec, WM8400_FLL_CONTROL_1, reg);
 
-	if (freq_out == 0)
+	if (!freq_out)
 		return 0;
 
 	reg &= ~(WM8400_FLL_REF_FREQ | WM8400_FLL_FRATIO_MASK);
@@ -1394,17 +1400,6 @@ static int wm8400_probe(struct platform_device *pdev)
 	wm8400_add_controls(codec);
 	wm8400_add_widgets(codec);
 
-	ret = snd_soc_init_card(socdev);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "failed to register card\n");
-		goto card_err;
-	}
-
-	return ret;
-
-card_err:
-	snd_soc_free_pcms(socdev);
-	snd_soc_dapm_free(socdev);
 pcm_err:
 	return ret;
 }
@@ -1473,8 +1468,8 @@ static int wm8400_codec_probe(struct platform_device *dev)
 
 	codec = &priv->codec;
 	codec->private_data = priv;
-	codec->control_data = dev->dev.driver_data;
-	priv->wm8400 = dev->dev.driver_data;
+	codec->control_data = dev_get_drvdata(&dev->dev);
+	priv->wm8400 = dev_get_drvdata(&dev->dev);
 
 	ret = regulator_bulk_get(priv->wm8400->dev,
 				 ARRAY_SIZE(power), &power[0]);

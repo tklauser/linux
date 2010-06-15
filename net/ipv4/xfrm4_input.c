@@ -9,6 +9,7 @@
  *
  */
 
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/string.h>
 #include <linux/netfilter.h>
@@ -23,7 +24,7 @@ int xfrm4_extract_input(struct xfrm_state *x, struct sk_buff *skb)
 
 static inline int xfrm4_rcv_encap_finish(struct sk_buff *skb)
 {
-	if (skb->dst == NULL) {
+	if (skb_dst(skb) == NULL) {
 		const struct iphdr *iph = ip_hdr(skb);
 
 		if (ip_route_input(skb, iph->daddr, iph->saddr, iph->tos,

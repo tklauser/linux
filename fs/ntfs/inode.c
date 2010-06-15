@@ -27,6 +27,7 @@
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
 #include <linux/slab.h>
+#include <linux/log2.h>
 
 #include "aops.h"
 #include "attrib.h"
@@ -529,7 +530,7 @@ err_corrupt_attr:
  * the ntfs inode.
  *
  * Q: What locks are held when the function is called?
- * A: i_state has I_LOCK set, hence the inode is locked, also
+ * A: i_state has I_NEW set, hence the inode is locked, also
  *    i_count is set to 1, so it is not going to go away
  *    i_flags is set to 0 and we have no business touching it.  Only an ioctl()
  *    is allowed to write to them. We should of course be honouring them but
@@ -1206,7 +1207,7 @@ err_out:
  * necessary fields in @vi as well as initializing the ntfs inode.
  *
  * Q: What locks are held when the function is called?
- * A: i_state has I_LOCK set, hence the inode is locked, also
+ * A: i_state has I_NEW set, hence the inode is locked, also
  *    i_count is set to 1, so it is not going to go away
  *
  * Return 0 on success and -errno on error.  In the error case, the inode will
@@ -1473,7 +1474,7 @@ err_out:
  * normal directory inodes.
  *
  * Q: What locks are held when the function is called?
- * A: i_state has I_LOCK set, hence the inode is locked, also
+ * A: i_state has I_NEW set, hence the inode is locked, also
  *    i_count is set to 1, so it is not going to go away
  *
  * Return 0 on success and -errno on error.  In the error case, the inode will
@@ -1570,7 +1571,7 @@ static int ntfs_read_locked_index_inode(struct inode *base_vi, struct inode *vi)
 	ntfs_debug("Index collation rule is 0x%x.",
 			le32_to_cpu(ir->collation_rule));
 	ni->itype.index.block_size = le32_to_cpu(ir->index_block_size);
-	if (ni->itype.index.block_size & (ni->itype.index.block_size - 1)) {
+	if (!is_power_of_2(ni->itype.index.block_size)) {
 		ntfs_error(vi->i_sb, "Index block size (%u) is not a power of "
 				"two.", ni->itype.index.block_size);
 		goto unm_err_out;
@@ -2956,7 +2957,7 @@ out:
  *
  * Return 0 on success and -errno on error.
  */
-int ntfs_write_inode(struct inode *vi, int sync)
+int __ntfs_write_inode(struct inode *vi, int sync)
 {
 	sle64 nt;
 	ntfs_inode *ni = NTFS_I(vi);

@@ -34,17 +34,17 @@ extern void gru_wait_abort_proc(void *cb);
 #include <asm/intrinsics.h>
 #define __flush_cache(p)		ia64_fc((unsigned long)p)
 /* Use volatile on IA64 to ensure ordering via st4.rel */
-#define gru_ordered_store_int(p, v)					\
+#define gru_ordered_store_ulong(p, v)					\
 		do {							\
 			barrier();					\
-			*((volatile int *)(p)) = v; /* force st.rel */	\
+			*((volatile unsigned long *)(p)) = v; /* force st.rel */	\
 		} while (0)
 #elif defined(CONFIG_X86_64)
 #define __flush_cache(p)		clflush(p)
-#define gru_ordered_store_int(p, v)					\
+#define gru_ordered_store_ulong(p, v)					\
 		do {							\
 			barrier();					\
-			*(int *)p = v;					\
+			*(unsigned long *)p = v;			\
 		} while (0)
 #else
 #error "Unsupported architecture"
@@ -81,6 +81,8 @@ struct control_block_extended_exc_detail {
 	int		exopc;
 	long		exceptdet0;
 	int		exceptdet1;
+	int		cbrstate;
+	int		cbrexecstatus;
 };
 
 /*
@@ -107,7 +109,8 @@ struct gru_instruction_bits {
     unsigned char		reserved2: 2;
     unsigned char		istatus:   2;
     unsigned char		isubstatus:4;
-    unsigned char		reserved3: 2;
+    unsigned char		reserved3: 1;
+    unsigned char		tlb_fault_color: 1;
     /* DW 1 */
     unsigned long		idef4;		/* 42 bits: TRi1, BufSize */
     /* DW 2-6 */
@@ -126,8 +129,13 @@ struct gru_instruction_bits {
  */
 struct gru_instruction {
     /* DW 0 */
-    unsigned int		op32;    /* icmd,xtype,iaa0,ima,opc */
-    unsigned int		tri0;
+    union {
+    	unsigned long		op64;    /* icmd,xtype,iaa0,ima,opc,tri0 */
+	struct {
+		unsigned int	op32;
+		unsigned int	tri0;
+	};
+    };
     unsigned long		tri1_bufsize;		/* DW 1 */
     unsigned long		baddr0;			/* DW 2 */
     unsigned long		nelem;			/* DW 3 */
@@ -137,7 +145,7 @@ struct gru_instruction {
     unsigned long		avalue;			/* DW 7 */
 };
 
-/* Some shifts and masks for the low 32 bits of a GRU command */
+/* Some shifts and masks for the low 64 bits of a GRU command */
 #define GRU_CB_ICMD_SHFT	0
 #define GRU_CB_ICMD_MASK	0x1
 #define GRU_CB_XTYPE_SHFT	8
@@ -152,6 +160,10 @@ struct gru_instruction {
 #define GRU_CB_OPC_MASK		0xff
 #define GRU_CB_EXOPC_SHFT	24
 #define GRU_CB_EXOPC_MASK	0xff
+#define GRU_IDEF2_SHFT		32
+#define GRU_IDEF2_MASK		0x3ffff
+#define GRU_ISTATUS_SHFT	56
+#define GRU_ISTATUS_MASK	0x3
 
 /* GRU instruction opcodes (opc field) */
 #define OP_NOP		0x00
@@ -250,17 +262,40 @@ struct gru_instruction {
 #define CBE_CAUSE_HA_RESPONSE_FATAL		(1 << 13)
 #define CBE_CAUSE_HA_RESPONSE_NON_FATAL		(1 << 14)
 #define CBE_CAUSE_ADDRESS_SPACE_DECODE_ERROR	(1 << 15)
-#define CBE_CAUSE_RESPONSE_DATA_ERROR		(1 << 16)
-#define CBE_CAUSE_PROTOCOL_STATE_DATA_ERROR	(1 << 17)
+#define CBE_CAUSE_PROTOCOL_STATE_DATA_ERROR	(1 << 16)
+#define CBE_CAUSE_RA_RESPONSE_DATA_ERROR	(1 << 17)
+#define CBE_CAUSE_HA_RESPONSE_DATA_ERROR	(1 << 18)
+#define CBE_CAUSE_FORCED_ERROR			(1 << 19)
+
+/* CBE cbrexecstatus bits */
+#define CBR_EXS_ABORT_OCC_BIT			0
+#define CBR_EXS_INT_OCC_BIT			1
+#define CBR_EXS_PENDING_BIT			2
+#define CBR_EXS_QUEUED_BIT			3
+#define CBR_EXS_TLB_INVAL_BIT			4
+#define CBR_EXS_EXCEPTION_BIT			5
+#define CBR_EXS_CB_INT_PENDING_BIT		6
+
+#define CBR_EXS_ABORT_OCC			(1 << CBR_EXS_ABORT_OCC_BIT)
+#define CBR_EXS_INT_OCC				(1 << CBR_EXS_INT_OCC_BIT)
+#define CBR_EXS_PENDING				(1 << CBR_EXS_PENDING_BIT)
+#define CBR_EXS_QUEUED				(1 << CBR_EXS_QUEUED_BIT)
+#define CBR_EXS_TLB_INVAL			(1 << CBR_EXS_TLB_INVAL_BIT)
+#define CBR_EXS_EXCEPTION			(1 << CBR_EXS_EXCEPTION_BIT)
+#define CBR_EXS_CB_INT_PENDING			(1 << CBR_EXS_CB_INT_PENDING_BIT)
 
 /*
  * Exceptions are retried for the following cases. If any OTHER bits are set
  * in ecause, the exception is not retryable.
  */
-#define EXCEPTION_RETRY_BITS (CBE_CAUSE_RESPONSE_DATA_ERROR |		\
-			      CBE_CAUSE_RA_REQUEST_TIMEOUT |		\
+#define EXCEPTION_RETRY_BITS (CBE_CAUSE_EXECUTION_HW_ERROR |		\
 			      CBE_CAUSE_TLBHW_ERROR |			\
-			      CBE_CAUSE_HA_REQUEST_TIMEOUT)
+			      CBE_CAUSE_RA_REQUEST_TIMEOUT |		\
+			      CBE_CAUSE_RA_RESPONSE_NON_FATAL |		\
+			      CBE_CAUSE_HA_RESPONSE_NON_FATAL |		\
+			      CBE_CAUSE_RA_RESPONSE_DATA_ERROR |	\
+			      CBE_CAUSE_HA_RESPONSE_DATA_ERROR		\
+			      )
 
 /* Message queue head structure */
 union gru_mesqhead {
@@ -273,12 +308,14 @@ union gru_mesqhead {
 
 
 /* Generate the low word of a GRU instruction */
-static inline unsigned int
-__opword(unsigned char opcode, unsigned char exopc, unsigned char xtype,
+static inline unsigned long
+__opdword(unsigned char opcode, unsigned char exopc, unsigned char xtype,
        unsigned char iaa0, unsigned char iaa1,
-       unsigned char ima)
+       unsigned long idef2, unsigned char ima)
 {
     return (1 << GRU_CB_ICMD_SHFT) |
+	   ((unsigned long)CBS_ACTIVE << GRU_ISTATUS_SHFT) |
+	   (idef2<< GRU_IDEF2_SHFT) |
 	   (iaa0 << GRU_CB_IAA0_SHFT) |
 	   (iaa1 << GRU_CB_IAA1_SHFT) |
 	   (ima << GRU_CB_IMA_SHFT) |
@@ -296,12 +333,13 @@ static inline void gru_flush_cache(void *p)
 }
 
 /*
- * Store the lower 32 bits of the command including the "start" bit. Then
+ * Store the lower 64 bits of the command including the "start" bit. Then
  * start the instruction executing.
  */
-static inline void gru_start_instruction(struct gru_instruction *ins, int op32)
+static inline void gru_start_instruction(struct gru_instruction *ins, unsigned long op64)
 {
-	gru_ordered_store_int(ins, op32);
+	gru_ordered_store_ulong(ins, op64);
+	mb();
 	gru_flush_cache(ins);
 }
 
@@ -317,6 +355,30 @@ static inline void gru_start_instruction(struct gru_instruction *ins, int op32)
  *     	- nelem and stride are in elements
  *     	- tri0/tri1 is in bytes for the beginning of the data segment.
  */
+static inline void gru_vload_phys(void *cb, unsigned long gpa,
+		unsigned int tri0, int iaa, unsigned long hints)
+{
+	struct gru_instruction *ins = (struct gru_instruction *)cb;
+
+	ins->baddr0 = (long)gpa | ((unsigned long)iaa << 62);
+	ins->nelem = 1;
+	ins->op1_stride = 1;
+	gru_start_instruction(ins, __opdword(OP_VLOAD, 0, XTYPE_DW, iaa, 0,
+					(unsigned long)tri0, CB_IMA(hints)));
+}
+
+static inline void gru_vstore_phys(void *cb, unsigned long gpa,
+		unsigned int tri0, int iaa, unsigned long hints)
+{
+	struct gru_instruction *ins = (struct gru_instruction *)cb;
+
+	ins->baddr0 = (long)gpa | ((unsigned long)iaa << 62);
+	ins->nelem = 1;
+	ins->op1_stride = 1;
+	gru_start_instruction(ins, __opdword(OP_VSTORE, 0, XTYPE_DW, iaa, 0,
+					(unsigned long)tri0, CB_IMA(hints)));
+}
+
 static inline void gru_vload(void *cb, unsigned long mem_addr,
 		unsigned int tri0, unsigned char xtype, unsigned long nelem,
 		unsigned long stride, unsigned long hints)
@@ -325,10 +387,9 @@ static inline void gru_vload(void *cb, unsigned long mem_addr,
 
 	ins->baddr0 = (long)mem_addr;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
 	ins->op1_stride = stride;
-	gru_start_instruction(ins, __opword(OP_VLOAD, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_VLOAD, 0, xtype, IAA_RAM, 0,
+					(unsigned long)tri0, CB_IMA(hints)));
 }
 
 static inline void gru_vstore(void *cb, unsigned long mem_addr,
@@ -339,10 +400,9 @@ static inline void gru_vstore(void *cb, unsigned long mem_addr,
 
 	ins->baddr0 = (long)mem_addr;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
 	ins->op1_stride = stride;
-	gru_start_instruction(ins, __opword(OP_VSTORE, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_VSTORE, 0, xtype, IAA_RAM, 0,
+					tri0, CB_IMA(hints)));
 }
 
 static inline void gru_ivload(void *cb, unsigned long mem_addr,
@@ -353,10 +413,9 @@ static inline void gru_ivload(void *cb, unsigned long mem_addr,
 
 	ins->baddr0 = (long)mem_addr;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
 	ins->tri1_bufsize = tri1;
-	gru_start_instruction(ins, __opword(OP_IVLOAD, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_IVLOAD, 0, xtype, IAA_RAM, 0,
+					tri0, CB_IMA(hints)));
 }
 
 static inline void gru_ivstore(void *cb, unsigned long mem_addr,
@@ -367,10 +426,9 @@ static inline void gru_ivstore(void *cb, unsigned long mem_addr,
 
 	ins->baddr0 = (long)mem_addr;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
 	ins->tri1_bufsize = tri1;
-	gru_start_instruction(ins, __opword(OP_IVSTORE, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_IVSTORE, 0, xtype, IAA_RAM, 0,
+					tri0, CB_IMA(hints)));
 }
 
 static inline void gru_vset(void *cb, unsigned long mem_addr,
@@ -383,8 +441,8 @@ static inline void gru_vset(void *cb, unsigned long mem_addr,
 	ins->op2_value_baddr1 = value;
 	ins->nelem = nelem;
 	ins->op1_stride = stride;
-	gru_start_instruction(ins, __opword(OP_VSET, 0, xtype, IAA_RAM, 0,
-					 CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_VSET, 0, xtype, IAA_RAM, 0,
+					 0, CB_IMA(hints)));
 }
 
 static inline void gru_ivset(void *cb, unsigned long mem_addr,
@@ -397,8 +455,8 @@ static inline void gru_ivset(void *cb, unsigned long mem_addr,
 	ins->op2_value_baddr1 = value;
 	ins->nelem = nelem;
 	ins->tri1_bufsize = tri1;
-	gru_start_instruction(ins, __opword(OP_IVSET, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_IVSET, 0, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_vflush(void *cb, unsigned long mem_addr,
@@ -410,15 +468,15 @@ static inline void gru_vflush(void *cb, unsigned long mem_addr,
 	ins->baddr0 = (long)mem_addr;
 	ins->op1_stride = stride;
 	ins->nelem = nelem;
-	gru_start_instruction(ins, __opword(OP_VFLUSH, 0, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_VFLUSH, 0, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_nop(void *cb, int hints)
 {
 	struct gru_instruction *ins = (void *)cb;
 
-	gru_start_instruction(ins, __opword(OP_NOP, 0, 0, 0, 0, CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_NOP, 0, 0, 0, 0, 0, CB_IMA(hints)));
 }
 
 
@@ -432,10 +490,9 @@ static inline void gru_bcopy(void *cb, const unsigned long src,
 	ins->baddr0 = (long)src;
 	ins->op2_value_baddr1 = (long)dest;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
 	ins->tri1_bufsize = bufsize;
-	gru_start_instruction(ins, __opword(OP_BCOPY, 0, xtype, IAA_RAM,
-					IAA_RAM, CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_BCOPY, 0, xtype, IAA_RAM,
+					IAA_RAM, tri0, CB_IMA(hints)));
 }
 
 static inline void gru_bstore(void *cb, const unsigned long src,
@@ -447,9 +504,8 @@ static inline void gru_bstore(void *cb, const unsigned long src,
 	ins->baddr0 = (long)src;
 	ins->op2_value_baddr1 = (long)dest;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
-	gru_start_instruction(ins, __opword(OP_BSTORE, 0, xtype, 0, IAA_RAM,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_BSTORE, 0, xtype, 0, IAA_RAM,
+					tri0, CB_IMA(hints)));
 }
 
 static inline void gru_gamir(void *cb, int exopc, unsigned long src,
@@ -458,8 +514,8 @@ static inline void gru_gamir(void *cb, int exopc, unsigned long src,
 	struct gru_instruction *ins = (void *)cb;
 
 	ins->baddr0 = (long)src;
-	gru_start_instruction(ins, __opword(OP_GAMIR, exopc, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_GAMIR, exopc, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_gamirr(void *cb, int exopc, unsigned long src,
@@ -468,8 +524,8 @@ static inline void gru_gamirr(void *cb, int exopc, unsigned long src,
 	struct gru_instruction *ins = (void *)cb;
 
 	ins->baddr0 = (long)src;
-	gru_start_instruction(ins, __opword(OP_GAMIRR, exopc, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_GAMIRR, exopc, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_gamer(void *cb, int exopc, unsigned long src,
@@ -482,8 +538,8 @@ static inline void gru_gamer(void *cb, int exopc, unsigned long src,
 	ins->baddr0 = (long)src;
 	ins->op1_stride = operand1;
 	ins->op2_value_baddr1 = operand2;
-	gru_start_instruction(ins, __opword(OP_GAMER, exopc, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_GAMER, exopc, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_gamerr(void *cb, int exopc, unsigned long src,
@@ -495,8 +551,8 @@ static inline void gru_gamerr(void *cb, int exopc, unsigned long src,
 	ins->baddr0 = (long)src;
 	ins->op1_stride = operand1;
 	ins->op2_value_baddr1 = operand2;
-	gru_start_instruction(ins, __opword(OP_GAMERR, exopc, xtype, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_GAMERR, exopc, xtype, IAA_RAM, 0,
+					0, CB_IMA(hints)));
 }
 
 static inline void gru_gamxr(void *cb, unsigned long src,
@@ -506,8 +562,8 @@ static inline void gru_gamxr(void *cb, unsigned long src,
 
 	ins->baddr0 = (long)src;
 	ins->nelem = 4;
-	gru_start_instruction(ins, __opword(OP_GAMXR, EOP_XR_CSWAP, XTYPE_DW,
-				 IAA_RAM, 0, CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_GAMXR, EOP_XR_CSWAP, XTYPE_DW,
+				 IAA_RAM, 0, 0, CB_IMA(hints)));
 }
 
 static inline void gru_mesq(void *cb, unsigned long queue,
@@ -518,9 +574,8 @@ static inline void gru_mesq(void *cb, unsigned long queue,
 
 	ins->baddr0 = (long)queue;
 	ins->nelem = nelem;
-	ins->tri0 = tri0;
-	gru_start_instruction(ins, __opword(OP_MESQ, 0, XTYPE_CL, IAA_RAM, 0,
-					CB_IMA(hints)));
+	gru_start_instruction(ins, __opdword(OP_MESQ, 0, XTYPE_CL, IAA_RAM, 0,
+					tri0, CB_IMA(hints)));
 }
 
 static inline unsigned long gru_get_amo_value(void *cb)
@@ -600,9 +655,11 @@ static inline int gru_get_cb_substatus(void *cb)
 	return cbs->isubstatus;
 }
 
-/* Check the status of a CB. If the CB is in UPM mode, call the
- * OS to handle the UPM status.
- * Returns the CB status field value (0 for normal completion)
+/*
+ * User interface to check an instruction status. UPM and exceptions
+ * are handled automatically. However, this function does NOT wait
+ * for an active instruction to complete.
+ *
  */
 static inline int gru_check_status(void *cb)
 {
@@ -610,36 +667,41 @@ static inline int gru_check_status(void *cb)
 	int ret;
 
 	ret = cbs->istatus;
-	if (ret == CBS_CALL_OS)
+	if (ret != CBS_ACTIVE)
 		ret = gru_check_status_proc(cb);
 	return ret;
 }
 
-/* Wait for CB to complete.
- * Returns the CB status field value (0 for normal completion)
+/*
+ * User interface (via inline function) to wait for an instruction
+ * to complete. Completion status (IDLE or EXCEPTION is returned
+ * to the user. Exception due to hardware errors are automatically
+ * retried before returning an exception.
+ *
  */
 static inline int gru_wait(void *cb)
 {
-	struct gru_control_block_status *cbs = (void *)cb;
-	int ret = cbs->istatus;
-
-	if (ret != CBS_IDLE)
-		ret = gru_wait_proc(cb);
-	return ret;
+	return gru_wait_proc(cb);
 }
 
-/* Wait for CB to complete. Aborts program if error. (Note: error does NOT
+/*
+ * Wait for CB to complete. Aborts program if error. (Note: error does NOT
  * mean TLB mis - only fatal errors such as memory parity error or user
  * bugs will cause termination.
  */
 static inline void gru_wait_abort(void *cb)
 {
-	struct gru_control_block_status *cbs = (void *)cb;
-
-	if (cbs->istatus != CBS_IDLE)
-		gru_wait_abort_proc(cb);
+	gru_wait_abort_proc(cb);
 }
 
+/*
+ * Get a pointer to the start of a gseg
+ * 	p	- Any valid pointer within the gseg
+ */
+static inline void *gru_get_gseg_pointer (void *p)
+{
+	return (void *)((unsigned long)p & ~(GRU_GSEG_PAGESIZE - 1));
+}
 
 /*
  * Get a pointer to a control block

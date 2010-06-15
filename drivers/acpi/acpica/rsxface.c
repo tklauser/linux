@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -104,7 +104,7 @@ acpi_rs_validate_parameters(acpi_handle device_handle,
 		return_ACPI_STATUS(AE_BAD_PARAMETER);
 	}
 
-	node = acpi_ns_map_handle_to_node(device_handle);
+	node = acpi_ns_validate_handle(device_handle);
 	if (!node) {
 		return_ACPI_STATUS(AE_BAD_PARAMETER);
 	}
@@ -338,13 +338,17 @@ acpi_resource_to_address64(struct acpi_resource *resource,
 	switch (resource->type) {
 	case ACPI_RESOURCE_TYPE_ADDRESS16:
 
-		address16 = (struct acpi_resource_address16 *)&resource->data;
+		address16 =
+		    ACPI_CAST_PTR(struct acpi_resource_address16,
+				  &resource->data);
 		ACPI_COPY_ADDRESS(out, address16);
 		break;
 
 	case ACPI_RESOURCE_TYPE_ADDRESS32:
 
-		address32 = (struct acpi_resource_address32 *)&resource->data;
+		address32 =
+		    ACPI_CAST_PTR(struct acpi_resource_address32,
+				  &resource->data);
 		ACPI_COPY_ADDRESS(out, address32);
 		break;
 

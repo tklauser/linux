@@ -22,6 +22,7 @@
  */
 
 #include <linux/buffer_head.h>
+#include <linux/gfp.h>
 #include <linux/mpage.h>
 #include <linux/writeback.h>
 #include <linux/uio.h>
@@ -43,22 +44,23 @@
  *
  * This function does not issue actual read request of the specified data
  * block. It is done by VFS.
- * Bulk read for direct-io is not supported yet. (should be supported)
  */
 int nilfs_get_block(struct inode *inode, sector_t blkoff,
 		    struct buffer_head *bh_result, int create)
 {
 	struct nilfs_inode_info *ii = NILFS_I(inode);
-	unsigned long blknum = 0;
+	__u64 blknum = 0;
 	int err = 0, ret;
 	struct inode *dat = nilfs_dat_inode(NILFS_I_NILFS(inode));
+	unsigned maxblocks = bh_result->b_size >> inode->i_blkbits;
 
-	/* This exclusion control is a workaround; should be revised */
-	down_read(&NILFS_MDT(dat)->mi_sem);	/* XXX */
-	ret = nilfs_bmap_lookup(ii->i_bmap, (unsigned long)blkoff, &blknum);
-	up_read(&NILFS_MDT(dat)->mi_sem);	/* XXX */
-	if (ret == 0) {	/* found */
+	down_read(&NILFS_MDT(dat)->mi_sem);
+	ret = nilfs_bmap_lookup_contig(ii->i_bmap, blkoff, &blknum, maxblocks);
+	up_read(&NILFS_MDT(dat)->mi_sem);
+	if (ret >= 0) {	/* found */
 		map_bh(bh_result, inode->i_sb, blknum);
+		if (ret > 0)
+			bh_result->b_size = (ret << inode->i_blkbits);
 		goto out;
 	}
 	/* data block was not found */
@@ -96,6 +98,7 @@ int nilfs_get_block(struct inode *inode, sector_t blkoff,
 			nilfs_transaction_abort(inode->i_sb);
 			goto out;
 		}
+		nilfs_mark_inode_dirty(inode);
 		nilfs_transaction_commit(inode->i_sb); /* never fails */
 		/* Error handling should be detailed */
 		set_buffer_new(bh_result);
@@ -237,10 +240,10 @@ nilfs_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	return size;
 }
 
-struct address_space_operations nilfs_aops = {
+const struct address_space_operations nilfs_aops = {
 	.writepage		= nilfs_writepage,
 	.readpage		= nilfs_readpage,
-	/* .sync_page		= nilfs_sync_page, */
+	.sync_page		= block_sync_page,
 	.writepages		= nilfs_writepages,
 	.set_page_dirty		= nilfs_set_page_dirty,
 	.readpages		= nilfs_readpages,
@@ -249,6 +252,7 @@ struct address_space_operations nilfs_aops = {
 	/* .releasepage		= nilfs_releasepage, */
 	.invalidatepage		= block_invalidatepage,
 	.direct_IO		= nilfs_direct_IO,
+	.is_partially_uptodate  = block_is_partially_uptodate,
 };
 
 struct inode *nilfs_new_inode(struct inode *dir, int mode)
@@ -307,10 +311,6 @@ struct inode *nilfs_new_inode(struct inode *dir, int mode)
 	/* ii->i_file_acl = 0; */
 	/* ii->i_dir_acl = 0; */
 	ii->i_dir_start_lookup = 0;
-#ifdef CONFIG_NILFS_FS_POSIX_ACL
-	ii->i_acl = NULL;
-	ii->i_default_acl = NULL;
-#endif
 	ii->i_cno = 0;
 	nilfs_set_inode_flags(inode);
 	spin_lock(&sbi->s_next_gen_lock);
@@ -324,7 +324,6 @@ struct inode *nilfs_new_inode(struct inode *dir, int mode)
 				    nilfs_init_acl(), proper cancellation of
 				    above jobs should be considered */
 
-	mark_inode_dirty(inode);
 	return inode;
 
  failed_acl:
@@ -402,6 +401,7 @@ int nilfs_read_inode_common(struct inode *inode,
 	ii->i_dir_acl = S_ISREG(inode->i_mode) ?
 		0 : le32_to_cpu(raw_inode->i_dir_acl);
 #endif
+	ii->i_dir_start_lookup = 0;
 	ii->i_cno = 0;
 	inode->i_generation = le32_to_cpu(raw_inode->i_generation);
 
@@ -432,11 +432,8 @@ static int __nilfs_read_inode(struct super_block *sb, unsigned long ino,
 
 	raw_inode = nilfs_ifile_map_inode(sbi->s_ifile, ino, bh);
 
-#ifdef CONFIG_NILFS_FS_POSIX_ACL
-	ii->i_acl = NILFS_ACL_NOT_CACHED;
-	ii->i_default_acl = NILFS_ACL_NOT_CACHED;
-#endif
-	if (nilfs_read_inode_common(inode, raw_inode))
+	err = nilfs_read_inode_common(inode, raw_inode);
+	if (err)
 		goto failed_unmap;
 
 	if (S_ISREG(inode->i_mode)) {
@@ -529,7 +526,6 @@ void nilfs_update_inode(struct inode *inode, struct buffer_head *ibh)
 
 	raw_inode = nilfs_ifile_map_inode(sbi->s_ifile, ino, ibh);
 
-	/* The buffer is guarded with lock_buffer() by the caller */
 	if (test_and_clear_bit(NILFS_I_NEW, &ii->i_state))
 		memset(raw_inode, 0, NILFS_MDT(sbi->s_ifile)->mi_entry_size);
 	set_bit(NILFS_I_INODE_DIRTY, &ii->i_state);
@@ -603,6 +599,7 @@ void nilfs_truncate(struct inode *inode)
 	if (IS_SYNC(inode))
 		nilfs_set_transaction_flag(NILFS_TI_SYNC);
 
+	nilfs_mark_inode_dirty(inode);
 	nilfs_set_file_dirty(NILFS_SB(sb), inode, 0);
 	nilfs_transaction_commit(sb);
 	/* May construct a logical segment and may fail in sync mode.
@@ -627,6 +624,7 @@ void nilfs_delete_inode(struct inode *inode)
 		truncate_inode_pages(&inode->i_data, 0);
 
 	nilfs_truncate_bmap(ii, 0);
+	nilfs_mark_inode_dirty(inode);
 	nilfs_free_inode(inode);
 	/* nilfs_free_inode() marks inode buffer dirty */
 	if (IS_SYNC(inode))
@@ -668,7 +666,6 @@ int nilfs_load_inode_block(struct nilfs_sb_info *sbi, struct inode *inode,
 	int err;
 
 	spin_lock(&sbi->s_inode_lock);
-	/* Caller of this function MUST lock s_inode_lock */
 	if (ii->i_bh == NULL) {
 		spin_unlock(&sbi->s_inode_lock);
 		err = nilfs_ifile_get_inode_block(sbi->s_ifile, inode->i_ino,
@@ -750,9 +747,7 @@ int nilfs_mark_inode_dirty(struct inode *inode)
 			      "failed to reget inode block.\n");
 		return err;
 	}
-	lock_buffer(ibh);
 	nilfs_update_inode(inode, ibh);
-	unlock_buffer(ibh);
 	nilfs_mdt_mark_buffer_dirty(ibh);
 	nilfs_mdt_mark_dirty(sbi->s_ifile);
 	brelse(ibh);

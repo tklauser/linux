@@ -25,7 +25,6 @@
 
 #include <linux/fs.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/highmem.h>
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
@@ -53,6 +52,7 @@
 #include "sysfile.h"
 #include "uptodate.h"
 #include "xattr.h"
+#include "refcounttree.h"
 
 #include "buffer_head_io.h"
 
@@ -215,6 +215,8 @@ bail:
 static int ocfs2_init_locked_inode(struct inode *inode, void *opaque)
 {
 	struct ocfs2_find_inode_args *args = opaque;
+	static struct lock_class_key ocfs2_quota_ip_alloc_sem_key,
+				     ocfs2_file_ip_alloc_sem_key;
 
 	mlog_entry("inode = %p, opaque = %p\n", inode, opaque);
 
@@ -223,6 +225,15 @@ static int ocfs2_init_locked_inode(struct inode *inode, void *opaque)
 	if (args->fi_sysfile_type != 0)
 		lockdep_set_class(&inode->i_mutex,
 			&ocfs2_sysfile_lock_key[args->fi_sysfile_type]);
+	if (args->fi_sysfile_type == USER_QUOTA_SYSTEM_INODE ||
+	    args->fi_sysfile_type == GROUP_QUOTA_SYSTEM_INODE ||
+	    args->fi_sysfile_type == LOCAL_USER_QUOTA_SYSTEM_INODE ||
+	    args->fi_sysfile_type == LOCAL_GROUP_QUOTA_SYSTEM_INODE)
+		lockdep_set_class(&OCFS2_I(inode)->ip_alloc_sem,
+				  &ocfs2_quota_ip_alloc_sem_key);
+	else
+		lockdep_set_class(&OCFS2_I(inode)->ip_alloc_sem,
+				  &ocfs2_file_ip_alloc_sem_key);
 
 	mlog_exit(0);
 	return 0;
@@ -463,7 +474,7 @@ static int ocfs2_read_locked_inode(struct inode *inode,
 	if (args->fi_flags & OCFS2_FI_FLAG_ORPHAN_RECOVERY) {
 		status = ocfs2_try_open_lock(inode, 0);
 		if (status) {
-			make_bad_inode(inode);	
+			make_bad_inode(inode);
 			return status;
 		}
 	}
@@ -547,11 +558,13 @@ static int ocfs2_truncate_for_delete(struct ocfs2_super *osb,
 		handle = ocfs2_start_trans(osb, OCFS2_INODE_UPDATE_CREDITS);
 		if (IS_ERR(handle)) {
 			status = PTR_ERR(handle);
+			handle = NULL;
 			mlog_errno(status);
 			goto out;
 		}
 
-		status = ocfs2_journal_access_di(handle, inode, fe_bh,
+		status = ocfs2_journal_access_di(handle, INODE_CACHE(inode),
+						 fe_bh,
 						 OCFS2_JOURNAL_ACCESS_WRITE);
 		if (status < 0) {
 			mlog_errno(status);
@@ -627,15 +640,17 @@ static int ocfs2_remove_inode(struct inode *inode,
 		goto bail_unlock;
 	}
 
-	status = ocfs2_orphan_del(osb, handle, orphan_dir_inode, inode,
-				  orphan_dir_bh);
-	if (status < 0) {
-		mlog_errno(status);
-		goto bail_commit;
+	if (!(OCFS2_I(inode)->ip_flags & OCFS2_INODE_SKIP_ORPHAN_DIR)) {
+		status = ocfs2_orphan_del(osb, handle, orphan_dir_inode, inode,
+					  orphan_dir_bh);
+		if (status < 0) {
+			mlog_errno(status);
+			goto bail_commit;
+		}
 	}
 
 	/* set the inodes dtime */
-	status = ocfs2_journal_access_di(handle, inode, di_bh,
+	status = ocfs2_journal_access_di(handle, INODE_CACHE(inode), di_bh,
 					 OCFS2_JOURNAL_ACCESS_WRITE);
 	if (status < 0) {
 		mlog_errno(status);
@@ -651,8 +666,8 @@ static int ocfs2_remove_inode(struct inode *inode,
 		goto bail_commit;
 	}
 
-	ocfs2_remove_from_cache(inode, di_bh);
-	vfs_dq_free_inode(inode);
+	ocfs2_remove_from_cache(INODE_CACHE(inode), di_bh);
+	dquot_free_inode(inode);
 
 	status = ocfs2_free_dinode(handle, inode_alloc_inode,
 				   inode_alloc_bh, di);
@@ -671,7 +686,7 @@ bail:
 	return status;
 }
 
-/* 
+/*
  * Serialize with orphan dir recovery. If the process doing
  * recovery on this orphan dir does an iget() with the dir
  * i_mutex held, we'll deadlock here. Instead we detect this
@@ -710,38 +725,39 @@ static void ocfs2_signal_wipe_completion(struct ocfs2_super *osb,
 static int ocfs2_wipe_inode(struct inode *inode,
 			    struct buffer_head *di_bh)
 {
-	int status, orphaned_slot;
+	int status, orphaned_slot = -1;
 	struct inode *orphan_dir_inode = NULL;
 	struct buffer_head *orphan_dir_bh = NULL;
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
-	struct ocfs2_dinode *di;
+	struct ocfs2_dinode *di = (struct ocfs2_dinode *) di_bh->b_data;
 
-	di = (struct ocfs2_dinode *) di_bh->b_data;
-	orphaned_slot = le16_to_cpu(di->i_orphaned_slot);
+	if (!(OCFS2_I(inode)->ip_flags & OCFS2_INODE_SKIP_ORPHAN_DIR)) {
+		orphaned_slot = le16_to_cpu(di->i_orphaned_slot);
 
-	status = ocfs2_check_orphan_recovery_state(osb, orphaned_slot);
-	if (status)
-		return status;
+		status = ocfs2_check_orphan_recovery_state(osb, orphaned_slot);
+		if (status)
+			return status;
 
-	orphan_dir_inode = ocfs2_get_system_file_inode(osb,
-						       ORPHAN_DIR_SYSTEM_INODE,
-						       orphaned_slot);
-	if (!orphan_dir_inode) {
-		status = -EEXIST;
-		mlog_errno(status);
-		goto bail;
-	}
+		orphan_dir_inode = ocfs2_get_system_file_inode(osb,
+							       ORPHAN_DIR_SYSTEM_INODE,
+							       orphaned_slot);
+		if (!orphan_dir_inode) {
+			status = -EEXIST;
+			mlog_errno(status);
+			goto bail;
+		}
 
-	/* Lock the orphan dir. The lock will be held for the entire
-	 * delete_inode operation. We do this now to avoid races with
-	 * recovery completion on other nodes. */
-	mutex_lock(&orphan_dir_inode->i_mutex);
-	status = ocfs2_inode_lock(orphan_dir_inode, &orphan_dir_bh, 1);
-	if (status < 0) {
-		mutex_unlock(&orphan_dir_inode->i_mutex);
+		/* Lock the orphan dir. The lock will be held for the entire
+		 * delete_inode operation. We do this now to avoid races with
+		 * recovery completion on other nodes. */
+		mutex_lock(&orphan_dir_inode->i_mutex);
+		status = ocfs2_inode_lock(orphan_dir_inode, &orphan_dir_bh, 1);
+		if (status < 0) {
+			mutex_unlock(&orphan_dir_inode->i_mutex);
 
-		mlog_errno(status);
-		goto bail;
+			mlog_errno(status);
+			goto bail;
+		}
 	}
 
 	/* we do this while holding the orphan dir lock because we
@@ -770,12 +786,21 @@ static int ocfs2_wipe_inode(struct inode *inode,
 		goto bail_unlock_dir;
 	}
 
+	status = ocfs2_remove_refcount_tree(inode, di_bh);
+	if (status < 0) {
+		mlog_errno(status);
+		goto bail_unlock_dir;
+	}
+
 	status = ocfs2_remove_inode(inode, di_bh, orphan_dir_inode,
 				    orphan_dir_bh);
 	if (status < 0)
 		mlog_errno(status);
 
 bail_unlock_dir:
+	if (OCFS2_I(inode)->ip_flags & OCFS2_INODE_SKIP_ORPHAN_DIR)
+		return status;
+
 	ocfs2_inode_unlock(orphan_dir_inode, 1);
 	mutex_unlock(&orphan_dir_inode->i_mutex);
 	brelse(orphan_dir_bh);
@@ -871,7 +896,23 @@ static int ocfs2_query_inode_wipe(struct inode *inode,
 
 	/* Do some basic inode verification... */
 	di = (struct ocfs2_dinode *) di_bh->b_data;
-	if (!(di->i_flags & cpu_to_le32(OCFS2_ORPHANED_FL))) {
+	if (!(di->i_flags & cpu_to_le32(OCFS2_ORPHANED_FL)) &&
+	    !(oi->ip_flags & OCFS2_INODE_SKIP_ORPHAN_DIR)) {
+		/*
+		 * Inodes in the orphan dir must have ORPHANED_FL.  The only
+		 * inodes that come back out of the orphan dir are reflink
+		 * targets. A reflink target may be moved out of the orphan
+		 * dir between the time we scan the directory and the time we
+		 * process it. This would lead to HAS_REFCOUNT_FL being set but
+		 * ORPHANED_FL not.
+		 */
+		if (di->i_dyn_features & cpu_to_le16(OCFS2_HAS_REFCOUNT_FL)) {
+			mlog(0, "Reflinked inode %llu is no longer orphaned.  "
+			     "it shouldn't be deleted\n",
+			     (unsigned long long)oi->ip_blkno);
+			goto bail;
+		}
+
 		/* for lack of a better error? */
 		status = -EEXIST;
 		mlog(ML_ERROR,
@@ -951,6 +992,8 @@ void ocfs2_delete_inode(struct inode *inode)
 		mlog(0, "Skipping delete of bad inode\n");
 		goto bail;
 	}
+
+	dquot_initialize(inode);
 
 	if (!ocfs2_inode_is_valid_to_delete(inode)) {
 		/* It's probably not necessary to truncate_inode_pages
@@ -1068,6 +1111,8 @@ void ocfs2_clear_inode(struct inode *inode)
 	mlog_bug_on_msg(OCFS2_SB(inode->i_sb) == NULL,
 			"Inode=%lu\n", inode->i_ino);
 
+	dquot_drop(inode);
+
 	/* To preven remote deletes we hold open lock before, now it
 	 * is time to unlock PR and EX open locks. */
 	ocfs2_open_unlock(inode);
@@ -1101,13 +1146,14 @@ void ocfs2_clear_inode(struct inode *inode)
 	ocfs2_lock_res_free(&oi->ip_inode_lockres);
 	ocfs2_lock_res_free(&oi->ip_open_lockres);
 
-	ocfs2_metadata_cache_purge(inode);
+	ocfs2_metadata_cache_exit(INODE_CACHE(inode));
 
-	mlog_bug_on_msg(oi->ip_metadata_cache.ci_num_cached,
+	mlog_bug_on_msg(INODE_CACHE(inode)->ci_num_cached,
 			"Clear inode of %llu, inode has %u cache items\n",
-			(unsigned long long)oi->ip_blkno, oi->ip_metadata_cache.ci_num_cached);
+			(unsigned long long)oi->ip_blkno,
+			INODE_CACHE(inode)->ci_num_cached);
 
-	mlog_bug_on_msg(!(oi->ip_flags & OCFS2_INODE_CACHE_INLINE),
+	mlog_bug_on_msg(!(INODE_CACHE(inode)->ci_flags & OCFS2_CACHE_FL_INLINE),
 			"Clear inode of %llu, inode has a bad flag\n",
 			(unsigned long long)oi->ip_blkno);
 
@@ -1134,9 +1180,7 @@ void ocfs2_clear_inode(struct inode *inode)
 			(unsigned long long)oi->ip_blkno, oi->ip_open_count);
 
 	/* Clear all other flags. */
-	oi->ip_flags = OCFS2_INODE_CACHE_INLINE;
-	oi->ip_created_trans = 0;
-	oi->ip_last_trans = 0;
+	oi->ip_flags = 0;
 	oi->ip_dir_start_lookup = 0;
 	oi->ip_blkno = 0ULL;
 
@@ -1228,7 +1272,7 @@ int ocfs2_mark_inode_dirty(handle_t *handle,
 	mlog_entry("(inode %llu)\n",
 		   (unsigned long long)OCFS2_I(inode)->ip_blkno);
 
-	status = ocfs2_journal_access_di(handle, inode, bh,
+	status = ocfs2_journal_access_di(handle, INODE_CACHE(inode), bh,
 					 OCFS2_JOURNAL_ACCESS_WRITE);
 	if (status < 0) {
 		mlog_errno(status);
@@ -1369,8 +1413,8 @@ int ocfs2_read_inode_block_full(struct inode *inode, struct buffer_head **bh,
 	int rc;
 	struct buffer_head *tmp = *bh;
 
-	rc = ocfs2_read_blocks(inode, OCFS2_I(inode)->ip_blkno, 1, &tmp,
-			       flags, ocfs2_validate_inode_block);
+	rc = ocfs2_read_blocks(INODE_CACHE(inode), OCFS2_I(inode)->ip_blkno,
+			       1, &tmp, flags, ocfs2_validate_inode_block);
 
 	/* If ocfs2_read_blocks() got us a new bh, pass it up. */
 	if (!rc && !*bh)
@@ -1383,3 +1427,56 @@ int ocfs2_read_inode_block(struct inode *inode, struct buffer_head **bh)
 {
 	return ocfs2_read_inode_block_full(inode, bh, 0);
 }
+
+
+static u64 ocfs2_inode_cache_owner(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	return oi->ip_blkno;
+}
+
+static struct super_block *ocfs2_inode_cache_get_super(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	return oi->vfs_inode.i_sb;
+}
+
+static void ocfs2_inode_cache_lock(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	spin_lock(&oi->ip_lock);
+}
+
+static void ocfs2_inode_cache_unlock(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	spin_unlock(&oi->ip_lock);
+}
+
+static void ocfs2_inode_cache_io_lock(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	mutex_lock(&oi->ip_io_mutex);
+}
+
+static void ocfs2_inode_cache_io_unlock(struct ocfs2_caching_info *ci)
+{
+	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
+
+	mutex_unlock(&oi->ip_io_mutex);
+}
+
+const struct ocfs2_caching_operations ocfs2_inode_caching_ops = {
+	.co_owner		= ocfs2_inode_cache_owner,
+	.co_get_super		= ocfs2_inode_cache_get_super,
+	.co_cache_lock		= ocfs2_inode_cache_lock,
+	.co_cache_unlock	= ocfs2_inode_cache_unlock,
+	.co_io_lock		= ocfs2_inode_cache_io_lock,
+	.co_io_unlock		= ocfs2_inode_cache_io_unlock,
+};
+

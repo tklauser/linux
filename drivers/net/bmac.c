@@ -20,6 +20,7 @@
 #include <linux/crc32.h>
 #include <linux/bitrev.h>
 #include <linux/ethtool.h>
+#include <linux/slab.h>
 #include <asm/prom.h>
 #include <asm/dbdma.h>
 #include <asm/io.h>
@@ -428,17 +429,18 @@ bmac_init_phy(struct net_device *dev)
 	printk(KERN_DEBUG "phy registers:");
 	for (addr = 0; addr < 32; ++addr) {
 		if ((addr & 7) == 0)
-			printk("\n" KERN_DEBUG);
-		printk(" %.4x", bmac_mif_read(dev, addr));
+			printk(KERN_DEBUG);
+		printk(KERN_CONT " %.4x", bmac_mif_read(dev, addr));
 	}
-	printk("\n");
+	printk(KERN_CONT "\n");
+
 	if (bp->is_bmac_plus) {
 		unsigned int capable, ctrl;
 
 		ctrl = bmac_mif_read(dev, 0);
 		capable = ((bmac_mif_read(dev, 1) & 0xf800) >> 6) | 1;
-		if (bmac_mif_read(dev, 4) != capable
-		    || (ctrl & 0x1000) == 0) {
+		if (bmac_mif_read(dev, 4) != capable ||
+		    (ctrl & 0x1000) == 0) {
 			bmac_mif_write(dev, 4, capable);
 			bmac_mif_write(dev, 0, 0x1200);
 		} else
@@ -972,7 +974,7 @@ static void bmac_set_multicast(struct net_device *dev)
 {
 	struct dev_mc_list *dmi;
 	struct bmac_data *bp = netdev_priv(dev);
-	int num_addrs = dev->mc_count;
+	int num_addrs = netdev_mc_count(dev);
 	unsigned short rx_cfg;
 	int i;
 
@@ -981,7 +983,7 @@ static void bmac_set_multicast(struct net_device *dev)
 
 	XXDEBUG(("bmac: enter bmac_set_multicast, n_addrs=%d\n", num_addrs));
 
-	if((dev->flags & IFF_ALLMULTI) || (dev->mc_count > 64)) {
+	if((dev->flags & IFF_ALLMULTI) || (netdev_mc_count(dev) > 64)) {
 		for (i=0; i<4; i++) bp->hash_table_mask[i] = 0xffff;
 		bmac_update_hash_table_mask(dev, bp);
 		rx_cfg = bmac_rx_on(dev, 1, 0);
@@ -999,7 +1001,7 @@ static void bmac_set_multicast(struct net_device *dev)
 			rx_cfg = bmac_rx_on(dev, 0, 0);
 			XXDEBUG(("bmac: multi disabled, rx_cfg=%#08x\n", rx_cfg));
 		} else {
-			for (dmi=dev->mc_list; dmi!=NULL; dmi=dmi->next)
+			netdev_for_each_mc_addr(dmi, dev)
 				bmac_addhash(bp, dmi->dmi_addr);
 			bmac_update_hash_table_mask(dev, bp);
 			rx_cfg = bmac_rx_on(dev, 1, 0);
@@ -1014,13 +1016,13 @@ static void bmac_set_multicast(struct net_device *dev)
 
 static void bmac_set_multicast(struct net_device *dev)
 {
-	struct dev_mc_list *dmi = dev->mc_list;
+	struct dev_mc_list *dmi;
 	char *addrs;
 	int i;
 	unsigned short rx_cfg;
 	u32 crc;
 
-	if((dev->flags & IFF_ALLMULTI) || (dev->mc_count > 64)) {
+	if((dev->flags & IFF_ALLMULTI) || (netdev_mc_count(dev) > 64)) {
 		bmwrite(dev, BHASH0, 0xffff);
 		bmwrite(dev, BHASH1, 0xffff);
 		bmwrite(dev, BHASH2, 0xffff);
@@ -1038,9 +1040,8 @@ static void bmac_set_multicast(struct net_device *dev)
 
 		for(i = 0; i < 4; i++) hash_table[i] = 0;
 
-		for(i = 0; i < dev->mc_count; i++) {
+		netdev_for_each_mc_addr(dmi, dev) {
 			addrs = dmi->dmi_addr;
-			dmi = dmi->next;
 
 			if(!(*addrs & 1))
 				continue;
@@ -1247,6 +1248,16 @@ static const struct ethtool_ops bmac_ethtool_ops = {
 	.get_link		= ethtool_op_get_link,
 };
 
+static const struct net_device_ops bmac_netdev_ops = {
+	.ndo_open		= bmac_open,
+	.ndo_stop		= bmac_close,
+	.ndo_start_xmit		= bmac_output,
+	.ndo_set_multicast_list	= bmac_set_multicast,
+	.ndo_set_mac_address	= bmac_set_address,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+
 static int __devinit bmac_probe(struct macio_dev *mdev, const struct of_device_id *match)
 {
 	int j, rev, ret;
@@ -1308,12 +1319,8 @@ static int __devinit bmac_probe(struct macio_dev *mdev, const struct of_device_i
 	bmac_enable_and_reset_chip(dev);
 	bmwrite(dev, INTDISABLE, DisableAll);
 
-	dev->open = bmac_open;
-	dev->stop = bmac_close;
+	dev->netdev_ops = &bmac_netdev_ops;
 	dev->ethtool_ops = &bmac_ethtool_ops;
-	dev->hard_start_xmit = bmac_output;
-	dev->set_multicast_list = bmac_set_multicast;
-	dev->set_mac_address = bmac_set_address;
 
 	bmac_get_station_address(dev, addr);
 	if (bmac_verify_checksum(dev) != 0)
@@ -1482,7 +1489,7 @@ bmac_output(struct sk_buff *skb, struct net_device *dev)
 	struct bmac_data *bp = netdev_priv(dev);
 	skb_queue_tail(bp->queue, skb);
 	bmac_start(dev);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static void bmac_tx_timeout(unsigned long data)

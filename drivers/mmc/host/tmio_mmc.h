@@ -11,26 +11,6 @@
 
 #include <linux/highmem.h>
 
-#define CNF_CMD     0x04
-#define CNF_CTL_BASE   0x10
-#define CNF_INT_PIN  0x3d
-#define CNF_STOP_CLK_CTL 0x40
-#define CNF_GCLK_CTL 0x41
-#define CNF_SD_CLK_MODE 0x42
-#define CNF_PIN_STATUS 0x44
-#define CNF_PWR_CTL_1 0x48
-#define CNF_PWR_CTL_2 0x49
-#define CNF_PWR_CTL_3 0x4a
-#define CNF_CARD_DETECT_MODE 0x4c
-#define CNF_SD_SLOT 0x50
-#define CNF_EXT_GCLK_CTL_1 0xf0
-#define CNF_EXT_GCLK_CTL_2 0xf1
-#define CNF_EXT_GCLK_CTL_3 0xf9
-#define CNF_SD_LED_EN_1 0xfa
-#define CNF_SD_LED_EN_2 0xfe
-
-#define   SDCREN 0x2   /* Enable access to MMC CTL regs. (flag in COMMAND_REG)*/
-
 #define CTL_SD_CMD 0x00
 #define CTL_ARG_REG 0x04
 #define CTL_STOP_INTERNAL_ACTION 0x08
@@ -75,53 +55,96 @@
 /* Define some IRQ masks */
 /* This is the mask used at reset by the chip */
 #define TMIO_MASK_ALL           0x837f031d
-#define TMIO_MASK_READOP  (TMIO_STAT_RXRDY | TMIO_STAT_DATAEND | \
-		TMIO_STAT_CARD_REMOVE | TMIO_STAT_CARD_INSERT)
-#define TMIO_MASK_WRITEOP (TMIO_STAT_TXRQ | TMIO_STAT_DATAEND | \
-		TMIO_STAT_CARD_REMOVE | TMIO_STAT_CARD_INSERT)
+#define TMIO_MASK_READOP  (TMIO_STAT_RXRDY | TMIO_STAT_DATAEND)
+#define TMIO_MASK_WRITEOP (TMIO_STAT_TXRQ | TMIO_STAT_DATAEND)
 #define TMIO_MASK_CMD     (TMIO_STAT_CMDRESPEND | TMIO_STAT_CMDTIMEOUT | \
 		TMIO_STAT_CARD_REMOVE | TMIO_STAT_CARD_INSERT)
 #define TMIO_MASK_IRQ     (TMIO_MASK_READOP | TMIO_MASK_WRITEOP | TMIO_MASK_CMD)
 
-#define enable_mmc_irqs(ctl, i) \
+
+#define enable_mmc_irqs(host, i) \
 	do { \
 		u32 mask;\
-		mask  = tmio_ioread32((ctl) + CTL_IRQ_MASK); \
+		mask  = sd_ctrl_read32((host), CTL_IRQ_MASK); \
 		mask &= ~((i) & TMIO_MASK_IRQ); \
-		tmio_iowrite32(mask, (ctl) + CTL_IRQ_MASK); \
+		sd_ctrl_write32((host), CTL_IRQ_MASK, mask); \
 	} while (0)
 
-#define disable_mmc_irqs(ctl, i) \
+#define disable_mmc_irqs(host, i) \
 	do { \
 		u32 mask;\
-		mask  = tmio_ioread32((ctl) + CTL_IRQ_MASK); \
+		mask  = sd_ctrl_read32((host), CTL_IRQ_MASK); \
 		mask |= ((i) & TMIO_MASK_IRQ); \
-		tmio_iowrite32(mask, (ctl) + CTL_IRQ_MASK); \
+		sd_ctrl_write32((host), CTL_IRQ_MASK, mask); \
 	} while (0)
 
-#define ack_mmc_irqs(ctl, i) \
+#define ack_mmc_irqs(host, i) \
 	do { \
 		u32 mask;\
-		mask  = tmio_ioread32((ctl) + CTL_STATUS); \
+		mask  = sd_ctrl_read32((host), CTL_STATUS); \
 		mask &= ~((i) & TMIO_MASK_IRQ); \
-		tmio_iowrite32(mask, (ctl) + CTL_STATUS); \
+		sd_ctrl_write32((host), CTL_STATUS, mask); \
 	} while (0)
 
 
 struct tmio_mmc_host {
-	void __iomem *cnf;
 	void __iomem *ctl;
+	unsigned long bus_shift;
 	struct mmc_command      *cmd;
 	struct mmc_request      *mrq;
 	struct mmc_data         *data;
 	struct mmc_host         *mmc;
 	int                     irq;
 
+	/* Callbacks for clock / power control */
+	void (*set_pwr)(struct platform_device *host, int state);
+	void (*set_clk_div)(struct platform_device *host, int state);
+
 	/* pio related stuff */
 	struct scatterlist      *sg_ptr;
 	unsigned int            sg_len;
 	unsigned int            sg_off;
+
+	struct platform_device *pdev;
 };
+
+#include <linux/io.h>
+
+static inline u16 sd_ctrl_read16(struct tmio_mmc_host *host, int addr)
+{
+	return readw(host->ctl + (addr << host->bus_shift));
+}
+
+static inline void sd_ctrl_read16_rep(struct tmio_mmc_host *host, int addr,
+		u16 *buf, int count)
+{
+	readsw(host->ctl + (addr << host->bus_shift), buf, count);
+}
+
+static inline u32 sd_ctrl_read32(struct tmio_mmc_host *host, int addr)
+{
+	return readw(host->ctl + (addr << host->bus_shift)) |
+	       readw(host->ctl + ((addr + 2) << host->bus_shift)) << 16;
+}
+
+static inline void sd_ctrl_write16(struct tmio_mmc_host *host, int addr,
+		u16 val)
+{
+	writew(val, host->ctl + (addr << host->bus_shift));
+}
+
+static inline void sd_ctrl_write16_rep(struct tmio_mmc_host *host, int addr,
+		u16 *buf, int count)
+{
+	writesw(host->ctl + (addr << host->bus_shift), buf, count);
+}
+
+static inline void sd_ctrl_write32(struct tmio_mmc_host *host, int addr,
+		u32 val)
+{
+	writew(val, host->ctl + (addr << host->bus_shift));
+	writew(val >> 16, host->ctl + ((addr + 2) << host->bus_shift));
+}
 
 #include <linux/scatterlist.h>
 #include <linux/blkdev.h>

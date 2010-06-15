@@ -29,7 +29,6 @@
 #include <mach/regs-clock.h>
 #include <mach/regs-gpio.h>
 #include <mach/hardware.h>
-#include <plat/audio.h>
 #include <linux/io.h>
 #include <mach/spi-gpio.h>
 
@@ -37,7 +36,7 @@
 
 #include "../codecs/wm8753.h"
 #include "lm4857.h"
-#include "s3c24xx-pcm.h"
+#include "s3c-dma.h"
 #include "s3c24xx-i2s.h"
 
 /* define the scenarios */
@@ -137,7 +136,7 @@ static int neo1973_hifi_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	/* codec PLL input is PCLK/4 */
-	ret = snd_soc_dai_set_pll(codec_dai, WM8753_PLL1,
+	ret = snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0,
 		iis_clkrate / 4, pll_out);
 	if (ret < 0)
 		return ret;
@@ -153,7 +152,7 @@ static int neo1973_hifi_hw_free(struct snd_pcm_substream *substream)
 	pr_debug("Entered %s\n", __func__);
 
 	/* disable the PLL */
-	return snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0, 0);
+	return snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0, 0, 0);
 }
 
 /*
@@ -203,7 +202,7 @@ static int neo1973_voice_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	/* configue and enable PLL for 12.288MHz output */
-	ret = snd_soc_dai_set_pll(codec_dai, WM8753_PLL2,
+	ret = snd_soc_dai_set_pll(codec_dai, WM8753_PLL2, 0,
 		iis_clkrate / 4, 12288000);
 	if (ret < 0)
 		return ret;
@@ -219,7 +218,7 @@ static int neo1973_voice_hw_free(struct snd_pcm_substream *substream)
 	pr_debug("Entered %s\n", __func__);
 
 	/* disable the PLL */
-	return snd_soc_dai_set_pll(codec_dai, WM8753_PLL2, 0, 0);
+	return snd_soc_dai_set_pll(codec_dai, WM8753_PLL2, 0, 0, 0);
 }
 
 static struct snd_soc_ops neo1973_voice_ops = {
@@ -345,9 +344,11 @@ static void lm4857_write_regs(void)
 static int lm4857_get_reg(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	int reg = kcontrol->private_value & 0xFF;
-	int shift = (kcontrol->private_value >> 8) & 0x0F;
-	int mask = (kcontrol->private_value >> 16) & 0xFF;
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	int reg = mc->reg;
+	int shift = mc->shift;
+	int mask = mc->max;
 
 	pr_debug("Entered %s\n", __func__);
 
@@ -358,9 +359,11 @@ static int lm4857_get_reg(struct snd_kcontrol *kcontrol,
 static int lm4857_set_reg(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	int reg = kcontrol->private_value & 0xFF;
-	int shift = (kcontrol->private_value >> 8) & 0x0F;
-	int mask = (kcontrol->private_value >> 16) & 0xFF;
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	int reg = mc->reg;
+	int shift = mc->shift;
+	int mask = mc->max;
 
 	if (((lm4857_regs[reg] >> shift) & mask) ==
 		ucontrol->value.integer.value[0])

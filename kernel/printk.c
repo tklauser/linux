@@ -33,8 +33,17 @@
 #include <linux/bootmem.h>
 #include <linux/syscalls.h>
 #include <linux/kexec.h>
+#include <linux/ratelimit.h>
+#include <linux/kmsg_dump.h>
+#include <linux/syslog.h>
 
 #include <asm/uaccess.h>
+
+/*
+ * for_each_console() allows you to iterate on each console
+ */
+#define for_each_console(con) \
+	for (con = console_drivers; con != NULL; con = con->next)
 
 /*
  * Architectures can override it:
@@ -135,6 +144,7 @@ static char __log_buf[__LOG_BUF_LEN];
 static char *log_buf = __log_buf;
 static int log_buf_len = __LOG_BUF_LEN;
 static unsigned logged_chars; /* Number of chars produced since last read+clear operation */
+static int saved_console_loglevel = -1;
 
 #ifdef CONFIG_KEXEC
 /*
@@ -198,12 +208,11 @@ __setup("log_buf_len=", log_buf_len_setup);
 #ifdef CONFIG_BOOT_PRINTK_DELAY
 
 static unsigned int boot_delay; /* msecs delay after each printk during bootup */
-static unsigned long long printk_delay_msec; /* per msec, based on boot_delay */
+static unsigned long long loops_per_msec;	/* based on boot_delay */
 
 static int __init boot_delay_setup(char *str)
 {
 	unsigned long lpj;
-	unsigned long long loops_per_msec;
 
 	lpj = preset_lpj ? preset_lpj : 1000000;	/* some guess */
 	loops_per_msec = (unsigned long long)lpj / 1000 * HZ;
@@ -212,10 +221,9 @@ static int __init boot_delay_setup(char *str)
 	if (boot_delay > 10 * 1000)
 		boot_delay = 0;
 
-	printk_delay_msec = loops_per_msec;
-	printk(KERN_DEBUG "boot_delay: %u, preset_lpj: %ld, lpj: %lu, "
-		"HZ: %d, printk_delay_msec: %llu\n",
-		boot_delay, preset_lpj, lpj, HZ, printk_delay_msec);
+	pr_debug("boot_delay: %u, preset_lpj: %ld, lpj: %lu, "
+		"HZ: %d, loops_per_msec: %llu\n",
+		boot_delay, preset_lpj, lpj, HZ, loops_per_msec);
 	return 1;
 }
 __setup("boot_delay=", boot_delay_setup);
@@ -228,7 +236,7 @@ static void boot_delay_msec(void)
 	if (boot_delay == 0 || system_state != SYSTEM_BOOTING)
 		return;
 
-	k = (unsigned long long)printk_delay_msec * boot_delay;
+	k = (unsigned long long)loops_per_msec * boot_delay;
 
 	timeout = jiffies + msecs_to_jiffies(boot_delay);
 	while (k) {
@@ -250,38 +258,23 @@ static inline void boot_delay_msec(void)
 }
 #endif
 
-/*
- * Commands to do_syslog:
- *
- * 	0 -- Close the log.  Currently a NOP.
- * 	1 -- Open the log. Currently a NOP.
- * 	2 -- Read from the log.
- * 	3 -- Read all messages remaining in the ring buffer.
- * 	4 -- Read and clear all messages remaining in the ring buffer
- * 	5 -- Clear ring buffer.
- * 	6 -- Disable printk's to console
- * 	7 -- Enable printk's to console
- *	8 -- Set level of messages printed to console
- *	9 -- Return number of unread characters in the log buffer
- *     10 -- Return size of the log buffer
- */
-int do_syslog(int type, char __user *buf, int len)
+int do_syslog(int type, char __user *buf, int len, bool from_file)
 {
 	unsigned i, j, limit, count;
 	int do_clear = 0;
 	char c;
 	int error = 0;
 
-	error = security_syslog(type);
+	error = security_syslog(type, from_file);
 	if (error)
 		return error;
 
 	switch (type) {
-	case 0:		/* Close log */
+	case SYSLOG_ACTION_CLOSE:	/* Close log */
 		break;
-	case 1:		/* Open log */
+	case SYSLOG_ACTION_OPEN:	/* Open log */
 		break;
-	case 2:		/* Read from log */
+	case SYSLOG_ACTION_READ:	/* Read from log */
 		error = -EINVAL;
 		if (!buf || len < 0)
 			goto out;
@@ -312,10 +305,12 @@ int do_syslog(int type, char __user *buf, int len)
 		if (!error)
 			error = i;
 		break;
-	case 4:		/* Read/clear last kernel messages */
+	/* Read/clear last kernel messages */
+	case SYSLOG_ACTION_READ_CLEAR:
 		do_clear = 1;
 		/* FALL THRU */
-	case 3:		/* Read last kernel messages */
+	/* Read last kernel messages */
+	case SYSLOG_ACTION_READ_ALL:
 		error = -EINVAL;
 		if (!buf || len < 0)
 			goto out;
@@ -368,28 +363,41 @@ int do_syslog(int type, char __user *buf, int len)
 			}
 		}
 		break;
-	case 5:		/* Clear ring buffer */
+	/* Clear ring buffer */
+	case SYSLOG_ACTION_CLEAR:
 		logged_chars = 0;
 		break;
-	case 6:		/* Disable logging to console */
+	/* Disable logging to console */
+	case SYSLOG_ACTION_CONSOLE_OFF:
+		if (saved_console_loglevel == -1)
+			saved_console_loglevel = console_loglevel;
 		console_loglevel = minimum_console_loglevel;
 		break;
-	case 7:		/* Enable logging to console */
-		console_loglevel = default_console_loglevel;
+	/* Enable logging to console */
+	case SYSLOG_ACTION_CONSOLE_ON:
+		if (saved_console_loglevel != -1) {
+			console_loglevel = saved_console_loglevel;
+			saved_console_loglevel = -1;
+		}
 		break;
-	case 8:		/* Set level of messages printed to console */
+	/* Set level of messages printed to console */
+	case SYSLOG_ACTION_CONSOLE_LEVEL:
 		error = -EINVAL;
 		if (len < 1 || len > 8)
 			goto out;
 		if (len < minimum_console_loglevel)
 			len = minimum_console_loglevel;
 		console_loglevel = len;
+		/* Implicitly re-enable logging to console */
+		saved_console_loglevel = -1;
 		error = 0;
 		break;
-	case 9:		/* Number of chars in the log buffer */
+	/* Number of chars in the log buffer */
+	case SYSLOG_ACTION_SIZE_UNREAD:
 		error = log_end - log_start;
 		break;
-	case 10:	/* Size of the log buffer */
+	/* Size of the log buffer */
+	case SYSLOG_ACTION_SIZE_BUFFER:
 		error = log_buf_len;
 		break;
 	default:
@@ -402,7 +410,7 @@ out:
 
 SYSCALL_DEFINE3(syslog, int, type, char __user *, buf, int, len)
 {
-	return do_syslog(type, buf, len);
+	return do_syslog(type, buf, len, SYSLOG_FROM_CALL);
 }
 
 /*
@@ -412,7 +420,7 @@ static void __call_console_drivers(unsigned start, unsigned end)
 {
 	struct console *con;
 
-	for (con = console_drivers; con; con = con->next) {
+	for_each_console(con) {
 		if ((con->flags & CON_ENABLED) && con->write &&
 				(cpu_online(smp_processor_id()) ||
 				(con->flags & CON_ANYTIME)))
@@ -544,7 +552,7 @@ static int have_callable_console(void)
 {
 	struct console *con;
 
-	for (con = console_drivers; con; con = con->next)
+	for_each_console(con)
 		if (con->flags & CON_ANYTIME)
 			return 1;
 
@@ -640,6 +648,20 @@ static int recursion_bug;
 static int new_text_line = 1;
 static char printk_buf[1024];
 
+int printk_delay_msec __read_mostly;
+
+static inline void printk_delay(void)
+{
+	if (unlikely(printk_delay_msec)) {
+		int m = printk_delay_msec;
+
+		while (m--) {
+			mdelay(1);
+			touch_nmi_watchdog();
+		}
+	}
+}
+
 asmlinkage int vprintk(const char *fmt, va_list args)
 {
 	int printed_len = 0;
@@ -649,6 +671,7 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	char *p;
 
 	boot_delay_msec();
+	printk_delay();
 
 	preempt_disable();
 	/* This stops the holder of console_sem just where we want him */
@@ -687,20 +710,35 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 				  sizeof(printk_buf) - printed_len, fmt, args);
 
 
+	p = printk_buf;
+
+	/* Do we have a loglevel in the string? */
+	if (p[0] == '<') {
+		unsigned char c = p[1];
+		if (c && p[2] == '>') {
+			switch (c) {
+			case '0' ... '7': /* loglevel */
+				current_log_level = c - '0';
+			/* Fallthrough - make sure we're on a new line */
+			case 'd': /* KERN_DEFAULT */
+				if (!new_text_line) {
+					emit_log_char('\n');
+					new_text_line = 1;
+				}
+			/* Fallthrough - skip the loglevel */
+			case 'c': /* KERN_CONT */
+				p += 3;
+				break;
+			}
+		}
+	}
+
 	/*
 	 * Copy the output into log_buf.  If the caller didn't provide
 	 * appropriate log level tags, we insert them here
 	 */
-	for (p = printk_buf; *p; p++) {
+	for ( ; *p; p++) {
 		if (new_text_line) {
-			/* If a token, set current_log_level and skip over */
-			if (p[0] == '<' && p[1] >= '0' && p[1] <= '7' &&
-			    p[2] == '>') {
-				current_log_level = p[1] - '0';
-				p += 3;
-				printed_len -= 3;
-			}
-
 			/* Always output the token */
 			emit_log_char('<');
 			emit_log_char(current_log_level + '0');
@@ -1045,12 +1083,6 @@ void __sched console_conditional_schedule(void)
 }
 EXPORT_SYMBOL(console_conditional_schedule);
 
-void console_print(const char *s)
-{
-	printk(KERN_EMERG "%s", s);
-}
-EXPORT_SYMBOL(console_print);
-
 void console_unblank(void)
 {
 	struct console *c;
@@ -1067,7 +1099,7 @@ void console_unblank(void)
 
 	console_locked = 1;
 	console_may_schedule = 0;
-	for (c = console_drivers; c != NULL; c = c->next)
+	for_each_console(c)
 		if ((c->flags & CON_ENABLED) && c->unblank)
 			c->unblank();
 	release_console_sem();
@@ -1082,7 +1114,7 @@ struct tty_driver *console_device(int *index)
 	struct tty_driver *driver = NULL;
 
 	acquire_console_sem();
-	for (c = console_drivers; c != NULL; c = c->next) {
+	for_each_console(c) {
 		if (!c->device)
 			continue;
 		driver = c->device(c, index);
@@ -1119,25 +1151,49 @@ EXPORT_SYMBOL(console_start);
  * to register the console printing procedure with printk() and to
  * print any messages that were printed by the kernel before the
  * console driver was initialized.
+ *
+ * This can happen pretty early during the boot process (because of
+ * early_printk) - sometimes before setup_arch() completes - be careful
+ * of what kernel features are used - they may not be initialised yet.
+ *
+ * There are two types of consoles - bootconsoles (early_printk) and
+ * "real" consoles (everything which is not a bootconsole) which are
+ * handled differently.
+ *  - Any number of bootconsoles can be registered at any time.
+ *  - As soon as a "real" console is registered, all bootconsoles
+ *    will be unregistered automatically.
+ *  - Once a "real" console is registered, any attempt to register a
+ *    bootconsoles will be rejected
  */
-void register_console(struct console *console)
+void register_console(struct console *newcon)
 {
 	int i;
 	unsigned long flags;
-	struct console *bootconsole = NULL;
+	struct console *bcon = NULL;
 
-	if (console_drivers) {
-		if (console->flags & CON_BOOT)
-			return;
-		if (console_drivers->flags & CON_BOOT)
-			bootconsole = console_drivers;
+	/*
+	 * before we register a new CON_BOOT console, make sure we don't
+	 * already have a valid console
+	 */
+	if (console_drivers && newcon->flags & CON_BOOT) {
+		/* find the last or real console */
+		for_each_console(bcon) {
+			if (!(bcon->flags & CON_BOOT)) {
+				printk(KERN_INFO "Too late to register bootconsole %s%d\n",
+					newcon->name, newcon->index);
+				return;
+			}
+		}
 	}
 
-	if (preferred_console < 0 || bootconsole || !console_drivers)
+	if (console_drivers && console_drivers->flags & CON_BOOT)
+		bcon = console_drivers;
+
+	if (preferred_console < 0 || bcon || !console_drivers)
 		preferred_console = selected_console;
 
-	if (console->early_setup)
-		console->early_setup();
+	if (newcon->early_setup)
+		newcon->early_setup();
 
 	/*
 	 *	See if we want to use this console driver. If we
@@ -1145,13 +1201,13 @@ void register_console(struct console *console)
 	 *	that registers here.
 	 */
 	if (preferred_console < 0) {
-		if (console->index < 0)
-			console->index = 0;
-		if (console->setup == NULL ||
-		    console->setup(console, NULL) == 0) {
-			console->flags |= CON_ENABLED;
-			if (console->device) {
-				console->flags |= CON_CONSDEV;
+		if (newcon->index < 0)
+			newcon->index = 0;
+		if (newcon->setup == NULL ||
+		    newcon->setup(newcon, NULL) == 0) {
+			newcon->flags |= CON_ENABLED;
+			if (newcon->device) {
+				newcon->flags |= CON_CONSDEV;
 				preferred_console = 0;
 			}
 		}
@@ -1163,64 +1219,62 @@ void register_console(struct console *console)
 	 */
 	for (i = 0; i < MAX_CMDLINECONSOLES && console_cmdline[i].name[0];
 			i++) {
-		if (strcmp(console_cmdline[i].name, console->name) != 0)
+		if (strcmp(console_cmdline[i].name, newcon->name) != 0)
 			continue;
-		if (console->index >= 0 &&
-		    console->index != console_cmdline[i].index)
+		if (newcon->index >= 0 &&
+		    newcon->index != console_cmdline[i].index)
 			continue;
-		if (console->index < 0)
-			console->index = console_cmdline[i].index;
+		if (newcon->index < 0)
+			newcon->index = console_cmdline[i].index;
 #ifdef CONFIG_A11Y_BRAILLE_CONSOLE
 		if (console_cmdline[i].brl_options) {
-			console->flags |= CON_BRL;
-			braille_register_console(console,
+			newcon->flags |= CON_BRL;
+			braille_register_console(newcon,
 					console_cmdline[i].index,
 					console_cmdline[i].options,
 					console_cmdline[i].brl_options);
 			return;
 		}
 #endif
-		if (console->setup &&
-		    console->setup(console, console_cmdline[i].options) != 0)
+		if (newcon->setup &&
+		    newcon->setup(newcon, console_cmdline[i].options) != 0)
 			break;
-		console->flags |= CON_ENABLED;
-		console->index = console_cmdline[i].index;
+		newcon->flags |= CON_ENABLED;
+		newcon->index = console_cmdline[i].index;
 		if (i == selected_console) {
-			console->flags |= CON_CONSDEV;
+			newcon->flags |= CON_CONSDEV;
 			preferred_console = selected_console;
 		}
 		break;
 	}
 
-	if (!(console->flags & CON_ENABLED))
+	if (!(newcon->flags & CON_ENABLED))
 		return;
 
-	if (bootconsole && (console->flags & CON_CONSDEV)) {
-		printk(KERN_INFO "console handover: boot [%s%d] -> real [%s%d]\n",
-		       bootconsole->name, bootconsole->index,
-		       console->name, console->index);
-		unregister_console(bootconsole);
-		console->flags &= ~CON_PRINTBUFFER;
-	} else {
-		printk(KERN_INFO "console [%s%d] enabled\n",
-		       console->name, console->index);
-	}
+	/*
+	 * If we have a bootconsole, and are switching to a real console,
+	 * don't print everything out again, since when the boot console, and
+	 * the real console are the same physical device, it's annoying to
+	 * see the beginning boot messages twice
+	 */
+	if (bcon && ((newcon->flags & (CON_CONSDEV | CON_BOOT)) == CON_CONSDEV))
+		newcon->flags &= ~CON_PRINTBUFFER;
 
 	/*
 	 *	Put this console in the list - keep the
 	 *	preferred driver at the head of the list.
 	 */
 	acquire_console_sem();
-	if ((console->flags & CON_CONSDEV) || console_drivers == NULL) {
-		console->next = console_drivers;
-		console_drivers = console;
-		if (console->next)
-			console->next->flags &= ~CON_CONSDEV;
+	if ((newcon->flags & CON_CONSDEV) || console_drivers == NULL) {
+		newcon->next = console_drivers;
+		console_drivers = newcon;
+		if (newcon->next)
+			newcon->next->flags &= ~CON_CONSDEV;
 	} else {
-		console->next = console_drivers->next;
-		console_drivers->next = console;
+		newcon->next = console_drivers->next;
+		console_drivers->next = newcon;
 	}
-	if (console->flags & CON_PRINTBUFFER) {
+	if (newcon->flags & CON_PRINTBUFFER) {
 		/*
 		 * release_console_sem() will print out the buffered messages
 		 * for us.
@@ -1230,6 +1284,28 @@ void register_console(struct console *console)
 		spin_unlock_irqrestore(&logbuf_lock, flags);
 	}
 	release_console_sem();
+
+	/*
+	 * By unregistering the bootconsoles after we enable the real console
+	 * we get the "console xxx enabled" message on all the consoles -
+	 * boot consoles, real consoles, etc - this is to ensure that end
+	 * users know there might be something in the kernel's log buffer that
+	 * went to the bootconsole (that they do not see on the real console)
+	 */
+	if (bcon && ((newcon->flags & (CON_CONSDEV | CON_BOOT)) == CON_CONSDEV)) {
+		/* we need to iterate through twice, to make sure we print
+		 * everything out, before we unregister the console(s)
+		 */
+		printk(KERN_INFO "console [%s%d] enabled, bootconsole disabled\n",
+			newcon->name, newcon->index);
+		for_each_console(bcon)
+			if (bcon->flags & CON_BOOT)
+				unregister_console(bcon);
+	} else {
+		printk(KERN_INFO "%sconsole [%s%d] enabled\n",
+			(newcon->flags & CON_BOOT) ? "boot" : "" ,
+			newcon->name, newcon->index);
+	}
 }
 EXPORT_SYMBOL(register_console);
 
@@ -1272,11 +1348,13 @@ EXPORT_SYMBOL(unregister_console);
 
 static int __init disable_boot_consoles(void)
 {
-	if (console_drivers != NULL) {
-		if (console_drivers->flags & CON_BOOT) {
+	struct console *con;
+
+	for_each_console(con) {
+		if (con->flags & CON_BOOT) {
 			printk(KERN_INFO "turn off boot console %s%d\n",
-				console_drivers->name, console_drivers->index);
-			return unregister_console(console_drivers);
+				con->name, con->index);
+			unregister_console(con);
 		}
 	}
 	return 0;
@@ -1293,11 +1371,11 @@ late_initcall(disable_boot_consoles);
  */
 DEFINE_RATELIMIT_STATE(printk_ratelimit_state, 5 * HZ, 10);
 
-int printk_ratelimit(void)
+int __printk_ratelimit(const char *func)
 {
-	return __ratelimit(&printk_ratelimit_state);
+	return ___ratelimit(&printk_ratelimit_state, func);
 }
-EXPORT_SYMBOL(printk_ratelimit);
+EXPORT_SYMBOL(__printk_ratelimit);
 
 /**
  * printk_timed_ratelimit - caller-controlled printk ratelimiting
@@ -1321,4 +1399,123 @@ bool printk_timed_ratelimit(unsigned long *caller_jiffies,
 	return false;
 }
 EXPORT_SYMBOL(printk_timed_ratelimit);
+
+static DEFINE_SPINLOCK(dump_list_lock);
+static LIST_HEAD(dump_list);
+
+/**
+ * kmsg_dump_register - register a kernel log dumper.
+ * @dumper: pointer to the kmsg_dumper structure
+ *
+ * Adds a kernel log dumper to the system. The dump callback in the
+ * structure will be called when the kernel oopses or panics and must be
+ * set. Returns zero on success and %-EINVAL or %-EBUSY otherwise.
+ */
+int kmsg_dump_register(struct kmsg_dumper *dumper)
+{
+	unsigned long flags;
+	int err = -EBUSY;
+
+	/* The dump callback needs to be set */
+	if (!dumper->dump)
+		return -EINVAL;
+
+	spin_lock_irqsave(&dump_list_lock, flags);
+	/* Don't allow registering multiple times */
+	if (!dumper->registered) {
+		dumper->registered = 1;
+		list_add_tail(&dumper->list, &dump_list);
+		err = 0;
+	}
+	spin_unlock_irqrestore(&dump_list_lock, flags);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(kmsg_dump_register);
+
+/**
+ * kmsg_dump_unregister - unregister a kmsg dumper.
+ * @dumper: pointer to the kmsg_dumper structure
+ *
+ * Removes a dump device from the system. Returns zero on success and
+ * %-EINVAL otherwise.
+ */
+int kmsg_dump_unregister(struct kmsg_dumper *dumper)
+{
+	unsigned long flags;
+	int err = -EINVAL;
+
+	spin_lock_irqsave(&dump_list_lock, flags);
+	if (dumper->registered) {
+		dumper->registered = 0;
+		list_del(&dumper->list);
+		err = 0;
+	}
+	spin_unlock_irqrestore(&dump_list_lock, flags);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(kmsg_dump_unregister);
+
+static const char const *kmsg_reasons[] = {
+	[KMSG_DUMP_OOPS]	= "oops",
+	[KMSG_DUMP_PANIC]	= "panic",
+	[KMSG_DUMP_KEXEC]	= "kexec",
+};
+
+static const char *kmsg_to_str(enum kmsg_dump_reason reason)
+{
+	if (reason >= ARRAY_SIZE(kmsg_reasons) || reason < 0)
+		return "unknown";
+
+	return kmsg_reasons[reason];
+}
+
+/**
+ * kmsg_dump - dump kernel log to kernel message dumpers.
+ * @reason: the reason (oops, panic etc) for dumping
+ *
+ * Iterate through each of the dump devices and call the oops/panic
+ * callbacks with the log buffer.
+ */
+void kmsg_dump(enum kmsg_dump_reason reason)
+{
+	unsigned long end;
+	unsigned chars;
+	struct kmsg_dumper *dumper;
+	const char *s1, *s2;
+	unsigned long l1, l2;
+	unsigned long flags;
+
+	/* Theoretically, the log could move on after we do this, but
+	   there's not a lot we can do about that. The new messages
+	   will overwrite the start of what we dump. */
+	spin_lock_irqsave(&logbuf_lock, flags);
+	end = log_end & LOG_BUF_MASK;
+	chars = logged_chars;
+	spin_unlock_irqrestore(&logbuf_lock, flags);
+
+	if (logged_chars > end) {
+		s1 = log_buf + log_buf_len - logged_chars + end;
+		l1 = logged_chars - end;
+
+		s2 = log_buf;
+		l2 = end;
+	} else {
+		s1 = "";
+		l1 = 0;
+
+		s2 = log_buf + end - logged_chars;
+		l2 = logged_chars;
+	}
+
+	if (!spin_trylock_irqsave(&dump_list_lock, flags)) {
+		printk(KERN_ERR "dump_kmsg: dump list lock is held during %s, skipping dump\n",
+				kmsg_to_str(reason));
+		return;
+	}
+	list_for_each_entry(dumper, &dump_list, list)
+		dumper->dump(dumper, reason, s1, l1, s2, l2);
+	spin_unlock_irqrestore(&dump_list_lock, flags);
+}
 #endif

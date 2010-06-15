@@ -1226,10 +1226,16 @@ static void happy_meal_clean_rings(struct happy_meal *hp)
 			for (frag = 0; frag <= skb_shinfo(skb)->nr_frags; frag++) {
 				txd = &hp->happy_block->happy_meal_txd[i];
 				dma_addr = hme_read_desc32(hp, &txd->tx_addr);
-				dma_unmap_single(hp->dma_dev, dma_addr,
-						 (hme_read_desc32(hp, &txd->tx_flags)
-						  & TXFLAG_SIZE),
-						 DMA_TO_DEVICE);
+				if (!frag)
+					dma_unmap_single(hp->dma_dev, dma_addr,
+							 (hme_read_desc32(hp, &txd->tx_flags)
+							  & TXFLAG_SIZE),
+							 DMA_TO_DEVICE);
+				else
+					dma_unmap_page(hp->dma_dev, dma_addr,
+							 (hme_read_desc32(hp, &txd->tx_flags)
+							  & TXFLAG_SIZE),
+							 DMA_TO_DEVICE);
 
 				if (frag != skb_shinfo(skb)->nr_frags)
 					i++;
@@ -1510,24 +1516,20 @@ static int happy_meal_init(struct happy_meal *hp)
 
 	HMD(("htable, "));
 	if ((hp->dev->flags & IFF_ALLMULTI) ||
-	    (hp->dev->mc_count > 64)) {
+	    (netdev_mc_count(hp->dev) > 64)) {
 		hme_write32(hp, bregs + BMAC_HTABLE0, 0xffff);
 		hme_write32(hp, bregs + BMAC_HTABLE1, 0xffff);
 		hme_write32(hp, bregs + BMAC_HTABLE2, 0xffff);
 		hme_write32(hp, bregs + BMAC_HTABLE3, 0xffff);
 	} else if ((hp->dev->flags & IFF_PROMISC) == 0) {
 		u16 hash_table[4];
-		struct dev_mc_list *dmi = hp->dev->mc_list;
+		struct dev_mc_list *dmi;
 		char *addrs;
-		int i;
 		u32 crc;
 
-		for (i = 0; i < 4; i++)
-			hash_table[i] = 0;
-
-		for (i = 0; i < hp->dev->mc_count; i++) {
+		memset(hash_table, 0, sizeof(hash_table));
+		netdev_for_each_mc_addr(dmi, hp->dev) {
 			addrs = dmi->dmi_addr;
-			dmi = dmi->next;
 
 			if (!(*addrs & 1))
 				continue;
@@ -1953,7 +1955,10 @@ static void happy_meal_tx(struct happy_meal *hp)
 			dma_len = hme_read_desc32(hp, &this->tx_flags);
 
 			dma_len &= TXFLAG_SIZE;
-			dma_unmap_single(hp->dma_dev, dma_addr, dma_len, DMA_TO_DEVICE);
+			if (!frag)
+				dma_unmap_single(hp->dma_dev, dma_addr, dma_len, DMA_TO_DEVICE);
+			else
+				dma_unmap_page(hp->dma_dev, dma_addr, dma_len, DMA_TO_DEVICE);
 
 			elem = NEXT_TX(elem);
 			this = &txbase[elem];
@@ -2184,7 +2189,7 @@ static int happy_meal_open(struct net_device *dev)
 	 * into a single source which we register handling at probe time.
 	 */
 	if ((hp->happy_flags & (HFLAG_QUATTRO|HFLAG_PCI)) != HFLAG_QUATTRO) {
-		if (request_irq(dev->irq, &happy_meal_interrupt,
+		if (request_irq(dev->irq, happy_meal_interrupt,
 				IRQF_SHARED, dev->name, (void *)dev)) {
 			HMD(("EAGAIN\n"));
 			printk(KERN_ERR "happy_meal(SBUS): Can't order irq %d to go.\n",
@@ -2252,7 +2257,8 @@ static void happy_meal_tx_timeout(struct net_device *dev)
 	netif_wake_queue(dev);
 }
 
-static int happy_meal_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t happy_meal_start_xmit(struct sk_buff *skb,
+					 struct net_device *dev)
 {
 	struct happy_meal *hp = netdev_priv(dev);
  	int entry;
@@ -2275,7 +2281,7 @@ static int happy_meal_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		spin_unlock_irq(&hp->happy_lock);
 		printk(KERN_ERR "%s: BUG! Tx Ring full when queue awake!\n",
 		       dev->name);
-		return 1;
+		return NETDEV_TX_BUSY;
 	}
 
 	entry = hp->tx_new;
@@ -2338,7 +2344,7 @@ static int happy_meal_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	dev->trans_start = jiffies;
 
 	tx_add_log(hp, TXLOG_ACTION_TXMIT, 0);
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static struct net_device_stats *happy_meal_get_stats(struct net_device *dev)
@@ -2356,14 +2362,13 @@ static void happy_meal_set_multicast(struct net_device *dev)
 {
 	struct happy_meal *hp = netdev_priv(dev);
 	void __iomem *bregs = hp->bigmacregs;
-	struct dev_mc_list *dmi = dev->mc_list;
+	struct dev_mc_list *dmi;
 	char *addrs;
-	int i;
 	u32 crc;
 
 	spin_lock_irq(&hp->happy_lock);
 
-	if ((dev->flags & IFF_ALLMULTI) || (dev->mc_count > 64)) {
+	if ((dev->flags & IFF_ALLMULTI) || (netdev_mc_count(dev) > 64)) {
 		hme_write32(hp, bregs + BMAC_HTABLE0, 0xffff);
 		hme_write32(hp, bregs + BMAC_HTABLE1, 0xffff);
 		hme_write32(hp, bregs + BMAC_HTABLE2, 0xffff);
@@ -2374,12 +2379,9 @@ static void happy_meal_set_multicast(struct net_device *dev)
 	} else {
 		u16 hash_table[4];
 
-		for (i = 0; i < 4; i++)
-			hash_table[i] = 0;
-
-		for (i = 0; i < dev->mc_count; i++) {
+		memset(hash_table, 0, sizeof(hash_table));
+		netdev_for_each_mc_addr(dmi, dev) {
 			addrs = dmi->dmi_addr;
-			dmi = dmi->next;
 
 			if (!(*addrs & 1))
 				continue;
@@ -3046,9 +3048,9 @@ static int __devinit happy_meal_pci_probe(struct pci_dev *pdev,
 		int len;
 
 		if (qfe_slot != -1 &&
-		    (addr = of_get_property(dp,
-					    "local-mac-address", &len)) != NULL
-		    && len == 6) {
+		    (addr = of_get_property(dp, "local-mac-address", &len))
+			!= NULL &&
+		    len == 6) {
 			memcpy(dev->dev_addr, addr, 6);
 		} else {
 			memcpy(dev->dev_addr, idprom->id_ethaddr, 6);
@@ -3201,7 +3203,7 @@ static void __devexit happy_meal_pci_remove(struct pci_dev *pdev)
 	dev_set_drvdata(&pdev->dev, NULL);
 }
 
-static struct pci_device_id happymeal_pci_ids[] = {
+static DEFINE_PCI_DEVICE_TABLE(happymeal_pci_ids) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_SUN, PCI_DEVICE_ID_SUN_HAPPYMEAL) },
 	{ }			/* Terminating entry */
 };

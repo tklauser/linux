@@ -16,7 +16,6 @@
 #include <linux/ptrace.h>
 #include <linux/user.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/security.h>
 #include <linux/signal.h>
 #include <linux/regset.h>
@@ -66,6 +65,7 @@ static int genregs32_get(struct task_struct *target,
 			*k++ = regs->u_regs[pos++];
 
 		reg_window = (unsigned long __user *) regs->u_regs[UREG_I6];
+		reg_window -= 16;
 		for (; count > 0 && pos < 32; count--) {
 			if (get_user(*k++, &reg_window[pos++]))
 				return -EFAULT;
@@ -77,6 +77,7 @@ static int genregs32_get(struct task_struct *target,
 		}
 
 		reg_window = (unsigned long __user *) regs->u_regs[UREG_I6];
+		reg_window -= 16;
 		for (; count > 0 && pos < 32; count--) {
 			if (get_user(reg, &reg_window[pos++]) ||
 			    put_user(reg, u++))
@@ -142,6 +143,7 @@ static int genregs32_set(struct task_struct *target,
 			regs->u_regs[pos++] = *k++;
 
 		reg_window = (unsigned long __user *) regs->u_regs[UREG_I6];
+		reg_window -= 16;
 		for (; count > 0 && pos < 32; count--) {
 			if (put_user(*k++, &reg_window[pos++]))
 				return -EFAULT;
@@ -154,6 +156,7 @@ static int genregs32_set(struct task_struct *target,
 		}
 
 		reg_window = (unsigned long __user *) regs->u_regs[UREG_I6];
+		reg_window -= 16;
 		for (; count > 0 && pos < 32; count--) {
 			if (get_user(reg, u++) ||
 			    put_user(reg, &reg_window[pos++]))

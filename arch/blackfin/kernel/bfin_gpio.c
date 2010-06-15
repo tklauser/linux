@@ -1,30 +1,9 @@
 /*
- * File:         arch/blackfin/kernel/bfin_gpio.c
- * Based on:
- * Author:       Michael Hennerich (hennerich@blackfin.uclinux.org)
+ * GPIO Abstraction Layer
  *
- * Created:
- * Description:  GPIO Abstraction Layer
+ * Copyright 2006-2009 Analog Devices Inc.
  *
- * Modified:
- *               Copyright 2008 Analog Devices Inc.
- *
- * Bugs:         Enter bugs at http://blackfin.uclinux.org/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see the file COPYING, or write
- * to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Licensed under the GPL-2 or later
  */
 
 #include <linux/delay.h>
@@ -121,6 +100,12 @@ u8 pmux_offset[][16] = {
 };
 # endif
 
+#elif defined(BF538_FAMILY)
+static unsigned short * const port_fer[] = {
+	(unsigned short *) PORTCIO_FER,
+	(unsigned short *) PORTDIO_FER,
+	(unsigned short *) PORTEIO_FER,
+};
 #endif
 
 static unsigned short reserved_gpio_map[GPIO_BANK_NUM];
@@ -184,6 +169,27 @@ static int cmp_label(unsigned short ident, const char *label)
 
 static void port_setup(unsigned gpio, unsigned short usage)
 {
+#if defined(BF538_FAMILY)
+	/*
+	 * BF538/9 Port C,D and E are special.
+	 * Inverted PORT_FER polarity on CDE and no PORF_FER on F
+	 * Regular PORT F GPIOs are handled here, CDE are exclusively
+	 * managed by GPIOLIB
+	 */
+
+	if (gpio < MAX_BLACKFIN_GPIOS || gpio >= MAX_RESOURCES)
+		return;
+
+	gpio -= MAX_BLACKFIN_GPIOS;
+
+	if (usage == GPIO_USAGE)
+		*port_fer[gpio_bank(gpio)] |= gpio_bit(gpio);
+	else
+		*port_fer[gpio_bank(gpio)] &= ~gpio_bit(gpio);
+	SSYNC();
+	return;
+#endif
+
 	if (check_gpio(gpio))
 		return;
 
@@ -312,15 +318,6 @@ inline void portmux_setup(unsigned short per)
 #else
 # define portmux_setup(...)  do { } while (0)
 #endif
-
-static int __init bfin_gpio_init(void)
-{
-	printk(KERN_INFO "Blackfin GPIO Controller\n");
-
-	return 0;
-}
-arch_initcall(bfin_gpio_init);
-
 
 #ifndef CONFIG_BF54x
 /***********************************************************
@@ -695,14 +692,12 @@ void bfin_gpio_pm_hibernate_restore(void)
 		*port_fer[bank] = gpio_bank_saved[bank].fer;
 #endif
 		gpio_array[bank]->inen  = gpio_bank_saved[bank].inen;
+		gpio_array[bank]->data_set = gpio_bank_saved[bank].data
+						& gpio_bank_saved[bank].dir;
 		gpio_array[bank]->dir   = gpio_bank_saved[bank].dir;
 		gpio_array[bank]->polar = gpio_bank_saved[bank].polar;
 		gpio_array[bank]->edge  = gpio_bank_saved[bank].edge;
 		gpio_array[bank]->both  = gpio_bank_saved[bank].both;
-
-		gpio_array[bank]->data_set = gpio_bank_saved[bank].data
-						| gpio_bank_saved[bank].dir;
-
 		gpio_array[bank]->maska = gpio_bank_saved[bank].maska;
 	}
 	AWA_DUMMY_READ(maska);
@@ -732,7 +727,6 @@ void bfin_gpio_pm_hibernate_suspend(void)
 
 		gpio_bank_saved[bank].fer = gpio_array[bank]->port_fer;
 		gpio_bank_saved[bank].mux = gpio_array[bank]->port_mux;
-		gpio_bank_saved[bank].data = gpio_array[bank]->data;
 		gpio_bank_saved[bank].data = gpio_array[bank]->data;
 		gpio_bank_saved[bank].inen = gpio_array[bank]->inen;
 		gpio_bank_saved[bank].dir = gpio_array[bank]->dir_set;
@@ -794,6 +788,8 @@ int peripheral_request(unsigned short per, const char *label)
 
 	if (!(per & P_DEFINED))
 		return -ENODEV;
+
+	BUG_ON(ident >= MAX_RESOURCES);
 
 	local_irq_save_hw(flags);
 
@@ -1012,6 +1008,76 @@ void bfin_gpio_free(unsigned gpio)
 }
 EXPORT_SYMBOL(bfin_gpio_free);
 
+#ifdef BFIN_SPECIAL_GPIO_BANKS
+static unsigned short reserved_special_gpio_map[gpio_bank(MAX_RESOURCES)];
+
+int bfin_special_gpio_request(unsigned gpio, const char *label)
+{
+	unsigned long flags;
+
+	local_irq_save_hw(flags);
+
+	/*
+	 * Allow that the identical GPIO can
+	 * be requested from the same driver twice
+	 * Do nothing and return -
+	 */
+
+	if (cmp_label(gpio, label) == 0) {
+		local_irq_restore_hw(flags);
+		return 0;
+	}
+
+	if (unlikely(reserved_special_gpio_map[gpio_bank(gpio)] & gpio_bit(gpio))) {
+		local_irq_restore_hw(flags);
+		printk(KERN_ERR "bfin-gpio: GPIO %d is already reserved by %s !\n",
+		       gpio, get_label(gpio));
+
+		return -EBUSY;
+	}
+	if (unlikely(reserved_peri_map[gpio_bank(gpio)] & gpio_bit(gpio))) {
+		local_irq_restore_hw(flags);
+		printk(KERN_ERR
+		       "bfin-gpio: GPIO %d is already reserved as Peripheral by %s !\n",
+		       gpio, get_label(gpio));
+
+		return -EBUSY;
+	}
+
+	reserved_special_gpio_map[gpio_bank(gpio)] |= gpio_bit(gpio);
+	reserved_peri_map[gpio_bank(gpio)] |= gpio_bit(gpio);
+
+	set_label(gpio, label);
+	local_irq_restore_hw(flags);
+	port_setup(gpio, GPIO_USAGE);
+
+	return 0;
+}
+EXPORT_SYMBOL(bfin_special_gpio_request);
+
+void bfin_special_gpio_free(unsigned gpio)
+{
+	unsigned long flags;
+
+	might_sleep();
+
+	local_irq_save_hw(flags);
+
+	if (unlikely(!(reserved_special_gpio_map[gpio_bank(gpio)] & gpio_bit(gpio)))) {
+		gpio_error(gpio);
+		local_irq_restore_hw(flags);
+		return;
+	}
+
+	reserved_special_gpio_map[gpio_bank(gpio)] &= ~gpio_bit(gpio);
+	reserved_peri_map[gpio_bank(gpio)] &= ~gpio_bit(gpio);
+	set_label(gpio, "free");
+	local_irq_restore_hw(flags);
+}
+EXPORT_SYMBOL(bfin_special_gpio_free);
+#endif
+
+
 int bfin_gpio_irq_request(unsigned gpio, const char *label)
 {
 	unsigned long flags;
@@ -1021,15 +1087,6 @@ int bfin_gpio_irq_request(unsigned gpio, const char *label)
 
 	local_irq_save_hw(flags);
 
-	if (unlikely(reserved_gpio_irq_map[gpio_bank(gpio)] & gpio_bit(gpio))) {
-		if (system_state == SYSTEM_BOOTING)
-			dump_stack();
-		printk(KERN_ERR
-		       "bfin-gpio: GPIO %d is already reserved as gpio-irq !\n",
-		       gpio);
-		local_irq_restore_hw(flags);
-		return -EBUSY;
-	}
 	if (unlikely(reserved_peri_map[gpio_bank(gpio)] & gpio_bit(gpio))) {
 		if (system_state == SYSTEM_BOOTING)
 			dump_stack();
@@ -1232,44 +1289,50 @@ __initcall(gpio_register_proc);
 #endif
 
 #ifdef CONFIG_GPIOLIB
-int bfin_gpiolib_direction_input(struct gpio_chip *chip, unsigned gpio)
+static int bfin_gpiolib_direction_input(struct gpio_chip *chip, unsigned gpio)
 {
 	return bfin_gpio_direction_input(gpio);
 }
 
-int bfin_gpiolib_direction_output(struct gpio_chip *chip, unsigned gpio, int level)
+static int bfin_gpiolib_direction_output(struct gpio_chip *chip, unsigned gpio, int level)
 {
 	return bfin_gpio_direction_output(gpio, level);
 }
 
-int bfin_gpiolib_get_value(struct gpio_chip *chip, unsigned gpio)
+static int bfin_gpiolib_get_value(struct gpio_chip *chip, unsigned gpio)
 {
 	return bfin_gpio_get_value(gpio);
 }
 
-void bfin_gpiolib_set_value(struct gpio_chip *chip, unsigned gpio, int value)
+static void bfin_gpiolib_set_value(struct gpio_chip *chip, unsigned gpio, int value)
 {
 	return bfin_gpio_set_value(gpio, value);
 }
 
-int bfin_gpiolib_gpio_request(struct gpio_chip *chip, unsigned gpio)
+static int bfin_gpiolib_gpio_request(struct gpio_chip *chip, unsigned gpio)
 {
 	return bfin_gpio_request(gpio, chip->label);
 }
 
-void bfin_gpiolib_gpio_free(struct gpio_chip *chip, unsigned gpio)
+static void bfin_gpiolib_gpio_free(struct gpio_chip *chip, unsigned gpio)
 {
 	return bfin_gpio_free(gpio);
 }
 
+static int bfin_gpiolib_gpio_to_irq(struct gpio_chip *chip, unsigned gpio)
+{
+	return gpio + GPIO_IRQ_BASE;
+}
+
 static struct gpio_chip bfin_chip = {
-	.label			= "Blackfin-GPIOlib",
+	.label			= "BFIN-GPIO",
 	.direction_input	= bfin_gpiolib_direction_input,
 	.get			= bfin_gpiolib_get_value,
 	.direction_output	= bfin_gpiolib_direction_output,
 	.set			= bfin_gpiolib_set_value,
 	.request		= bfin_gpiolib_gpio_request,
 	.free			= bfin_gpiolib_gpio_free,
+	.to_irq			= bfin_gpiolib_gpio_to_irq,
 	.base			= 0,
 	.ngpio			= MAX_BLACKFIN_GPIOS,
 };

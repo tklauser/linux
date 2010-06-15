@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2003 - 2009 Intel Corporation. All rights reserved.
+ * Copyright(c) 2003 - 2010 Intel Corporation. All rights reserved.
  *
  * Portions of this file are derived from the ipw3945 project.
  *
@@ -30,16 +30,23 @@
 #define __iwl_debug_h__
 
 struct iwl_priv;
+extern u32 iwl_debug_level;
 
 #define IWL_ERR(p, f, a...) dev_err(&((p)->pci_dev->dev), f, ## a)
 #define IWL_WARN(p, f, a...) dev_warn(&((p)->pci_dev->dev), f, ## a)
 #define IWL_INFO(p, f, a...) dev_info(&((p)->pci_dev->dev), f, ## a)
 #define IWL_CRIT(p, f, a...) dev_crit(&((p)->pci_dev->dev), f, ## a)
 
+#define iwl_print_hex_error(priv, p, len) 				\
+do {									\
+	print_hex_dump(KERN_ERR, "iwl data: ",				\
+		       DUMP_PREFIX_OFFSET, 16, 1, p, len, 1);		\
+} while (0)
+
 #ifdef CONFIG_IWLWIFI_DEBUG
 #define IWL_DEBUG(__priv, level, fmt, args...)				\
 do {									\
-	if (__priv->debug_level & (level))				\
+	if (iwl_get_debug_level(__priv) & (level))					\
 		dev_printk(KERN_ERR, &(__priv->hw->wiphy->dev),		\
 			 "%c %s " fmt, in_interrupt() ? 'I' : 'U',	\
 			__func__ , ## args);				\
@@ -47,7 +54,7 @@ do {									\
 
 #define IWL_DEBUG_LIMIT(__priv, level, fmt, args...)			\
 do {									\
-	if ((__priv->debug_level & (level)) && net_ratelimit())		\
+	if ((iwl_get_debug_level(__priv) & (level)) && net_ratelimit())		\
 		dev_printk(KERN_ERR, &(__priv->hw->wiphy->dev),		\
 			"%c %s " fmt, in_interrupt() ? 'I' : 'U',	\
 			 __func__ , ## args);				\
@@ -55,39 +62,10 @@ do {									\
 
 #define iwl_print_hex_dump(priv, level, p, len) 			\
 do {                                            			\
-	if (priv->debug_level & level)          			\
+	if (iwl_get_debug_level(priv) & level) 				\
 		print_hex_dump(KERN_DEBUG, "iwl data: ",		\
 			       DUMP_PREFIX_OFFSET, 16, 1, p, len, 1);	\
 } while (0)
-
-#ifdef CONFIG_IWLWIFI_DEBUGFS
-struct iwl_debugfs {
-	const char *name;
-	struct dentry *dir_drv;
-	struct dentry *dir_data;
-	struct dentry *dir_rf;
-	struct dir_data_files {
-		struct dentry *file_sram;
-		struct dentry *file_eeprom;
-		struct dentry *file_stations;
-		struct dentry *file_rx_statistics;
-		struct dentry *file_tx_statistics;
-		struct dentry *file_log_event;
-		struct dentry *file_channels;
-		struct dentry *file_status;
-	} dbgfs_data_files;
-	struct dir_rf_files {
-		struct dentry *file_disable_sensitivity;
-		struct dentry *file_disable_chain_noise;
-		struct dentry *file_disable_tx_power;
-	} dbgfs_rf_files;
-	u32 sram_offset;
-	u32 sram_len;
-};
-
-int iwl_dbgfs_register(struct iwl_priv *priv, const char *name);
-void iwl_dbgfs_unregister(struct iwl_priv *priv);
-#endif
 
 #else
 #define IWL_DEBUG(__priv, level, fmt, args...)
@@ -97,9 +75,10 @@ static inline void iwl_print_hex_dump(struct iwl_priv *priv, int level,
 {}
 #endif				/* CONFIG_IWLWIFI_DEBUG */
 
-
-
-#ifndef CONFIG_IWLWIFI_DEBUGFS
+#ifdef CONFIG_IWLWIFI_DEBUGFS
+int iwl_dbgfs_register(struct iwl_priv *priv, const char *name);
+void iwl_dbgfs_unregister(struct iwl_priv *priv);
+#else
 static inline int iwl_dbgfs_register(struct iwl_priv *priv, const char *name)
 {
 	return 0;

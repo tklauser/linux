@@ -234,43 +234,29 @@ void __init setup_arch(char **cmdline_p)
 /*
  *	Get CPU information for use by the procfs.
  */
-
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
-    char *cpu, *fpu;
+	const char *cpu, *cpu_impl, *fpu;
+	const u_long clockfreq = CPU_FREQ;
 
-    cpu = CPU;
-    fpu = "none";
+	cpu = CPU;
+	cpu_impl = CPU_IMPLEMENTATION;
+	fpu = "none";
 
-#if 0
-    /* FIXME: nasys_clock_freq is no longer availble in the new 
-     * generated headers for the design. How do we know
-     * which frequency the CPU is running at?
-     */
-    u_long clockfreq;
-    clockfreq = nasys_clock_freq;
-    MHz=clockfreq/1000000,(clockfreq/100000)%10
-#endif
-
-    seq_printf(m, "CPU:\t\t%s\n"
-		   "MMU:\t\tways:%d entries:%d\n"
-		   "FPU:\t\t%s\n"
-		   "Clocking:\t<not supported>\n"
-		   "BogoMips:\t%lu.%02lu\n"
-		   "Calibration:\t%lu loops\n",
-		   cpu, 
-	           TLB_NUM_WAYS, TLB_NUM_ENTRIES,
-	           fpu,	          
-		   (loops_per_jiffy*HZ)/500000,((loops_per_jiffy*HZ)/5000)%100,
-		   (loops_per_jiffy*HZ));
+	seq_printf(m, "CPU:\t\t%s/%s\n"
+		      "MMU:\t\tways:%d entries:%d\n"
+		      "FPU:\t\t%s\n"
+		      "Clocking:\t%lu.%02lu MHz\n"
+		      "BogoMips:\t%lu.%02lu\n"
+		      "Calibration:\t%lu loops\n",
+		      cpu, cpu_impl,
+		      TLB_NUM_WAYS, TLB_NUM_ENTRIES,
+		      fpu,
+		      clockfreq / 1000000, (clockfreq / 100000) % 10,
+		      (loops_per_jiffy * HZ) / 500000, ((loops_per_jiffy * HZ) / 5000) % 100,
+		      (loops_per_jiffy * HZ));
 
 	return 0;
-}
-
-
-void arch_gettod(int *year, int *month, int *date, int *hour, int *min, int *sec)
-{
-	*year = *month = *date = *hour = *min = *sec = 0;
 }
 
 static void *cpuinfo_start (struct seq_file *m, loff_t *pos)
@@ -294,4 +280,3 @@ const struct seq_operations cpuinfo_op = {
 	.stop	= cpuinfo_stop,
 	.show	= show_cpuinfo
 };
-

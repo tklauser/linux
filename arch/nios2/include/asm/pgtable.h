@@ -117,6 +117,17 @@ int pte_young(pte_t pte);
 int pte_file(pte_t pte);
 static inline int pte_special(pte_t pte)	{ return 0; }
 
+#define pgprot_noncached pgprot_noncached
+
+static inline pgprot_t pgprot_noncached(pgprot_t _prot)
+{
+	unsigned long prot = pgprot_val(_prot);
+
+	prot &= ~_PAGE_CACHED;
+
+	return __pgprot(prot);
+}
+
 #include <linux/swap.h>
 swp_entry_t   __pte_to_swp_entry(pte_t pte);
 pte_t         __swp_entry_to_pte(swp_entry_t swp);
@@ -167,7 +178,7 @@ void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
 pte_t mk_pte(struct page *page, pgprot_t pgprot);
 
 void update_mmu_cache(struct vm_area_struct *vma,
-				    unsigned long address, pte_t pte);
+				    unsigned long address, pte_t *pte);
 
 void pte_unmap(pte_t *pte);
 void pte_unmap_nested(pte_t *pte);

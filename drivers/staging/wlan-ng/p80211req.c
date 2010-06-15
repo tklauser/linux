@@ -55,7 +55,6 @@
 #include <linux/sched.h>
 #include <linux/types.h>
 #include <linux/skbuff.h>
-#include <linux/slab.h>
 #include <linux/wireless.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -129,7 +128,7 @@ int p80211req_dorequest(wlandevice_t *wlandev, u8 *msgbuf)
 		wlandev->mlmerequest(wlandev, msg);
 
 	clear_bit(1, &(wlandev->request_pending));
-	return result; /* if result==0, msg->status still may contain an err */
+	return result;		/* if result==0, msg->status still may contain an err */
 }
 
 /*----------------------------------------------------------------
@@ -243,8 +242,8 @@ static int p80211req_mibset_mibget(wlandevice_t *wlandev,
 			u32 *data = (u32 *) mibitem->data;
 
 			if (isget) {
-				if (wlandev->
-				    hostwep & HOSTWEP_EXCLUDEUNENCRYPTED)
+				if (wlandev->hostwep &
+				    HOSTWEP_EXCLUDEUNENCRYPTED)
 					*data = P80211ENUM_truth_true;
 				else
 					*data = P80211ENUM_truth_false;

@@ -11,6 +11,7 @@
 
 #include <linux/module.h>
 #include <linux/types.h>
+#include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -20,14 +21,23 @@
 
 #include <asm/io.h>
 #include <mach/hardware.h>
-#include <asm/cacheflush.h>
 
 #include <asm/mach/flash.h>
+
+#define CACHELINESIZE	32
 
 static void pxa2xx_map_inval_cache(struct map_info *map, unsigned long from,
 				      ssize_t len)
 {
-	flush_ioremap_region(map->phys, map->cached, from, len);
+	unsigned long start = (unsigned long)map->cached + from;
+	unsigned long end = start + len;
+
+	start &= ~(CACHELINESIZE - 1);
+	while (start < end) {
+		/* invalidate D cache line */
+		asm volatile ("mcr p15, 0, %0, c7, c6, 1" : : "r" (start));
+		start += CACHELINESIZE;
+	}
 }
 
 struct pxa2xx_flash_info {
@@ -140,24 +150,6 @@ static int __devexit pxa2xx_flash_remove(struct platform_device *dev)
 }
 
 #ifdef CONFIG_PM
-static int pxa2xx_flash_suspend(struct platform_device *dev, pm_message_t state)
-{
-	struct pxa2xx_flash_info *info = platform_get_drvdata(dev);
-	int ret = 0;
-
-	if (info->mtd && info->mtd->suspend)
-		ret = info->mtd->suspend(info->mtd);
-	return ret;
-}
-
-static int pxa2xx_flash_resume(struct platform_device *dev)
-{
-	struct pxa2xx_flash_info *info = platform_get_drvdata(dev);
-
-	if (info->mtd && info->mtd->resume)
-		info->mtd->resume(info->mtd);
-	return 0;
-}
 static void pxa2xx_flash_shutdown(struct platform_device *dev)
 {
 	struct pxa2xx_flash_info *info = platform_get_drvdata(dev);
@@ -166,8 +158,6 @@ static void pxa2xx_flash_shutdown(struct platform_device *dev)
 		info->mtd->resume(info->mtd);
 }
 #else
-#define pxa2xx_flash_suspend NULL
-#define pxa2xx_flash_resume NULL
 #define pxa2xx_flash_shutdown NULL
 #endif
 
@@ -178,8 +168,6 @@ static struct platform_driver pxa2xx_flash_driver = {
 	},
 	.probe		= pxa2xx_flash_probe,
 	.remove		= __devexit_p(pxa2xx_flash_remove),
-	.suspend	= pxa2xx_flash_suspend,
-	.resume		= pxa2xx_flash_resume,
 	.shutdown	= pxa2xx_flash_shutdown,
 };
 
@@ -197,5 +185,5 @@ module_init(init_pxa2xx_flash);
 module_exit(cleanup_pxa2xx_flash);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Nicolas Pitre <nico@cam.org>");
+MODULE_AUTHOR("Nicolas Pitre <nico@fluxnic.net>");
 MODULE_DESCRIPTION("MTD map driver for Intel XScale PXA2xx");

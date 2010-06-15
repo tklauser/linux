@@ -10,6 +10,7 @@
 #include <linux/mm.h>
 #include <linux/types.h>
 #include <linux/list.h>
+#include <linux/gfp.h>
 #include <net/tcp.h>
 
 int sysctl_tcp_max_ssthresh = 0;
@@ -116,7 +117,7 @@ int tcp_set_default_congestion_control(const char *name)
 	spin_lock(&tcp_cong_list_lock);
 	ca = tcp_ca_find(name);
 #ifdef CONFIG_MODULES
-	if (!ca && capable(CAP_SYS_MODULE)) {
+	if (!ca && capable(CAP_NET_ADMIN)) {
 		spin_unlock(&tcp_cong_list_lock);
 
 		request_module("tcp_%s", name);
@@ -246,7 +247,7 @@ int tcp_set_congestion_control(struct sock *sk, const char *name)
 
 #ifdef CONFIG_MODULES
 	/* not found attempt to autoload module */
-	if (!ca && capable(CAP_SYS_MODULE)) {
+	if (!ca && capable(CAP_NET_ADMIN)) {
 		rcu_read_unlock();
 		request_module("tcp_%s", name);
 		rcu_read_lock();

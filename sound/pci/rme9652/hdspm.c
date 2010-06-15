@@ -29,6 +29,7 @@
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/pci.h>
+#include <linux/math64.h>
 #include <asm/io.h>
 
 #include <sound/core.h>
@@ -511,7 +512,7 @@ static char channel_map_madi_ss[HDSPM_MAX_CHANNELS] = {
 };
 
 
-static struct pci_device_id snd_hdspm_ids[] __devinitdata = {
+static DEFINE_PCI_DEVICE_TABLE(snd_hdspm_ids) = {
 	{
 	 .vendor = PCI_VENDOR_ID_XILINX,
 	 .device = PCI_DEVICE_ID_XILINX_HAMMERFALL_DSP_MADI,
@@ -831,7 +832,6 @@ static int hdspm_set_interrupt_interval(struct hdspm * s, unsigned int frames)
 static void hdspm_set_dds_value(struct hdspm *hdspm, int rate)
 {
 	u64 n;
-	u32 r;
 	
 	if (rate >= 112000)
 		rate /= 4;
@@ -844,7 +844,7 @@ static void hdspm_set_dds_value(struct hdspm *hdspm, int rate)
         */	   
 	/* n = 104857600000000ULL; */ /*  =  2^20 * 10^8 */
 	n = 110100480000000ULL;    /* Value checked for AES32 and MADI */
-	div64_32(&n, rate, &r);
+	n = div_u64(n, rate);
 	/* n should be less than 2^32 for being written to FREQ register */
 	snd_BUG_ON(n >> 32);
 	hdspm_write(hdspm, HDSPM_freqReg, (u32)n);
@@ -2479,7 +2479,7 @@ static int snd_hdspm_put_qs_wire(struct snd_kcontrol *kcontrol,
    on MADICARD 
   - playback mixer matrix: [channelout+64] [output] [value]
   - input(thru) mixer matrix: [channelin] [output] [value]
-  (better do 2 kontrols for seperation ?)
+  (better do 2 kontrols for separation ?)
 */
 
 #define HDSPM_MIXER(xname, xindex) \
@@ -3017,7 +3017,7 @@ snd_hdspm_proc_read_madi(struct snd_info_entry * entry,
 		insel = "Coaxial";
 		break;
 	default:
-		insel = "Unkown";
+		insel = "Unknown";
 	}
 
 	switch (hdspm->control_register & HDSPM_SyncRefMask) {
@@ -3028,7 +3028,7 @@ snd_hdspm_proc_read_madi(struct snd_info_entry * entry,
 		syncref = "MADI";
 		break;
 	default:
-		syncref = "Unkown";
+		syncref = "Unknown";
 	}
 	snd_iprintf(buffer, "Inputsel = %s, SyncRef = %s\n", insel,
 		    syncref);

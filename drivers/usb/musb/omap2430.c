@@ -27,7 +27,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/clk.h>
@@ -35,7 +34,7 @@
 
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
-#include <mach/mux.h>
+#include <plat/mux.h>
 
 #include "musb_core.h"
 #include "omap2430.h"
@@ -44,7 +43,6 @@
 #define	get_cpu_rev()	2
 #endif
 
-#define MUSB_TIMEOUT_A_WAIT_BCON	1100
 
 static struct timer_list musb_idle_timer;
 
@@ -61,17 +59,17 @@ static void musb_do_idle(unsigned long _musb)
 
 	devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
 
-	switch (musb->xceiv.state) {
+	switch (musb->xceiv->state) {
 	case OTG_STATE_A_WAIT_BCON:
 		devctl &= ~MUSB_DEVCTL_SESSION;
 		musb_writeb(musb->mregs, MUSB_DEVCTL, devctl);
 
 		devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
 		if (devctl & MUSB_DEVCTL_BDEVICE) {
-			musb->xceiv.state = OTG_STATE_B_IDLE;
+			musb->xceiv->state = OTG_STATE_B_IDLE;
 			MUSB_DEV_MODE(musb);
 		} else {
-			musb->xceiv.state = OTG_STATE_A_IDLE;
+			musb->xceiv->state = OTG_STATE_A_IDLE;
 			MUSB_HST_MODE(musb);
 		}
 		break;
@@ -89,7 +87,7 @@ static void musb_do_idle(unsigned long _musb)
 			musb->port1_status |= USB_PORT_STAT_C_SUSPEND << 16;
 			usb_hcd_poll_rh_status(musb_to_hcd(musb));
 			/* NOTE: it might really be A_WAIT_BCON ... */
-			musb->xceiv.state = OTG_STATE_A_HOST;
+			musb->xceiv->state = OTG_STATE_A_HOST;
 		}
 		break;
 #endif
@@ -97,9 +95,9 @@ static void musb_do_idle(unsigned long _musb)
 	case OTG_STATE_A_HOST:
 		devctl = musb_readb(musb->mregs, MUSB_DEVCTL);
 		if (devctl &  MUSB_DEVCTL_BDEVICE)
-			musb->xceiv.state = OTG_STATE_B_IDLE;
+			musb->xceiv->state = OTG_STATE_B_IDLE;
 		else
-			musb->xceiv.state = OTG_STATE_A_WAIT_BCON;
+			musb->xceiv->state = OTG_STATE_A_WAIT_BCON;
 #endif
 	default:
 		break;
@@ -118,7 +116,7 @@ void musb_platform_try_idle(struct musb *musb, unsigned long timeout)
 
 	/* Never idle if active, or when VBUS timeout is not set as host */
 	if (musb->is_active || ((musb->a_wait_bcon == 0)
-			&& (musb->xceiv.state == OTG_STATE_A_WAIT_BCON))) {
+			&& (musb->xceiv->state == OTG_STATE_A_WAIT_BCON))) {
 		DBG(4, "%s active, deleting timer\n", otg_state_string(musb));
 		del_timer(&musb_idle_timer);
 		last_timer = jiffies;
@@ -163,8 +161,8 @@ static void omap_set_vbus(struct musb *musb, int is_on)
 
 	if (is_on) {
 		musb->is_active = 1;
-		musb->xceiv.default_a = 1;
-		musb->xceiv.state = OTG_STATE_A_WAIT_VRISE;
+		musb->xceiv->default_a = 1;
+		musb->xceiv->state = OTG_STATE_A_WAIT_VRISE;
 		devctl |= MUSB_DEVCTL_SESSION;
 
 		MUSB_HST_MODE(musb);
@@ -175,8 +173,8 @@ static void omap_set_vbus(struct musb *musb, int is_on)
 		 * jumping right to B_IDLE...
 		 */
 
-		musb->xceiv.default_a = 0;
-		musb->xceiv.state = OTG_STATE_B_IDLE;
+		musb->xceiv->default_a = 0;
+		musb->xceiv->state = OTG_STATE_B_IDLE;
 		devctl &= ~MUSB_DEVCTL_SESSION;
 
 		MUSB_DEV_MODE(musb);
@@ -188,10 +186,6 @@ static void omap_set_vbus(struct musb *musb, int is_on)
 		otg_state_string(musb),
 		musb_readb(musb->mregs, MUSB_DEVCTL));
 }
-static int omap_set_power(struct otg_transceiver *x, unsigned mA)
-{
-	return 0;
-}
 
 static int musb_platform_resume(struct musb *musb);
 
@@ -202,24 +196,6 @@ int musb_platform_set_mode(struct musb *musb, u8 musb_mode)
 	devctl |= MUSB_DEVCTL_SESSION;
 	musb_writeb(musb->mregs, MUSB_DEVCTL, devctl);
 
-	switch (musb_mode) {
-#ifdef CONFIG_USB_MUSB_HDRC_HCD
-	case MUSB_HOST:
-		otg_set_host(&musb->xceiv, musb->xceiv.host);
-		break;
-#endif
-#ifdef CONFIG_USB_GADGET_MUSB_HDRC
-	case MUSB_PERIPHERAL:
-		otg_set_peripheral(&musb->xceiv, musb->xceiv.gadget);
-		break;
-#endif
-#ifdef CONFIG_USB_MUSB_OTG
-	case MUSB_OTG:
-		break;
-#endif
-	default:
-		return -EINVAL;
-	}
 	return 0;
 }
 
@@ -231,40 +207,70 @@ int __init musb_platform_init(struct musb *musb)
 	omap_cfg_reg(AE5_2430_USB0HS_STP);
 #endif
 
+	/* We require some kind of external transceiver, hooked
+	 * up through ULPI.  TWL4030-family PMICs include one,
+	 * which needs a driver, drivers aren't always needed.
+	 */
+	musb->xceiv = otg_get_transceiver();
+	if (!musb->xceiv) {
+		pr_err("HS USB OTG: no transceiver configured\n");
+		return -ENODEV;
+	}
+
 	musb_platform_resume(musb);
 
-	l = omap_readl(OTG_SYSCONFIG);
+	l = musb_readl(musb->mregs, OTG_SYSCONFIG);
 	l &= ~ENABLEWAKEUP;	/* disable wakeup */
 	l &= ~NOSTDBY;		/* remove possible nostdby */
 	l |= SMARTSTDBY;	/* enable smart standby */
 	l &= ~AUTOIDLE;		/* disable auto idle */
 	l &= ~NOIDLE;		/* remove possible noidle */
 	l |= SMARTIDLE;		/* enable smart idle */
-	l |= AUTOIDLE;		/* enable auto idle */
-	omap_writel(l, OTG_SYSCONFIG);
+	/*
+	 * MUSB AUTOIDLE don't work in 3430.
+	 * Workaround by Richard Woodruff/TI
+	 */
+	if (!cpu_is_omap3430())
+		l |= AUTOIDLE;		/* enable auto idle */
+	musb_writel(musb->mregs, OTG_SYSCONFIG, l);
 
-	l = omap_readl(OTG_INTERFSEL);
+	l = musb_readl(musb->mregs, OTG_INTERFSEL);
 	l |= ULPI_12PIN;
-	omap_writel(l, OTG_INTERFSEL);
+	musb_writel(musb->mregs, OTG_INTERFSEL, l);
 
 	pr_debug("HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
 			"sysstatus 0x%x, intrfsel 0x%x, simenable  0x%x\n",
-			omap_readl(OTG_REVISION), omap_readl(OTG_SYSCONFIG),
-			omap_readl(OTG_SYSSTATUS), omap_readl(OTG_INTERFSEL),
-			omap_readl(OTG_SIMENABLE));
+			musb_readl(musb->mregs, OTG_REVISION),
+			musb_readl(musb->mregs, OTG_SYSCONFIG),
+			musb_readl(musb->mregs, OTG_SYSSTATUS),
+			musb_readl(musb->mregs, OTG_INTERFSEL),
+			musb_readl(musb->mregs, OTG_SIMENABLE));
 
 	omap_vbus_power(musb, musb->board_mode == MUSB_HOST, 1);
 
 	if (is_host_enabled(musb))
 		musb->board_set_vbus = omap_set_vbus;
-	if (is_peripheral_enabled(musb))
-		musb->xceiv.set_power = omap_set_power;
-	musb->a_wait_bcon = MUSB_TIMEOUT_A_WAIT_BCON;
 
 	setup_timer(&musb_idle_timer, musb_do_idle, (unsigned long) musb);
 
 	return 0;
 }
+
+#ifdef CONFIG_PM
+void musb_platform_save_context(struct musb *musb,
+		struct musb_context_registers *musb_context)
+{
+	musb_context->otg_sysconfig = musb_readl(musb->mregs, OTG_SYSCONFIG);
+	musb_context->otg_forcestandby = musb_readl(musb->mregs, OTG_FORCESTDBY);
+}
+
+void musb_platform_restore_context(struct musb *musb,
+		struct musb_context_registers *musb_context)
+{
+	musb_writel(musb->mregs, OTG_SYSCONFIG, musb_context->otg_sysconfig);
+	musb_writel(musb->mregs, OTG_FORCESTDBY, musb_context->otg_forcestandby);
+}
+#endif
 
 int musb_platform_suspend(struct musb *musb)
 {
@@ -274,16 +280,15 @@ int musb_platform_suspend(struct musb *musb)
 		return 0;
 
 	/* in any role */
-	l = omap_readl(OTG_FORCESTDBY);
+	l = musb_readl(musb->mregs, OTG_FORCESTDBY);
 	l |= ENABLEFORCE;	/* enable MSTANDBY */
-	omap_writel(l, OTG_FORCESTDBY);
+	musb_writel(musb->mregs, OTG_FORCESTDBY, l);
 
-	l = omap_readl(OTG_SYSCONFIG);
+	l = musb_readl(musb->mregs, OTG_SYSCONFIG);
 	l |= ENABLEWAKEUP;	/* enable wakeup */
-	omap_writel(l, OTG_SYSCONFIG);
+	musb_writel(musb->mregs, OTG_SYSCONFIG, l);
 
-	if (musb->xceiv.set_suspend)
-		musb->xceiv.set_suspend(&musb->xceiv, 1);
+	otg_set_suspend(musb->xceiv, 1);
 
 	if (musb->set_clock)
 		musb->set_clock(musb->clock, 0);
@@ -300,21 +305,20 @@ static int musb_platform_resume(struct musb *musb)
 	if (!musb->clock)
 		return 0;
 
-	if (musb->xceiv.set_suspend)
-		musb->xceiv.set_suspend(&musb->xceiv, 0);
+	otg_set_suspend(musb->xceiv, 0);
 
 	if (musb->set_clock)
 		musb->set_clock(musb->clock, 1);
 	else
 		clk_enable(musb->clock);
 
-	l = omap_readl(OTG_SYSCONFIG);
+	l = musb_readl(musb->mregs, OTG_SYSCONFIG);
 	l &= ~ENABLEWAKEUP;	/* disable wakeup */
-	omap_writel(l, OTG_SYSCONFIG);
+	musb_writel(musb->mregs, OTG_SYSCONFIG, l);
 
-	l = omap_readl(OTG_FORCESTDBY);
+	l = musb_readl(musb->mregs, OTG_FORCESTDBY);
 	l &= ~ENABLEFORCE;	/* disable MSTANDBY */
-	omap_writel(l, OTG_FORCESTDBY);
+	musb_writel(musb->mregs, OTG_FORCESTDBY, l);
 
 	return 0;
 }
@@ -326,9 +330,6 @@ int musb_platform_exit(struct musb *musb)
 	omap_vbus_power(musb, 0 /*off*/, 1);
 
 	musb_platform_suspend(musb);
-
-	clk_put(musb->clock);
-	musb->clock = 0;
 
 	return 0;
 }

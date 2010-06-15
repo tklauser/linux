@@ -36,6 +36,8 @@
 #include <linux/mm.h>
 #include <linux/smp_lock.h>
 #include <linux/buffer_head.h>
+#include <linux/writeback.h>
+#include <linux/quotaops.h>
 
 #include "ufs_fs.h"
 #include "ufs.h"
@@ -56,9 +58,7 @@ static int ufs_block_to_path(struct inode *inode, sector_t i_block, sector_t off
 
 
 	UFSD("ptrs=uspi->s_apb = %d,double_blocks=%ld \n",ptrs,double_blocks);
-	if (i_block < 0) {
-		ufs_warning(inode->i_sb, "ufs_block_to_path", "block < 0");
-	} else if (i_block < direct_blocks) {
+	if (i_block < direct_blocks) {
 		offsets[n++] = i_block;
 	} else if ((i_block -= direct_blocks) < indirect_blocks) {
 		offsets[n++] = UFS_IND_BLOCK;
@@ -440,8 +440,6 @@ int ufs_getfrag_block(struct inode *inode, sector_t fragment, struct buffer_head
 	lock_kernel();
 
 	UFSD("ENTER, ino %lu, fragment %llu\n", inode->i_ino, (unsigned long long)fragment);
-	if (fragment < 0)
-		goto abort_negative;
 	if (fragment >
 	    ((UFS_NDADDR + uspi->s_apb + uspi->s_2apb + uspi->s_3apb)
 	     << uspi->s_fpbshift))
@@ -503,10 +501,6 @@ out:
 abort:
 	unlock_kernel();
 	return err;
-
-abort_negative:
-	ufs_warning(sb, "ufs_get_block", "block < 0");
-	goto abort;
 
 abort_too_big:
 	ufs_warning(sb, "ufs_get_block", "block > big");
@@ -898,11 +892,11 @@ static int ufs_update_inode(struct inode * inode, int do_sync)
 	return 0;
 }
 
-int ufs_write_inode (struct inode * inode, int wait)
+int ufs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	int ret;
 	lock_kernel();
-	ret = ufs_update_inode (inode, wait);
+	ret = ufs_update_inode(inode, wbc->sync_mode == WB_SYNC_ALL);
 	unlock_kernel();
 	return ret;
 }
@@ -915,6 +909,9 @@ int ufs_sync_inode (struct inode *inode)
 void ufs_delete_inode (struct inode * inode)
 {
 	loff_t old_i_size;
+
+	if (!is_bad_inode(inode))
+		dquot_initialize(inode);
 
 	truncate_inode_pages(&inode->i_data, 0);
 	if (is_bad_inode(inode))

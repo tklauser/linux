@@ -25,6 +25,7 @@
 #include <linux/of.h>
 #include <asm/io.h>
 #include <asm/processor.h>
+#include <asm/i8259.h>
 #include <asm/irq.h>
 
 /*
@@ -78,7 +79,7 @@ static void xilinx_intc_mask(unsigned int virq)
 
 static int xilinx_intc_set_type(unsigned int virq, unsigned int flow_type)
 {
-	struct irq_desc *desc = get_irq_desc(virq);
+	struct irq_desc *desc = irq_to_desc(virq);
 
 	desc->status &= ~(IRQ_TYPE_SENSE_MASK | IRQ_LEVEL);
 	desc->status |= flow_type & IRQ_TYPE_SENSE_MASK;
@@ -105,7 +106,7 @@ static void xilinx_intc_level_unmask(unsigned int virq)
 }
 
 static struct irq_chip xilinx_intc_level_irqchip = {
-	.typename = "Xilinx Level INTC",
+	.name = "Xilinx Level INTC",
 	.mask = xilinx_intc_mask,
 	.mask_ack = xilinx_intc_mask,
 	.unmask = xilinx_intc_level_unmask,
@@ -132,7 +133,7 @@ static void xilinx_intc_edge_ack(unsigned int virq)
 }
 
 static struct irq_chip xilinx_intc_edge_irqchip = {
-	.typename = "Xilinx Edge  INTC",
+	.name = "Xilinx Edge  INTC",
 	.mask = xilinx_intc_mask,
 	.unmask = xilinx_intc_edge_unmask,
 	.ack = xilinx_intc_edge_ack,
@@ -147,7 +148,7 @@ static struct irq_chip xilinx_intc_edge_irqchip = {
  * xilinx_intc_xlate - translate virq# from device tree interrupts property
  */
 static int xilinx_intc_xlate(struct irq_host *h, struct device_node *ct,
-				u32 *intspec, unsigned int intsize,
+				const u32 *intspec, unsigned int intsize,
 				irq_hw_number_t *out_hwirq,
 				unsigned int *out_flags)
 {
@@ -191,20 +192,14 @@ struct irq_host * __init
 xilinx_intc_init(struct device_node *np)
 {
 	struct irq_host * irq;
-	struct resource res;
 	void * regs;
-	int rc;
 
 	/* Find and map the intc registers */
-	rc = of_address_to_resource(np, 0, &res);
-	if (rc) {
-		printk(KERN_ERR __FILE__ ": of_address_to_resource() failed\n");
+	regs = of_iomap(np, 0);
+	if (!regs) {
+		pr_err("xilinx_intc: could not map registers\n");
 		return NULL;
 	}
-	regs = ioremap(res.start, 32);
-
-	printk(KERN_INFO "Xilinx intc at 0x%08llx mapped to 0x%p\n",
-		(unsigned long long) res.start, regs);
 
 	/* Setup interrupt controller */
 	out_be32(regs + XINTC_IER, 0); /* disable all irqs */
@@ -217,6 +212,7 @@ xilinx_intc_init(struct device_node *np)
 	if (!irq)
 		panic(__FILE__ ": Cannot allocate IRQ host\n");
 	irq->host_data = regs;
+
 	return irq;
 }
 
@@ -227,23 +223,69 @@ int xilinx_intc_get_irq(void)
 	return irq_linear_revmap(master_irqhost, in_be32(regs + XINTC_IVR));
 }
 
+#if defined(CONFIG_PPC_I8259)
+/*
+ * Support code for cascading to 8259 interrupt controllers
+ */
+static void xilinx_i8259_cascade(unsigned int irq, struct irq_desc *desc)
+{
+	unsigned int cascade_irq = i8259_irq();
+	if (cascade_irq)
+		generic_handle_irq(cascade_irq);
+
+	/* Let xilinx_intc end the interrupt */
+	desc->chip->unmask(irq);
+}
+
+static void __init xilinx_i8259_setup_cascade(void)
+{
+	struct device_node *cascade_node;
+	int cascade_irq;
+
+	/* Initialize i8259 controller */
+	cascade_node = of_find_compatible_node(NULL, NULL, "chrp,iic");
+	if (!cascade_node)
+		return;
+
+	cascade_irq = irq_of_parse_and_map(cascade_node, 0);
+	if (!cascade_irq) {
+		pr_err("virtex_ml510: Failed to map cascade interrupt\n");
+		goto out;
+	}
+
+	i8259_init(cascade_node, 0);
+	set_irq_chained_handler(cascade_irq, xilinx_i8259_cascade);
+
+	/* Program irq 7 (usb/audio), 14/15 (ide) to level sensitive */
+	/* This looks like a dirty hack to me --gcl */
+	outb(0xc0, 0x4d0);
+	outb(0xc0, 0x4d1);
+
+ out:
+	of_node_put(cascade_node);
+}
+#else
+static inline void xilinx_i8259_setup_cascade(void) { return; }
+#endif /* defined(CONFIG_PPC_I8259) */
+
+static struct of_device_id xilinx_intc_match[] __initconst = {
+	{ .compatible = "xlnx,opb-intc-1.00.c", },
+	{ .compatible = "xlnx,xps-intc-1.00.a", },
+	{}
+};
+
+/*
+ * Initialize master Xilinx interrupt controller
+ */
 void __init xilinx_intc_init_tree(void)
 {
 	struct device_node *np;
 
 	/* find top level interrupt controller */
-	for_each_compatible_node(np, NULL, "xlnx,opb-intc-1.00.c") {
+	for_each_matching_node(np, xilinx_intc_match) {
 		if (!of_get_property(np, "interrupts", NULL))
 			break;
 	}
-	if (!np) {
-		for_each_compatible_node(np, NULL, "xlnx,xps-intc-1.00.a") {
-			if (!of_get_property(np, "interrupts", NULL))
-				break;
-		}
-	}
-
-	/* xilinx interrupt controller needs to be top level */
 	BUG_ON(!np);
 
 	master_irqhost = xilinx_intc_init(np);
@@ -251,4 +293,6 @@ void __init xilinx_intc_init_tree(void)
 
 	irq_set_default_host(master_irqhost);
 	of_node_put(np);
+
+	xilinx_i8259_setup_cascade();
 }

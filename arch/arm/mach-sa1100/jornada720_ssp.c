@@ -18,7 +18,6 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
 
 #include <mach/hardware.h>
 #include <mach/jornada720.h>
@@ -54,7 +53,7 @@ EXPORT_SYMBOL(jornada_ssp_reverse);
  * timeout after <timeout> rounds. Needs mcu running before its called.
  *
  * returns : %mcu output on success
- *	   : %-ETIMEOUT on timeout
+ *	   : %-ETIMEDOUT on timeout
  */
 int jornada_ssp_byte(u8 byte)
 {
@@ -82,7 +81,7 @@ EXPORT_SYMBOL(jornada_ssp_byte);
  * jornada_ssp_inout - decide if input is command or trading byte
  *
  * returns : (jornada_ssp_byte(byte)) on success
- *         : %-ETIMEOUT on timeout failure
+ *         : %-ETIMEDOUT on timeout failure
  */
 int jornada_ssp_inout(u8 byte)
 {
@@ -130,7 +129,7 @@ void jornada_ssp_end(void)
 };
 EXPORT_SYMBOL(jornada_ssp_end);
 
-static int __init jornada_ssp_probe(struct platform_device *dev)
+static int __devinit jornada_ssp_probe(struct platform_device *dev)
 {
 	int ret;
 

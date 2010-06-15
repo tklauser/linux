@@ -137,7 +137,6 @@ static const char version[] =
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/netdevice.h>
@@ -309,7 +308,8 @@ struct eepro_local {
 
 static int	eepro_probe1(struct net_device *dev, int autoprobe);
 static int	eepro_open(struct net_device *dev);
-static int	eepro_send_packet(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t eepro_send_packet(struct sk_buff *skb,
+				     struct net_device *dev);
 static irqreturn_t eepro_interrupt(int irq, void *dev_id);
 static void 	eepro_rx(struct net_device *dev);
 static void 	eepro_transmit_interrupt(struct net_device *dev);
@@ -989,7 +989,7 @@ static int eepro_open(struct net_device *dev)
 		return -EAGAIN;
 	}
 
-	if (request_irq(dev->irq , &eepro_interrupt, 0, dev->name, dev)) {
+	if (request_irq(dev->irq , eepro_interrupt, 0, dev->name, dev)) {
 		printk(KERN_ERR "%s: unable to get IRQ %d.\n", dev->name, dev->irq);
 		return -EAGAIN;
 	}
@@ -1133,7 +1133,8 @@ static void eepro_tx_timeout (struct net_device *dev)
 }
 
 
-static int eepro_send_packet(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t eepro_send_packet(struct sk_buff *skb,
+				     struct net_device *dev)
 {
 	struct eepro_local *lp = netdev_priv(dev);
 	unsigned long flags;
@@ -1145,7 +1146,7 @@ static int eepro_send_packet(struct sk_buff *skb, struct net_device *dev)
 
 	if (length < ETH_ZLEN) {
 		if (skb_padto(skb, ETH_ZLEN))
-			return 0;
+			return NETDEV_TX_OK;
 		length = ETH_ZLEN;
 	}
 	netif_stop_queue (dev);
@@ -1178,7 +1179,7 @@ static int eepro_send_packet(struct sk_buff *skb, struct net_device *dev)
 	eepro_en_int(ioaddr);
 	spin_unlock_irqrestore(&lp->lock, flags);
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 
@@ -1285,9 +1286,10 @@ set_multicast_list(struct net_device *dev)
 	struct eepro_local *lp = netdev_priv(dev);
 	short ioaddr = dev->base_addr;
 	unsigned short mode;
-	struct dev_mc_list *dmi=dev->mc_list;
+	struct dev_mc_list *dmi;
+	int mc_count = netdev_mc_count(dev);
 
-	if (dev->flags&(IFF_ALLMULTI|IFF_PROMISC) || dev->mc_count > 63)
+	if (dev->flags&(IFF_ALLMULTI|IFF_PROMISC) || mc_count > 63)
 	{
 		eepro_sw2bank2(ioaddr); /* be CAREFUL, BANK 2 now */
 		mode = inb(ioaddr + REG2);
@@ -1297,7 +1299,7 @@ set_multicast_list(struct net_device *dev)
 		eepro_sw2bank0(ioaddr); /* Return to BANK 0 now */
 	}
 
-	else if (dev->mc_count==0 )
+	else if (mc_count == 0)
 	{
 		eepro_sw2bank2(ioaddr); /* be CAREFUL, BANK 2 now */
 		mode = inb(ioaddr + REG2);
@@ -1327,12 +1329,10 @@ set_multicast_list(struct net_device *dev)
 		outw(MC_SETUP, ioaddr + IO_PORT);
 		outw(0, ioaddr + IO_PORT);
 		outw(0, ioaddr + IO_PORT);
-		outw(6*(dev->mc_count + 1), ioaddr + IO_PORT);
+		outw(6 * (mc_count + 1), ioaddr + IO_PORT);
 
-		for (i = 0; i < dev->mc_count; i++)
-		{
-			eaddrs=(unsigned short *)dmi->dmi_addr;
-			dmi=dmi->next;
+		netdev_for_each_mc_addr(dmi, dev) {
+			eaddrs = (unsigned short *) dmi->dmi_addr;
 			outw(*eaddrs++, ioaddr + IO_PORT);
 			outw(*eaddrs++, ioaddr + IO_PORT);
 			outw(*eaddrs++, ioaddr + IO_PORT);
@@ -1346,7 +1346,7 @@ set_multicast_list(struct net_device *dev)
 		outb(MC_SETUP, ioaddr);
 
 		/* Update the transmit queue */
-		i = lp->tx_end + XMT_HEADER + 6*(dev->mc_count + 1);
+		i = lp->tx_end + XMT_HEADER + 6 * (mc_count + 1);
 
 		if (lp->tx_start != lp->tx_end)
 		{
@@ -1378,8 +1378,8 @@ set_multicast_list(struct net_device *dev)
 					break;
 				} else if ((i & 0x0f) == 0x03)	{ /* MC-Done */
 					printk(KERN_DEBUG "%s: set Rx mode to %d address%s.\n",
-						dev->name, dev->mc_count,
-						dev->mc_count > 1 ? "es":"");
+						dev->name, mc_count,
+						mc_count > 1 ? "es":"");
 					break;
 				}
 			}
@@ -1784,7 +1784,7 @@ int __init init_module(void)
 		printk(KERN_INFO "eepro_init_module: Auto-detecting boards (May God protect us...)\n");
 	}
 
-	for (i = 0; io[i] != -1 && i < MAX_EEPRO; i++) {
+	for (i = 0; i < MAX_EEPRO && io[i] != -1; i++) {
 		dev = alloc_etherdev(sizeof(struct eepro_local));
 		if (!dev)
 			break;

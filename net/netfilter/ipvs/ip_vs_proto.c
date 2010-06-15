@@ -13,9 +13,13 @@
  *
  */
 
+#define KMSG_COMPONENT "IPVS"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
+#include <linux/gfp.h>
 #include <linux/in.h>
 #include <linux/ip.h>
 #include <net/protocol.h>
@@ -124,7 +128,8 @@ ip_vs_create_timeout_table(int *table, int size)
  *	Set timeout value for state specified by name
  */
 int
-ip_vs_set_state_timeout(int *table, int num, char **names, char *name, int to)
+ip_vs_set_state_timeout(int *table, int num, const char *const *names,
+			const char *name, int to)
 {
 	int i;
 
@@ -181,7 +186,7 @@ ip_vs_tcpudp_debug_packet_v4(struct ip_vs_protocol *pp,
 				&ih->daddr, ntohs(pptr[1]));
 	}
 
-	printk(KERN_DEBUG "IPVS: %s: %s\n", msg, buf);
+	pr_debug("%s: %s\n", msg, buf);
 }
 
 #ifdef CONFIG_IP_VS_IPV6
@@ -215,7 +220,7 @@ ip_vs_tcpudp_debug_packet_v6(struct ip_vs_protocol *pp,
 				&ih->daddr, ntohs(pptr[1]));
 	}
 
-	printk(KERN_DEBUG "IPVS: %s: %s\n", msg, buf);
+	pr_debug("%s: %s\n", msg, buf);
 }
 #endif
 
@@ -253,13 +258,16 @@ int __init ip_vs_protocol_init(void)
 #ifdef CONFIG_IP_VS_PROTO_UDP
 	REGISTER_PROTOCOL(&ip_vs_protocol_udp);
 #endif
+#ifdef CONFIG_IP_VS_PROTO_SCTP
+	REGISTER_PROTOCOL(&ip_vs_protocol_sctp);
+#endif
 #ifdef CONFIG_IP_VS_PROTO_AH
 	REGISTER_PROTOCOL(&ip_vs_protocol_ah);
 #endif
 #ifdef CONFIG_IP_VS_PROTO_ESP
 	REGISTER_PROTOCOL(&ip_vs_protocol_esp);
 #endif
-	IP_VS_INFO("Registered protocols (%s)\n", &protocols[2]);
+	pr_info("Registered protocols (%s)\n", &protocols[2]);
 
 	return 0;
 }

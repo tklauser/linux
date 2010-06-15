@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2003 - 2009 Intel Corporation. All rights reserved.
+ * Copyright(c) 2003 - 2010 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -36,12 +36,8 @@
 #include <linux/kernel.h>
 #include <net/ieee80211_radiotap.h>
 
-/*used for rfkill*/
-#include <linux/rfkill.h>
-#include <linux/input.h>
-
 /* Hardware specific file defines the PCI IDs table for that hardware module */
-extern struct pci_device_id iwl3945_hw_card_ids[];
+extern const struct pci_device_id iwl3945_hw_card_ids[];
 
 #include "iwl-csr.h"
 #include "iwl-prph.h"
@@ -50,7 +46,7 @@ extern struct pci_device_id iwl3945_hw_card_ids[];
 #include "iwl-debug.h"
 #include "iwl-power.h"
 #include "iwl-dev.h"
-#include "iwl-3945-led.h"
+#include "iwl-led.h"
 
 /* Highest firmware API version supported */
 #define IWL3945_UCODE_API_MAX 2
@@ -78,8 +74,41 @@ extern struct pci_device_id iwl3945_hw_card_ids[];
 /* Module parameters accessible from iwl-*.c */
 extern struct iwl_mod_params iwl3945_mod_params;
 
+struct iwl3945_rate_scale_data {
+	u64 data;
+	s32 success_counter;
+	s32 success_ratio;
+	s32 counter;
+	s32 average_tpt;
+	unsigned long stamp;
+};
+
+struct iwl3945_rs_sta {
+	spinlock_t lock;
+	struct iwl_priv *priv;
+	s32 *expected_tpt;
+	unsigned long last_partial_flush;
+	unsigned long last_flush;
+	u32 flush_time;
+	u32 last_tx_packets;
+	u32 tx_packets;
+	u8 tgg;
+	u8 flush_pending;
+	u8 start_rate;
+	u8 ibss_sta_added;
+	struct timer_list rate_scale_flush;
+	struct iwl3945_rate_scale_data win[IWL_RATE_COUNT_3945];
+#ifdef CONFIG_MAC80211_DEBUGFS
+	struct dentry *rs_sta_dbgfs_stats_table_file;
+#endif
+
+	/* used to be in sta_info */
+	int last_txrate_idx;
+};
+
+
 struct iwl3945_sta_priv {
-	struct iwl3945_rs_sta *rs_sta;
+	struct iwl3945_rs_sta rs_sta;
 };
 
 enum iwl3945_antenna {
@@ -115,9 +144,6 @@ enum iwl3945_antenna {
 #define IWL_TX_FIFO_HCCA_2	6
 #define IWL_TX_FIFO_NONE	7
 
-/* Minimum number of queues. MAX_NUM is defined in hw specific files */
-#define IWL_MIN_NUM_QUEUES	4
-
 #define IEEE80211_DATA_LEN              2304
 #define IEEE80211_4ADDR_LEN             30
 #define IEEE80211_HLEN                  (IEEE80211_4ADDR_LEN)
@@ -137,12 +163,6 @@ struct iwl3945_frame {
 #define SN_TO_SEQ(ssn) (((ssn) << 4) & IEEE80211_SCTL_SEQ)
 #define MAX_SN ((IEEE80211_SCTL_SEQ) >> 4)
 
-/*
- * RX related structures and functions
- */
-#define RX_FREE_BUFFERS 64
-#define RX_LOW_WATERMARK 8
-
 #define SUP_RATE_11A_MAX_NUM_CHANNELS  8
 #define SUP_RATE_11B_MAX_NUM_CHANNELS  4
 #define SUP_RATE_11G_MAX_NUM_CHANNELS  12
@@ -150,26 +170,6 @@ struct iwl3945_frame {
 #define IWL_SUPPORTED_RATES_IE_LEN         8
 
 #define SCAN_INTERVAL 100
-
-#define STATUS_HCMD_ACTIVE	0	/* host command in progress */
-#define STATUS_HCMD_SYNC_ACTIVE	1	/* sync host command in progress */
-#define STATUS_INT_ENABLED	2
-#define STATUS_RF_KILL_HW	3
-#define STATUS_RF_KILL_SW	4
-#define STATUS_INIT		5
-#define STATUS_ALIVE		6
-#define STATUS_READY		7
-#define STATUS_TEMPERATURE	8
-#define STATUS_GEO_CONFIGURED	9
-#define STATUS_EXIT_PENDING	10
-#define STATUS_IN_SUSPEND	11
-#define STATUS_STATISTICS	12
-#define STATUS_SCANNING		13
-#define STATUS_SCAN_ABORTING	14
-#define STATUS_SCAN_HW		15
-#define STATUS_POWER_PMI	16
-#define STATUS_FW_ERROR		17
-#define STATUS_CONF_PENDING	18
 
 #define MAX_TID_COUNT        9
 
@@ -203,26 +203,14 @@ struct iwl3945_ibss_seq {
  * for use by iwl-*.c
  *
  *****************************************************************************/
-struct iwl3945_addsta_cmd;
-extern int iwl3945_send_add_station(struct iwl_priv *priv,
-				struct iwl3945_addsta_cmd *sta, u8 flags);
-extern u8 iwl3945_add_station(struct iwl_priv *priv, const u8 *bssid,
-			  int is_ap, u8 flags);
-extern int iwl3945_power_init_handle(struct iwl_priv *priv);
-extern int iwl3945_eeprom_init(struct iwl_priv *priv);
 extern int iwl3945_calc_db_from_ratio(int sig_ratio);
-extern int iwl3945_calc_sig_qual(int rssi_dbm, int noise_dbm);
-extern int iwl3945_tx_queue_init(struct iwl_priv *priv,
-			     struct iwl_tx_queue *txq, int count, u32 id);
 extern void iwl3945_rx_replenish(void *data);
 extern void iwl3945_rx_queue_reset(struct iwl_priv *priv, struct iwl_rx_queue *rxq);
-extern void iwl3945_tx_queue_free(struct iwl_priv *priv, struct iwl_tx_queue *txq);
-extern int iwl3945_send_cmd_pdu(struct iwl_priv *priv, u8 id, u16 len,
-			    const void *data);
-extern int __must_check iwl3945_send_cmd(struct iwl_priv *priv,
-					 struct iwl_host_cmd *cmd);
 extern unsigned int iwl3945_fill_beacon_frame(struct iwl_priv *priv,
 					struct ieee80211_hdr *hdr,int left);
+extern int iwl3945_dump_nic_event_log(struct iwl_priv *priv, bool full_log,
+				       char **buf, bool display);
+extern void iwl3945_dump_nic_error_log(struct iwl_priv *priv);
 
 /*
  * Currently used by iwl-3945-rs... look at restructuring so that it doesn't
@@ -268,16 +256,19 @@ extern int iwl3945_hw_tx_queue_init(struct iwl_priv *priv,
 				struct iwl_tx_queue *txq);
 extern unsigned int iwl3945_hw_get_beacon_cmd(struct iwl_priv *priv,
 				 struct iwl3945_frame *frame, u8 rate);
-void iwl3945_hw_build_tx_cmd_rate(struct iwl_priv *priv, struct iwl_cmd *cmd,
-				     struct ieee80211_tx_info *info,
-				     struct ieee80211_hdr *hdr,
-				     int sta_id, int tx_id);
+void iwl3945_hw_build_tx_cmd_rate(struct iwl_priv *priv,
+				  struct iwl_device_cmd *cmd,
+				  struct ieee80211_tx_info *info,
+				  struct ieee80211_hdr *hdr,
+				  int sta_id, int tx_id);
 extern int iwl3945_hw_reg_send_txpower(struct iwl_priv *priv);
 extern int iwl3945_hw_reg_set_txpower(struct iwl_priv *priv, s8 power);
 extern void iwl3945_hw_rx_statistics(struct iwl_priv *priv,
 				 struct iwl_rx_mem_buffer *rxb);
 extern void iwl3945_disable_events(struct iwl_priv *priv);
 extern int iwl4965_get_temperature(const struct iwl_priv *priv);
+extern void iwl3945_post_associate(struct iwl_priv *priv);
+extern void iwl3945_config_ap(struct iwl_priv *priv);
 
 /**
  * iwl3945_hw_find_station - Find station id for a given BSSID
@@ -288,8 +279,6 @@ extern int iwl4965_get_temperature(const struct iwl_priv *priv);
  * station tables.
  */
 extern u8 iwl3945_hw_find_station(struct iwl_priv *priv, const u8 *bssid);
-
-extern int iwl3945_hw_channel_switch(struct iwl_priv *priv, u16 channel);
 
 /*
  * Forward declare iwl-3945.c functions for iwl-base.c

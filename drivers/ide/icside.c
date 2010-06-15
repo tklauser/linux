@@ -234,9 +234,11 @@ static const struct ide_port_ops icside_v6_no_dma_port_ops = {
  *	MW1	80	50	50	150	C
  *	MW2	70	25	25	120	C
  */
-static void icside_set_dma_mode(ide_drive_t *drive, const u8 xfer_mode)
+static void icside_set_dma_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	int cycle_time, use_dma_info = 0;
+	unsigned long cycle_time;
+	int use_dma_info = 0;
+	const u8 xfer_mode = drive->dma_mode;
 
 	switch (xfer_mode) {
 	case XFER_MW_DMA_2:
@@ -267,10 +269,11 @@ static void icside_set_dma_mode(ide_drive_t *drive, const u8 xfer_mode)
 	if (use_dma_info && drive->id[ATA_ID_EIDE_DMA_TIME] > cycle_time)
 		cycle_time = drive->id[ATA_ID_EIDE_DMA_TIME];
 
-	drive->drive_data = cycle_time;
+	ide_set_drivedata(drive, (void *)cycle_time);
 
 	printk("%s: %s selected (peak %dMB/s)\n", drive->name,
-		ide_xfer_verbose(xfer_mode), 2000 / drive->drive_data);
+		ide_xfer_verbose(xfer_mode),
+		2000 / (unsigned long)ide_get_drivedata(drive));
 }
 
 static const struct ide_port_ops icside_v6_port_ops = {
@@ -332,7 +335,7 @@ static int icside_dma_setup(ide_drive_t *drive, struct ide_cmd *cmd)
 	/*
 	 * Select the correct timing for this drive.
 	 */
-	set_dma_speed(ec->dma, drive->drive_data);
+	set_dma_speed(ec->dma, (unsigned long)ide_get_drivedata(drive));
 
 	/*
 	 * Tell the DMA engine about the SG table and
@@ -381,7 +384,7 @@ static int icside_dma_off_init(ide_hwif_t *hwif, const struct ide_port_info *d)
 	return -EOPNOTSUPP;
 }
 
-static void icside_setup_ports(hw_regs_t *hw, void __iomem *base,
+static void icside_setup_ports(struct ide_hw *hw, void __iomem *base,
 			       struct cardinfo *info, struct expansion_card *ec)
 {
 	unsigned long port = (unsigned long)base + info->dataoffset;
@@ -398,11 +401,11 @@ static void icside_setup_ports(hw_regs_t *hw, void __iomem *base,
 
 	hw->irq = ec->irq;
 	hw->dev = &ec->dev;
-	hw->chipset = ide_acorn;
 }
 
 static const struct ide_port_info icside_v5_port_info = {
 	.host_flags		= IDE_HFLAG_NO_DMA,
+	.chipset		= ide_acorn,
 };
 
 static int __devinit
@@ -410,7 +413,7 @@ icside_register_v5(struct icside_state *state, struct expansion_card *ec)
 {
 	void __iomem *base;
 	struct ide_host *host;
-	hw_regs_t hw, *hws[] = { &hw, NULL, NULL, NULL };
+	struct ide_hw hw, *hws[] = { &hw };
 	int ret;
 
 	base = ecardm_iomap(ec, ECARD_RES_MEMC, 0, 0);
@@ -431,7 +434,7 @@ icside_register_v5(struct icside_state *state, struct expansion_card *ec)
 
 	icside_setup_ports(&hw, base, &icside_cardinfo_v5, ec);
 
-	host = ide_host_alloc(&icside_v5_port_info, hws);
+	host = ide_host_alloc(&icside_v5_port_info, hws, 1);
 	if (host == NULL)
 		return -ENODEV;
 
@@ -457,6 +460,7 @@ static const struct ide_port_info icside_v6_port_info __initdata = {
 	.host_flags		= IDE_HFLAG_SERIALIZE | IDE_HFLAG_MMIO,
 	.mwdma_mask		= ATA_MWDMA2,
 	.swdma_mask		= ATA_SWDMA2,
+	.chipset		= ide_acorn,
 };
 
 static int __devinit
@@ -466,7 +470,7 @@ icside_register_v6(struct icside_state *state, struct expansion_card *ec)
 	struct ide_host *host;
 	unsigned int sel = 0;
 	int ret;
-	hw_regs_t hw[2], *hws[] = { &hw[0], &hw[1], NULL, NULL };
+	struct ide_hw hw[2], *hws[] = { &hw[0], &hw[1] };
 	struct ide_port_info d = icside_v6_port_info;
 
 	ioc_base = ecardm_iomap(ec, ECARD_RES_IOCFAST, 0, 0);
@@ -506,7 +510,7 @@ icside_register_v6(struct icside_state *state, struct expansion_card *ec)
 	icside_setup_ports(&hw[0], easi_base, &icside_cardinfo_v6_1, ec);
 	icside_setup_ports(&hw[1], easi_base, &icside_cardinfo_v6_2, ec);
 
-	host = ide_host_alloc(&d, hws);
+	host = ide_host_alloc(&d, hws, 2);
 	if (host == NULL)
 		return -ENODEV;
 

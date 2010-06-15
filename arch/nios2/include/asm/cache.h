@@ -33,7 +33,4 @@
 #define __cacheline_aligned
 #define ____cacheline_aligned
 
-#define SMP_CACHE_SHIFT		L1_CACHE_SHIFT
-#define SMP_CACHE_BYTES		L1_CACHE_BYTES
-
 #endif

@@ -1,12 +1,12 @@
 /*
- *  Copyright (c) 2000-2008 LSI Corporation.
+ *  Copyright (c) 2000-2009 LSI Corporation.
  *
  *
  *           Name:  mpi2_init.h
  *          Title:  MPI SCSI initiator mode messages and structures
  *  Creation Date:  June 23, 2006
  *
- *    mpi2_init.h Version:  02.00.06
+ *    mpi2_init.h Version:  02.00.08
  *
  *  Version History
  *  ---------------
@@ -23,6 +23,14 @@
  *                      Control field Task Attribute flags.
  *                      Moved LUN field defines to mpi2.h becasue they are
  *                      common to many structures.
+ *  05-06-09  02.00.07  Changed task management type of Query Unit Attention to
+ *                      Query Asynchronous Event.
+ *                      Defined two new bits in the SlotStatus field of the SCSI
+ *                      Enclosure Processor Request and Reply.
+ *  10-28-09  02.00.08  Added defines for decoding the ResponseInfo bytes for
+ *                      both SCSI IO Error Reply and SCSI Task Management Reply.
+ *                      Added ResponseInfo field to MPI2_SCSI_TASK_MANAGE_REPLY.
+ *                      Added MPI2_SCSITASKMGMT_RSP_TM_OVERLAPPED_TAG define.
  *  --------------------------------------------------------------------------
  */
 
@@ -250,6 +258,11 @@ typedef struct _MPI2_SCSI_IO_REPLY
 #define MPI2_SCSI_STATE_AUTOSENSE_FAILED        (0x02)
 #define MPI2_SCSI_STATE_AUTOSENSE_VALID         (0x01)
 
+/* masks and shifts for the ResponseInfo field */
+
+#define MPI2_SCSI_RI_MASK_REASONCODE            (0x000000FF)
+#define MPI2_SCSI_RI_SHIFT_REASONCODE           (0)
+
 #define MPI2_SCSI_TASKTAG_UNKNOWN               (0xFFFF)
 
 
@@ -289,7 +302,11 @@ typedef struct _MPI2_SCSI_TASK_MANAGE_REQUEST
 #define MPI2_SCSITASKMGMT_TASKTYPE_QUERY_TASK           (0x07)
 #define MPI2_SCSITASKMGMT_TASKTYPE_CLR_ACA              (0x08)
 #define MPI2_SCSITASKMGMT_TASKTYPE_QRY_TASK_SET         (0x09)
-#define MPI2_SCSITASKMGMT_TASKTYPE_QRY_UNIT_ATTENTION   (0x0A)
+#define MPI2_SCSITASKMGMT_TASKTYPE_QRY_ASYNC_EVENT      (0x0A)
+
+/* obsolete TaskType name */
+#define MPI2_SCSITASKMGMT_TASKTYPE_QRY_UNIT_ATTENTION	\
+	(MPI2_SCSITASKMGMT_TASKTYPE_QRY_ASYNC_EVENT)
 
 /* MsgFlags bits */
 
@@ -319,6 +336,7 @@ typedef struct _MPI2_SCSI_TASK_MANAGE_REPLY
     U16                     IOCStatus;                      /* 0x0E */
     U32                     IOCLogInfo;                     /* 0x10 */
     U32                     TerminationCount;               /* 0x14 */
+    U32                     ResponseInfo;                   /* 0x18 */
 } MPI2_SCSI_TASK_MANAGE_REPLY,
   MPI2_POINTER PTR_MPI2_SCSI_TASK_MANAGE_REPLY,
   Mpi2SCSITaskManagementReply_t, MPI2_POINTER pMpi2SCSIManagementReply_t;
@@ -331,7 +349,19 @@ typedef struct _MPI2_SCSI_TASK_MANAGE_REPLY
 #define MPI2_SCSITASKMGMT_RSP_TM_FAILED                 (0x05)
 #define MPI2_SCSITASKMGMT_RSP_TM_SUCCEEDED              (0x08)
 #define MPI2_SCSITASKMGMT_RSP_TM_INVALID_LUN            (0x09)
+#define MPI2_SCSITASKMGMT_RSP_TM_OVERLAPPED_TAG         (0x0A)
 #define MPI2_SCSITASKMGMT_RSP_IO_QUEUED_ON_IOC          (0x80)
+
+/* masks and shifts for the ResponseInfo field */
+
+#define MPI2_SCSITASKMGMT_RI_MASK_REASONCODE            (0x000000FF)
+#define MPI2_SCSITASKMGMT_RI_SHIFT_REASONCODE           (0)
+#define MPI2_SCSITASKMGMT_RI_MASK_ARI2                  (0x0000FF00)
+#define MPI2_SCSITASKMGMT_RI_SHIFT_ARI2                 (8)
+#define MPI2_SCSITASKMGMT_RI_MASK_ARI1                  (0x00FF0000)
+#define MPI2_SCSITASKMGMT_RI_SHIFT_ARI1                 (16)
+#define MPI2_SCSITASKMGMT_RI_MASK_ARI0                  (0xFF000000)
+#define MPI2_SCSITASKMGMT_RI_SHIFT_ARI0                 (24)
 
 
 /****************************************************************************
@@ -375,6 +405,8 @@ typedef struct _MPI2_SEP_REQUEST
 #define MPI2_SEP_REQ_SLOTSTATUS_HOT_SPARE               (0x00000100)
 #define MPI2_SEP_REQ_SLOTSTATUS_UNCONFIGURED            (0x00000080)
 #define MPI2_SEP_REQ_SLOTSTATUS_PREDICTED_FAULT         (0x00000040)
+#define MPI2_SEP_REQ_SLOTSTATUS_IN_CRITICAL_ARRAY       (0x00000010)
+#define MPI2_SEP_REQ_SLOTSTATUS_IN_FAILED_ARRAY         (0x00000008)
 #define MPI2_SEP_REQ_SLOTSTATUS_DEV_REBUILDING          (0x00000004)
 #define MPI2_SEP_REQ_SLOTSTATUS_DEV_FAULTY              (0x00000002)
 #define MPI2_SEP_REQ_SLOTSTATUS_NO_ERROR                (0x00000001)
@@ -410,6 +442,8 @@ typedef struct _MPI2_SEP_REPLY
 #define MPI2_SEP_REPLY_SLOTSTATUS_HOT_SPARE             (0x00000100)
 #define MPI2_SEP_REPLY_SLOTSTATUS_UNCONFIGURED          (0x00000080)
 #define MPI2_SEP_REPLY_SLOTSTATUS_PREDICTED_FAULT       (0x00000040)
+#define MPI2_SEP_REPLY_SLOTSTATUS_IN_CRITICAL_ARRAY     (0x00000010)
+#define MPI2_SEP_REPLY_SLOTSTATUS_IN_FAILED_ARRAY       (0x00000008)
 #define MPI2_SEP_REPLY_SLOTSTATUS_DEV_REBUILDING        (0x00000004)
 #define MPI2_SEP_REPLY_SLOTSTATUS_DEV_FAULTY            (0x00000002)
 #define MPI2_SEP_REPLY_SLOTSTATUS_NO_ERROR              (0x00000001)

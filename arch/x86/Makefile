@@ -7,8 +7,6 @@ else
         KBUILD_DEFCONFIG := $(ARCH)_defconfig
 endif
 
-core-$(CONFIG_KVM) += arch/x86/kvm/
-
 # BITS is used as extension for files which are available in a 32 bit
 # and a 64 bit version to simplify shared Makefiles.
 # e.g.: obj-y += foo_$(BITS).o
@@ -34,8 +32,8 @@ ifeq ($(CONFIG_X86_32),y)
 
         # Disable unit-at-a-time mode on pre-gcc-4.0 compilers, it makes gcc use
         # a lot more stack due to the lack of sharing of stacklots:
-        KBUILD_CFLAGS += $(shell if [ $(call cc-version) -lt 0400 ] ; then \
-                echo $(call cc-option,-fno-unit-at-a-time); fi ;)
+        KBUILD_CFLAGS += $(call cc-ifversion, -lt, 0400, \
+				$(call cc-option,-fno-unit-at-a-time))
 
         # CPU-specific tuning. Anything which can be shared with UML should go here.
         include $(srctree)/arch/x86/Makefile_32.cpu
@@ -57,6 +55,8 @@ else
 
         cflags-$(CONFIG_MCORE2) += \
                 $(call cc-option,-march=core2,$(call cc-option,-mtune=generic))
+	cflags-$(CONFIG_MATOM) += $(call cc-option,-march=atom) \
+		$(call cc-option,-mtune=atom,$(call cc-option,-mtune=generic))
         cflags-$(CONFIG_GENERIC_CPU) += $(call cc-option,-mtune=generic)
         KBUILD_CFLAGS += $(cflags-y)
 
@@ -74,13 +74,17 @@ endif
 
 ifdef CONFIG_CC_STACKPROTECTOR
 	cc_has_sp := $(srctree)/scripts/gcc-x86_$(BITS)-has-stack-protector.sh
-        ifeq ($(shell $(CONFIG_SHELL) $(cc_has_sp) $(CC)),y)
+        ifeq ($(shell $(CONFIG_SHELL) $(cc_has_sp) $(CC) $(biarch)),y)
                 stackp-y := -fstack-protector
-                stackp-$(CONFIG_CC_STACKPROTECTOR_ALL) += -fstack-protector-all
                 KBUILD_CFLAGS += $(stackp-y)
         else
                 $(warning stack protector enabled but no compiler support)
         endif
+endif
+
+# Don't unroll struct assignments with kmemcheck enabled
+ifeq ($(CONFIG_KMEMCHECK),y)
+	KBUILD_CFLAGS += $(call cc-option,-fno-builtin-memcpy)
 endif
 
 # Stackpointer is addressed different for 32 bit and 64 bit x86
@@ -118,21 +122,8 @@ head-y += arch/x86/kernel/init_task.o
 
 libs-y  += arch/x86/lib/
 
-# Sub architecture files that needs linking first
-core-y += $(fcore-y)
-
-# Xen paravirtualization support
-core-$(CONFIG_XEN) += arch/x86/xen/
-
-# lguest paravirtualization support
-core-$(CONFIG_LGUEST_GUEST) += arch/x86/lguest/
-
-core-y += arch/x86/kernel/
-core-y += arch/x86/mm/
-
-core-y += arch/x86/crypto/
-core-y += arch/x86/vdso/
-core-$(CONFIG_IA32_EMULATION) += arch/x86/ia32/
+# See arch/x86/Kbuild for content of core part of the kernel
+core-y += arch/x86/
 
 # drivers-y are linked after core-y
 drivers-$(CONFIG_MATH_EMULATION) += arch/x86/math-emu/
@@ -144,9 +135,7 @@ drivers-$(CONFIG_OPROFILE) += arch/x86/oprofile/
 # suspend and hibernation support
 drivers-$(CONFIG_PM) += arch/x86/power/
 
-ifeq ($(CONFIG_X86_32),y)
 drivers-$(CONFIG_FB) += arch/x86/video/
-endif
 
 ####
 # boot loader support. Several targets are kept for legacy purposes
@@ -164,6 +153,9 @@ all: bzImage
 KBUILD_IMAGE := $(boot)/bzImage
 
 bzImage: vmlinux
+ifeq ($(CONFIG_X86_DECODER_SELFTEST),y)
+	$(Q)$(MAKE) $(build)=arch/x86/tools posttest
+endif
 	$(Q)$(MAKE) $(build)=$(boot) $(KBUILD_IMAGE)
 	$(Q)mkdir -p $(objtree)/arch/$(UTS_MACHINE)/boot
 	$(Q)ln -fsn ../../x86/boot/bzImage $(objtree)/arch/$(UTS_MACHINE)/boot/$@
@@ -187,8 +179,8 @@ archclean:
 define archhelp
   echo  '* bzImage      - Compressed kernel image (arch/x86/boot/bzImage)'
   echo  '  install      - Install kernel using'
-  echo  '                  (your) ~/bin/installkernel or'
-  echo  '                  (distribution) /sbin/installkernel or'
+  echo  '                  (your) ~/bin/$(INSTALLKERNEL) or'
+  echo  '                  (distribution) /sbin/$(INSTALLKERNEL) or'
   echo  '                  install to $$(INSTALL_PATH) and run lilo'
   echo  '  fdimage      - Create 1.4MB boot floppy image (arch/x86/boot/fdimage)'
   echo  '  fdimage144   - Create 1.4MB boot floppy image (arch/x86/boot/fdimage)'

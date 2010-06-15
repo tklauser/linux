@@ -17,7 +17,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/pm.h>
 #include <linux/device.h>
@@ -54,7 +53,7 @@ sysdev_store(struct kobject *kobj, struct attribute *attr,
 	return -EIO;
 }
 
-static struct sysfs_ops sysfs_ops = {
+static const struct sysfs_ops sysfs_ops = {
 	.show	= sysdev_show,
 	.store	= sysdev_store,
 };
@@ -89,7 +88,7 @@ static ssize_t sysdev_class_show(struct kobject *kobj, struct attribute *attr,
 	struct sysdev_class_attribute *class_attr = to_sysdev_class_attr(attr);
 
 	if (class_attr->show)
-		return class_attr->show(class, buffer);
+		return class_attr->show(class, class_attr, buffer);
 	return -EIO;
 }
 
@@ -100,11 +99,11 @@ static ssize_t sysdev_class_store(struct kobject *kobj, struct attribute *attr,
 	struct sysdev_class_attribute *class_attr = to_sysdev_class_attr(attr);
 
 	if (class_attr->store)
-		return class_attr->store(class, buffer, count);
+		return class_attr->store(class, class_attr, buffer, count);
 	return -EIO;
 }
 
-static struct sysfs_ops sysfs_class_ops = {
+static const struct sysfs_ops sysfs_class_ops = {
 	.show	= sysdev_class_show,
 	.store	= sysdev_class_store,
 };
@@ -131,6 +130,8 @@ static struct kset *system_kset;
 
 int sysdev_class_register(struct sysdev_class *cls)
 {
+	int retval;
+
 	pr_debug("Registering sysdev class '%s'\n", cls->name);
 
 	INIT_LIST_HEAD(&cls->drivers);
@@ -138,14 +139,25 @@ int sysdev_class_register(struct sysdev_class *cls)
 	cls->kset.kobj.parent = &system_kset->kobj;
 	cls->kset.kobj.ktype = &ktype_sysdev_class;
 	cls->kset.kobj.kset = system_kset;
-	kobject_set_name(&cls->kset.kobj, cls->name);
-	return kset_register(&cls->kset);
+
+	retval = kobject_set_name(&cls->kset.kobj, "%s", cls->name);
+	if (retval)
+		return retval;
+
+	retval = kset_register(&cls->kset);
+	if (!retval && cls->attrs)
+		retval = sysfs_create_files(&cls->kset.kobj,
+					    (const struct attribute **)cls->attrs);
+	return retval;
 }
 
 void sysdev_class_unregister(struct sysdev_class *cls)
 {
 	pr_debug("Unregistering sysdev class '%s'\n",
 		 kobject_name(&cls->kset.kobj));
+	if (cls->attrs)
+		sysfs_remove_files(&cls->kset.kobj,
+				   (const struct attribute **)cls->attrs);
 	kset_unregister(&cls->kset);
 }
 
@@ -269,9 +281,9 @@ int sysdev_register(struct sys_device *sysdev)
 				drv->add(sysdev);
 		}
 		mutex_unlock(&sysdev_drivers_lock);
+		kobject_uevent(&sysdev->kobj, KOBJ_ADD);
 	}
 
-	kobject_uevent(&sysdev->kobj, KOBJ_ADD);
 	return error;
 }
 
@@ -343,11 +355,15 @@ static void __sysdev_resume(struct sys_device *dev)
 	/* First, call the class-specific one */
 	if (cls->resume)
 		cls->resume(dev);
+	WARN_ONCE(!irqs_disabled(),
+		"Interrupts enabled after %pF\n", cls->resume);
 
 	/* Call auxillary drivers next. */
 	list_for_each_entry(drv, &cls->drivers, entry) {
 		if (drv->resume)
 			drv->resume(dev);
+		WARN_ONCE(!irqs_disabled(),
+			"Interrupts enabled after %pF\n", drv->resume);
 	}
 }
 
@@ -377,6 +393,9 @@ int sysdev_suspend(pm_message_t state)
 	if (ret)
 		return ret;
 
+	WARN_ONCE(!irqs_disabled(),
+		"Interrupts enabled while suspending system devices\n");
+
 	pr_debug("Suspending System Devices\n");
 
 	list_for_each_entry_reverse(cls, &system_kset->list, kset.kobj.entry) {
@@ -393,6 +412,9 @@ int sysdev_suspend(pm_message_t state)
 					if (ret)
 						goto aux_driver;
 				}
+				WARN_ONCE(!irqs_disabled(),
+					"Interrupts enabled after %pF\n",
+					drv->suspend);
 			}
 
 			/* Now call the generic one */
@@ -400,6 +422,9 @@ int sysdev_suspend(pm_message_t state)
 				ret = cls->suspend(sysdev, state);
 				if (ret)
 					goto cls_driver;
+				WARN_ONCE(!irqs_disabled(),
+					"Interrupts enabled after %pF\n",
+					cls->suspend);
 			}
 		}
 	}
@@ -451,6 +476,9 @@ EXPORT_SYMBOL_GPL(sysdev_suspend);
 int sysdev_resume(void)
 {
 	struct sysdev_class *cls;
+
+	WARN_ONCE(!irqs_disabled(),
+		"Interrupts enabled while resuming system devices\n");
 
 	pr_debug("Resuming System Devices\n");
 

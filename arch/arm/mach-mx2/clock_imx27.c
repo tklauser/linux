@@ -29,21 +29,23 @@
 #include <mach/common.h>
 #include <mach/hardware.h>
 
+#define IO_ADDR_CCM(off)	(MX27_IO_ADDRESS(MX27_CCM_BASE_ADDR + (off)))
+
 /* Register offsets */
-#define CCM_CSCR                (IO_ADDRESS(CCM_BASE_ADDR) + 0x0)
-#define CCM_MPCTL0              (IO_ADDRESS(CCM_BASE_ADDR) + 0x4)
-#define CCM_MPCTL1              (IO_ADDRESS(CCM_BASE_ADDR) + 0x8)
-#define CCM_SPCTL0              (IO_ADDRESS(CCM_BASE_ADDR) + 0xC)
-#define CCM_SPCTL1              (IO_ADDRESS(CCM_BASE_ADDR) + 0x10)
-#define CCM_OSC26MCTL           (IO_ADDRESS(CCM_BASE_ADDR) + 0x14)
-#define CCM_PCDR0               (IO_ADDRESS(CCM_BASE_ADDR) + 0x18)
-#define CCM_PCDR1               (IO_ADDRESS(CCM_BASE_ADDR) + 0x1c)
-#define CCM_PCCR0               (IO_ADDRESS(CCM_BASE_ADDR) + 0x20)
-#define CCM_PCCR1               (IO_ADDRESS(CCM_BASE_ADDR) + 0x24)
-#define CCM_CCSR                (IO_ADDRESS(CCM_BASE_ADDR) + 0x28)
-#define CCM_PMCTL               (IO_ADDRESS(CCM_BASE_ADDR) + 0x2c)
-#define CCM_PMCOUNT             (IO_ADDRESS(CCM_BASE_ADDR) + 0x30)
-#define CCM_WKGDCTL             (IO_ADDRESS(CCM_BASE_ADDR) + 0x34)
+#define CCM_CSCR		IO_ADDR_CCM(0x0)
+#define CCM_MPCTL0		IO_ADDR_CCM(0x4)
+#define CCM_MPCTL1		IO_ADDR_CCM(0x8)
+#define CCM_SPCTL0		IO_ADDR_CCM(0xc)
+#define CCM_SPCTL1		IO_ADDR_CCM(0x10)
+#define CCM_OSC26MCTL		IO_ADDR_CCM(0x14)
+#define CCM_PCDR0		IO_ADDR_CCM(0x18)
+#define CCM_PCDR1		IO_ADDR_CCM(0x1c)
+#define CCM_PCCR0		IO_ADDR_CCM(0x20)
+#define CCM_PCCR1		IO_ADDR_CCM(0x24)
+#define CCM_CCSR		IO_ADDR_CCM(0x28)
+#define CCM_PMCTL		IO_ADDR_CCM(0x2c)
+#define CCM_PMCOUNT		IO_ADDR_CCM(0x30)
+#define CCM_WKGDCTL		IO_ADDR_CCM(0x34)
 
 #define CCM_CSCR_UPDATE_DIS	(1 << 31)
 #define CCM_CSCR_SSI2		(1 << 23)
@@ -638,14 +640,21 @@ static struct clk_lookup lookups[] = {
 	_REGISTER_CLOCK("mxc-mmc.0", NULL, sdhc1_clk)
 	_REGISTER_CLOCK("mxc-mmc.1", NULL, sdhc2_clk)
 	_REGISTER_CLOCK("mxc-mmc.2", NULL, sdhc3_clk)
-	_REGISTER_CLOCK(NULL, "cspi1", cspi1_clk)
-	_REGISTER_CLOCK(NULL, "cspi2", cspi2_clk)
-	_REGISTER_CLOCK(NULL, "cspi3", cspi3_clk)
+	_REGISTER_CLOCK("spi_imx.0", NULL, cspi1_clk)
+	_REGISTER_CLOCK("spi_imx.1", NULL, cspi2_clk)
+	_REGISTER_CLOCK("spi_imx.2", NULL, cspi3_clk)
 	_REGISTER_CLOCK("imx-fb.0", NULL, lcdc_clk)
 	_REGISTER_CLOCK(NULL, "csi", csi_clk)
-	_REGISTER_CLOCK(NULL, "usb", usb_clk)
-	_REGISTER_CLOCK(NULL, "ssi1", ssi1_clk)
-	_REGISTER_CLOCK(NULL, "ssi2", ssi2_clk)
+	_REGISTER_CLOCK("fsl-usb2-udc", "usb", usb_clk)
+	_REGISTER_CLOCK("fsl-usb2-udc", "usb_ahb", usb_clk1)
+	_REGISTER_CLOCK("mxc-ehci.0", "usb", usb_clk)
+	_REGISTER_CLOCK("mxc-ehci.0", "usb_ahb", usb_clk1)
+	_REGISTER_CLOCK("mxc-ehci.1", "usb", usb_clk)
+	_REGISTER_CLOCK("mxc-ehci.1", "usb_ahb", usb_clk1)
+	_REGISTER_CLOCK("mxc-ehci.2", "usb", usb_clk)
+	_REGISTER_CLOCK("mxc-ehci.2", "usb_ahb", usb_clk1)
+	_REGISTER_CLOCK("imx-ssi.0", NULL, ssi1_clk)
+	_REGISTER_CLOCK("imx-ssi.1", NULL, ssi2_clk)
 	_REGISTER_CLOCK("mxc_nand.0", NULL, nfc_clk)
 	_REGISTER_CLOCK(NULL, "vpu", vpu_clk)
 	_REGISTER_CLOCK(NULL, "dma", dma_clk)
@@ -658,7 +667,7 @@ static struct clk_lookup lookups[] = {
 	_REGISTER_CLOCK(NULL, "sahara2", sahara2_clk)
 	_REGISTER_CLOCK(NULL, "ata", ata_clk)
 	_REGISTER_CLOCK(NULL, "mstick", mstick_clk)
-	_REGISTER_CLOCK(NULL, "wdog", wdog_clk)
+	_REGISTER_CLOCK("imx-wdt.0", NULL, wdog_clk)
 	_REGISTER_CLOCK(NULL, "gpio", gpio_clk)
 	_REGISTER_CLOCK("imx-i2c.0", NULL, i2c1_clk)
 	_REGISTER_CLOCK("imx-i2c.1", NULL, i2c2_clk)
@@ -712,7 +721,6 @@ static void __init to2_adjust_clocks(void)
 int __init mx27_clocks_init(unsigned long fref)
 {
 	u32 cscr = __raw_readl(CCM_CSCR);
-	int i;
 
 	external_high_reference = fref;
 
@@ -729,8 +737,7 @@ int __init mx27_clocks_init(unsigned long fref)
 
 	to2_adjust_clocks();
 
-	for (i = 0; i < ARRAY_SIZE(lookups); i++)
-		clkdev_add(&lookups[i]);
+	clkdev_add_table(lookups, ARRAY_SIZE(lookups));
 
 	/* Turn off all clocks we do not need */
 	__raw_writel(0, CCM_PCCR0);
@@ -744,11 +751,12 @@ int __init mx27_clocks_init(unsigned long fref)
 	clk_enable(&emi_clk);
 	clk_enable(&iim_clk);
 
-#ifdef CONFIG_DEBUG_LL_CONSOLE
+#if defined(CONFIG_DEBUG_LL) && !defined(CONFIG_DEBUG_ICEDCC)
 	clk_enable(&uart1_clk);
 #endif
 
-	mxc_timer_init(&gpt1_clk);
+	mxc_timer_init(&gpt1_clk, MX27_IO_ADDRESS(MX27_GPT1_BASE_ADDR),
+			MX27_INT_GPT1);
 
 	return 0;
 }

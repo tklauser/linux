@@ -22,7 +22,10 @@
 #include <linux/io.h>
 #include <linux/bug.h>
 #include <linux/param.h>
+#include <linux/pci.h>
 #include <linux/cache.h>
+#include <linux/of_platform.h>
+#include <linux/dma-mapping.h>
 #include <asm/cacheflush.h>
 #include <asm/entry.h>
 #include <asm/cpuinfo.h>
@@ -42,10 +45,6 @@ char cmd_line[COMMAND_LINE_SIZE];
 
 void __init setup_arch(char **cmdline_p)
 {
-#ifdef CONFIG_CMDLINE_FORCE
-	strlcpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
-	strlcpy(boot_command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
-#endif
 	*cmdline_p = cmd_line;
 
 	console_verbose();
@@ -56,15 +55,11 @@ void __init setup_arch(char **cmdline_p)
 	/* irq_early_init(); */
 	setup_cpuinfo();
 
-	__invalidate_icache_all();
-	__enable_icache();
-
-	__invalidate_dcache_all();
-	__enable_dcache();
-
-	panic_timeout = 120;
+	microblaze_cache_init();
 
 	setup_memory();
+
+	xilinx_pci_init();
 
 #if defined(CONFIG_SELFMOD_INTC) || defined(CONFIG_SELFMOD_TIMER)
 	printk(KERN_NOTICE "Self modified code enable\n");
@@ -97,23 +92,51 @@ inline unsigned get_romfs_len(unsigned *addr)
 }
 #endif	/* CONFIG_MTD_UCLINUX_EBSS */
 
+#if defined(CONFIG_EARLY_PRINTK) && defined(CONFIG_SERIAL_UARTLITE_CONSOLE)
+#define eprintk early_printk
+#else
+#define eprintk printk
+#endif
+
 void __init machine_early_init(const char *cmdline, unsigned int ram,
-		unsigned int fdt)
+		unsigned int fdt, unsigned int msr)
 {
 	unsigned long *src, *dst = (unsigned long *)0x0;
+
+	/* If CONFIG_MTD_UCLINUX is defined, assume ROMFS is at the
+	 * end of kernel. There are two position which we want to check.
+	 * The first is __init_end and the second __bss_start.
+	 */
+#ifdef CONFIG_MTD_UCLINUX
+	int romfs_size;
+	unsigned int romfs_base;
+	char *old_klimit = klimit;
+
+	romfs_base = (ram ? ram : (unsigned int)&__init_end);
+	romfs_size = PAGE_ALIGN(get_romfs_len((unsigned *)romfs_base));
+	if (!romfs_size) {
+		romfs_base = (unsigned int)&__bss_start;
+		romfs_size = PAGE_ALIGN(get_romfs_len((unsigned *)romfs_base));
+	}
+
+	/* Move ROMFS out of BSS before clearing it */
+	if (romfs_size > 0) {
+		memmove(&_ebss, (int *)romfs_base, romfs_size);
+		klimit += romfs_size;
+	}
+#endif
 
 /* clearing bss section */
 	memset(__bss_start, 0, __bss_stop-__bss_start);
 	memset(_ssbss, 0, _esbss-_ssbss);
 
-	/*
-	 * Copy command line passed from bootloader, or use default
-	 * if none provided, or forced
-	 */
+	/* Copy command line passed from bootloader */
 #ifndef CONFIG_CMDLINE_BOOL
 	if (cmdline && cmdline[0] != '\0')
 		strlcpy(cmd_line, cmdline, COMMAND_LINE_SIZE);
 #endif
+
+	lockdep_init();
 
 /* initialize device tree for usage in early_printk */
 	early_init_devtree((void *)_fdt_start);
@@ -122,31 +145,33 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 	setup_early_printk(NULL);
 #endif
 
-	early_printk("Ramdisk addr 0x%08x, FDT 0x%08x\n", ram, fdt);
-	printk(KERN_NOTICE "Found FDT at 0x%08x\n", fdt);
+	eprintk("Ramdisk addr 0x%08x, ", ram);
+	if (fdt)
+		eprintk("FDT at 0x%08x\n", fdt);
+	else
+		eprintk("Compiled-in FDT at 0x%08x\n",
+					(unsigned int)_fdt_start);
 
 #ifdef CONFIG_MTD_UCLINUX
-	{
-		int size;
-		unsigned int romfs_base;
-		romfs_base = (ram ? ram : (unsigned int)&__init_end);
-		/* if CONFIG_MTD_UCLINUX_EBSS is defined, assume ROMFS is at the
-		 * end of kernel, which is ROMFS_LOCATION defined above. */
-		size = PAGE_ALIGN(get_romfs_len((unsigned *)romfs_base));
-		early_printk("Found romfs @ 0x%08x (0x%08x)\n",
-				romfs_base, size);
-		early_printk("#### klimit %p ####\n", klimit);
-		BUG_ON(size < 0); /* What else can we do? */
+	eprintk("Found romfs @ 0x%08x (0x%08x)\n",
+			romfs_base, romfs_size);
+	eprintk("#### klimit %p ####\n", old_klimit);
+	BUG_ON(romfs_size < 0); /* What else can we do? */
 
-		/* Use memmove to handle likely case of memory overlap */
-		early_printk("Moving 0x%08x bytes from 0x%08x to 0x%08x\n",
-			size, romfs_base, (unsigned)&_ebss);
-		memmove(&_ebss, (int *)romfs_base, size);
+	eprintk("Moved 0x%08x bytes from 0x%08x to 0x%08x\n",
+			romfs_size, romfs_base, (unsigned)&_ebss);
 
-		/* update klimit */
-		klimit += PAGE_ALIGN(size);
-		early_printk("New klimit: 0x%08x\n", (unsigned)klimit);
-	}
+	eprintk("New klimit: 0x%08x\n", (unsigned)klimit);
+#endif
+
+#if CONFIG_XILINX_MICROBLAZE0_USE_MSR_INSTR
+	if (msr)
+		eprintk("!!!Your kernel has setup MSR instruction but "
+				"CPU don't have it %d\n", msr);
+#else
+	if (!msr)
+		eprintk("!!!Your kernel not setup MSR instruction but "
+				"CPU have it %d\n", msr);
 #endif
 
 	for (src = __ivt_start; src < __ivt_end; src++, dst++)
@@ -169,31 +194,36 @@ static int microblaze_debugfs_init(void)
 arch_initcall(microblaze_debugfs_init);
 #endif
 
-void machine_restart(char *cmd)
+static int dflt_bus_notify(struct notifier_block *nb,
+				unsigned long action, void *data)
 {
-	printk(KERN_NOTICE "Machine restart...\n");
-	dump_stack();
-	while (1)
-		;
+	struct device *dev = data;
+
+	/* We are only intereted in device addition */
+	if (action != BUS_NOTIFY_ADD_DEVICE)
+		return 0;
+
+	set_dma_ops(dev, &dma_direct_ops);
+
+	return NOTIFY_DONE;
 }
 
-void machine_shutdown(void)
+static struct notifier_block dflt_plat_bus_notifier = {
+	.notifier_call = dflt_bus_notify,
+	.priority = INT_MAX,
+};
+
+static struct notifier_block dflt_of_bus_notifier = {
+	.notifier_call = dflt_bus_notify,
+	.priority = INT_MAX,
+};
+
+static int __init setup_bus_notifier(void)
 {
-	printk(KERN_NOTICE "Machine shutdown...\n");
-	while (1)
-		;
+	bus_register_notifier(&platform_bus_type, &dflt_plat_bus_notifier);
+	bus_register_notifier(&of_platform_bus_type, &dflt_of_bus_notifier);
+
+	return 0;
 }
 
-void machine_halt(void)
-{
-	printk(KERN_NOTICE "Machine halt...\n");
-	while (1)
-		;
-}
-
-void machine_power_off(void)
-{
-	printk(KERN_NOTICE "Machine power off...\n");
-	while (1)
-		;
-}
+arch_initcall(setup_bus_notifier);

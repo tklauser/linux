@@ -8,6 +8,7 @@
 #include <linux/mutex.h>
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
+#include <linux/slab.h>
 #include <net/icmp.h>
 #include <net/ip.h>
 #include <net/protocol.h>
@@ -132,7 +133,7 @@ static void tunnel64_err(struct sk_buff *skb, u32 info)
 }
 #endif
 
-static struct net_protocol tunnel4_protocol = {
+static const struct net_protocol tunnel4_protocol = {
 	.handler	=	tunnel4_rcv,
 	.err_handler	=	tunnel4_err,
 	.no_policy	=	1,
@@ -140,7 +141,7 @@ static struct net_protocol tunnel4_protocol = {
 };
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static struct net_protocol tunnel64_protocol = {
+static const struct net_protocol tunnel64_protocol = {
 	.handler	=	tunnel64_rcv,
 	.err_handler	=	tunnel64_err,
 	.no_policy	=	1,

@@ -173,6 +173,7 @@ at25_ee_write(struct at25_data *at25, const char *buf, loff_t off,
 		unsigned	segment;
 		unsigned	offset = (unsigned) off;
 		u8		*cp = bounce + 1;
+		int		sr;
 
 		*cp = AT25_WREN;
 		status = spi_write(at25->spi, cp, 1);
@@ -214,7 +215,6 @@ at25_ee_write(struct at25_data *at25, const char *buf, loff_t off,
 		timeout = jiffies + msecs_to_jiffies(EE_TIMEOUT);
 		retries = 0;
 		do {
-			int	sr;
 
 			sr = spi_w8r8(at25->spi, AT25_RDSR);
 			if (sr < 0 || (sr & AT25_SR_nRDY)) {
@@ -228,7 +228,7 @@ at25_ee_write(struct at25_data *at25, const char *buf, loff_t off,
 				break;
 		} while (retries++ < 3 || time_before_eq(jiffies, timeout));
 
-		if (time_after(jiffies, timeout)) {
+		if ((sr < 0) || (sr & AT25_SR_nRDY)) {
 			dev_err(&at25->spi->dev,
 				"write %d bytes offset %d, "
 				"timeout after %u msecs\n",
@@ -347,6 +347,7 @@ static int at25_probe(struct spi_device *spi)
 	 * that's sensitive for read and/or write, like ethernet addresses,
 	 * security codes, board-specific manufacturing calibrations, etc.
 	 */
+	sysfs_bin_attr_init(&at25->bin);
 	at25->bin.attr.name = "eeprom";
 	at25->bin.attr.mode = S_IRUSR;
 	at25->bin.read = at25_bin_read;
@@ -417,4 +418,4 @@ module_exit(at25_exit);
 MODULE_DESCRIPTION("Driver for most SPI EEPROMs");
 MODULE_AUTHOR("David Brownell");
 MODULE_LICENSE("GPL");
-
+MODULE_ALIAS("spi:at25");

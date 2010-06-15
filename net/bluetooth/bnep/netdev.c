@@ -26,6 +26,7 @@
 */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 
 #include <linux/socket.h>
 #include <linux/netdevice.h>
@@ -64,7 +65,7 @@ static void bnep_net_set_mc_list(struct net_device *dev)
 	struct sk_buff *skb;
 	int size;
 
-	BT_DBG("%s mc_count %d", dev->name, dev->mc_count);
+	BT_DBG("%s mc_count %d", dev->name, netdev_mc_count(dev));
 
 	size = sizeof(*r) + (BNEP_MAX_MULTICAST_FILTERS + 1) * ETH_ALEN * 2;
 	skb  = alloc_skb(size, GFP_ATOMIC);
@@ -97,7 +98,9 @@ static void bnep_net_set_mc_list(struct net_device *dev)
 
 		/* FIXME: We should group addresses here. */
 
-		for (i = 0; i < dev->mc_count && i < BNEP_MAX_MULTICAST_FILTERS; i++) {
+		for (i = 0;
+		     i < netdev_mc_count(dev) && i < BNEP_MAX_MULTICAST_FILTERS;
+		     i++) {
 			memcpy(__skb_put(skb, ETH_ALEN), dmi->dmi_addr, ETH_ALEN);
 			memcpy(__skb_put(skb, ETH_ALEN), dmi->dmi_addr, ETH_ALEN);
 			dmi = dmi->next;
@@ -165,7 +168,8 @@ static inline int bnep_net_proto_filter(struct sk_buff *skb, struct bnep_session
 }
 #endif
 
-static int bnep_net_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t bnep_net_xmit(struct sk_buff *skb,
+				 struct net_device *dev)
 {
 	struct bnep_session *s = netdev_priv(dev);
 	struct sock *sk = s->sock->sk;
@@ -175,14 +179,14 @@ static int bnep_net_xmit(struct sk_buff *skb, struct net_device *dev)
 #ifdef CONFIG_BT_BNEP_MC_FILTER
 	if (bnep_net_mc_filter(skb, s)) {
 		kfree_skb(skb);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 #endif
 
 #ifdef CONFIG_BT_BNEP_PROTO_FILTER
 	if (bnep_net_proto_filter(skb, s)) {
 		kfree_skb(skb);
-		return 0;
+		return NETDEV_TX_OK;
 	}
 #endif
 
@@ -203,7 +207,7 @@ static int bnep_net_xmit(struct sk_buff *skb, struct net_device *dev)
 		netif_stop_queue(dev);
 	}
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 static const struct net_device_ops bnep_netdev_ops = {

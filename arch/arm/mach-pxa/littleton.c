@@ -42,13 +42,16 @@
 #include <mach/pxa300.h>
 #include <mach/pxafb.h>
 #include <mach/ssp.h>
+#include <mach/mmc.h>
 #include <mach/pxa2xx_spi.h>
-#include <mach/i2c.h>
 #include <mach/pxa27x_keypad.h>
-#include <mach/pxa3xx_nand.h>
 #include <mach/littleton.h>
+#include <plat/i2c.h>
+#include <plat/pxa3xx_nand.h>
 
 #include "generic.h"
+
+#define GPIO_MMC1_CARD_DETECT	mfp_to_gpio(MFP_PIN_GPIO15)
 
 /* Littleton MFP configurations */
 static mfp_cfg_t littleton_mfp_cfg[] __initdata = {
@@ -98,6 +101,21 @@ static mfp_cfg_t littleton_mfp_cfg[] __initdata = {
 	GPIO123_KP_MKOUT_2,
 	GPIO124_KP_MKOUT_3,
 	GPIO125_KP_MKOUT_4,
+
+	/* MMC1 */
+	GPIO3_MMC1_DAT0,
+	GPIO4_MMC1_DAT1,
+	GPIO5_MMC1_DAT2,
+	GPIO6_MMC1_DAT3,
+	GPIO7_MMC1_CLK,
+	GPIO8_MMC1_CMD,
+	GPIO15_GPIO, /* card detect */
+
+	/* UART3 */
+	GPIO107_UART3_CTS,
+	GPIO108_UART3_RTS,
+	GPIO109_UART3_TXD,
+	GPIO110_UART3_RXD,
 };
 
 static struct resource smc91x_resources[] = {
@@ -179,15 +197,10 @@ static struct pxa2xx_spi_master littleton_spi_info = {
 	.num_chipselect		= 1,
 };
 
-static void littleton_tdo24m_cs(u32 cmd)
-{
-	gpio_set_value(LITTLETON_GPIO_LCD_CS, !(cmd == PXA2XX_CS_ASSERT));
-}
-
 static struct pxa2xx_spi_chip littleton_tdo24m_chip = {
 	.rx_threshold	= 1,
 	.tx_threshold	= 1,
-	.cs_control	= littleton_tdo24m_cs,
+	.gpio_cs	= LITTLETON_GPIO_LCD_CS,
 };
 
 static struct spi_board_info littleton_spi_devices[] __initdata = {
@@ -202,16 +215,6 @@ static struct spi_board_info littleton_spi_devices[] __initdata = {
 
 static void __init littleton_init_spi(void)
 {
-	int err;
-
-	err = gpio_request(LITTLETON_GPIO_LCD_CS, "LCD_CS");
-	if (err) {
-		pr_warning("failed to request GPIO for LCS CS\n");
-		return;
-	}
-
-	gpio_direction_output(LITTLETON_GPIO_LCD_CS, 1);
-
 	pxa2xx_set_spi_info(2, &littleton_spi_info);
 	spi_register_board_info(ARRAY_AND_SIZE(littleton_spi_devices));
 }
@@ -265,6 +268,23 @@ static void __init littleton_init_keypad(void)
 }
 #else
 static inline void littleton_init_keypad(void) {}
+#endif
+
+#if defined(CONFIG_MMC_PXA) || defined(CONFIG_MMC_PXA_MODULE)
+static struct pxamci_platform_data littleton_mci_platform_data = {
+	.detect_delay		= 20,
+	.ocr_mask		= MMC_VDD_32_33 | MMC_VDD_33_34,
+	.gpio_card_detect	= GPIO_MMC1_CARD_DETECT,
+	.gpio_card_ro		= -1,
+	.gpio_power		= -1,
+};
+
+static void __init littleton_init_mmc(void)
+{
+	pxa_set_mci_info(&littleton_mci_platform_data);
+}
+#else
+static inline void littleton_init_mmc(void) {}
 #endif
 
 #if defined(CONFIG_MTD_NAND_PXA3xx) || defined(CONFIG_MTD_NAND_PXA3xx_MODULE)
@@ -399,6 +419,10 @@ static void __init littleton_init(void)
 	/* initialize MFP configurations */
 	pxa3xx_mfp_config(ARRAY_AND_SIZE(littleton_mfp_cfg));
 
+	pxa_set_ffuart_info(NULL);
+	pxa_set_btuart_info(NULL);
+	pxa_set_stuart_info(NULL);
+
 	/*
 	 * Note: we depend bootloader set the correct
 	 * value to MSC register for SMC91x.
@@ -407,6 +431,7 @@ static void __init littleton_init(void)
 
 	littleton_init_spi();
 	littleton_init_i2c();
+	littleton_init_mmc();
 	littleton_init_lcd();
 	littleton_init_keypad();
 	littleton_init_nand();

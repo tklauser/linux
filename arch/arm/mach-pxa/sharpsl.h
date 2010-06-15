@@ -7,7 +7,7 @@
  *
  */
 
-#include <asm/hardware/sharpsl_pm.h>
+#include <mach/sharpsl_pm.h>
 
 /*
  * SharpSL SSP Driver
@@ -42,10 +42,8 @@ void corgi_lcdtg_hw_init(int mode);
 #define MAX1111_BATT_TEMP   2u
 #define MAX1111_ACIN_VOLT   6u
 
-extern struct battery_thresh spitz_battery_levels_acin[];
-extern struct battery_thresh spitz_battery_levels_noac[];
-void sharpsl_pm_pxa_init(void);
-void sharpsl_pm_pxa_remove(void);
+extern struct battery_thresh sharpsl_battery_levels_acin[];
+extern struct battery_thresh sharpsl_battery_levels_noac[];
 int sharpsl_pm_pxa_read_max1111(int channel);
 
 

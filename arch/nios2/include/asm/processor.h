@@ -51,6 +51,7 @@
  */
 #define current_text_addr() ({ __label__ _l; _l: &&_l;})
 
+#include <linux/compiler.h>
 #include <linux/string.h>
 
 #include <asm/ptrace.h>
@@ -128,7 +129,8 @@ unsigned long get_wchan(struct task_struct *p);
 #define KSTK_EIP(tsk)  ((tsk)->thread.kregs->ea)
 #define KSTK_ESP(tsk)  ((tsk)->thread.kregs->sp)
 
-#define cpu_relax()    do { } while (0)
+#define cpu_relax()	barrier()
+
 #endif /* __ASSEMBLY__ */
 
 #endif /* _ASM_NIOS2_PROCESSOR_H */

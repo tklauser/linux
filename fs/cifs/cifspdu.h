@@ -415,10 +415,10 @@ struct smb_hdr {
 	__u8 WordCount;
 } __attribute__((packed));
 /* given a pointer to an smb_hdr retrieve the value of byte count */
-#define BCC(smb_var) (*(__u16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount)))
-#define BCC_LE(smb_var) (*(__le16 *)((char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount)))
+#define BCC(smb_var) (*(__u16 *)((char *)(smb_var) + sizeof(struct smb_hdr) + (2 * (smb_var)->WordCount)))
+#define BCC_LE(smb_var) (*(__le16 *)((char *)(smb_var) + sizeof(struct smb_hdr) + (2 * (smb_var)->WordCount)))
 /* given a pointer to an smb_hdr retrieve the pointer to the byte area */
-#define pByteArea(smb_var) ((unsigned char *)smb_var + sizeof(struct smb_hdr) + (2 * smb_var->WordCount) + 2)
+#define pByteArea(smb_var) ((unsigned char *)(smb_var) + sizeof(struct smb_hdr) + (2 * (smb_var)->WordCount) + 2)
 
 /*
  * Computer Name Length (since Netbios name was length 16 with last byte 0x20)
@@ -1227,7 +1227,7 @@ typedef struct smb_com_setattr_rsp {
 /* empty wct response to setattr */
 
 /*******************************************************/
-/* NT Transact structure defintions follow             */
+/* NT Transact structure definitions follow            */
 /* Currently only ioctl, acl (get security descriptor) */
 /* and notify are implemented                          */
 /*******************************************************/
@@ -2328,19 +2328,7 @@ struct file_attrib_tag {
 typedef struct {
 	__le32 NextEntryOffset;
 	__u32 ResumeKey; /* as with FileIndex - no need to convert */
-	__le64 EndOfFile;
-	__le64 NumOfBytes;
-	__le64 LastStatusChange; /*SNIA specs DCE time for the 3 time fields */
-	__le64 LastAccessTime;
-	__le64 LastModificationTime;
-	__le64 Uid;
-	__le64 Gid;
-	__le32 Type;
-	__le64 DevMajor;
-	__le64 DevMinor;
-	__le64 UniqueId;
-	__le64 Permissions;
-	__le64 Nlinks;
+	FILE_UNIX_BASIC_INFO basic;
 	char FileName[1];
 } __attribute__((packed)) FILE_UNIX_INFO; /* level 0x202 */
 

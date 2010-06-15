@@ -6,42 +6,9 @@
  * Licensed under the GPL-2 or later.
  */
 
-#include <linux/string.h>
-#include <linux/kernel.h>
-#include <linux/sched.h>
-#include <linux/smp.h>
-#include <linux/spinlock.h>
-#include <linux/delay.h>
 #include <linux/ptrace.h>		/* for linux pt_regs struct */
 #include <linux/kgdb.h>
-#include <linux/console.h>
-#include <linux/init.h>
-#include <linux/errno.h>
-#include <linux/irq.h>
 #include <linux/uaccess.h>
-#include <asm/system.h>
-#include <asm/traps.h>
-#include <asm/blackfin.h>
-#include <asm/dma.h>
-
-/* Put the error code here just in case the user cares.  */
-int gdb_bfin_errcode;
-/* Likewise, the vector number here (since GDB only gets the signal
-   number through the usual means, and that's not very specific).  */
-int gdb_bfin_vector = -1;
-
-#if KGDB_MAX_NO_CPUS != 8
-#error change the definition of slavecpulocks
-#endif
-
-#define IN_MEM(addr, size, l1_addr, l1_size) \
-({ \
-	unsigned long __addr = (unsigned long)(addr); \
-	(l1_size && __addr >= l1_addr && __addr + (size) <= l1_addr + l1_size); \
-})
-#define ASYNC_BANK_SIZE \
-	(ASYNC_BANK0_SIZE + ASYNC_BANK1_SIZE + \
-	 ASYNC_BANK2_SIZE + ASYNC_BANK3_SIZE)
 
 void pt_regs_to_gdb_regs(unsigned long *gdb_regs, struct pt_regs *regs)
 {
@@ -166,7 +133,7 @@ void gdb_regs_to_pt_regs(unsigned long *gdb_regs, struct pt_regs *regs)
 	regs->lb1 = gdb_regs[BFIN_LB1];
 	regs->usp = gdb_regs[BFIN_USP];
 	regs->syscfg = gdb_regs[BFIN_SYSCFG];
-	regs->retx = gdb_regs[BFIN_PC];
+	regs->retx = gdb_regs[BFIN_RETX];
 	regs->retn = gdb_regs[BFIN_RETN];
 	regs->rete = gdb_regs[BFIN_RETE];
 	regs->pc = gdb_regs[BFIN_PC];
@@ -178,7 +145,7 @@ void gdb_regs_to_pt_regs(unsigned long *gdb_regs, struct pt_regs *regs)
 #endif
 }
 
-struct hw_breakpoint {
+static struct hw_breakpoint {
 	unsigned int occupied:1;
 	unsigned int skip:1;
 	unsigned int enabled:1;
@@ -188,7 +155,7 @@ struct hw_breakpoint {
 	unsigned int addr;
 } breakinfo[HW_WATCHPOINT_NUM];
 
-int bfin_set_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
+static int bfin_set_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
 {
 	int breakno;
 	int bfin_type;
@@ -235,7 +202,7 @@ int bfin_set_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
 	return -ENOSPC;
 }
 
-int bfin_remove_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
+static int bfin_remove_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
 {
 	int breakno;
 	int bfin_type;
@@ -263,7 +230,7 @@ int bfin_remove_hw_break(unsigned long addr, int len, enum kgdb_bptype type)
 	return 0;
 }
 
-void bfin_remove_all_hw_break(void)
+static void bfin_remove_all_hw_break(void)
 {
 	int breakno;
 
@@ -275,7 +242,7 @@ void bfin_remove_all_hw_break(void)
 		breakinfo[breakno].type = TYPE_DATA_WATCHPOINT;
 }
 
-void bfin_correct_hw_break(void)
+static void bfin_correct_hw_break(void)
 {
 	int breakno;
 	unsigned int wpiactl = 0;
@@ -378,13 +345,6 @@ void kgdb_roundup_cpu(int cpu, unsigned long flags)
 }
 #endif
 
-void kgdb_post_primary_code(struct pt_regs *regs, int eVector, int err_code)
-{
-	/* Master processor is completely in the debugger */
-	gdb_bfin_vector = eVector;
-	gdb_bfin_errcode = err_code;
-}
-
 int kgdb_arch_handle_exception(int vector, int signo,
 			       int err_code, char *remcom_in_buffer,
 			       char *remcom_out_buffer,
@@ -450,253 +410,14 @@ struct kgdb_arch arch_kgdb_ops = {
 	.correct_hw_break = bfin_correct_hw_break,
 };
 
-static int hex(char ch)
-{
-	if ((ch >= 'a') && (ch <= 'f'))
-		return ch - 'a' + 10;
-	if ((ch >= '0') && (ch <= '9'))
-		return ch - '0';
-	if ((ch >= 'A') && (ch <= 'F'))
-		return ch - 'A' + 10;
-	return -1;
-}
-
-static int validate_memory_access_address(unsigned long addr, int size)
-{
-	int cpu = raw_smp_processor_id();
-
-	if (size < 0)
-		return EFAULT;
-	if (addr >= 0x1000 && (addr + size) <= physical_mem_end)
-		return 0;
-	if (addr >= SYSMMR_BASE)
-		return 0;
-	if (IN_MEM(addr, size, ASYNC_BANK0_BASE, ASYNC_BANK_SIZE))
-		return 0;
-	if (cpu == 0) {
-		if (IN_MEM(addr, size, L1_SCRATCH_START, L1_SCRATCH_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, L1_CODE_START, L1_CODE_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, L1_DATA_A_START, L1_DATA_A_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, L1_DATA_B_START, L1_DATA_B_LENGTH))
-			return 0;
-#ifdef CONFIG_SMP
-	} else if (cpu == 1) {
-		if (IN_MEM(addr, size, COREB_L1_SCRATCH_START, L1_SCRATCH_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, COREB_L1_CODE_START, L1_CODE_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, COREB_L1_DATA_A_START, L1_DATA_A_LENGTH))
-			return 0;
-		if (IN_MEM(addr, size, COREB_L1_DATA_B_START, L1_DATA_B_LENGTH))
-			return 0;
-#endif
-	}
-
-	if (IN_MEM(addr, size, L2_START, L2_LENGTH))
-		return 0;
-
-	return EFAULT;
-}
-
-/*
- * Convert the memory pointed to by mem into hex, placing result in buf.
- * Return a pointer to the last char put in buf (null). May return an error.
- */
-int kgdb_mem2hex(char *mem, char *buf, int count)
-{
-	char *tmp;
-	int err = 0;
-	unsigned char *pch;
-	unsigned short mmr16;
-	unsigned long mmr32;
-	int cpu = raw_smp_processor_id();
-
-	if (validate_memory_access_address((unsigned long)mem, count))
-		return EFAULT;
-
-	/*
-	 * We use the upper half of buf as an intermediate buffer for the
-	 * raw memory copy.  Hex conversion will work against this one.
-	 */
-	tmp = buf + count;
-
-	if ((unsigned int)mem >= SYSMMR_BASE) { /*access MMR registers*/
-		switch (count) {
-		case 2:
-			if ((unsigned int)mem % 2 == 0) {
-				mmr16 = *(unsigned short *)mem;
-				pch = (unsigned char *)&mmr16;
-				*tmp++ = *pch++;
-				*tmp++ = *pch++;
-				tmp -= 2;
-			} else
-				err = EFAULT;
-			break;
-		case 4:
-			if ((unsigned int)mem % 4 == 0) {
-				mmr32 = *(unsigned long *)mem;
-				pch = (unsigned char *)&mmr32;
-				*tmp++ = *pch++;
-				*tmp++ = *pch++;
-				*tmp++ = *pch++;
-				*tmp++ = *pch++;
-				tmp -= 4;
-			} else
-				err = EFAULT;
-			break;
-		default:
-			err = EFAULT;
-		}
-	} else if ((cpu == 0 && IN_MEM(mem, count, L1_CODE_START, L1_CODE_LENGTH))
-#ifdef CONFIG_SMP
-		|| (cpu == 1 && IN_MEM(mem, count, COREB_L1_CODE_START, L1_CODE_LENGTH))
-#endif
-		) {
-		/* access L1 instruction SRAM*/
-		if (dma_memcpy(tmp, mem, count) == NULL)
-			err = EFAULT;
-	} else
-		err = probe_kernel_read(tmp, mem, count);
-
-	if (!err) {
-		while (count > 0) {
-			buf = pack_hex_byte(buf, *tmp);
-			tmp++;
-			count--;
-		}
-
-		*buf = 0;
-	}
-
-	return err;
-}
-
-/*
- * Copy the binary array pointed to by buf into mem.  Fix $, #, and
- * 0x7d escaped with 0x7d.  Return a pointer to the character after
- * the last byte written.
- */
-int kgdb_ebin2mem(char *buf, char *mem, int count)
-{
-	char *tmp_old;
-	char *tmp_new;
-	unsigned short *mmr16;
-	unsigned long *mmr32;
-	int err = 0;
-	int size = 0;
-	int cpu = raw_smp_processor_id();
-
-	tmp_old = tmp_new = buf;
-
-	while (count-- > 0) {
-		if (*tmp_old == 0x7d)
-			*tmp_new = *(++tmp_old) ^ 0x20;
-		else
-			*tmp_new = *tmp_old;
-		tmp_new++;
-		tmp_old++;
-		size++;
-	}
-
-	if (validate_memory_access_address((unsigned long)mem, size))
-		return EFAULT;
-
-	if ((unsigned int)mem >= SYSMMR_BASE) { /*access MMR registers*/
-		switch (size) {
-		case 2:
-			if ((unsigned int)mem % 2 == 0) {
-				mmr16 = (unsigned short *)buf;
-				*(unsigned short *)mem = *mmr16;
-			} else
-				return EFAULT;
-			break;
-		case 4:
-			if ((unsigned int)mem % 4 == 0) {
-				mmr32 = (unsigned long *)buf;
-				*(unsigned long *)mem = *mmr32;
-			} else
-				return EFAULT;
-			break;
-		default:
-			return EFAULT;
-		}
-	} else if ((cpu == 0 && IN_MEM(mem, count, L1_CODE_START, L1_CODE_LENGTH))
-#ifdef CONFIG_SMP
-		|| (cpu == 1 && IN_MEM(mem, count, COREB_L1_CODE_START, L1_CODE_LENGTH))
-#endif
-		) {
-		/* access L1 instruction SRAM */
-		if (dma_memcpy(mem, buf, size) == NULL)
-			err = EFAULT;
-	} else
-		err = probe_kernel_write(mem, buf, size);
-
-	return err;
-}
-
-/*
- * Convert the hex array pointed to by buf into binary to be placed in mem.
- * Return a pointer to the character AFTER the last byte written.
- * May return an error.
- */
-int kgdb_hex2mem(char *buf, char *mem, int count)
-{
-	char *tmp_raw;
-	char *tmp_hex;
-	unsigned short *mmr16;
-	unsigned long *mmr32;
-	int cpu = raw_smp_processor_id();
-
-	if (validate_memory_access_address((unsigned long)mem, count))
-		return EFAULT;
-
-	/*
-	 * We use the upper half of buf as an intermediate buffer for the
-	 * raw memory that is converted from hex.
-	 */
-	tmp_raw = buf + count * 2;
-
-	tmp_hex = tmp_raw - 1;
-	while (tmp_hex >= buf) {
-		tmp_raw--;
-		*tmp_raw = hex(*tmp_hex--);
-		*tmp_raw |= hex(*tmp_hex--) << 4;
-	}
-
-	if ((unsigned int)mem >= SYSMMR_BASE) { /*access MMR registers*/
-		switch (count) {
-		case 2:
-			if ((unsigned int)mem % 2 == 0) {
-				mmr16 = (unsigned short *)tmp_raw;
-				*(unsigned short *)mem = *mmr16;
-			} else
-				return EFAULT;
-			break;
-		case 4:
-			if ((unsigned int)mem % 4 == 0) {
-				mmr32 = (unsigned long *)tmp_raw;
-				*(unsigned long *)mem = *mmr32;
-			} else
-				return EFAULT;
-			break;
-		default:
-			return EFAULT;
-		}
-	} else if ((cpu == 0 && IN_MEM(mem, count, L1_CODE_START, L1_CODE_LENGTH))
-#ifdef CONFIG_SMP
-		|| (cpu == 1 && IN_MEM(mem, count, COREB_L1_CODE_START, L1_CODE_LENGTH))
-#endif
-		) {
-		/* access L1 instruction SRAM */
-		if (dma_memcpy(mem, tmp_raw, count) == NULL)
-			return EFAULT;
-	} else
-		return probe_kernel_write(mem, tmp_raw, count);
-	return 0;
-}
+#define IN_MEM(addr, size, l1_addr, l1_size) \
+({ \
+	unsigned long __addr = (unsigned long)(addr); \
+	(l1_size && __addr >= l1_addr && __addr + (size) <= l1_addr + l1_size); \
+})
+#define ASYNC_BANK_SIZE \
+	(ASYNC_BANK0_SIZE + ASYNC_BANK1_SIZE + \
+	 ASYNC_BANK2_SIZE + ASYNC_BANK3_SIZE)
 
 int kgdb_validate_break_address(unsigned long addr)
 {
@@ -715,51 +436,7 @@ int kgdb_validate_break_address(unsigned long addr)
 	if (IN_MEM(addr, BREAK_INSTR_SIZE, L2_START, L2_LENGTH))
 		return 0;
 
-	return EFAULT;
-}
-
-int kgdb_arch_set_breakpoint(unsigned long addr, char *saved_instr)
-{
-	int err;
-	int cpu = raw_smp_processor_id();
-
-	if ((cpu == 0 && IN_MEM(addr, BREAK_INSTR_SIZE, L1_CODE_START, L1_CODE_LENGTH))
-#ifdef CONFIG_SMP
-		|| (cpu == 1 && IN_MEM(addr, BREAK_INSTR_SIZE, COREB_L1_CODE_START, L1_CODE_LENGTH))
-#endif
-		) {
-		/* access L1 instruction SRAM */
-		if (dma_memcpy(saved_instr, (void *)addr, BREAK_INSTR_SIZE)
-			== NULL)
-			return -EFAULT;
-
-		if (dma_memcpy((void *)addr, arch_kgdb_ops.gdb_bpt_instr,
-			BREAK_INSTR_SIZE) == NULL)
-			return -EFAULT;
-
-		return 0;
-	} else {
-		err = probe_kernel_read(saved_instr, (char *)addr,
-			BREAK_INSTR_SIZE);
-		if (err)
-			return err;
-
-		return probe_kernel_write((char *)addr,
-			arch_kgdb_ops.gdb_bpt_instr, BREAK_INSTR_SIZE);
-	}
-}
-
-int kgdb_arch_remove_breakpoint(unsigned long addr, char *bundle)
-{
-	if (IN_MEM(addr, BREAK_INSTR_SIZE, L1_CODE_START, L1_CODE_LENGTH)) {
-		/* access L1 instruction SRAM */
-		if (dma_memcpy((void *)addr, bundle, BREAK_INSTR_SIZE) == NULL)
-			return -EFAULT;
-
-		return 0;
-	} else
-		return probe_kernel_write((char *)addr,
-				(char *)bundle, BREAK_INSTR_SIZE);
+	return -EFAULT;
 }
 
 int kgdb_arch_init(void)

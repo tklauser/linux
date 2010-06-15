@@ -80,6 +80,9 @@
 #ifndef cpu_has_llsc
 #define cpu_has_llsc		(cpu_data[0].options & MIPS_CPU_LLSC)
 #endif
+#ifndef kernel_uses_llsc
+#define kernel_uses_llsc	cpu_has_llsc
+#endif
 #ifndef cpu_has_mips16
 #define cpu_has_mips16		(cpu_data[0].ases & MIPS_ASE_MIPS16)
 #endif
@@ -91,6 +94,9 @@
 #endif
 #ifndef cpu_has_smartmips
 #define cpu_has_smartmips      (cpu_data[0].ases & MIPS_ASE_SMARTMIPS)
+#endif
+#ifndef kernel_uses_smartmips_rixi
+#define kernel_uses_smartmips_rixi 0
 #endif
 #ifndef cpu_has_vtag_icache
 #define cpu_has_vtag_icache	(cpu_data[0].icache.flags & MIPS_CACHE_VTAG)
@@ -147,6 +153,10 @@
 #define cpu_has_mips_r	(cpu_has_mips32r1 | cpu_has_mips32r2 | \
 			 cpu_has_mips64r1 | cpu_has_mips64r2)
 
+#ifndef cpu_has_mips_r2_exec_hazard
+#define cpu_has_mips_r2_exec_hazard cpu_has_mips_r2
+#endif
+
 /*
  * MIPS32, MIPS64, VR5500, IDT32332, IDT32334 and maybe a few other
  * pre-MIPS32/MIPS53 processors have CLO, CLZ.  For 64-bit kernels
@@ -184,6 +194,9 @@
 # ifndef cpu_has_64bit_addresses
 # define cpu_has_64bit_addresses	0
 # endif
+# ifndef cpu_vmbits
+# define cpu_vmbits 31
+# endif
 #endif
 
 #ifdef CONFIG_64BIT
@@ -201,6 +214,10 @@
 # endif
 # ifndef cpu_has_64bit_addresses
 # define cpu_has_64bit_addresses	1
+# endif
+# ifndef cpu_vmbits
+# define cpu_vmbits cpu_data[0].vmbits
+# define __NEED_VMBITS_PROBE
 # endif
 #endif
 
@@ -228,6 +245,10 @@
 #endif
 #ifndef cpu_scache_line_size
 #define cpu_scache_line_size()	cpu_data[0].scache.linesz
+#endif
+
+#ifndef cpu_hwrena_impl_bits
+#define cpu_hwrena_impl_bits		0
 #endif
 
 #endif /* __ASM_CPU_FEATURES_H */

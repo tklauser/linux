@@ -39,6 +39,7 @@
 #define debug(format, arg...) pr_debug("hid-plff: " format "\n" , ## arg)
 
 #include <linux/input.h>
+#include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/hid.h>
 
@@ -217,12 +218,12 @@ static struct hid_driver pl_driver = {
 	.probe = pl_probe,
 };
 
-static int pl_init(void)
+static int __init pl_init(void)
 {
 	return hid_register_driver(&pl_driver);
 }
 
-static void pl_exit(void)
+static void __exit pl_exit(void)
 {
 	hid_unregister_driver(&pl_driver);
 }

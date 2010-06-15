@@ -10,9 +10,12 @@
 #include <linux/proc_fs.h>
 #include <linux/init.h>
 #include <linux/poll.h>
+#include <linux/gfp.h>
 #include <acpi/acpi_drivers.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
+
+#include "internal.h"
 
 #define _COMPONENT		ACPI_SYSTEM_COMPONENT
 ACPI_MODULE_NAME("event");

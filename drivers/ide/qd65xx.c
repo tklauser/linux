@@ -180,21 +180,22 @@ static int qd_find_disk_type (ide_drive_t *drive,
 
 static void qd_set_timing (ide_drive_t *drive, u8 timing)
 {
-	drive->drive_data &= 0xff00;
-	drive->drive_data |= timing;
+	unsigned long data = (unsigned long)ide_get_drivedata(drive);
+
+	data &= 0xff00;
+	data |= timing;
+	ide_set_drivedata(drive, (void *)data);
 
 	printk(KERN_DEBUG "%s: %#x\n", drive->name, timing);
 }
 
-static void qd6500_set_pio_mode(ide_drive_t *drive, const u8 pio)
+static void qd6500_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
 	u16 *id = drive->id;
 	int active_time   = 175;
 	int recovery_time = 415; /* worst case values from the dos driver */
 
-	/*
-	 * FIXME: use "pio" value
-	 */
+	/* FIXME: use drive->pio_mode value */
 	if (!qd_find_disk_type(drive, &active_time, &recovery_time) &&
 	    (id[ATA_ID_OLD_PIO_MODES] & 0xff) && (id[ATA_ID_FIELD_VALID] & 2) &&
 	    id[ATA_ID_EIDE_PIO] >= 240) {
@@ -208,9 +209,9 @@ static void qd6500_set_pio_mode(ide_drive_t *drive, const u8 pio)
 				active_time, recovery_time));
 }
 
-static void qd6580_set_pio_mode(ide_drive_t *drive, const u8 pio)
+static void qd6580_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	ide_hwif_t *hwif = drive->hwif;
+	const u8 pio = drive->pio_mode - XFER_PIO_0;
 	struct ide_timing *t = ide_timing_find_mode(XFER_PIO_0 + pio);
 	unsigned int cycle_time;
 	int active_time   = 175;
@@ -292,7 +293,7 @@ static void __init qd6500_init_dev(ide_drive_t *drive)
 	u8 base = (hwif->config_data & 0xff00) >> 8;
 	u8 config = QD_CONFIG(hwif);
 
-	drive->drive_data = QD6500_DEF_DATA;
+	ide_set_drivedata(drive, (void *)QD6500_DEF_DATA);
 }
 
 static void __init qd6580_init_dev(ide_drive_t *drive)
@@ -308,7 +309,7 @@ static void __init qd6580_init_dev(ide_drive_t *drive)
 	} else
 		t2 = t1 = hwif->channel ? QD6580_DEF_DATA2 : QD6580_DEF_DATA;
 
-	drive->drive_data = (drive->dn & 1) ? t2 : t1;
+	ide_set_drivedata(drive, (void *)((drive->dn & 1) ? t2 : t1));
 }
 
 static const struct ide_tp_ops qd65xx_tp_ops = {

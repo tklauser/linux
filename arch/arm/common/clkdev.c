@@ -17,6 +17,8 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
+#include <linux/clk.h>
+#include <linux/slab.h>
 
 #include <asm/clkdev.h>
 #include <mach/clkdev.h>
@@ -31,7 +33,7 @@ static DEFINE_MUTEX(clocks_mutex);
  *  If an entry has a device ID, it must match
  *  If an entry has a connection ID, it must match
  * Then we take the most specific entry - with the following
- * order of precidence: dev+con > dev only > con only.
+ * order of precedence: dev+con > dev only > con only.
  */
 static struct clk *clk_find(const char *dev_id, const char *con_id)
 {
@@ -98,6 +100,16 @@ void clkdev_add(struct clk_lookup *cl)
 }
 EXPORT_SYMBOL(clkdev_add);
 
+void __init clkdev_add_table(struct clk_lookup *cl, size_t num)
+{
+	mutex_lock(&clocks_mutex);
+	while (num--) {
+		list_add_tail(&cl->node, &clocks);
+		cl++;
+	}
+	mutex_unlock(&clocks_mutex);
+}
+
 #define MAX_DEV_ID	20
 #define MAX_CON_ID	16
 
@@ -134,6 +146,24 @@ struct clk_lookup *clkdev_alloc(struct clk *clk, const char *con_id,
 	return &cla->cl;
 }
 EXPORT_SYMBOL(clkdev_alloc);
+
+int clk_add_alias(const char *alias, const char *alias_dev_name, char *id,
+	struct device *dev)
+{
+	struct clk *r = clk_get(dev, id);
+	struct clk_lookup *l;
+
+	if (IS_ERR(r))
+		return PTR_ERR(r);
+
+	l = clkdev_alloc(r, alias, alias_dev_name);
+	clk_put(r);
+	if (!l)
+		return -ENODEV;
+	clkdev_add(l);
+	return 0;
+}
+EXPORT_SYMBOL(clk_add_alias);
 
 /*
  * clkdev_drop - remove a clock dynamically allocated

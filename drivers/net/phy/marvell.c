@@ -17,7 +17,6 @@
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/unistd.h>
-#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
 #include <linux/delay.h>
@@ -63,6 +62,7 @@
 #define MII_M1111_HWCFG_MODE_COPPER_RGMII	0xb
 #define MII_M1111_HWCFG_MODE_FIBER_RGMII	0x3
 #define MII_M1111_HWCFG_MODE_SGMII_NO_CLK	0x4
+#define MII_M1111_HWCFG_MODE_COPPER_RTBI	0x9
 #define MII_M1111_HWCFG_FIBER_COPPER_AUTO	0x8000
 #define MII_M1111_HWCFG_FIBER_COPPER_RES	0x2000
 
@@ -155,8 +155,27 @@ static int marvell_config_aneg(struct phy_device *phydev)
 		return err;
 
 	err = genphy_config_aneg(phydev);
+	if (err < 0)
+		return err;
 
-	return err;
+	if (phydev->autoneg != AUTONEG_ENABLE) {
+		int bmcr;
+
+		/*
+		 * A write to speed/duplex bits (that is performed by
+		 * genphy_config_aneg() call above) must be followed by
+		 * a software reset. Otherwise, the write has no effect.
+		 */
+		bmcr = phy_read(phydev, MII_BMCR);
+		if (bmcr < 0)
+			return bmcr;
+
+		err = phy_write(phydev, MII_BMCR, bmcr | BMCR_RESET);
+		if (err < 0)
+			return err;
+	}
+
+	return 0;
 }
 
 static int m88e1121_config_aneg(struct phy_device *phydev)
@@ -243,11 +262,49 @@ static int m88e1111_config_init(struct phy_device *phydev)
 
 		temp &= ~(MII_M1111_HWCFG_MODE_MASK);
 		temp |= MII_M1111_HWCFG_MODE_SGMII_NO_CLK;
+		temp |= MII_M1111_HWCFG_FIBER_COPPER_AUTO;
 
 		err = phy_write(phydev, MII_M1111_PHY_EXT_SR, temp);
 		if (err < 0)
 			return err;
 	}
+
+	if (phydev->interface == PHY_INTERFACE_MODE_RTBI) {
+		temp = phy_read(phydev, MII_M1111_PHY_EXT_CR);
+		if (temp < 0)
+			return temp;
+		temp |= (MII_M1111_RX_DELAY | MII_M1111_TX_DELAY);
+		err = phy_write(phydev, MII_M1111_PHY_EXT_CR, temp);
+		if (err < 0)
+			return err;
+
+		temp = phy_read(phydev, MII_M1111_PHY_EXT_SR);
+		if (temp < 0)
+			return temp;
+		temp &= ~(MII_M1111_HWCFG_MODE_MASK | MII_M1111_HWCFG_FIBER_COPPER_RES);
+		temp |= 0x7 | MII_M1111_HWCFG_FIBER_COPPER_AUTO;
+		err = phy_write(phydev, MII_M1111_PHY_EXT_SR, temp);
+		if (err < 0)
+			return err;
+
+		/* soft reset */
+		err = phy_write(phydev, MII_BMCR, BMCR_RESET);
+		if (err < 0)
+			return err;
+		do
+			temp = phy_read(phydev, MII_BMCR);
+		while (temp & BMCR_RESET);
+
+		temp = phy_read(phydev, MII_M1111_PHY_EXT_SR);
+		if (temp < 0)
+			return temp;
+		temp &= ~(MII_M1111_HWCFG_MODE_MASK | MII_M1111_HWCFG_FIBER_COPPER_RES);
+		temp |= MII_M1111_HWCFG_MODE_COPPER_RTBI | MII_M1111_HWCFG_FIBER_COPPER_AUTO;
+		err = phy_write(phydev, MII_M1111_PHY_EXT_SR, temp);
+		if (err < 0)
+			return err;
+	}
+
 
 	err = phy_write(phydev, MII_BMCR, BMCR_RESET);
 	if (err < 0)

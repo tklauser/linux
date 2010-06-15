@@ -15,9 +15,9 @@
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/highmem.h>
-#include <linux/gfp.h>
 #include <linux/radix-tree.h>
 #include <linux/buffer_head.h> /* invalidate_bh_lrus() */
+#include <linux/slab.h>
 
 #include <asm/uaccess.h>
 
@@ -375,7 +375,7 @@ static int brd_ioctl(struct block_device *bdev, fmode_t mode,
 	return error;
 }
 
-static struct block_device_operations brd_fops = {
+static const struct block_device_operations brd_fops = {
 	.owner =		THIS_MODULE,
 	.locked_ioctl =		brd_ioctl,
 #ifdef CONFIG_BLK_DEV_XIP
@@ -407,12 +407,7 @@ static int __init ramdisk_size(char *str)
 	rd_size = simple_strtol(str, NULL, 0);
 	return 1;
 }
-static int __init ramdisk_size2(char *str)
-{
-	return ramdisk_size(str);
-}
-__setup("ramdisk=", ramdisk_size);
-__setup("ramdisk_size=", ramdisk_size2);
+__setup("ramdisk_size=", ramdisk_size);
 #endif
 
 /*
@@ -439,7 +434,7 @@ static struct brd_device *brd_alloc(int i)
 		goto out_free_dev;
 	blk_queue_make_request(brd->brd_queue, brd_make_request);
 	blk_queue_ordered(brd->brd_queue, QUEUE_ORDERED_TAG, NULL);
-	blk_queue_max_sectors(brd->brd_queue, 1024);
+	blk_queue_max_hw_sectors(brd->brd_queue, 1024);
 	blk_queue_bounce_limit(brd->brd_queue, BLK_BOUNCE_ANY);
 
 	disk = brd->brd_disk = alloc_disk(1 << part_shift);

@@ -38,6 +38,7 @@
 #include <net/tipc/tipc_bearer.h>
 #include <net/tipc/tipc_msg.h>
 #include <linux/netdevice.h>
+#include <linux/slab.h>
 #include <net/net_namespace.h>
 
 #define MAX_ETH_BEARERS		2
@@ -167,7 +168,7 @@ static int enable_bearer(struct tipc_bearer *tb_ptr)
 	tb_ptr->mtu = dev->mtu;
 	tb_ptr->blocked = 0;
 	tb_ptr->addr.type = htonl(TIPC_MEDIA_TYPE_ETH);
-	memcpy(&tb_ptr->addr.dev_addr, &dev->dev_addr, ETH_ALEN);
+	memcpy(&tb_ptr->addr.dev_addr, dev->dev_addr, ETH_ALEN);
 	return 0;
 }
 

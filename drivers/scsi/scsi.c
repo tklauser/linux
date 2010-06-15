@@ -241,10 +241,7 @@ scsi_host_alloc_command(struct Scsi_Host *shost, gfp_t gfp_mask)
  */
 struct scsi_cmnd *__scsi_get_command(struct Scsi_Host *shost, gfp_t gfp_mask)
 {
-	struct scsi_cmnd *cmd;
-	unsigned char *buf;
-
-	cmd = scsi_host_alloc_command(shost, gfp_mask);
+	struct scsi_cmnd *cmd = scsi_host_alloc_command(shost, gfp_mask);
 
 	if (unlikely(!cmd)) {
 		unsigned long flags;
@@ -258,9 +255,15 @@ struct scsi_cmnd *__scsi_get_command(struct Scsi_Host *shost, gfp_t gfp_mask)
 		spin_unlock_irqrestore(&shost->free_list_lock, flags);
 
 		if (cmd) {
+			void *buf, *prot;
+
 			buf = cmd->sense_buffer;
+			prot = cmd->prot_sdb;
+
 			memset(cmd, 0, sizeof(*cmd));
+
 			cmd->sense_buffer = buf;
+			cmd->prot_sdb = prot;
 		}
 	}
 
@@ -937,10 +940,16 @@ EXPORT_SYMBOL(scsi_adjust_queue_depth);
  */
 int scsi_track_queue_full(struct scsi_device *sdev, int depth)
 {
-	if ((jiffies >> 4) == sdev->last_queue_full_time)
+
+	/*
+	 * Don't let QUEUE_FULLs on the same
+	 * jiffies count, they could all be from
+	 * same event.
+	 */
+	if ((jiffies >> 4) == (sdev->last_queue_full_time >> 4))
 		return 0;
 
-	sdev->last_queue_full_time = (jiffies >> 4);
+	sdev->last_queue_full_time = jiffies;
 	if (sdev->last_queue_full_depth != depth) {
 		sdev->last_queue_full_count = 1;
 		sdev->last_queue_full_depth = depth;
@@ -994,7 +1003,7 @@ static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
 	 * all the existing users tried this hard.
 	 */
 	result = scsi_execute_req(sdev, cmd, DMA_FROM_DEVICE, buffer,
-				  len + 4, NULL, 30 * HZ, 3, NULL);
+				  len, NULL, 30 * HZ, 3, NULL);
 	if (result)
 		return result;
 
@@ -1009,6 +1018,8 @@ static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
  * scsi_get_vpd_page - Get Vital Product Data from a SCSI device
  * @sdev: The device to ask
  * @page: Which Vital Product Data to return
+ * @buf: where to store the VPD
+ * @buf_len: number of bytes in the VPD buffer area
  *
  * SCSI devices may optionally supply Vital Product Data.  Each 'page'
  * of VPD is defined in the appropriate SCSI document (eg SPC, SBC).
@@ -1017,54 +1028,39 @@ static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
  * responsible for calling kfree() on this pointer when it is no longer
  * needed.  If we cannot retrieve the VPD page this routine returns %NULL.
  */
-unsigned char *scsi_get_vpd_page(struct scsi_device *sdev, u8 page)
+int scsi_get_vpd_page(struct scsi_device *sdev, u8 page, unsigned char *buf,
+		      int buf_len)
 {
 	int i, result;
-	unsigned int len;
-	unsigned char *buf = kmalloc(259, GFP_KERNEL);
-
-	if (!buf)
-		return NULL;
 
 	/* Ask for all the pages supported by this device */
-	result = scsi_vpd_inquiry(sdev, buf, 0, 255);
+	result = scsi_vpd_inquiry(sdev, buf, 0, buf_len);
 	if (result)
 		goto fail;
 
 	/* If the user actually wanted this page, we can skip the rest */
 	if (page == 0)
-		return buf;
+		return -EINVAL;
 
-	for (i = 0; i < buf[3]; i++)
+	for (i = 0; i < min((int)buf[3], buf_len - 4); i++)
 		if (buf[i + 4] == page)
 			goto found;
+
+	if (i < buf[3] && i > buf_len)
+		/* ran off the end of the buffer, give us benefit of doubt */
+		goto found;
 	/* The device claims it doesn't support the requested page */
 	goto fail;
 
  found:
-	result = scsi_vpd_inquiry(sdev, buf, page, 255);
+	result = scsi_vpd_inquiry(sdev, buf, page, buf_len);
 	if (result)
 		goto fail;
 
-	/*
-	 * Some pages are longer than 255 bytes.  The actual length of
-	 * the page is returned in the header.
-	 */
-	len = (buf[2] << 8) | buf[3];
-	if (len <= 255)
-		return buf;
-
-	kfree(buf);
-	buf = kmalloc(len + 4, GFP_KERNEL);
-	result = scsi_vpd_inquiry(sdev, buf, page, len);
-	if (result)
-		goto fail;
-
-	return buf;
+	return 0;
 
  fail:
-	kfree(buf);
-	return NULL;
+	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(scsi_get_vpd_page);
 
@@ -1225,8 +1221,8 @@ EXPORT_SYMBOL(__scsi_device_lookup_by_target);
  * @starget:	SCSI target pointer
  * @lun:	SCSI Logical Unit Number
  *
- * Description: Looks up the scsi_device with the specified @channel, @id, @lun
- * for a given host.  The returned scsi_device has an additional reference that
+ * Description: Looks up the scsi_device with the specified @lun for a given
+ * @starget.  The returned scsi_device has an additional reference that
  * needs to be released with scsi_device_put once you're done with it.
  **/
 struct scsi_device *scsi_device_lookup_by_target(struct scsi_target *starget,

@@ -21,6 +21,9 @@
  *
  */
 
+#include <linux/hash.h>
+#include <linux/slab.h>
+
 #include "af9015.h"
 #include "af9013.h"
 #include "mt2060.h"
@@ -40,7 +43,7 @@ DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
 static DEFINE_MUTEX(af9015_usb_mutex);
 
 static struct af9015_config af9015_config;
-static struct dvb_usb_device_properties af9015_properties[2];
+static struct dvb_usb_device_properties af9015_properties[3];
 static int af9015_properties_count = ARRAY_SIZE(af9015_properties);
 
 static struct af9013_config af9015_af9013_config[] = {
@@ -61,10 +64,13 @@ static struct af9013_config af9015_af9013_config[] = {
 
 static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 {
+#define BUF_LEN 63
+#define REQ_HDR_LEN 8 /* send header size */
+#define ACK_HDR_LEN 2 /* rece header size */
 	int act_len, ret;
-	u8 buf[64];
+	u8 buf[BUF_LEN];
 	u8 write = 1;
-	u8 msg_len = 8;
+	u8 msg_len = REQ_HDR_LEN;
 	static u8 seq; /* packet sequence number */
 
 	if (mutex_lock_interruptible(&af9015_usb_mutex) < 0)
@@ -81,7 +87,6 @@ static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 
 	switch (req->cmd) {
 	case GET_CONFIG:
-	case BOOT:
 	case READ_MEMORY:
 	case RECONNECT_USB:
 	case GET_IR_CODE:
@@ -95,11 +100,12 @@ static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 		break;
 	case WRITE_MEMORY:
 		if (((req->addr & 0xff00) == 0xff00) ||
-		    ((req->addr & 0xae00) == 0xae00))
+		    ((req->addr & 0xff00) == 0xae00))
 			buf[0] = WRITE_VIRTUAL_MEMORY;
 	case WRITE_VIRTUAL_MEMORY:
 	case COPY_FIRMWARE:
 	case DOWNLOAD_FIRMWARE:
+	case BOOT:
 		break;
 	default:
 		err("unknown command:%d", req->cmd);
@@ -107,17 +113,26 @@ static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 		goto error_unlock;
 	}
 
+	/* buffer overflow check */
+	if ((write && (req->data_len > BUF_LEN - REQ_HDR_LEN)) ||
+		(!write && (req->data_len > BUF_LEN - ACK_HDR_LEN))) {
+		err("too much data; cmd:%d len:%d", req->cmd, req->data_len);
+		ret = -EINVAL;
+		goto error_unlock;
+	}
+
 	/* write requested */
 	if (write) {
-		memcpy(&buf[8], req->data, req->data_len);
+		memcpy(&buf[REQ_HDR_LEN], req->data, req->data_len);
 		msg_len += req->data_len;
 	}
+
 	deb_xfer(">>> ");
 	debug_dump(buf, msg_len, deb_xfer);
 
 	/* send req */
 	ret = usb_bulk_msg(udev, usb_sndbulkpipe(udev, 0x02), buf, msg_len,
-	&act_len, AF9015_USB_TIMEOUT);
+		&act_len, AF9015_USB_TIMEOUT);
 	if (ret)
 		err("bulk message failed:%d (%d/%d)", ret, msg_len, act_len);
 	else
@@ -130,10 +145,14 @@ static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 	if (req->cmd == DOWNLOAD_FIRMWARE || req->cmd == RECONNECT_USB)
 		goto exit_unlock;
 
-	/* receive ack and data if read req */
-	msg_len = 1 + 1 + req->data_len;  /* seq + status + data len */
+	/* write receives seq + status = 2 bytes
+	   read receives seq + status + data = 2 + N bytes */
+	msg_len = ACK_HDR_LEN;
+	if (!write)
+		msg_len += req->data_len;
+
 	ret = usb_bulk_msg(udev, usb_rcvbulkpipe(udev, 0x81), buf, msg_len,
-			   &act_len, AF9015_USB_TIMEOUT);
+		&act_len, AF9015_USB_TIMEOUT);
 	if (ret) {
 		err("recv bulk message failed:%d", ret);
 		ret = -1;
@@ -159,7 +178,7 @@ static int af9015_rw_udev(struct usb_device *udev, struct req_t *req)
 
 	/* read request, copy returned data to return buf */
 	if (!write)
-		memcpy(req->data, &buf[2], req->data_len);
+		memcpy(req->data, &buf[ACK_HDR_LEN], req->data_len);
 
 error_unlock:
 exit_unlock:
@@ -369,12 +388,14 @@ static int af9015_init_endpoint(struct dvb_usb_device *d)
 	u8  packet_size;
 	deb_info("%s: USB speed:%d\n", __func__, d->udev->speed);
 
+	/* Windows driver uses packet count 21 for USB1.1 and 348 for USB2.0.
+	   We use smaller - about 1/4 from the original, 5 and 87. */
 #define TS_PACKET_SIZE            188
 
-#define TS_USB20_PACKET_COUNT     348
+#define TS_USB20_PACKET_COUNT      87
 #define TS_USB20_FRAME_SIZE       (TS_PACKET_SIZE*TS_USB20_PACKET_COUNT)
 
-#define TS_USB11_PACKET_COUNT      21
+#define TS_USB11_PACKET_COUNT       5
 #define TS_USB11_FRAME_SIZE       (TS_PACKET_SIZE*TS_USB11_PACKET_COUNT)
 
 #define TS_USB20_MAX_PACKET_SIZE  512
@@ -535,28 +556,45 @@ exit:
 	return ret;
 }
 
-/* dump eeprom */
-static int af9015_eeprom_dump(struct dvb_usb_device *d)
+/* hash (and dump) eeprom */
+static int af9015_eeprom_hash(struct usb_device *udev)
 {
-	char buf[52], buf2[4];
-	u8 reg, val;
+	static const unsigned int eeprom_size = 256;
+	unsigned int reg;
+	int ret;
+	u8 val, *eeprom;
+	struct req_t req = {READ_I2C, AF9015_I2C_EEPROM, 0, 0, 1, 1, &val};
 
-	for (reg = 0; ; reg++) {
-		if (reg % 16 == 0) {
-			if (reg)
-				deb_info("%s\n", buf);
-			sprintf(buf, "%02x: ", reg);
-		}
-		if (af9015_read_reg_i2c(d, AF9015_I2C_EEPROM, reg, &val) == 0)
-			sprintf(buf2, "%02x ", val);
-		else
-			strcpy(buf2, "-- ");
-		strcat(buf, buf2);
-		if (reg == 0xff)
-			break;
+	eeprom = kmalloc(eeprom_size, GFP_KERNEL);
+	if (eeprom == NULL)
+		return -ENOMEM;
+
+	for (reg = 0; reg < eeprom_size; reg++) {
+		req.addr = reg;
+		ret = af9015_rw_udev(udev, &req);
+		if (ret)
+			goto free;
+		eeprom[reg] = val;
 	}
-	deb_info("%s\n", buf);
-	return 0;
+
+	if (dvb_usb_af9015_debug & 0x01)
+		print_hex_dump_bytes("", DUMP_PREFIX_OFFSET, eeprom,
+				eeprom_size);
+
+	BUG_ON(eeprom_size % 4);
+
+	af9015_config.eeprom_sum = 0;
+	for (reg = 0; reg < eeprom_size / sizeof(u32); reg++) {
+		af9015_config.eeprom_sum *= GOLDEN_RATIO_PRIME_32;
+		af9015_config.eeprom_sum += le32_to_cpu(((u32 *)eeprom)[reg]);
+	}
+
+	deb_info("%s: eeprom sum=%.8x\n", __func__, af9015_config.eeprom_sum);
+
+	ret = 0;
+free:
+	kfree(eeprom);
+	return ret;
 }
 
 static int af9015_download_ir_table(struct dvb_usb_device *d)
@@ -695,12 +733,132 @@ error:
 	return ret;
 }
 
+struct af9015_setup {
+	unsigned int id;
+	struct dvb_usb_rc_key *rc_key_map;
+	unsigned int rc_key_map_size;
+	u8 *ir_table;
+	unsigned int ir_table_size;
+};
+
+static const struct af9015_setup *af9015_setup_match(unsigned int id,
+		const struct af9015_setup *table)
+{
+	for (; table->rc_key_map; table++)
+		if (table->id == id)
+			return table;
+	return NULL;
+}
+
+static const struct af9015_setup af9015_setup_modparam[] = {
+	{ AF9015_REMOTE_A_LINK_DTU_M,
+		af9015_rc_keys_a_link, ARRAY_SIZE(af9015_rc_keys_a_link),
+		af9015_ir_table_a_link, ARRAY_SIZE(af9015_ir_table_a_link) },
+	{ AF9015_REMOTE_MSI_DIGIVOX_MINI_II_V3,
+		af9015_rc_keys_msi, ARRAY_SIZE(af9015_rc_keys_msi),
+		af9015_ir_table_msi, ARRAY_SIZE(af9015_ir_table_msi) },
+	{ AF9015_REMOTE_MYGICTV_U718,
+		af9015_rc_keys_mygictv, ARRAY_SIZE(af9015_rc_keys_mygictv),
+		af9015_ir_table_mygictv, ARRAY_SIZE(af9015_ir_table_mygictv) },
+	{ AF9015_REMOTE_DIGITTRADE_DVB_T,
+		af9015_rc_keys_digittrade, ARRAY_SIZE(af9015_rc_keys_digittrade),
+		af9015_ir_table_digittrade, ARRAY_SIZE(af9015_ir_table_digittrade) },
+	{ AF9015_REMOTE_AVERMEDIA_KS,
+		af9015_rc_keys_avermedia, ARRAY_SIZE(af9015_rc_keys_avermedia),
+		af9015_ir_table_avermedia_ks, ARRAY_SIZE(af9015_ir_table_avermedia_ks) },
+	{ }
+};
+
+/* don't add new entries here anymore, use hashes instead */
+static const struct af9015_setup af9015_setup_usbids[] = {
+	{ USB_VID_LEADTEK,
+		af9015_rc_keys_leadtek, ARRAY_SIZE(af9015_rc_keys_leadtek),
+		af9015_ir_table_leadtek, ARRAY_SIZE(af9015_ir_table_leadtek) },
+	{ USB_VID_VISIONPLUS,
+		af9015_rc_keys_twinhan, ARRAY_SIZE(af9015_rc_keys_twinhan),
+		af9015_ir_table_twinhan, ARRAY_SIZE(af9015_ir_table_twinhan) },
+	{ USB_VID_KWORLD_2, /* TODO: use correct rc keys */
+		af9015_rc_keys_twinhan, ARRAY_SIZE(af9015_rc_keys_twinhan),
+		af9015_ir_table_kworld, ARRAY_SIZE(af9015_ir_table_kworld) },
+	{ USB_VID_AVERMEDIA,
+		af9015_rc_keys_avermedia, ARRAY_SIZE(af9015_rc_keys_avermedia),
+		af9015_ir_table_avermedia, ARRAY_SIZE(af9015_ir_table_avermedia) },
+	{ USB_VID_MSI_2,
+		af9015_rc_keys_msi_digivox_iii, ARRAY_SIZE(af9015_rc_keys_msi_digivox_iii),
+		af9015_ir_table_msi_digivox_iii, ARRAY_SIZE(af9015_ir_table_msi_digivox_iii) },
+	{ }
+};
+
+static const struct af9015_setup af9015_setup_hashes[] = {
+	{ 0xb8feb708,
+		af9015_rc_keys_msi, ARRAY_SIZE(af9015_rc_keys_msi),
+		af9015_ir_table_msi, ARRAY_SIZE(af9015_ir_table_msi) },
+	{ 0xa3703d00,
+		af9015_rc_keys_a_link, ARRAY_SIZE(af9015_rc_keys_a_link),
+		af9015_ir_table_a_link, ARRAY_SIZE(af9015_ir_table_a_link) },
+	{ 0x9b7dc64e,
+		af9015_rc_keys_mygictv, ARRAY_SIZE(af9015_rc_keys_mygictv),
+		af9015_ir_table_mygictv, ARRAY_SIZE(af9015_ir_table_mygictv) },
+	{ }
+};
+
+static void af9015_set_remote_config(struct usb_device *udev,
+		struct dvb_usb_device_properties *props)
+{
+	const struct af9015_setup *table = NULL;
+
+	if (dvb_usb_af9015_remote) {
+		/* load remote defined as module param */
+		table = af9015_setup_match(dvb_usb_af9015_remote,
+				af9015_setup_modparam);
+	} else {
+		u16 vendor = le16_to_cpu(udev->descriptor.idVendor);
+
+		table = af9015_setup_match(af9015_config.eeprom_sum,
+				af9015_setup_hashes);
+
+		if (!table && vendor == USB_VID_AFATECH) {
+			/* Check USB manufacturer and product strings and try
+			   to determine correct remote in case of chip vendor
+			   reference IDs are used.
+			   DO NOT ADD ANYTHING NEW HERE. Use hashes instead.
+			 */
+			char manufacturer[10];
+			memset(manufacturer, 0, sizeof(manufacturer));
+			usb_string(udev, udev->descriptor.iManufacturer,
+				manufacturer, sizeof(manufacturer));
+			if (!strcmp("MSI", manufacturer)) {
+				/* iManufacturer 1 MSI
+				   iProduct      2 MSI K-VOX */
+				table = af9015_setup_match(
+					AF9015_REMOTE_MSI_DIGIVOX_MINI_II_V3,
+					af9015_setup_modparam);
+			} else if (udev->descriptor.idProduct ==
+				cpu_to_le16(USB_PID_TREKSTOR_DVBT)) {
+				table = &(const struct af9015_setup){ 0,
+					af9015_rc_keys_trekstor,
+					ARRAY_SIZE(af9015_rc_keys_trekstor),
+					af9015_ir_table_trekstor,
+					ARRAY_SIZE(af9015_ir_table_trekstor)
+				};
+			}
+		} else if (!table)
+			table = af9015_setup_match(vendor, af9015_setup_usbids);
+	}
+
+	if (table) {
+		props->rc_key_map = table->rc_key_map;
+		props->rc_key_map_size = table->rc_key_map_size;
+		af9015_config.ir_table = table->ir_table;
+		af9015_config.ir_table_size = table->ir_table_size;
+	}
+}
+
 static int af9015_read_config(struct usb_device *udev)
 {
 	int ret;
 	u8 val, i, offset = 0;
 	struct req_t req = {READ_I2C, AF9015_I2C_EEPROM, 0, 0, 1, 1, &val};
-	char manufacturer[10];
 
 	/* IR remote controller */
 	req.addr = AF9015_EEPROM_IR_MODE;
@@ -712,148 +870,18 @@ static int af9015_read_config(struct usb_device *udev)
 	}
 	if (ret)
 		goto error;
+
+	ret = af9015_eeprom_hash(udev);
+	if (ret)
+		goto error;
+
 	deb_info("%s: IR mode:%d\n", __func__, val);
 	for (i = 0; i < af9015_properties_count; i++) {
-		if (val == AF9015_IR_MODE_DISABLED || val == 0x04) {
+		if (val == AF9015_IR_MODE_DISABLED) {
 			af9015_properties[i].rc_key_map = NULL;
 			af9015_properties[i].rc_key_map_size  = 0;
-		} else if (dvb_usb_af9015_remote) {
-			/* load remote defined as module param */
-			switch (dvb_usb_af9015_remote) {
-			case AF9015_REMOTE_A_LINK_DTU_M:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_a_link;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_a_link);
-				af9015_config.ir_table = af9015_ir_table_a_link;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_a_link);
-				break;
-			case AF9015_REMOTE_MSI_DIGIVOX_MINI_II_V3:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_msi;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_msi);
-				af9015_config.ir_table = af9015_ir_table_msi;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_msi);
-				break;
-			case AF9015_REMOTE_MYGICTV_U718:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_mygictv;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_mygictv);
-				af9015_config.ir_table =
-				  af9015_ir_table_mygictv;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_mygictv);
-				break;
-			case AF9015_REMOTE_DIGITTRADE_DVB_T:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_digittrade;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_digittrade);
-				af9015_config.ir_table =
-				  af9015_ir_table_digittrade;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_digittrade);
-				break;
-			case AF9015_REMOTE_AVERMEDIA_KS:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_avermedia;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_avermedia);
-				af9015_config.ir_table =
-				  af9015_ir_table_avermedia_ks;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_avermedia_ks);
-				break;
-			}
-		} else {
-			switch (le16_to_cpu(udev->descriptor.idVendor)) {
-			case USB_VID_LEADTEK:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_leadtek;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_leadtek);
-				af9015_config.ir_table =
-				  af9015_ir_table_leadtek;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_leadtek);
-				break;
-			case USB_VID_VISIONPLUS:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_twinhan;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_twinhan);
-				af9015_config.ir_table =
-				  af9015_ir_table_twinhan;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_twinhan);
-				break;
-			case USB_VID_KWORLD_2:
-				/* TODO: use correct rc keys */
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_twinhan;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_twinhan);
-				af9015_config.ir_table = af9015_ir_table_kworld;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_kworld);
-				break;
-			/* Check USB manufacturer and product strings and try
-			   to determine correct remote in case of chip vendor
-			   reference IDs are used. */
-			case USB_VID_AFATECH:
-				memset(manufacturer, 0, sizeof(manufacturer));
-				usb_string(udev, udev->descriptor.iManufacturer,
-					manufacturer, sizeof(manufacturer));
-				if (!strcmp("Geniatech", manufacturer)) {
-					/* iManufacturer 1 Geniatech
-					   iProduct      2 AF9015 */
-					af9015_properties[i].rc_key_map =
-					  af9015_rc_keys_mygictv;
-					af9015_properties[i].rc_key_map_size =
-					  ARRAY_SIZE(af9015_rc_keys_mygictv);
-					af9015_config.ir_table =
-					  af9015_ir_table_mygictv;
-					af9015_config.ir_table_size =
-					  ARRAY_SIZE(af9015_ir_table_mygictv);
-				} else if (!strcmp("MSI", manufacturer)) {
-					/* iManufacturer 1 MSI
-					   iProduct      2 MSI K-VOX */
-					af9015_properties[i].rc_key_map =
-					  af9015_rc_keys_msi;
-					af9015_properties[i].rc_key_map_size =
-					  ARRAY_SIZE(af9015_rc_keys_msi);
-					af9015_config.ir_table =
-					  af9015_ir_table_msi;
-					af9015_config.ir_table_size =
-					  ARRAY_SIZE(af9015_ir_table_msi);
-				} else if (udev->descriptor.idProduct ==
-					cpu_to_le16(USB_PID_TREKSTOR_DVBT)) {
-					af9015_properties[i].rc_key_map =
-					  af9015_rc_keys_trekstor;
-					af9015_properties[i].rc_key_map_size =
-					  ARRAY_SIZE(af9015_rc_keys_trekstor);
-					af9015_config.ir_table =
-					  af9015_ir_table_trekstor;
-					af9015_config.ir_table_size =
-					  ARRAY_SIZE(af9015_ir_table_trekstor);
-				}
-				break;
-			case USB_VID_AVERMEDIA:
-				af9015_properties[i].rc_key_map =
-				  af9015_rc_keys_avermedia;
-				af9015_properties[i].rc_key_map_size =
-				  ARRAY_SIZE(af9015_rc_keys_avermedia);
-				af9015_config.ir_table =
-				  af9015_ir_table_avermedia;
-				af9015_config.ir_table_size =
-				  ARRAY_SIZE(af9015_ir_table_avermedia);
-				break;
-			}
-		}
+		} else
+			af9015_set_remote_config(udev, &af9015_properties[i]);
 	}
 
 	/* TS mode - one or two receivers */
@@ -870,13 +898,13 @@ static int af9015_read_config(struct usb_device *udev)
 		/* USB1.1 set smaller buffersize and disable 2nd adapter */
 		if (udev->speed == USB_SPEED_FULL) {
 			af9015_properties[i].adapter[0].stream.u.bulk.buffersize
-				= TS_USB11_MAX_PACKET_SIZE;
+				= TS_USB11_FRAME_SIZE;
 			/* disable 2nd adapter because we don't have
 			   PID-filters */
 			af9015_config.dual_mode = 0;
 		} else {
 			af9015_properties[i].adapter[0].stream.u.bulk.buffersize
-				= TS_USB20_MAX_PACKET_SIZE;
+				= TS_USB20_FRAME_SIZE;
 		}
 	}
 
@@ -975,6 +1003,9 @@ static int af9015_read_config(struct usb_device *udev)
 			af9015_af9013_config[i].gpio[1] = AF9013_GPIO_LO;
 			af9015_af9013_config[i].rf_spec_inv = 1;
 			break;
+		case AF9013_TUNER_TDA18218:
+			warn("tuner NXP TDA18218 not supported yet");
+			return -ENODEV;
 		default:
 			warn("tuner id:%d not supported, please report!", val);
 			return -ENODEV;
@@ -1045,8 +1076,8 @@ static int af9015_rc_query(struct dvb_usb_device *d, u32 *event, int *state)
 	*state = REMOTE_NO_KEY_PRESSED;
 
 	for (i = 0; i < d->props.rc_key_map_size; i++) {
-		if (!buf[1] && keymap[i].custom == buf[0] &&
-		    keymap[i].data == buf[2]) {
+		if (!buf[1] && rc5_custom(&keymap[i]) == buf[0] &&
+		    rc5_data(&keymap[i]) == buf[2]) {
 			*event = keymap[i].event;
 			*state = REMOTE_KEY_PRESSED;
 			break;
@@ -1099,11 +1130,6 @@ static int af9015_af9013_frontend_attach(struct dvb_usb_adapter *adap)
 
 		deb_info("%s: init I2C\n", __func__);
 		ret = af9015_i2c_init(adap->dev);
-
-		/* dump eeprom (debug) */
-		ret = af9015_eeprom_dump(adap->dev);
-		if (ret)
-			return ret;
 	} else {
 		/* select I2C adapter */
 		i2c_adap = &state->i2c_adap;
@@ -1261,7 +1287,16 @@ static struct usb_device_id af9015_usb_table[] = {
 	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_KWORLD_395U_2)},
 	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_KWORLD_395U_3)},
 	{USB_DEVICE(USB_VID_AFATECH,   USB_PID_TREKSTOR_DVBT)},
-	{USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A850)},
+/* 20 */{USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A850)},
+	{USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A805)},
+	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_CONCEPTRONIC_CTVDIGRCU)},
+	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_KWORLD_MC810)},
+	{USB_DEVICE(USB_VID_KYE,       USB_PID_GENIUS_TVGO_DVB_T03)},
+/* 25 */{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_KWORLD_399U_2)},
+	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_KWORLD_PC160_T)},
+	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_SVEON_STV20)},
+	{USB_DEVICE(USB_VID_KWORLD_2,  USB_PID_TINYTWIN_2)},
+	{USB_DEVICE(USB_VID_LEADTEK,   USB_PID_WINFAST_DTV2000DS)},
 	{0},
 };
 MODULE_DEVICE_TABLE(usb, af9015_usb_table);
@@ -1275,7 +1310,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 		.firmware = "dvb-usb-af9015.fw",
 		.no_reconnect = 1,
 
-		.size_of_priv = sizeof(struct af9015_state), \
+		.size_of_priv = sizeof(struct af9015_state),
 
 		.num_adapters = 2,
 		.adapter = {
@@ -1307,7 +1342,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 					.u = {
 						.bulk = {
 							.buffersize =
-						TS_USB20_MAX_PACKET_SIZE,
+						TS_USB20_FRAME_SIZE,
 						}
 					}
 				},
@@ -1321,7 +1356,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 
 		.i2c_algo = &af9015_i2c_algo,
 
-		.num_device_descs = 9,
+		.num_device_descs = 9, /* max 9 */
 		.devices = {
 			{
 				.name = "Afatech AF9015 DVB-T USB2.0 stick",
@@ -1342,12 +1377,14 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 			{
 				.name = "KWorld PlusTV Dual DVB-T Stick " \
 					"(DVB-T 399U)",
-				.cold_ids = {&af9015_usb_table[4], NULL},
+				.cold_ids = {&af9015_usb_table[4],
+					     &af9015_usb_table[25], NULL},
 				.warm_ids = {NULL},
 			},
 			{
 				.name = "DigitalNow TinyTwin DVB-T Receiver",
-				.cold_ids = {&af9015_usb_table[5], NULL},
+				.cold_ids = {&af9015_usb_table[5],
+					     &af9015_usb_table[28], NULL},
 				.warm_ids = {NULL},
 			},
 			{
@@ -1380,7 +1417,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 		.firmware = "dvb-usb-af9015.fw",
 		.no_reconnect = 1,
 
-		.size_of_priv = sizeof(struct af9015_state), \
+		.size_of_priv = sizeof(struct af9015_state),
 
 		.num_adapters = 2,
 		.adapter = {
@@ -1412,7 +1449,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 					.u = {
 						.bulk = {
 							.buffersize =
-						TS_USB20_MAX_PACKET_SIZE,
+						TS_USB20_FRAME_SIZE,
 						}
 					}
 				},
@@ -1426,7 +1463,7 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 
 		.i2c_algo = &af9015_i2c_algo,
 
-		.num_device_descs = 9,
+		.num_device_descs = 9, /* max 9 */
 		.devices = {
 			{
 				.name = "Xtensions XD-380",
@@ -1478,7 +1515,101 @@ static struct dvb_usb_device_properties af9015_properties[] = {
 				.warm_ids = {NULL},
 			},
 		}
-	}
+	}, {
+		.caps = DVB_USB_IS_AN_I2C_ADAPTER,
+
+		.usb_ctrl = DEVICE_SPECIFIC,
+		.download_firmware = af9015_download_firmware,
+		.firmware = "dvb-usb-af9015.fw",
+		.no_reconnect = 1,
+
+		.size_of_priv = sizeof(struct af9015_state),
+
+		.num_adapters = 2,
+		.adapter = {
+			{
+				.caps = DVB_USB_ADAP_HAS_PID_FILTER |
+				DVB_USB_ADAP_PID_FILTER_CAN_BE_TURNED_OFF,
+
+				.pid_filter_count = 32,
+				.pid_filter       = af9015_pid_filter,
+				.pid_filter_ctrl  = af9015_pid_filter_ctrl,
+
+				.frontend_attach =
+					af9015_af9013_frontend_attach,
+				.tuner_attach    = af9015_tuner_attach,
+				.stream = {
+					.type = USB_BULK,
+					.count = 6,
+					.endpoint = 0x84,
+				},
+			},
+			{
+				.frontend_attach =
+					af9015_af9013_frontend_attach,
+				.tuner_attach    = af9015_tuner_attach,
+				.stream = {
+					.type = USB_BULK,
+					.count = 6,
+					.endpoint = 0x85,
+					.u = {
+						.bulk = {
+							.buffersize =
+						TS_USB20_FRAME_SIZE,
+						}
+					}
+				},
+			}
+		},
+
+		.identify_state = af9015_identify_state,
+
+		.rc_query         = af9015_rc_query,
+		.rc_interval      = 150,
+
+		.i2c_algo = &af9015_i2c_algo,
+
+		.num_device_descs = 7, /* max 9 */
+		.devices = {
+			{
+				.name = "AverMedia AVerTV Volar GPS 805 (A805)",
+				.cold_ids = {&af9015_usb_table[21], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "Conceptronic USB2.0 DVB-T CTVDIGRCU " \
+					"V3.0",
+				.cold_ids = {&af9015_usb_table[22], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "KWorld Digial MC-810",
+				.cold_ids = {&af9015_usb_table[23], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "Genius TVGo DVB-T03",
+				.cold_ids = {&af9015_usb_table[24], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "KWorld PlusTV DVB-T PCI Pro Card " \
+					"(DVB-T PC160-T)",
+				.cold_ids = {&af9015_usb_table[26], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "Sveon STV20 Tuner USB DVB-T HDTV",
+				.cold_ids = {&af9015_usb_table[27], NULL},
+				.warm_ids = {NULL},
+			},
+			{
+				.name = "Leadtek WinFast DTV2000DS",
+				.cold_ids = {&af9015_usb_table[29], NULL},
+				.warm_ids = {NULL},
+			},
+		}
+	},
 };
 
 static int af9015_usb_probe(struct usb_interface *intf,

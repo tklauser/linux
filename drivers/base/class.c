@@ -31,7 +31,7 @@ static ssize_t class_attr_show(struct kobject *kobj, struct attribute *attr,
 	ssize_t ret = -EIO;
 
 	if (class_attr->show)
-		ret = class_attr->show(cp->class, buf);
+		ret = class_attr->show(cp->class, class_attr, buf);
 	return ret;
 }
 
@@ -43,7 +43,7 @@ static ssize_t class_attr_store(struct kobject *kobj, struct attribute *attr,
 	ssize_t ret = -EIO;
 
 	if (class_attr->store)
-		ret = class_attr->store(cp->class, buf, count);
+		ret = class_attr->store(cp->class, class_attr, buf, count);
 	return ret;
 }
 
@@ -59,9 +59,11 @@ static void class_release(struct kobject *kobj)
 	else
 		pr_debug("class '%s' does not have a release() function, "
 			 "be careful\n", class->name);
+
+	kfree(cp);
 }
 
-static struct sysfs_ops class_sysfs_ops = {
+static const struct sysfs_ops class_sysfs_ops = {
 	.show	= class_attr_show,
 	.store	= class_attr_store,
 };
@@ -216,6 +218,8 @@ static void class_create_release(struct class *cls)
  *
  * This is used to create a struct class pointer that can then be used
  * in calls to device_create().
+ *
+ * Returns &struct class pointer on success, or ERR_PTR() on error.
  *
  * Note, the pointer created here is to be destroyed when finished by
  * making a call to class_destroy().
@@ -487,6 +491,103 @@ void class_interface_unregister(struct class_interface *class_intf)
 
 	class_put(parent);
 }
+
+ssize_t show_class_attr_string(struct class *class, struct class_attribute *attr,
+                        	char *buf)
+{
+	struct class_attribute_string *cs;
+	cs = container_of(attr, struct class_attribute_string, attr);
+	return snprintf(buf, PAGE_SIZE, "%s\n", cs->str);
+}
+
+EXPORT_SYMBOL_GPL(show_class_attr_string);
+
+struct class_compat {
+	struct kobject *kobj;
+};
+
+/**
+ * class_compat_register - register a compatibility class
+ * @name: the name of the class
+ *
+ * Compatibility class are meant as a temporary user-space compatibility
+ * workaround when converting a family of class devices to a bus devices.
+ */
+struct class_compat *class_compat_register(const char *name)
+{
+	struct class_compat *cls;
+
+	cls = kmalloc(sizeof(struct class_compat), GFP_KERNEL);
+	if (!cls)
+		return NULL;
+	cls->kobj = kobject_create_and_add(name, &class_kset->kobj);
+	if (!cls->kobj) {
+		kfree(cls);
+		return NULL;
+	}
+	return cls;
+}
+EXPORT_SYMBOL_GPL(class_compat_register);
+
+/**
+ * class_compat_unregister - unregister a compatibility class
+ * @cls: the class to unregister
+ */
+void class_compat_unregister(struct class_compat *cls)
+{
+	kobject_put(cls->kobj);
+	kfree(cls);
+}
+EXPORT_SYMBOL_GPL(class_compat_unregister);
+
+/**
+ * class_compat_create_link - create a compatibility class device link to
+ *			      a bus device
+ * @cls: the compatibility class
+ * @dev: the target bus device
+ * @device_link: an optional device to which a "device" link should be created
+ */
+int class_compat_create_link(struct class_compat *cls, struct device *dev,
+			     struct device *device_link)
+{
+	int error;
+
+	error = sysfs_create_link(cls->kobj, &dev->kobj, dev_name(dev));
+	if (error)
+		return error;
+
+	/*
+	 * Optionally add a "device" link (typically to the parent), as a
+	 * class device would have one and we want to provide as much
+	 * backwards compatibility as possible.
+	 */
+	if (device_link) {
+		error = sysfs_create_link(&dev->kobj, &device_link->kobj,
+					  "device");
+		if (error)
+			sysfs_remove_link(cls->kobj, dev_name(dev));
+	}
+
+	return error;
+}
+EXPORT_SYMBOL_GPL(class_compat_create_link);
+
+/**
+ * class_compat_remove_link - remove a compatibility class device link to
+ *			      a bus device
+ * @cls: the compatibility class
+ * @dev: the target bus device
+ * @device_link: an optional device to which a "device" link was previously
+ * 		 created
+ */
+void class_compat_remove_link(struct class_compat *cls, struct device *dev,
+			      struct device *device_link)
+{
+	if (device_link)
+		sysfs_remove_link(&dev->kobj, "device");
+	sysfs_remove_link(cls->kobj, dev_name(dev));
+}
+EXPORT_SYMBOL_GPL(class_compat_remove_link);
 
 int __init classes_init(void)
 {

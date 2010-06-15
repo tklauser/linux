@@ -1,80 +1,84 @@
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * Early printk for Nios2.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
+ * Copyright (C) 2010, Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
+
 #include <linux/console.h>
 #include <linux/init.h>
+#include <linux/kernel.h>
 #include <asm/io.h>
+
+static unsigned long base_addr;
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
 
-#if JTAG_UART_BASE > 0x20000000
-#error Cannot map JTAG uart directly to IO_REGION
-#error please disable early console
-#endif
+#define ALTERA_JTAGUART_DATA_REG		0
+#define ALTERA_JTAGUART_CONTROL_REG		4
+#define ALTERA_JTAGUART_CONTROL_WSPACE_MSK	0xFFFF0000
+#define ALTERA_JTAGUART_CONTROL_AC_MSK		0x00000400
 
-#define ALTERA_JTAGUART_CONTROL_REG               4
-
-#define ALTERA_JTAGUART_CONTROL_WSPACE_MSK        (0xFFFF0000)
-#define ALTERA_JTAGUART_CONTROL_AC_MSK            (0x00000400)
+#define JUART_GET_CR() \
+	__builtin_ldwio((void *)(base_addr + ALTERA_JTAGUART_CONTROL_REG))
+#define JUART_SET_CR(v) \
+	__builtin_stwio((void *)(base_addr + ALTERA_JTAGUART_CONTROL_REG), v)
+#define JUART_SET_TX(v) \
+	__builtin_stwio((void *)(base_addr + ALTERA_JTAGUART_DATA_REG), v)
 
 static void early_console_write(struct console *con, const char *s, unsigned n)
 {
-  unsigned long base = JTAG_UART_BASE + IO_REGION_BASE;
-  unsigned long status;
+	unsigned long status;
 
-  while (n-- && *s) {
-     status = __builtin_ldwio((void *)(base + ALTERA_JTAGUART_CONTROL_REG));
-     while((status & ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) 
-     {
+	while (n-- && *s) {
+		while (((status = JUART_GET_CR())
+					& ALTERA_JTAGUART_CONTROL_WSPACE_MSK) == 0) {
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS)
-        if ((status & ALTERA_JTAGUART_CONTROL_AC_MSK) == 0) {
-           return;	/* no connection activity */
-        }
+			if ((status & ALTERA_JTAGUART_CONTROL_AC_MSK) == 0)
+				return;	/* no connection activity */
 #endif
-        status = __builtin_ldwio((void *)(base + ALTERA_JTAGUART_CONTROL_REG));
-     }
-     __builtin_stwio((void *)base, *s++);
-   }
+		}
+		JUART_SET_TX(*s);
+		s++;
+	}
 }
 
 #elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
-
-#if UART_BASE > 0x20000000
-#error Cannot map UART directly to IO_REGION
-#error please disable early console
-#endif
 
 #define ALTERA_UART_TXDATA_REG		4
 #define ALTERA_UART_STATUS_REG		8
 #define ALTERA_UART_STATUS_TRDY		0x0040
 
+#define UART_GET_SR() \
+	__builtin_ldwio((void *)(base_addr + ALTERA_UART_STATUS_REG))
+#define UART_SET_TX(v) \
+	__builtin_stwio((void *)(base_addr + ALTERA_UART_TXDATA_REG), v)
+
+static void early_console_putc(char c)
+{
+	while (!(UART_GET_SR() & ALTERA_UART_STATUS_TRDY))
+		;
+
+	UART_SET_TX(c);
+}
+
 static void early_console_write(struct console *con, const char *s, unsigned n)
 {
-  unsigned long base = UART_BASE + IO_REGION_BASE;
-  int crlf = 0;
-
-  while (n-- && *s) {
-     while (!(__builtin_ldwio((void *)(base + ALTERA_UART_STATUS_REG)) & ALTERA_UART_STATUS_TRDY))
-       ;
-     crlf = (*s == '\n' && !crlf);	/* '\n' -> '\r' + '\n' */
-     __builtin_stwio((void *)(base + ALTERA_UART_TXDATA_REG), crlf ? (n++, '\r') : *s++);
-   }
+	while (n-- && *s) {
+		early_console_putc(*s);
+		if (*s == '\n')
+			early_console_putc('\r');
+		s++;
+	}
 }
 
 #else
-#error Neither SERIAL_ALTERA_JTAGUART_CONSOLE nor SERIAL_ALTERA_UART_CONSOLE selected???
+# error Neither SERIAL_ALTERA_JTAGUART_CONSOLE nor SERIAL_ALTERA_UART_CONSOLE selected
 #endif
 
 static struct console early_console = {
@@ -86,25 +90,25 @@ static struct console early_console = {
 
 void __init setup_early_printk(void)
 {
-#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS)
-  {
-    unsigned long base = JTAG_UART_BASE + IO_REGION_BASE;
-    unsigned long status;
-    
-    /* Clear activity bit so BYPASS doesn't stall if we've used jtag for 
-     * downloading the kernel. This might cause early data to be lost even 
-     * if the jtag terminal is running.
-     */
-    status = __builtin_ldwio((void *)(base + ALTERA_JTAGUART_CONTROL_REG));
-    __builtin_stwio((void *)(base + ALTERA_JTAGUART_CONTROL_REG), 
-		    status | ALTERA_JTAGUART_CONTROL_AC_MSK);
-  }
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
+	base_addr = JTAG_UART_BASE + IO_REGION_BASE;
+#elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
+	base_addr = UART_BASE + IO_REGION_BASE;
+#else
+	base_addr = 0;
 #endif
 
-   register_console(&early_console);
-   early_console_write(0, "Early printk initialized\n", 80);
-}
+	if (!base_addr)
+		return;
 
-void __init disable_early_printk(void)
-{
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS)
+	/* Clear activity bit so BYPASS doesn't stall if we've used JTAG for
+	 * downloading the kernel. This might cause early data to be lost even
+	 * if the JTAG terminal is running.
+	 */
+	JUART_SET_CR(JUART_GET_CR() | ALTERA_JTAGUART_CONTROL_AC_MSK);
+#endif
+
+	register_console(&early_console);
+	printk(KERN_INFO "early_console initialized at 0x%08lx\n", base_addr);
 }

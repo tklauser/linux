@@ -1,0 +1,18 @@
+if 3C120
+
+choice
+	prompt "FPGA configuration"
+
+config NIOS2_DEFAULT_MMU
+	bool "MMU_DEFAULT"
+	help
+	  The default mmu config for the v17 release
+
+config NIOS2_MAXIMUM_MMU
+	bool "MAXIMUM_MMU"
+	help
+	  The maximum mmu config for the v17 release
+
+endchoice
+
+endif

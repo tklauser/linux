@@ -52,7 +52,6 @@
 #include <linux/errno.h>
 #include <linux/string.h>
 #include <linux/mm.h>
-#include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -329,12 +328,6 @@ extern unsigned char fontdata_8x16[];
  *
  *	* perform fb specific mmap *
  *	int (*fb_mmap)(struct fb_info *info, struct vm_area_struct *vma);
- *
- *	* save current hardware state *
- *	void (*fb_save_state)(struct fb_info *info);
- *
- *	* restore saved state *
- *	void (*fb_restore_state)(struct fb_info *info);
  * } ;
  */
 
@@ -2248,6 +2241,9 @@ static int ext_setcolreg(unsigned int regno, unsigned int red,
 	if (!external_vgaiobase)
 		return 1;
 
+	if (regno > 255)
+		return 1;
+
 	switch (external_card_type) {
 	case IS_VGA:
 		OUTB(0x3c8, regno);
@@ -2405,6 +2401,9 @@ static int do_fb_set_var(struct fb_var_screeninfo *var, int isactive)
 	return 0;
 }
 
+/* fbhw->encode_fix() must be called with fb_info->mm_lock held
+ * if it is called after the register_framebuffer() - not a case here
+ */
 static int atafb_get_fix(struct fb_fix_screeninfo *fix, struct fb_info *info)
 {
 	struct atafb_par par;
@@ -2414,7 +2413,8 @@ static int atafb_get_fix(struct fb_fix_screeninfo *fix, struct fb_info *info)
 	if (err)
 		return err;
 	memset(fix, 0, sizeof(struct fb_fix_screeninfo));
-	return fbhw->encode_fix(fix, &par);
+	err = fbhw->encode_fix(fix, &par);
+	return err;
 }
 
 static int atafb_get_var(struct fb_var_screeninfo *var, struct fb_info *info)
@@ -2743,7 +2743,9 @@ static int atafb_set_par(struct fb_info *info)
 
 	/* Decode wanted screen parameters */
 	fbhw->decode_var(&info->var, par);
+	mutex_lock(&info->mm_lock);
 	fbhw->encode_fix(&info->fix, par);
+	mutex_unlock(&info->mm_lock);
 
 	/* Set new videomode */
 	ata_set_par(par);

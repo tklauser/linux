@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/libata.h>
 #include <linux/irq.h>
+#include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/workqueue.h>
 #include <scsi/scsi_host.h>
@@ -213,7 +214,7 @@ static void octeon_cf_set_dmamode(struct ata_port *ap, struct ata_device *dev)
 	 * This is tI, C.F. spec. says 0, but Sony CF card requires
 	 * more, we use 20 nS.
 	 */
-	dma_tim.s.dmack_s = ns_to_tim_reg(tim_mult, 20);;
+	dma_tim.s.dmack_s = ns_to_tim_reg(tim_mult, 20);
 	dma_tim.s.dmack_h = ns_to_tim_reg(tim_mult, dma_ackh);
 
 	dma_tim.s.dmarq = dma_arq;
@@ -653,7 +654,8 @@ static irqreturn_t octeon_cf_interrupt(int irq, void *dev_instance)
 
 		ap = host->ports[i];
 		ocd = ap->dev->platform_data;
-		if (!ap || (ap->flags & ATA_FLAG_DISABLED))
+
+		if (ap->flags & ATA_FLAG_DISABLED)
 			continue;
 
 		ocd = ap->dev->platform_data;
@@ -840,7 +842,7 @@ static int __devinit octeon_cf_probe(struct platform_device *pdev)
 	ocd = pdev->dev.platform_data;
 
 	cs0 = devm_ioremap_nocache(&pdev->dev, res_cs0->start,
-				   res_cs0->end - res_cs0->start + 1);
+				   resource_size(res_cs0));
 
 	if (!cs0)
 		return -ENOMEM;
@@ -852,7 +854,7 @@ static int __devinit octeon_cf_probe(struct platform_device *pdev)
 			return -EINVAL;
 
 		cs1 = devm_ioremap_nocache(&pdev->dev, res_cs1->start,
-					   res_cs0->end - res_cs1->start + 1);
+					   resource_size(res_cs1));
 
 		if (!cs1)
 			return -ENOMEM;

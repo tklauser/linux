@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 
 #include "dvb_frontend.h"
@@ -367,7 +368,9 @@ static int stb6100_set_frequency(struct dvb_frontend *fe, u32 frequency)
 	/* N(I) = floor(f(VCO) / (f(XTAL) * (PSD2 ? 2 : 1)))	*/
 	nint = fvco / (state->reference << psd2);
 	/* N(F) = round(f(VCO) / f(XTAL) * (PSD2 ? 2 : 1) - N(I)) * 2 ^ 9	*/
-	nfrac = (((fvco - (nint * state->reference << psd2)) << (9 - psd2)) + state->reference / 2) / state->reference;
+	nfrac = DIV_ROUND_CLOSEST((fvco - (nint * state->reference << psd2))
+					 << (9 - psd2),
+				  state->reference);
 	dprintk(verbose, FE_DEBUG, 1,
 		"frequency = %u, srate = %u, g = %u, odiv = %u, psd2 = %u, fxtal = %u, osm = %u, fvco = %u, N(I) = %u, N(F) = %u",
 		frequency, srate, (unsigned int)g, (unsigned int)odiv,

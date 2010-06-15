@@ -35,7 +35,6 @@
 #include <asm/prom.h>
 #include <asm/smp.h>
 #include <asm/paca.h>
-#include <asm/time.h>
 #include <asm/machdep.h>
 #include <asm/cputable.h>
 #include <asm/firmware.h>
@@ -49,6 +48,7 @@
 #include "plpar_wrappers.h"
 #include "pseries.h"
 #include "xics.h"
+#include "offline_states.h"
 
 
 /*
@@ -56,8 +56,6 @@
  * interface by prom_hold_cpus and is spinning on secondary_hold_spinloop.
  */
 static cpumask_t of_spin_map;
-
-extern void generic_secondary_smp_init(unsigned long);
 
 /**
  * smp_startup_cpu() - start the given cpu
@@ -87,6 +85,9 @@ static inline int __devinit smp_startup_cpu(unsigned int lcpu)
 	/* Fixup atomic count: it exited inside IRQ handler. */
 	task_thread_info(paca[lcpu].__current)->preempt_count	= 0;
 
+	if (get_cpu_current_state(lcpu) == CPU_STATE_INACTIVE)
+		goto out;
+
 	/* 
 	 * If the RTAS start-cpu token does not exist then presume the
 	 * cpu is already spinning.
@@ -101,6 +102,7 @@ static inline int __devinit smp_startup_cpu(unsigned int lcpu)
 		return 0;
 	}
 
+out:
 	return 1;
 }
 
@@ -114,37 +116,16 @@ static void __devinit smp_xics_setup_cpu(int cpu)
 		vpa_init(cpu);
 
 	cpu_clear(cpu, of_spin_map);
+	set_cpu_current_state(cpu, CPU_STATE_ONLINE);
+	set_default_offline_state(cpu);
 
 }
 #endif /* CONFIG_XICS */
 
-static DEFINE_SPINLOCK(timebase_lock);
-static unsigned long timebase = 0;
-
-static void __devinit pSeries_give_timebase(void)
-{
-	spin_lock(&timebase_lock);
-	rtas_call(rtas_token("freeze-time-base"), 0, 1, NULL);
-	timebase = get_tb();
-	spin_unlock(&timebase_lock);
-
-	while (timebase)
-		barrier();
-	rtas_call(rtas_token("thaw-time-base"), 0, 1, NULL);
-}
-
-static void __devinit pSeries_take_timebase(void)
-{
-	while (!timebase)
-		barrier();
-	spin_lock(&timebase_lock);
-	set_tb(timebase >> 32, timebase & 0xffffffff);
-	timebase = 0;
-	spin_unlock(&timebase_lock);
-}
-
 static void __devinit smp_pSeries_kick_cpu(int nr)
 {
+	long rc;
+	unsigned long hcpuid;
 	BUG_ON(nr < 0 || nr >= NR_CPUS);
 
 	if (!smp_startup_cpu(nr))
@@ -156,6 +137,16 @@ static void __devinit smp_pSeries_kick_cpu(int nr)
 	 * the processor will continue on to secondary_start
 	 */
 	paca[nr].cpu_start = 1;
+
+	set_preferred_offline_state(nr, CPU_STATE_ONLINE);
+
+	if (get_cpu_current_state(nr) == CPU_STATE_INACTIVE) {
+		hcpuid = get_hard_smp_processor_id(nr);
+		rc = plpar_hcall_norets(H_PROD, hcpuid);
+		if (rc != H_SUCCESS)
+			printk(KERN_ERR "Error: Prod to wake up processor %d "
+						"Ret= %ld\n", nr, rc);
+	}
 }
 
 static int smp_pSeries_cpu_bootable(unsigned int nr)
@@ -209,8 +200,8 @@ static void __init smp_init_pseries(void)
 
 	/* Non-lpar has additional take/give timebase */
 	if (rtas_token("freeze-time-base") != RTAS_UNKNOWN_SERVICE) {
-		smp_ops->give_timebase = pSeries_give_timebase;
-		smp_ops->take_timebase = pSeries_take_timebase;
+		smp_ops->give_timebase = rtas_give_timebase;
+		smp_ops->take_timebase = rtas_take_timebase;
 	}
 
 	pr_debug(" <- smp_init_pSeries()\n");

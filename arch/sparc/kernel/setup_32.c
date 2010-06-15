@@ -95,8 +95,6 @@ static void prom_sync_me(void)
 			     "nop\n\t"
 			     "nop\n\t" : : "r" (prom_tbr));
 	local_irq_restore(flags);
-
-	return;
 }
 
 static unsigned int boot_flags __initdata = 0;
@@ -235,6 +233,8 @@ void __init setup_arch(char **cmdline_p)
 		sparc_cpu_model = sun4e;
 	if (!strcmp(&cputypval,"sun4u"))
 		sparc_cpu_model = sun4u;
+	if (!strncmp(&cputypval, "leon" , 4))
+		sparc_cpu_model = sparc_leon;
 
 	printk("ARCH: ");
 	switch(sparc_cpu_model) {
@@ -256,6 +256,9 @@ void __init setup_arch(char **cmdline_p)
 	case sun4u:
 		printk("SUN4U\n");
 		break;
+	case sparc_leon:
+		printk("LEON\n");
+		break;
 	default:
 		printk("UNKNOWN!\n");
 		break;
@@ -263,8 +266,6 @@ void __init setup_arch(char **cmdline_p)
 
 #ifdef CONFIG_DUMMY_CONSOLE
 	conswitchp = &dummy_con;
-#elif defined(CONFIG_PROM_CONSOLE)
-	conswitchp = &prom_con;
 #endif
 	boot_flags_init(*cmdline_p);
 

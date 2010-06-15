@@ -104,17 +104,17 @@ static void tx4939ide_writeb(u8 val, void __iomem *base, u32 reg)
 
 #define TX4939IDE_BASE(hwif)	((void __iomem *)(hwif)->extra_base)
 
-static void tx4939ide_set_pio_mode(ide_drive_t *drive, const u8 pio)
+static void tx4939ide_set_pio_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	ide_hwif_t *hwif = drive->hwif;
 	int is_slave = drive->dn;
 	u32 mask, val;
+	const u8 pio = drive->pio_mode - XFER_PIO_0;
 	u8 safe = pio;
 	ide_drive_t *pair;
 
 	pair = ide_get_pair_dev(drive);
 	if (pair)
-		safe = min(safe, ide_get_best_pio_mode(pair, 255, 4));
+		safe = min(safe, pair->pio_mode - XFER_PIO_0);
 	/*
 	 * Update Command Transfer Mode for master/slave and Data
 	 * Transfer Mode for this drive.
@@ -125,10 +125,10 @@ static void tx4939ide_set_pio_mode(ide_drive_t *drive, const u8 pio)
 	/* tx4939ide_tf_load_fixup() will set the Sys_Ctl register */
 }
 
-static void tx4939ide_set_dma_mode(ide_drive_t *drive, const u8 mode)
+static void tx4939ide_set_dma_mode(ide_hwif_t *hwif, ide_drive_t *drive)
 {
-	ide_hwif_t *hwif = drive->hwif;
 	u32 mask, val;
+	const u8 mode = drive->dma_mode;
 
 	/* Update Data Transfer Mode for this drive. */
 	if (mode >= XFER_UDMA_0)
@@ -307,7 +307,7 @@ static int tx4939ide_dma_setup(ide_drive_t *drive, struct ide_cmd *cmd)
 	tx4939ide_writew(SECTOR_SIZE / 2, base, drive->dn ?
 			 TX4939IDE_Xfer_Cnt_2 : TX4939IDE_Xfer_Cnt_1);
 
-	tx4939ide_writew(cmd->rq->nr_sectors, base, TX4939IDE_Sec_Cnt);
+	tx4939ide_writew(blk_rq_sectors(cmd->rq), base, TX4939IDE_Sec_Cnt);
 
 	return 0;
 }
@@ -537,8 +537,7 @@ static const struct ide_port_info tx4939ide_port_info __initdata = {
 
 static int __init tx4939ide_probe(struct platform_device *pdev)
 {
-	hw_regs_t hw;
-	hw_regs_t *hws[] = { &hw, NULL, NULL, NULL };
+	struct ide_hw hw, *hws[] = { &hw };
 	struct ide_host *host;
 	struct resource *res;
 	int irq, ret;
@@ -581,7 +580,7 @@ static int __init tx4939ide_probe(struct platform_device *pdev)
 	hw.dev = &pdev->dev;
 
 	pr_info("TX4939 IDE interface (base %#lx, irq %d)\n", mapbase, irq);
-	host = ide_host_alloc(&tx4939ide_port_info, hws);
+	host = ide_host_alloc(&tx4939ide_port_info, hws, 1);
 	if (!host)
 		return -ENOMEM;
 	/* use extra_base for base address of the all registers */

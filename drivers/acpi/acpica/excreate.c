@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2008, Intel Corp.
+ * Copyright (C) 2000 - 2010, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -502,7 +502,7 @@ acpi_ex_create_method(u8 * aml_start,
 		 * ACPI 2.0: sync_level = sync_level in method declaration
 		 */
 		obj_desc->method.sync_level = (u8)
-		    ((method_flags & AML_METHOD_SYNCH_LEVEL) >> 4);
+		    ((method_flags & AML_METHOD_SYNC_LEVEL) >> 4);
 	}
 
 	/* Attach the new object to the method Node */

@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2003 - 2009 Intel Corporation. All rights reserved.
+ * Copyright(c) 2003 - 2010 Intel Corporation. All rights reserved.
  *
  * Portions of this file are derived from the ipw3945 project, as well
  * as portions of the ieee80211 subsystem header files.
@@ -80,8 +80,8 @@ static inline void iwl_free_fw_desc(struct pci_dev *pci_dev,
 				    struct fw_desc *desc)
 {
 	if (desc->v_addr)
-		pci_free_consistent(pci_dev, desc->len,
-				    desc->v_addr, desc->p_addr);
+		dma_free_coherent(&pci_dev->dev, desc->len,
+				  desc->v_addr, desc->p_addr);
 	desc->v_addr = NULL;
 	desc->len = 0;
 }
@@ -89,7 +89,8 @@ static inline void iwl_free_fw_desc(struct pci_dev *pci_dev,
 static inline int iwl_alloc_fw_desc(struct pci_dev *pci_dev,
 				    struct fw_desc *desc)
 {
-	desc->v_addr = pci_alloc_consistent(pci_dev, desc->len, &desc->p_addr);
+	desc->v_addr = dma_alloc_coherent(&pci_dev->dev, desc->len,
+					  &desc->p_addr, GFP_KERNEL);
 	return (desc->v_addr != NULL) ? 0 : -ENOMEM;
 }
 
@@ -144,5 +145,26 @@ static inline void iwl_stop_queue(struct iwl_priv *priv, u8 queue)
 
 #define ieee80211_stop_queue DO_NOT_USE_ieee80211_stop_queue
 #define ieee80211_wake_queue DO_NOT_USE_ieee80211_wake_queue
+
+static inline void iwl_disable_interrupts(struct iwl_priv *priv)
+{
+	clear_bit(STATUS_INT_ENABLED, &priv->status);
+
+	/* disable interrupts from uCode/NIC to host */
+	iwl_write32(priv, CSR_INT_MASK, 0x00000000);
+
+	/* acknowledge/clear/reset any interrupts still pending
+	 * from uCode or flow handler (Rx/Tx DMA) */
+	iwl_write32(priv, CSR_INT, 0xffffffff);
+	iwl_write32(priv, CSR_FH_INT_STATUS, 0xffffffff);
+	IWL_DEBUG_ISR(priv, "Disabled interrupts\n");
+}
+
+static inline void iwl_enable_interrupts(struct iwl_priv *priv)
+{
+	IWL_DEBUG_ISR(priv, "Enabling interrupts\n");
+	set_bit(STATUS_INT_ENABLED, &priv->status);
+	iwl_write32(priv, CSR_INT_MASK, priv->inta_mask);
+}
 
 #endif				/* __iwl_helpers_h__ */

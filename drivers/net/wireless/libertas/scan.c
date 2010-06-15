@@ -4,35 +4,38 @@
   * IOCTL handlers as well as command preperation and response routines
   *  for sending scan commands to the firmware.
   */
+#include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/kernel.h>
 #include <linux/etherdevice.h>
 #include <linux/if_arp.h>
 #include <asm/unaligned.h>
 #include <net/lib80211.h>
 
 #include "host.h"
-#include "decl.h"
 #include "dev.h"
 #include "scan.h"
+#include "assoc.h"
+#include "wext.h"
 #include "cmd.h"
 
 //! Approximate amount of data needed to pass a scan result back to iwlist
 #define MAX_SCAN_CELL_SIZE  (IW_EV_ADDR_LEN             \
-                             + IW_ESSID_MAX_SIZE        \
+                             + IEEE80211_MAX_SSID_LEN   \
                              + IW_EV_UINT_LEN           \
                              + IW_EV_FREQ_LEN           \
                              + IW_EV_QUAL_LEN           \
-                             + IW_ESSID_MAX_SIZE        \
+                             + IEEE80211_MAX_SSID_LEN   \
                              + IW_EV_PARAM_LEN          \
                              + 40)	/* 40 for WPAIE */
 
 //! Memory needed to store a max sized channel List TLV for a firmware scan
-#define CHAN_TLV_MAX_SIZE  (sizeof(struct mrvlietypesheader)    \
+#define CHAN_TLV_MAX_SIZE  (sizeof(struct mrvl_ie_header)    \
                             + (MRVDRV_MAX_CHANNELS_PER_SCAN     \
                                * sizeof(struct chanscanparamset)))
 
 //! Memory needed to store a max number/size SSID TLV for a firmware scan
-#define SSID_TLV_MAX_SIZE  (1 * sizeof(struct mrvlietypes_ssidparamset))
+#define SSID_TLV_MAX_SIZE  (1 * sizeof(struct mrvl_ie_ssid_param_set))
 
 //! Maximum memory needed for a cmd_ds_802_11_scan with all TLVs at max
 #define MAX_SCAN_CFG_ALLOC (sizeof(struct cmd_ds_802_11_scan)	\
@@ -120,6 +123,189 @@ static inline int is_same_network(struct bss_descriptor *src,
 
 
 
+/*********************************************************************/
+/*                                                                   */
+/* Region channel support                                            */
+/*                                                                   */
+/*********************************************************************/
+
+#define LBS_TX_PWR_DEFAULT		20	/*100mW */
+#define LBS_TX_PWR_US_DEFAULT		20	/*100mW */
+#define LBS_TX_PWR_JP_DEFAULT		16	/*50mW */
+#define LBS_TX_PWR_FR_DEFAULT		20	/*100mW */
+#define LBS_TX_PWR_EMEA_DEFAULT	20	/*100mW */
+
+/* Format { channel, frequency (MHz), maxtxpower } */
+/* band: 'B/G', region: USA FCC/Canada IC */
+static struct chan_freq_power channel_freq_power_US_BG[] = {
+	{1, 2412, LBS_TX_PWR_US_DEFAULT},
+	{2, 2417, LBS_TX_PWR_US_DEFAULT},
+	{3, 2422, LBS_TX_PWR_US_DEFAULT},
+	{4, 2427, LBS_TX_PWR_US_DEFAULT},
+	{5, 2432, LBS_TX_PWR_US_DEFAULT},
+	{6, 2437, LBS_TX_PWR_US_DEFAULT},
+	{7, 2442, LBS_TX_PWR_US_DEFAULT},
+	{8, 2447, LBS_TX_PWR_US_DEFAULT},
+	{9, 2452, LBS_TX_PWR_US_DEFAULT},
+	{10, 2457, LBS_TX_PWR_US_DEFAULT},
+	{11, 2462, LBS_TX_PWR_US_DEFAULT}
+};
+
+/* band: 'B/G', region: Europe ETSI */
+static struct chan_freq_power channel_freq_power_EU_BG[] = {
+	{1, 2412, LBS_TX_PWR_EMEA_DEFAULT},
+	{2, 2417, LBS_TX_PWR_EMEA_DEFAULT},
+	{3, 2422, LBS_TX_PWR_EMEA_DEFAULT},
+	{4, 2427, LBS_TX_PWR_EMEA_DEFAULT},
+	{5, 2432, LBS_TX_PWR_EMEA_DEFAULT},
+	{6, 2437, LBS_TX_PWR_EMEA_DEFAULT},
+	{7, 2442, LBS_TX_PWR_EMEA_DEFAULT},
+	{8, 2447, LBS_TX_PWR_EMEA_DEFAULT},
+	{9, 2452, LBS_TX_PWR_EMEA_DEFAULT},
+	{10, 2457, LBS_TX_PWR_EMEA_DEFAULT},
+	{11, 2462, LBS_TX_PWR_EMEA_DEFAULT},
+	{12, 2467, LBS_TX_PWR_EMEA_DEFAULT},
+	{13, 2472, LBS_TX_PWR_EMEA_DEFAULT}
+};
+
+/* band: 'B/G', region: Spain */
+static struct chan_freq_power channel_freq_power_SPN_BG[] = {
+	{10, 2457, LBS_TX_PWR_DEFAULT},
+	{11, 2462, LBS_TX_PWR_DEFAULT}
+};
+
+/* band: 'B/G', region: France */
+static struct chan_freq_power channel_freq_power_FR_BG[] = {
+	{10, 2457, LBS_TX_PWR_FR_DEFAULT},
+	{11, 2462, LBS_TX_PWR_FR_DEFAULT},
+	{12, 2467, LBS_TX_PWR_FR_DEFAULT},
+	{13, 2472, LBS_TX_PWR_FR_DEFAULT}
+};
+
+/* band: 'B/G', region: Japan */
+static struct chan_freq_power channel_freq_power_JPN_BG[] = {
+	{1, 2412, LBS_TX_PWR_JP_DEFAULT},
+	{2, 2417, LBS_TX_PWR_JP_DEFAULT},
+	{3, 2422, LBS_TX_PWR_JP_DEFAULT},
+	{4, 2427, LBS_TX_PWR_JP_DEFAULT},
+	{5, 2432, LBS_TX_PWR_JP_DEFAULT},
+	{6, 2437, LBS_TX_PWR_JP_DEFAULT},
+	{7, 2442, LBS_TX_PWR_JP_DEFAULT},
+	{8, 2447, LBS_TX_PWR_JP_DEFAULT},
+	{9, 2452, LBS_TX_PWR_JP_DEFAULT},
+	{10, 2457, LBS_TX_PWR_JP_DEFAULT},
+	{11, 2462, LBS_TX_PWR_JP_DEFAULT},
+	{12, 2467, LBS_TX_PWR_JP_DEFAULT},
+	{13, 2472, LBS_TX_PWR_JP_DEFAULT},
+	{14, 2484, LBS_TX_PWR_JP_DEFAULT}
+};
+
+/**
+ * the structure for channel, frequency and power
+ */
+struct region_cfp_table {
+	u8 region;
+	struct chan_freq_power *cfp_BG;
+	int cfp_no_BG;
+};
+
+/**
+ * the structure for the mapping between region and CFP
+ */
+static struct region_cfp_table region_cfp_table[] = {
+	{0x10,			/*US FCC */
+	 channel_freq_power_US_BG,
+	 ARRAY_SIZE(channel_freq_power_US_BG),
+	 }
+	,
+	{0x20,			/*CANADA IC */
+	 channel_freq_power_US_BG,
+	 ARRAY_SIZE(channel_freq_power_US_BG),
+	 }
+	,
+	{0x30, /*EU*/ channel_freq_power_EU_BG,
+	 ARRAY_SIZE(channel_freq_power_EU_BG),
+	 }
+	,
+	{0x31, /*SPAIN*/ channel_freq_power_SPN_BG,
+	 ARRAY_SIZE(channel_freq_power_SPN_BG),
+	 }
+	,
+	{0x32, /*FRANCE*/ channel_freq_power_FR_BG,
+	 ARRAY_SIZE(channel_freq_power_FR_BG),
+	 }
+	,
+	{0x40, /*JAPAN*/ channel_freq_power_JPN_BG,
+	 ARRAY_SIZE(channel_freq_power_JPN_BG),
+	 }
+	,
+/*Add new region here */
+};
+
+/**
+ *  @brief This function finds the CFP in
+ *  region_cfp_table based on region and band parameter.
+ *
+ *  @param region  The region code
+ *  @param band	   The band
+ *  @param cfp_no  A pointer to CFP number
+ *  @return 	   A pointer to CFP
+ */
+static struct chan_freq_power *lbs_get_region_cfp_table(u8 region, int *cfp_no)
+{
+	int i, end;
+
+	lbs_deb_enter(LBS_DEB_MAIN);
+
+	end = ARRAY_SIZE(region_cfp_table);
+
+	for (i = 0; i < end ; i++) {
+		lbs_deb_main("region_cfp_table[i].region=%d\n",
+			region_cfp_table[i].region);
+		if (region_cfp_table[i].region == region) {
+			*cfp_no = region_cfp_table[i].cfp_no_BG;
+			lbs_deb_leave(LBS_DEB_MAIN);
+			return region_cfp_table[i].cfp_BG;
+		}
+	}
+
+	lbs_deb_leave_args(LBS_DEB_MAIN, "ret NULL");
+	return NULL;
+}
+
+int lbs_set_regiontable(struct lbs_private *priv, u8 region, u8 band)
+{
+	int ret = 0;
+	int i = 0;
+
+	struct chan_freq_power *cfp;
+	int cfp_no;
+
+	lbs_deb_enter(LBS_DEB_MAIN);
+
+	memset(priv->region_channel, 0, sizeof(priv->region_channel));
+
+	cfp = lbs_get_region_cfp_table(region, &cfp_no);
+	if (cfp != NULL) {
+		priv->region_channel[i].nrcfp = cfp_no;
+		priv->region_channel[i].CFP = cfp;
+	} else {
+		lbs_deb_main("wrong region code %#x in band B/G\n",
+		       region);
+		ret = -1;
+		goto out;
+	}
+	priv->region_channel[i].valid = 1;
+	priv->region_channel[i].region = region;
+	priv->region_channel[i].band = band;
+	i++;
+out:
+	lbs_deb_leave_args(LBS_DEB_MAIN, "ret %d", ret);
+	return ret;
+}
+
+
+
 
 /*********************************************************************/
 /*                                                                   */
@@ -160,30 +346,14 @@ static int lbs_scan_create_channel_list(struct lbs_private *priv,
 	scantype = CMD_SCAN_TYPE_ACTIVE;
 
 	for (rgnidx = 0; rgnidx < ARRAY_SIZE(priv->region_channel); rgnidx++) {
-		if (priv->enable11d && (priv->connect_status != LBS_CONNECTED)
-		    && (priv->mesh_connect_status != LBS_CONNECTED)) {
-			/* Scan all the supported chan for the first scan */
-			if (!priv->universal_channel[rgnidx].valid)
-				continue;
-			scanregion = &priv->universal_channel[rgnidx];
-
-			/* clear the parsed_region_chan for the first scan */
-			memset(&priv->parsed_region_chan, 0x00,
-			       sizeof(priv->parsed_region_chan));
-		} else {
-			if (!priv->region_channel[rgnidx].valid)
-				continue;
-			scanregion = &priv->region_channel[rgnidx];
-		}
+		if (!priv->region_channel[rgnidx].valid)
+			continue;
+		scanregion = &priv->region_channel[rgnidx];
 
 		for (nextchan = 0; nextchan < scanregion->nrcfp; nextchan++, chanidx++) {
 			struct chanscanparamset *chan = &scanchanlist[chanidx];
 
 			cfp = scanregion->CFP + nextchan;
-
-			if (priv->enable11d)
-				scantype = lbs_get_scan_type_11d(cfp->channel,
-								 &priv->parsed_region_chan);
 
 			if (scanregion->band == BAND_B || scanregion->band == BAND_G)
 				chan->radiotype = CMD_SCAN_RADIO_TYPE_BG;
@@ -211,7 +381,7 @@ static int lbs_scan_create_channel_list(struct lbs_private *priv,
  */
 static int lbs_scan_add_ssid_tlv(struct lbs_private *priv, u8 *tlv)
 {
-	struct mrvlietypes_ssidparamset *ssid_tlv = (void *)tlv;
+	struct mrvl_ie_ssid_param_set *ssid_tlv = (void *)tlv;
 
 	ssid_tlv->header.type = cpu_to_le16(TLV_TYPE_SSID);
 	ssid_tlv->header.len = cpu_to_le16(priv->scan_ssid_len);
@@ -249,7 +419,7 @@ static int lbs_scan_add_chanlist_tlv(uint8_t *tlv,
 				     int chan_count)
 {
 	size_t size = sizeof(struct chanscanparamset) *chan_count;
-	struct mrvlietypes_chanlistparamset *chan_tlv = (void *)tlv;
+	struct mrvl_ie_chanlist_param_set *chan_tlv = (void *)tlv;
 
 	chan_tlv->header.type = cpu_to_le16(TLV_TYPE_CHANLIST);
 	memcpy(chan_tlv->chanscanparam, chan_list, size);
@@ -270,7 +440,7 @@ static int lbs_scan_add_chanlist_tlv(uint8_t *tlv,
 static int lbs_scan_add_rates_tlv(uint8_t *tlv)
 {
 	int i;
-	struct mrvlietypes_ratesparamset *rate_tlv = (void *)tlv;
+	struct mrvl_ie_rates_param_set *rate_tlv = (void *)tlv;
 
 	rate_tlv->header.type = cpu_to_le16(TLV_TYPE_RATES);
 	tlv += sizeof(rate_tlv->header);
@@ -398,11 +568,8 @@ int lbs_scan_networks(struct lbs_private *priv, int full_scan)
 	chan_count = lbs_scan_create_channel_list(priv, chan_list);
 
 	netif_stop_queue(priv->dev);
-	netif_carrier_off(priv->dev);
-	if (priv->mesh_dev) {
+	if (priv->mesh_dev)
 		netif_stop_queue(priv->mesh_dev);
-		netif_carrier_off(priv->mesh_dev);
-	}
 
 	/* Prepare to continue an interrupted scan */
 	lbs_deb_scan("chan_count %d, scan_channel %d\n",
@@ -466,16 +633,13 @@ out2:
 	priv->scan_channel = 0;
 
 out:
-	if (priv->connect_status == LBS_CONNECTED) {
-		netif_carrier_on(priv->dev);
-		if (!priv->tx_pending_len)
-			netif_wake_queue(priv->dev);
-	}
-	if (priv->mesh_dev && (priv->mesh_connect_status == LBS_CONNECTED)) {
-		netif_carrier_on(priv->mesh_dev);
-		if (!priv->tx_pending_len)
-			netif_wake_queue(priv->mesh_dev);
-	}
+	if (priv->connect_status == LBS_CONNECTED && !priv->tx_pending_len)
+		netif_wake_queue(priv->dev);
+
+	if (priv->mesh_dev && lbs_mesh_connected(priv) &&
+	    !priv->tx_pending_len)
+		netif_wake_queue(priv->mesh_dev);
+
 	kfree(chan_list);
 
 	lbs_deb_leave_args(LBS_DEB_SCAN, "ret %d", ret);
@@ -513,12 +677,11 @@ void lbs_scan_worker(struct work_struct *work)
 static int lbs_process_bss(struct bss_descriptor *bss,
 			   uint8_t **pbeaconinfo, int *bytesleft)
 {
-	struct ieeetypes_fhparamset *pFH;
-	struct ieeetypes_dsparamset *pDS;
-	struct ieeetypes_cfparamset *pCF;
-	struct ieeetypes_ibssparamset *pibss;
+	struct ieee_ie_fh_param_set *fh;
+	struct ieee_ie_ds_param_set *ds;
+	struct ieee_ie_cf_param_set *cf;
+	struct ieee_ie_ibss_param_set *ibss;
 	DECLARE_SSID_BUF(ssid);
-	struct ieeetypes_countryinfoset *pcountryinfo;
 	uint8_t *pos, *end, *p;
 	uint8_t n_ex_rates = 0, got_basic_rates = 0, n_basic_rates = 0;
 	uint16_t beaconsize = 0;
@@ -616,50 +779,29 @@ static int lbs_process_bss(struct bss_descriptor *bss,
 			break;
 
 		case WLAN_EID_FH_PARAMS:
-			pFH = (struct ieeetypes_fhparamset *) pos;
-			memmove(&bss->phyparamset.fhparamset, pFH,
-				sizeof(struct ieeetypes_fhparamset));
+			fh = (struct ieee_ie_fh_param_set *) pos;
+			memcpy(&bss->phy.fh, fh, sizeof(*fh));
 			lbs_deb_scan("got FH IE\n");
 			break;
 
 		case WLAN_EID_DS_PARAMS:
-			pDS = (struct ieeetypes_dsparamset *) pos;
-			bss->channel = pDS->currentchan;
-			memcpy(&bss->phyparamset.dsparamset, pDS,
-			       sizeof(struct ieeetypes_dsparamset));
+			ds = (struct ieee_ie_ds_param_set *) pos;
+			bss->channel = ds->channel;
+			memcpy(&bss->phy.ds, ds, sizeof(*ds));
 			lbs_deb_scan("got DS IE, channel %d\n", bss->channel);
 			break;
 
 		case WLAN_EID_CF_PARAMS:
-			pCF = (struct ieeetypes_cfparamset *) pos;
-			memcpy(&bss->ssparamset.cfparamset, pCF,
-			       sizeof(struct ieeetypes_cfparamset));
+			cf = (struct ieee_ie_cf_param_set *) pos;
+			memcpy(&bss->ss.cf, cf, sizeof(*cf));
 			lbs_deb_scan("got CF IE\n");
 			break;
 
 		case WLAN_EID_IBSS_PARAMS:
-			pibss = (struct ieeetypes_ibssparamset *) pos;
-			bss->atimwindow = le16_to_cpu(pibss->atimwindow);
-			memmove(&bss->ssparamset.ibssparamset, pibss,
-				sizeof(struct ieeetypes_ibssparamset));
+			ibss = (struct ieee_ie_ibss_param_set *) pos;
+			bss->atimwindow = ibss->atimwindow;
+			memcpy(&bss->ss.ibss, ibss, sizeof(*ibss));
 			lbs_deb_scan("got IBSS IE\n");
-			break;
-
-		case WLAN_EID_COUNTRY:
-			pcountryinfo = (struct ieeetypes_countryinfoset *) pos;
-			lbs_deb_scan("got COUNTRY IE\n");
-			if (pcountryinfo->len < sizeof(pcountryinfo->countrycode)
-			    || pcountryinfo->len > 254) {
-				lbs_deb_scan("process_bss: 11D- Err CountryInfo len %d, min %zd, max 254\n",
-					     pcountryinfo->len, sizeof(pcountryinfo->countrycode));
-				ret = -1;
-				goto done;
-			}
-
-			memcpy(&bss->countryinfo, pcountryinfo, pcountryinfo->len + 2);
-			lbs_deb_hex(LBS_DEB_SCAN, "process_bss: 11d countryinfo",
-				    (uint8_t *) pcountryinfo,
-				    (int) (pcountryinfo->len + 2));
 			break;
 
 		case WLAN_EID_EXT_SUPP_RATES:
@@ -812,7 +954,7 @@ static inline char *lbs_translate_scan(struct lbs_private *priv,
 	/* SSID */
 	iwe.cmd = SIOCGIWESSID;
 	iwe.u.data.flags = 1;
-	iwe.u.data.length = min((uint32_t) bss->ssid_len, (uint32_t) IW_ESSID_MAX_SIZE);
+	iwe.u.data.length = min((uint32_t) bss->ssid_len, (uint32_t) IEEE80211_MAX_SSID_LEN);
 	start = iwe_stream_add_point(info, start, stop, &iwe, bss->ssid);
 
 	/* Mode */
@@ -877,7 +1019,7 @@ static inline char *lbs_translate_scan(struct lbs_private *priv,
 	iwe.u.bitrate.disabled = 0;
 	iwe.u.bitrate.value = 0;
 
-	for (j = 0; bss->rates[j] && (j < sizeof(bss->rates)); j++) {
+	for (j = 0; j < ARRAY_SIZE(bss->rates) && bss->rates[j]; j++) {
 		/* Bit rate given in 500 kb/s units */
 		iwe.u.bitrate.value = bss->rates[j] * 500000;
 		current_val = iwe_stream_add_value(info, start, current_val,
@@ -1022,9 +1164,12 @@ int lbs_get_scan(struct net_device *dev, struct iw_request_info *info,
 		return -EAGAIN;
 
 	/* Update RSSI if current BSS is a locally created ad-hoc BSS */
-	if ((priv->mode == IW_MODE_ADHOC) && priv->adhoccreate)
-		lbs_prepare_and_send_command(priv, CMD_802_11_RSSI, 0,
-					     CMD_OPTION_WAITFORRSP, 0, NULL);
+	if ((priv->mode == IW_MODE_ADHOC) && priv->adhoccreate) {
+		err = lbs_prepare_and_send_command(priv, CMD_802_11_RSSI, 0,
+				CMD_OPTION_WAITFORRSP, 0, NULL);
+		if (err)
+			goto out;
+	}
 
 	mutex_lock(&priv->lock);
 	list_for_each_entry_safe (iter_bss, safe, &priv->network_list, list) {
@@ -1058,7 +1203,7 @@ int lbs_get_scan(struct net_device *dev, struct iw_request_info *info,
 
 	dwrq->length = (ev - extra);
 	dwrq->flags = 0;
-
+out:
 	lbs_deb_leave_args(LBS_DEB_WEXT, "ret %d", err);
 	return err;
 }
@@ -1130,7 +1275,7 @@ static int lbs_ret_80211_scan(struct lbs_private *priv, unsigned long dummy,
 		goto done;
 	}
 
-	bytesleft = le16_to_cpu(scanresp->bssdescriptsize);
+	bytesleft = get_unaligned_le16(&scanresp->bssdescriptsize);
 	lbs_deb_scan("SCAN_RESP: bssdescriptsize %d\n", bytesleft);
 
 	scanrespsize = le16_to_cpu(resp->size);
@@ -1141,11 +1286,11 @@ static int lbs_ret_80211_scan(struct lbs_private *priv, unsigned long dummy,
 	/* The size of the TLV buffer is equal to the entire command response
 	 *   size (scanrespsize) minus the fixed fields (sizeof()'s), the
 	 *   BSS Descriptions (bssdescriptsize as bytesLef) and the command
-	 *   response header (S_DS_GEN)
+	 *   response header (sizeof(struct cmd_header))
 	 */
 	tlvbufsize = scanrespsize - (bytesleft + sizeof(scanresp->bssdescriptsize)
 				     + sizeof(scanresp->nr_sets)
-				     + S_DS_GEN);
+				     + sizeof(struct cmd_header));
 
 	/*
 	 *  Process each scan response returned (scanresp->nr_sets). Save

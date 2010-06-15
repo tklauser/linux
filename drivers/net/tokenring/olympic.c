@@ -132,7 +132,7 @@ static char *open_min_error[] = {"No error", "Function Failure", "Signal Lost", 
 				   "Reserved", "Reserved", "No Monitor Detected for RPL", 
 				   "Monitor Contention failer for RPL", "FDX Protocol Error"};
 
-/* Module paramters */
+/* Module parameters */
 
 MODULE_AUTHOR("Mike Phillips <mikep@linuxtr.net>") ; 
 MODULE_DESCRIPTION("Olympic PCI/Cardbus Chipset Driver") ; 
@@ -172,7 +172,7 @@ module_param_array(message_level, int, NULL, 0) ;
 static int network_monitor[OLYMPIC_MAX_ADAPTERS] = {0,};
 module_param_array(network_monitor, int, NULL, 0);
 
-static struct pci_device_id olympic_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(olympic_pci_tbl) = {
 	{PCI_VENDOR_ID_IBM,PCI_DEVICE_ID_IBM_TR_WAKE,PCI_ANY_ID,PCI_ANY_ID,},
 	{ } 	/* Terminating Entry */
 };
@@ -182,7 +182,8 @@ MODULE_DEVICE_TABLE(pci,olympic_pci_tbl) ;
 static int olympic_probe(struct pci_dev *pdev, const struct pci_device_id *ent); 
 static int olympic_init(struct net_device *dev);
 static int olympic_open(struct net_device *dev);
-static int olympic_xmit(struct sk_buff *skb, struct net_device *dev);
+static netdev_tx_t olympic_xmit(struct sk_buff *skb,
+				      struct net_device *dev);
 static int olympic_close(struct net_device *dev);
 static void olympic_set_rx_mode(struct net_device *dev);
 static void olympic_freemem(struct net_device *dev) ;  
@@ -444,9 +445,9 @@ static int olympic_open(struct net_device *dev)
 
 	olympic_init(dev);
 
-	if(request_irq(dev->irq, &olympic_interrupt, IRQF_SHARED , "olympic", dev)) {
+	if (request_irq(dev->irq, olympic_interrupt, IRQF_SHARED , "olympic",
+			dev))
 		return -EAGAIN;
-	}
 
 #if OLYMPIC_DEBUG
 	printk("BMCTL: %x\n",readl(olympic_mmio+BMCTL_SUM));
@@ -1030,7 +1031,8 @@ static irqreturn_t olympic_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }	
 
-static int olympic_xmit(struct sk_buff *skb, struct net_device *dev) 
+static netdev_tx_t olympic_xmit(struct sk_buff *skb,
+				      struct net_device *dev)
 {
 	struct olympic_private *olympic_priv=netdev_priv(dev);
 	u8 __iomem *olympic_mmio=olympic_priv->olympic_mmio;
@@ -1052,10 +1054,10 @@ static int olympic_xmit(struct sk_buff *skb, struct net_device *dev)
 		writew((((readw(olympic_mmio+TXENQ_1)) & 0x8000) ^ 0x8000) | 1,olympic_mmio+TXENQ_1);
 		netif_wake_queue(dev);
 		spin_unlock_irqrestore(&olympic_priv->olympic_lock,flags);
-		return 0;
+		return NETDEV_TX_OK;
 	} else {
 		spin_unlock_irqrestore(&olympic_priv->olympic_lock,flags);
-		return 1;
+		return NETDEV_TX_BUSY;
 	} 
 
 }
@@ -1137,9 +1139,8 @@ static void olympic_set_rx_mode(struct net_device *dev)
    	u8 __iomem *olympic_mmio = olympic_priv->olympic_mmio ; 
 	u8 options = 0; 
 	u8 __iomem *srb;
-	struct dev_mc_list *dmi ; 
+	struct dev_mc_list *dmi;
 	unsigned char dev_mc_address[4] ; 
-	int i ; 
 
 	writel(olympic_priv->srb,olympic_mmio+LAPA);
 	srb=olympic_priv->olympic_lap + (olympic_priv->srb & (~0xf800));
@@ -1176,7 +1177,7 @@ static void olympic_set_rx_mode(struct net_device *dev)
 
 	dev_mc_address[0] = dev_mc_address[1] = dev_mc_address[2] = dev_mc_address[3] = 0 ; 
 
-	for (i=0,dmi=dev->mc_list;i < dev->mc_count; i++,dmi = dmi->next) { 
+	netdev_for_each_mc_addr(dmi, dev) {
 		dev_mc_address[0] |= dmi->dmi_addr[2] ; 
 		dev_mc_address[1] |= dmi->dmi_addr[3] ; 
 		dev_mc_address[2] |= dmi->dmi_addr[4] ; 

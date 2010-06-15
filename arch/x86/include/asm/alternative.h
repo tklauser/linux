@@ -3,6 +3,7 @@
 
 #include <linux/types.h>
 #include <linux/stddef.h>
+#include <linux/stringify.h>
 #include <asm/asm.h>
 
 /*
@@ -64,15 +65,35 @@ extern void alternatives_smp_module_add(struct module *mod, char *name,
 					void *text, void *text_end);
 extern void alternatives_smp_module_del(struct module *mod);
 extern void alternatives_smp_switch(int smp);
+extern int alternatives_text_reserved(void *start, void *end);
 #else
 static inline void alternatives_smp_module_add(struct module *mod, char *name,
 					       void *locks, void *locks_end,
 					       void *text, void *text_end) {}
 static inline void alternatives_smp_module_del(struct module *mod) {}
 static inline void alternatives_smp_switch(int smp) {}
+static inline int alternatives_text_reserved(void *start, void *end)
+{
+	return 0;
+}
 #endif	/* CONFIG_SMP */
 
-const unsigned char *const *find_nop_table(void);
+/* alternative assembly primitive: */
+#define ALTERNATIVE(oldinstr, newinstr, feature)			\
+									\
+      "661:\n\t" oldinstr "\n662:\n"					\
+      ".section .altinstructions,\"a\"\n"				\
+      _ASM_ALIGN "\n"							\
+      _ASM_PTR "661b\n"				/* label           */	\
+      _ASM_PTR "663f\n"				/* new instruction */	\
+      "	 .byte " __stringify(feature) "\n"	/* feature bit     */	\
+      "	 .byte 662b-661b\n"			/* sourcelen       */	\
+      "	 .byte 664f-663f\n"			/* replacementlen  */	\
+      "	 .byte 0xff + (664f-663f) - (662b-661b)\n" /* rlen <= slen */	\
+      ".previous\n"							\
+      ".section .altinstr_replacement, \"ax\"\n"			\
+      "663:\n\t" newinstr "\n664:\n"		/* replacement     */	\
+      ".previous"
 
 /*
  * Alternative instructions for different CPU types or capabilities.
@@ -87,18 +108,7 @@ const unsigned char *const *find_nop_table(void);
  * without volatile and memory clobber.
  */
 #define alternative(oldinstr, newinstr, feature)			\
-	asm volatile ("661:\n\t" oldinstr "\n662:\n"			\
-		      ".section .altinstructions,\"a\"\n"		\
-		      _ASM_ALIGN "\n"					\
-		      _ASM_PTR "661b\n"		/* label */		\
-		      _ASM_PTR "663f\n"		/* new instruction */	\
-		      "	 .byte %c0\n"		/* feature bit */	\
-		      "	 .byte 662b-661b\n"	/* sourcelen */		\
-		      "	 .byte 664f-663f\n"	/* replacementlen */	\
-		      ".previous\n"					\
-		      ".section .altinstr_replacement,\"ax\"\n"		\
-		      "663:\n\t" newinstr "\n664:\n"  /* replacement */	\
-		      ".previous" :: "i" (feature) : "memory")
+	asm volatile (ALTERNATIVE(oldinstr, newinstr, feature) : : : "memory")
 
 /*
  * Alternative inline assembly with input.
@@ -109,41 +119,27 @@ const unsigned char *const *find_nop_table(void);
  * Best is to use constraints that are fixed size (like (%1) ... "r")
  * If you use variable sized constraints like "m" or "g" in the
  * replacement make sure to pad to the worst case length.
+ * Leaving an unused argument 0 to keep API compatibility.
  */
 #define alternative_input(oldinstr, newinstr, feature, input...)	\
-	asm volatile ("661:\n\t" oldinstr "\n662:\n"			\
-		      ".section .altinstructions,\"a\"\n"		\
-		      _ASM_ALIGN "\n"					\
-		      _ASM_PTR "661b\n"		/* label */		\
-		      _ASM_PTR "663f\n"		/* new instruction */	\
-		      "	 .byte %c0\n"		/* feature bit */	\
-		      "	 .byte 662b-661b\n"	/* sourcelen */		\
-		      "	 .byte 664f-663f\n"	/* replacementlen */	\
-		      ".previous\n"					\
-		      ".section .altinstr_replacement,\"ax\"\n"		\
-		      "663:\n\t" newinstr "\n664:\n"  /* replacement */	\
-		      ".previous" :: "i" (feature), ##input)
+	asm volatile (ALTERNATIVE(oldinstr, newinstr, feature)		\
+		: : "i" (0), ## input)
 
 /* Like alternative_input, but with a single output argument */
 #define alternative_io(oldinstr, newinstr, feature, output, input...)	\
-	asm volatile ("661:\n\t" oldinstr "\n662:\n"			\
-		      ".section .altinstructions,\"a\"\n"		\
-		      _ASM_ALIGN "\n"					\
-		      _ASM_PTR "661b\n"		/* label */		\
-		      _ASM_PTR "663f\n"		/* new instruction */	\
-		      "	 .byte %c[feat]\n"	/* feature bit */	\
-		      "	 .byte 662b-661b\n"	/* sourcelen */		\
-		      "	 .byte 664f-663f\n"	/* replacementlen */	\
-		      ".previous\n"					\
-		      ".section .altinstr_replacement,\"ax\"\n"		\
-		      "663:\n\t" newinstr "\n664:\n"  /* replacement */ \
-		      ".previous" : output : [feat] "i" (feature), ##input)
+	asm volatile (ALTERNATIVE(oldinstr, newinstr, feature)		\
+		: output : "i" (0), ## input)
+
+/* Like alternative_io, but for replacing a direct call with another one. */
+#define alternative_call(oldfunc, newfunc, feature, output, input...)	\
+	asm volatile (ALTERNATIVE("call %P[old]", "call %P[new]", feature) \
+		: output : [old] "i" (oldfunc), [new] "i" (newfunc), ## input)
 
 /*
  * use this macro(s) if you need more than one output parameter
  * in alternative_io
  */
-#define ASM_OUTPUT2(a, b) a, b
+#define ASM_OUTPUT2(a...) a
 
 struct paravirt_patch_site;
 #ifdef CONFIG_PARAVIRT
@@ -157,8 +153,6 @@ static inline void apply_paravirt(struct paravirt_patch_site *start,
 #define __parainstructions_end	NULL
 #endif
 
-extern void add_nops(void *insns, unsigned int len);
-
 /*
  * Clear and restore the kernel write-protection flag on the local CPU.
  * Allows the kernel to edit read-only pages.
@@ -171,13 +165,12 @@ extern void add_nops(void *insns, unsigned int len);
  * invalid instruction possible) or if the instructions are changed from a
  * consistent state to another consistent state atomically.
  * More care must be taken when modifying code in the SMP case because of
- * Intel's errata.
+ * Intel's errata. text_poke_smp() takes care that errata, but still
+ * doesn't support NMI/MCE handler code modifying.
  * On the local CPU you need to be protected again NMI or MCE handlers seeing an
  * inconsistent instruction while you patch.
- * The _early version expects the memory to already be RW.
  */
-
 extern void *text_poke(void *addr, const void *opcode, size_t len);
-extern void *text_poke_early(void *addr, const void *opcode, size_t len);
+extern void *text_poke_smp(void *addr, const void *opcode, size_t len);
 
 #endif /* _ASM_X86_ALTERNATIVE_H */
