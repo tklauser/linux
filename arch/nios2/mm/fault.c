@@ -179,10 +179,9 @@ bad_area_nosemaphore:
 	}
 
 no_context:
-	/* Are we prepared to handle this kernel fault?  */
-	if (fixup_exception(regs, address)) {
+	/* Are we prepared to handle this kernel fault? */
+	if (fixup_exception(regs))
 		return;
-	}
 
 	/*
 	 * Oops. The kernel tried to access some bad page. We'll have to

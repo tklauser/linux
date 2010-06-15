@@ -169,9 +169,8 @@ asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 
 	fp->ea -= 4;
 
-	if (fixup_exception(fp, fp->ea)) {
+	if (fixup_exception(fp))
 		return;
-	}
 
    if(!user_mode(fp)) {
       printk("Unaligned access from kernel mode, this might be a hardware\n");
