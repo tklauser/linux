@@ -1,10 +1,11 @@
 /*
+ * Copyright (C) 2010, Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009, Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
 #ifndef _ASM_NIOS2_UACCESS_H
@@ -17,13 +18,24 @@
 #define VERIFY_READ    0
 #define VERIFY_WRITE   1
 
-/* FIXME: Add comment
+/*
+ * The exception table consists of pairs of addresses: the first is the
+ * address of an instruction that is allowed to fault, and the second is
+ * the address at which the program should continue.  No registers are
+ * modified, so it is entirely up to the continuation code to figure out
+ * what to do.
+ *
+ * All the routines below use bits of fixup code that are out of line
+ * with the main instruction path.  This means when everything is well,
+ * we don't even have to jump over them.  Further, they do not intrude
+ * on our cache or tlb entries.
  */
-extern int fixup_exception(struct pt_regs *regs, unsigned long address);
 struct exception_table_entry {
 	unsigned long insn;
-	unsigned long nextinsn;
+	unsigned long fixup;
 };
+
+extern int fixup_exception(struct pt_regs *regs);
 
 /*
  * Segment stuff
