@@ -82,17 +82,19 @@ static struct platform_device nios2_uart = {
  */
 
 #ifdef CONFIG_GENERIC_GPIO
-resource_size_t nios2_gpio_mapbase;
+
+struct altera_pio_port altera_pio_ports[] = {
+	{USER_LED_PIO_8OUT_BASE},
+	{USER_DIPSW_PIO_8IN_BASE},
+	{USER_PB_PIO_4IN_BASE}
+};
 
 static void nios2_gpio_init(void)
 {
-	nios2_gpio_mapbase = (resource_size_t)ioremap(GPIO_0_BASE, 32);
-#if defined(CONFIG_I2C_GPIO) || defined(CONFIG_I2C_GPIO_MODULE)
-	gpio_direction_output(GPIO_I2C_0_SCL,1); /* output only I2C SCLK on NEEK */
-	gpio_direction_output(GPIO_I2C_1_SCL,1);
-	gpio_direction_output(GPIO_I2C_2_SCL,1);
-	gpio_direction_output(GPIO_SCEN,0);  /* LCD i2c en */
-#endif
+	int i;
+	for (i = 0; i < ARRAY_SIZE(altera_pio_ports); i++)
+		altera_pio_ports[i].membase = ioremap(
+			altera_pio_ports[i].mapbase, 16);
 }
 #else
 static void nios2_gpio_init(void) {}

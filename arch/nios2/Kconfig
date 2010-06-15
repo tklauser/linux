@@ -29,6 +29,16 @@ config NIOS2_HW_DIV_SUPPORT
 
 endmenu
 
+config OF
+	bool "Devicetree support"
+	def_bool n
+	select DTC
+	select OF_FLATTREE
+
+config DTC
+	bool
+	depends on OF
+
 config NIOS2_UIMAGE_FLASHADDR
 	hex "Offset address for uImage.flash"
 	default 0x1C80000
@@ -80,13 +90,6 @@ config AVALON_DMA
 	help
 	  Support the Altera DMA controller with Avalon interface, so drivers
 	  for DMA-able devices can use this interface.
-
-config GENERIC_GPIO
-	bool "GPIO interface"
-	default n
-	help
-    	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
-    	  than the Altera PIO. The spinlock is no longer needed.
 
 source "arch/nios2/drivers/Kconfig"
 

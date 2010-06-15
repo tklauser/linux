@@ -46,4 +46,25 @@ config PIO_LED
 	  Enable the example PIO LED driver (which just displays a timer value
 	  on the 8 LEDs)
 
+config GENERIC_GPIO
+	bool
+	depends on NIOS2_GPIO || ALTERA_PIO_GPIO
+
+config NIOS2_GPIO
+	bool "GPIO driver"
+	default n
+	select GENERIC_GPIO
+	help
+	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
+	  than the Altera PIO. The spinlock is no longer needed.
+
+config ALTERA_PIO_GPIO
+	bool "Altera PIO to GPIO driver"
+	default n
+	select GENERIC_GPIO
+	help
+	  This driver provides GPIO support for Altera PIO. Each PIO port is
+	  expanded to 32 gpio pins. And multiple PIO ports can be accessed by
+	  the array. Interrupt is not supported.
+
 endmenu
