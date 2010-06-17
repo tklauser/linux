@@ -11,7 +11,7 @@ config 3C120
 config NEEK
 	bool "Nios Embedded Evaluation Kit"
 	help
-	  The Altear Nios Embedded Evaluation Kit support.
+	  The Altera Nios Embedded Evaluation Kit support.
 
 endchoice
 
