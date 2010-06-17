@@ -67,27 +67,26 @@
 #define CTL_BADADDR   12
 #define CTL_CONFIG    13
 #define CTL_MPUBASE   14
-#define CTL_MPUACC    15 
-#define CTL_SIM    6
+#define CTL_MPUACC    15
+#define CTL_SIM	   6
 
 
-#define EXC_RESET               0       /* System reset         */
-#define EXC_CPU_RESET           1       /* CPU reset            */
-#define EXC_EXTERNAL_INTERRUPT  2       /* Interrupt            */
-#define EXC_TRAP                3       /* Trap instruction     */
-#define EXC_UNIMPLEMTED_INSN    4       /* Unimplemented instruction */
-#define EXC_ILLEGAL_INSN        5       /* Illegal instruction     */
-#define EXC_DATA_UNALIGNED      6       /* Misaligned data access   */
-#define EXC_CODE_UNALIGNED      7       /* Misaligned destination address   */
-#define EXC_DIVISION_ERROR      8       /* Division error  */
-#define EXC_SUPERV_INSN_ACCESS  9       /* Supervisor only instr. access       */
-#define EXC_UNUSED              10      /* Unused     */
-#define EXC_SUPERV_DATA_ACCESS  11      /* Supervisor only data address       */
-#define EXC_TLB_DOUBLEFAULT     12      /* TLB double fault.       */
-#define EXC_X_PROTECTION_FAULT  13      /* TLB permission violation (x) */
-#define EXC_R_PROTECTION_FAULT  14      /* TLB permission violation (r) */
-#define EXC_W_PROT_FAULT        15      /* TLB permission violation (w) */
-#define EXC_MPU_REGION_VIOLATION 16     /* MPU region violation */
+#define EXC_RESET		0	/* System reset		*/
+#define EXC_CPU_RESET		1	/* CPU reset		*/
+#define EXC_EXTERNAL_INTERRUPT	2	/* Interrupt		*/
+#define EXC_TRAP		3	/* Trap instruction	*/
+#define EXC_UNIMPLEMTED_INSN	4	/* Unimplemented instruction */
+#define EXC_ILLEGAL_INSN	5	/* Illegal instruction	   */
+#define EXC_DATA_UNALIGNED	6	/* Misaligned data access   */
+#define EXC_CODE_UNALIGNED	7	/* Misaligned destination address   */
+#define EXC_DIVISION_ERROR	8	/* Division error  */
+#define EXC_SUPERV_INSN_ACCESS	9	/* Supervisor only instr. access       */
+#define EXC_UNUSED		10	/* Unused     */
+#define EXC_SUPERV_DATA_ACCESS	11	/* Supervisor only data address	      */
+#define EXC_TLB_DOUBLEFAULT	12	/* TLB double fault.	   */
+#define EXC_X_PROTECTION_FAULT	13	/* TLB permission violation (x) */
+#define EXC_R_PROTECTION_FAULT	14	/* TLB permission violation (r) */
+#define EXC_W_PROT_FAULT	15	/* TLB permission violation (w) */
+#define EXC_MPU_REGION_VIOLATION 16	/* MPU region violation */
 
 #endif
-

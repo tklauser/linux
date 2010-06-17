@@ -239,25 +239,25 @@ static struct mtd_partition nios2_partitions[] = {
 	},
 	{
 	 .name = "U-Boot",
-	 .size =   0x00100000, 
+	 .size =   0x00100000,
 	 .offset = 0x02800000,
 	},
 	{
 	 .name = "uImage1",
-	 .size =   0x00400000, 
+	 .size =   0x00400000,
 	 .offset = 0x02900000,
 	},
 	{
 	 .name = "uImage2",
-	 .size =   0x00400000, 
+	 .size =   0x00400000,
 	 .offset = 0x02d00000,
 	},
 	{
 	 .name = "uImage3",
-	 .size =   0x00400000, 
+	 .size =   0x00400000,
 	 .offset = 0x03100000,
 	},
-	
+
 	{
 	 .name = "DEFAULT_MMU",
 	 .size =   0x00380000,
@@ -339,12 +339,12 @@ static struct platform_device cfi_flash_device = {
 #ifdef CONFIG_MTD_PARTITIONS
 static struct mtd_partition nios2_plat_nand_partitions[] = {
 	{
-		.name   = "linux kernel(nand)",
-		.size   = 0x400000,
+		.name	= "linux kernel(nand)",
+		.size	= 0x400000,
 		.offset = 0,
 	}, {
-		.name   = "file system(nand)",
-		.size   = MTDPART_SIZ_FULL,
+		.name	= "file system(nand)",
+		.size	= MTDPART_SIZ_FULL,
 		.offset = MTDPART_OFS_APPEND,
 	},
 };
@@ -365,8 +365,8 @@ static void nios2_plat_nand_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int
 		writeb(cmd, this->IO_ADDR_W + (1 << NIOS2_NAND_PLAT_ALE));
 }
 
-#undef NIOS2_NAND_PLAT_READY    /* FIXME: define gpio pin assignment to R/B NAND */
-#ifdef NIOS2_NAND_PLAT_READY 
+#undef NIOS2_NAND_PLAT_READY	/* FIXME: define gpio pin assignment to R/B NAND */
+#ifdef NIOS2_NAND_PLAT_READY
 static int nios2_plat_nand_dev_ready(struct mtd_info *mtd)
 {
 	return gpio_get_value(NIOS2_NAND_PLAT_READY);
@@ -415,7 +415,7 @@ static void nios2_plat_nand_init(void)
 static void nios2_plat_nand_init(void) {}
 #endif
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(EPCS_CONTROLLER_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(EPCS_CONTROLLER_BASE)
 static struct resource epcs_controller_resource[] = {
 	[0] = {
 	       .start = EPCS_CONTROLLER_BASE + EPCS_CONTROLLER_REGISTER_OFFSET,
@@ -475,7 +475,7 @@ static struct flash_platform_data nios2_spi_flash_data = {
  *	Altera SPI, MMC
  */
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(TOUCH_PANEL_SPI_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(TOUCH_PANEL_SPI_BASE)
 static struct resource touch_panel_spi_resource[] = {
 	[0] = {
 	       .start = TOUCH_PANEL_SPI_BASE,
@@ -500,11 +500,11 @@ static struct platform_device touch_panel_spi_device = {
 #if (defined(CONFIG_TOUCHSCREEN_ADS7846) || defined(CONFIG_TOUCHSCREEN_ADS7846_MODULE)) && \
 	defined(TOUCH_PANEL_PEN_IRQ_N_BASE)
 
-#define ALTERA_PIO_IO_EXTENT      16
-#define ALTERA_PIO_DATA           0
-#define ALTERA_PIO_DIRECTION      4
-#define ALTERA_PIO_IRQ_MASK       8
-#define ALTERA_PIO_EDGE_CAP       12
+#define ALTERA_PIO_IO_EXTENT	  16
+#define ALTERA_PIO_DATA		  0
+#define ALTERA_PIO_DIRECTION	  4
+#define ALTERA_PIO_IRQ_MASK	  8
+#define ALTERA_PIO_EDGE_CAP	  12
 
 static unsigned long ads7843_pendown_base;
 static void ads7843_pendown_init(void)
@@ -540,7 +540,7 @@ static struct ads7846_platform_data ads_info = {
 };
 #endif
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(MMC_SPI_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(MMC_SPI_BASE)
 static struct resource mmc_spi_resource[] = {
 	[0] = {
 	       .start = MMC_SPI_BASE,
@@ -750,13 +750,13 @@ static struct platform_device cf_device = {
 		}
 };
 
-#define ALTERA_CF_CTL_STATUS            	0
-#define ALTERA_CF_IDE_CTL               	4
+#define ALTERA_CF_CTL_STATUS			0
+#define ALTERA_CF_IDE_CTL			4
 #define ALTERA_CF_CTL_STATUS_PRESENT_MSK       (0x1)
-#define ALTERA_CF_CTL_STATUS_POWER_MSK         (0x2)
-#define ALTERA_CF_CTL_STATUS_RESET_MSK         (0x4)
-#define ALTERA_CF_CTL_STATUS_IRQ_EN_MSK        (0x8)
-#define ALTERA_CF_IDE_CTL_IRQ_EN_MSK           (0x1)
+#define ALTERA_CF_CTL_STATUS_POWER_MSK	       (0x2)
+#define ALTERA_CF_CTL_STATUS_RESET_MSK	       (0x4)
+#define ALTERA_CF_CTL_STATUS_IRQ_EN_MSK	       (0x8)
+#define ALTERA_CF_IDE_CTL_IRQ_EN_MSK	       (0x1)
 
 static void __init cf_init(unsigned ctl_base)
 {
@@ -984,8 +984,8 @@ static struct resource altremote_resources[] = {
   },
 };
 static struct platform_device altremote_device = {
-  .name   = "altremote",
-  .id   = 0,
+  .name	  = "altremote",
+  .id	= 0,
   .num_resources  = ARRAY_SIZE(altremote_resources),
   .resource = altremote_resources,
 };
@@ -1056,11 +1056,11 @@ static struct platform_device dm9k_device = {
 
 #if defined (CONFIG_ATSE)
 /* Altera Triple Speed Ethernet */
-#include         "../drivers/net/atse.h"
+#include	 "../drivers/net/atse.h"
 static struct resource atse_resource[] = {
 	[0] = {
 		.start = na_descriptor_memory_s1,
-		.end   = na_descriptor_memory_s1 + 0x2000 - 1,   /* code from sopc file */
+		.end   = na_descriptor_memory_s1 + 0x2000 - 1,	 /* code from sopc file */
 		.name  = ATSE_RESOURCE_NAME_STR_DESC_MEM,
 		.flags = IORESOURCE_MEM,
 	},
@@ -1110,7 +1110,7 @@ static void atse_device_init(void)
 	unsigned int mac_reg_0;
 	unsigned int mac_reg_1 = 0x0;
 	/*
-	mac_reg_0 = excalibur_enet_hwaddr[0]   | 
+	mac_reg_0 = excalibur_enet_hwaddr[0]   |
 		excalibur_enet_hwaddr[1] << 8  |
 		excalibur_enet_hwaddr[2] << 16 |
 		excalibur_enet_hwaddr[3] << 24;
@@ -1136,12 +1136,12 @@ static void atse_device_init(void) {}
 
 #if defined (CONFIG_ALT_TSE)
 
-#include         "../drivers/net/altera_tse.h"
+#include	 "../drivers/net/altera_tse.h"
 
 #define na_tse_mac_control_port TSE_MAC_BASE
 
-#define na_sgdma_rx_csr         SGDMA_RX_BASE
-#define na_sgdma_tx             SGDMA_TX_BASE
+#define na_sgdma_rx_csr		SGDMA_RX_BASE
+#define na_sgdma_tx		SGDMA_TX_BASE
 
 #ifdef DESCRIPTOR_MEMORY_BASE
 #define na_descriptor_memory DESCRIPTOR_MEMORY_BASE
@@ -1161,13 +1161,13 @@ static struct resource alt_tse_resource[] = {
   },
   [1] = {
     .start = na_sgdma_rx_csr,
-    .end   = na_sgdma_rx_csr + 0x400 - 1,         /* code from sopc file */
+    .end   = na_sgdma_rx_csr + 0x400 - 1,	  /* code from sopc file */
     .name  = TSE_RESOURCE_SGDMA_RX_DEV,
     .flags = IORESOURCE_MEM,
   },
   [2] = {
     .start = na_sgdma_tx,
-    .end   = na_sgdma_tx + 0x400 - 1,             /* code from sopc file */
+    .end   = na_sgdma_tx + 0x400 - 1,		  /* code from sopc file */
     .name  = TSE_RESOURCE_SGDMA_TX_DEV,
     .flags = IORESOURCE_MEM,
   },
@@ -1187,14 +1187,14 @@ static struct resource alt_tse_resource[] = {
 #ifdef na_descriptor_memory
   [5] = {
       .start = na_descriptor_memory,
-      .end   = na_descriptor_memory + na_descriptor_memory_size - 1,      /* code from sopc file */
+      .end   = na_descriptor_memory + na_descriptor_memory_size - 1,	  /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
 #else
   [5] = {
       .start = 0,
-      .end   = 0,                                 /* code from sopc file */
+      .end   = 0,				  /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_DES_DEV,
       .flags = IORESOURCE_MEM,
   },
@@ -1203,13 +1203,13 @@ static struct resource alt_tse_resource[] = {
 #ifdef CONFIG_PHY_IRQ_PRESENCE
   [6] = {
       .start = 0,
-      .end   = 0,                                 /* code from sopc file */
+      .end   = 0,				  /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_DEV,
       .flags = IORESOURCE_MEM,
   },
   [7] = {
       .start = 0,
-      .end   = 0,                                 /* code from sopc file */
+      .end   = 0,				  /* code from sopc file */
       .name  = TSE_RESOURCE_SGDMA_PHY_IRQ,
       .flags = IORESOURCE_IRQ,
   },
@@ -1221,15 +1221,15 @@ static struct resource alt_tse_resource[] = {
 static struct alt_tse_config tsemac0_config = {
 	.mii_id = 0,
 	.phy_addr = 18,
-	.tse_supported_modes =  PHY_GBIT_FEATURES,
+	.tse_supported_modes =	PHY_GBIT_FEATURES,
 /*
-	supported modes can be 
-		SUPPORTED_10baseT_Half 
-		SUPPORTED_10baseT_Full 
-		SUPPORTED_100baseT_Half 
-		SUPPORTED_100baseT_Full 
-		SUPPORTED_Autoneg 
-		SUPPORTED_TP 
+	supported modes can be
+		SUPPORTED_10baseT_Half
+		SUPPORTED_10baseT_Full
+		SUPPORTED_100baseT_Half
+		SUPPORTED_100baseT_Full
+		SUPPORTED_Autoneg
+		SUPPORTED_TP
 		SUPPORTED_MII  ----------  Up to here is PHY_BASIC_FEATURES
 		SUPPORTED_1000baseT_Half
 		SUPPORTED_1000baseT_Full -- here PHY_GBIT_FEATURES
@@ -1248,53 +1248,53 @@ static struct alt_tse_config tsemac0_config = {
 		PHY_INTERFACE_MODE_RTBI
 */
 	.flags = 0,  /* these are apparently phy specific... */
-	
+
 	.autoneg = AUTONEG_ENABLE,
 	/* speed and duplex only valid if autoneg is AUTONED_DISABLE */
 	.speed = SPEED_100, /* SPEED_10, SPEED_100, SPEED_1000 */
 	.duplex = DUPLEX_HALF, /* DUPLEX_HALF, DUPLEX_FULL */
 
 	.rx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
-        .tx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
-        .ethaddr = {0x00 , 0x70 , 0xed , 0x11 , 0x12 , 0x12},
+	.tx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+	.ethaddr = {0x00 , 0x70 , 0xed , 0x11 , 0x12 , 0x12},
 };
 
 static struct platform_device alt_tse_device = {
   /* the name string must be the same as in struct patform_driver */
-  .name   = ALT_TSE_NAME,
-  .id   = 0,
+  .name	  = ALT_TSE_NAME,
+  .id	= 0,
   .num_resources  = ARRAY_SIZE(alt_tse_resource),
   .resource = alt_tse_resource,
-  .dev    = {
+  .dev	  = {
     .platform_data = &tsemac0_config,
   }
-};   
+};
 
 static void __init parse_mac_addr(struct alt_tse_config *tse_config, char *macstr)
 {
-        int i, j;
-        unsigned char result, value;
+	int i, j;
+	unsigned char result, value;
 
-        for (i = 0; i < 6; i++) {
-                result = 0;
+	for (i = 0; i < 6; i++) {
+		result = 0;
 
-                if (i != 5 && *(macstr + 2) != ':')
-                        return;
+		if (i != 5 && *(macstr + 2) != ':')
+			return;
 
-                for (j = 0; j < 2; j++) {
-                        if (isxdigit(*macstr)
-                            && (value =
-                                isdigit(*macstr) ? *macstr -
-                                '0' : toupper(*macstr) - 'A' + 10) < 16) {
-                                result = result * 16 + value;
-                                macstr++;
-                        } else
-                                return;
-                }
+		for (j = 0; j < 2; j++) {
+			if (isxdigit(*macstr)
+			    && (value =
+				isdigit(*macstr) ? *macstr -
+				'0' : toupper(*macstr) - 'A' + 10) < 16) {
+				result = result * 16 + value;
+				macstr++;
+			} else
+				return;
+		}
 
-                macstr++;
-//                tse_config->ethaddr[i] = result;
-                tse_config->ethaddr[i] = result;
+		macstr++;
+//		  tse_config->ethaddr[i] = result;
+		tse_config->ethaddr[i] = result;
        }
 
 }
@@ -1302,9 +1302,9 @@ static void __init parse_mac_addr(struct alt_tse_config *tse_config, char *macst
 
 static int __init setup_tsemac0(char *s)
 {
-        printk(KERN_INFO "Altera TSE MAC 0 ethaddr = %s\n", s);
-        parse_mac_addr((struct alt_tse_config*) &tsemac0_config, s);
-        return 0;
+	printk(KERN_INFO "Altera TSE MAC 0 ethaddr = %s\n", s);
+	parse_mac_addr((struct alt_tse_config*) &tsemac0_config, s);
+	return 0;
 }
 
 __setup("tsemac0=", setup_tsemac0);
@@ -1316,12 +1316,12 @@ static void tse_device_init(void)
 	alt_tse_resource[5].start = kmalloc(ALT_TSE_TOTAL_SGDMA_DESC_SIZE, GFP_KERNEL);
 	if (!alt_tse_resource[5].start)
 		panic("Couldn't allocate memory for Altera TSE MAC SGDMA descriptors");
-	alt_tse_resource[5].end   = alt_tse_resource[5].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
+	alt_tse_resource[5].end	  = alt_tse_resource[5].start + ALT_TSE_TOTAL_SGDMA_DESC_SIZE;
 #endif
 }
 #else
 static void tse_device_init(void) {}
-#endif 
+#endif
 
 #if defined(CONFIG_ETHOC) || defined(CONFIG_ETHOC_MODULE)
 #include <linux/etherdevice.h>
@@ -1395,8 +1395,8 @@ static struct platform_device oeth_device = {
       .name = "oeth",
       .id = -1,
       .dev = {
-              .platform_data = &oeth_platdata,
-              },
+	      .platform_data = &oeth_platdata,
+	      },
       .num_resources = ARRAY_SIZE(oeth_resources),
       .resource = oeth_resources,
 };
@@ -1431,15 +1431,15 @@ static struct platform_device *nios2_devices[] __initdata = {
 	&async_nand_device,
 #endif
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(EPCS_CONTROLLER_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(EPCS_CONTROLLER_BASE)
 	&epcs_controller_device,
 #endif
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(TOUCH_PANEL_SPI_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(TOUCH_PANEL_SPI_BASE)
 	&touch_panel_spi_device,
 #endif
 
-#if (defined(CONFIG_SPI_ALTERA)  || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(MMC_SPI_BASE)
+#if (defined(CONFIG_SPI_ALTERA)	 || defined(CONFIG_SPI_ALTERA_MODULE)) && defined(MMC_SPI_BASE)
 	&mmc_spi_device,
 #endif
 
