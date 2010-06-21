@@ -489,8 +489,6 @@ static int sgdma_read_init(struct net_device *dev)
 
 	for (rx_loop = 0; rx_loop < ALT_TSE_RX_SGDMA_DESC_COUNT; rx_loop++) {
 		ret = tse_sgdma_add_buffer(dev);
-		if (ret)
-			return ret;
 	}
 	sgdma_async_read(tse_priv,
 			 &tse_priv->sgdma_rx_desc[tse_priv->
