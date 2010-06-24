@@ -7,6 +7,7 @@
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
+#include <linux/module.h>
 #include <asm/uaccess.h>
 
 extern long __copy_from_user(void *to, const void __user *from, unsigned long n);
@@ -65,6 +66,7 @@ asm("   .global	__copy_from_user              \n"
     ".word 7b,13b                               \n"
     ".previous                                  \n"
    );
+EXPORT_SYMBOL(__copy_from_user);
 
 extern long __copy_to_user(void __user *to, const void *from, unsigned long n);
 asm(
@@ -127,6 +129,7 @@ asm(
    ".word 11b,13b	                        \n"
    ".word 12b,13b	                        \n"
    ".previous                                \n");
+EXPORT_SYMBOL(__copy_to_user);
 
 long strncpy_from_user(char *__to, const char __user *__from, long __len)
 {
