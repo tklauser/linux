@@ -28,6 +28,7 @@
 #define CFG_CURR          0x00
 #define CFG_PREV1         0x20
 #define CFG_PREV2         0x40
+#define CFG_INPUT         0x60
 
 #define CFG_SOURCE_USER     0x01
 #define CFG_SOURCE_WDOG     0x02
@@ -246,6 +247,12 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
 
 static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 
+static ssize_t show_config_addr(struct device *dev, struct device_attribute *attr, char *buf)
+{
+  u32 config_addr = ioread32(altremote.base + (CFG_INPUT | REG_BOOT_ADDR));
+  return sprintf(buf, "0x%X\n", config_addr<<3);
+}
+
 static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
   unsigned long val = simple_strtoul(buf, NULL, 16);
@@ -254,7 +261,7 @@ static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr
   return count;
 }
 
-static DEVICE_ATTR(config_addr, S_IWUSR, NULL, set_config_addr);
+static DEVICE_ATTR(config_addr, S_IWUSR | S_IRUGO, show_config_addr, set_config_addr);
 
 static ssize_t reconfig(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
