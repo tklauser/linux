@@ -274,6 +274,10 @@ static int altremote_remove(struct platform_device* pdev)
   }
   if(altremote.initsteps>=3)
   {
+    device_remove_file(&pdev->dev, &dev_attr_watchdog);
+    device_remove_file(&pdev->dev, &dev_attr_config_addr);
+    device_remove_file(&pdev->dev, &dev_attr_reconfig);
+    device_remove_file(&pdev->dev, &dev_attr_status);
     iounmap(altremote.base);
   }
   if(altremote.initsteps>=2)
@@ -301,15 +305,15 @@ static int __devinit altremote_probe(struct platform_device *pdev)
   altremote.initsteps++;
   if (!request_mem_region(altremote.res->start, resource_size(altremote.res), pdev->name)) {
     dev_err(&pdev->dev, "Memory region busy\n");
-    altremote_remove(pdev);
-    return -EBUSY;
+    ret = -EBUSY;
+    goto err_out_request_mem_region;
   }
   altremote.initsteps++;
   altremote.base = ioremap(altremote.res->start, resource_size(altremote.res));
   if (!altremote.base) {
     dev_err(&pdev->dev, "Unable to map registers\n");
     ret = -EIO;
-    goto err_out;
+    goto err_out_ioremap;
   }
   altremote.initsteps++;
 
@@ -342,7 +346,7 @@ static int __devinit altremote_probe(struct platform_device *pdev)
       ret = misc_register(&altremote_wdt_miscdev);
       if (ret) {
         printk(KERN_ERR "altremote_wdt: cannot register miscdev on minor=%d (err=%d)\n", WATCHDOG_MINOR, ret);
-        goto err_out;
+        goto err_out_misc_register;
       }
       ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
       if (ret)
@@ -357,13 +361,15 @@ static int __devinit altremote_probe(struct platform_device *pdev)
 
 err_out_wdt:
   misc_deregister(&altremote_wdt_miscdev);
+err_out_misc_register:
 err_out_sysfs:
   device_remove_file(&pdev->dev, &dev_attr_config_addr);
   device_remove_file(&pdev->dev, &dev_attr_reconfig);
   device_remove_file(&pdev->dev, &dev_attr_status);
   iounmap(altremote.base);
-err_out:
+err_out_ioremap:
   release_mem_region(altremote.res->start, resource_size(altremote.res));
+err_out_request_mem_region:
   altremote_remove(pdev);
   return ret;
 }
