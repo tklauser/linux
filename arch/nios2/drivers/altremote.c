@@ -179,25 +179,26 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
 {
   int num = 0;
   u32 reg;
+  u32 cfgfrom;
   u32 msmstate;
   const char *msg;
   char tempbuf[30];
   
-  msmstate = ioread32(altremote.base + REG_MSM_STATE) & 3;
-  reg = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
-  if (reg > CFG_SOURCE_ALL) {
+  msmstate = ioread32(altremote.base + REG_MSM_STATE);
+  cfgfrom = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
+  if (cfgfrom > CFG_SOURCE_ALL) {
     msg = tempbuf;
-    sprintf(tempbuf, "Unknown source 0x%X", reg);
+    sprintf(tempbuf, "Unknown source 0x%X", cfgfrom);
   }
-  else if (reg & CFG_SOURCE_NCONFIG)
+  else if (cfgfrom & CFG_SOURCE_NCONFIG)
     msg = "external configuration request (nCONFIG)";
-  else if (reg & CFG_SOURCE_CRC)
+  else if (cfgfrom & CFG_SOURCE_CRC)
     msg = "CRC Error in application";
-  else if (reg & CFG_SOURCE_NSTATUS)
+  else if (cfgfrom & CFG_SOURCE_NSTATUS)
     msg = "nSTATUS assertion";
-  else if (reg & CFG_SOURCE_WDOG)
+  else if (cfgfrom & CFG_SOURCE_WDOG)
     msg = "user watchdog timeout";
-  else if (reg & CFG_SOURCE_USER)
+  else if (cfgfrom & CFG_SOURCE_USER)
     msg = "user request";
   else
     msg = "initial configuration";
@@ -216,6 +217,30 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
   } else {
     num += sprintf(buf + num, "Watchdog NOT running\n");
   }
+  switch (msmstate)
+  {
+  case 0:
+    msg = "factory";
+    break;
+  case 1:
+    msg = "application";
+    break;
+  case 3:
+    msg = "application with watchdog";
+    break;
+  default:
+    msg = tempbuf;
+    sprintf(tempbuf, "unknown 0x%X", msmstate);
+    break;
+  }
+  num += sprintf(buf + num, "Mode: %s\n", msg);
+  if (((msmstate & 1) == 0) && (cfgfrom != 0)) {
+    reg = ioread32(altremote.base + (CFG_PREV1 | REG_BOOT_ADDR));
+  } else {
+    reg = 0;
+  }
+  num += sprintf(buf + num, "Previously configured from 0x%06X\n", reg);
+
   return num;
 }
 
