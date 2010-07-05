@@ -178,10 +178,13 @@ static int altremote_wdt_release(struct inode *inode, struct file *file) {
 static ssize_t show_status(struct device *dev, struct device_attribute *attr, char *buf)
 {
   int num = 0;
-  u32 reg = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
+  u32 reg;
+  u32 msmstate;
   const char *msg;
   char tempbuf[30];
   
+  msmstate = ioread32(altremote.base + REG_MSM_STATE) & 3;
+  reg = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
   if (reg > CFG_SOURCE_ALL) {
     msg = tempbuf;
     sprintf(tempbuf, "Unknown source 0x%X", reg);
@@ -200,7 +203,13 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
     msg = "initial configuration";
 
   num = sprintf(buf, "Reconfigured by: %s\n", msg);
-  num += sprintf(buf + num,"Configured from 0x%06X\n",ioread32(altremote.base  + REG_BOOT_ADDR));
+  /* Read the boot address.  In application mode, this seems to be in the
+   * "past status 2" area (not documented). */
+  if (msmstate & 1)
+    reg = ioread32(altremote.base + (CFG_PREV2 | REG_BOOT_ADDR));
+  else
+    reg = ioread32(altremote.base + REG_BOOT_ADDR);
+  num += sprintf(buf + num,"Configured from 0x%06X\n", reg);
   if(ioread32(altremote.base + (CFG_PREV1 | REG_WDOG_ENABLE)))
   {
     num += sprintf(buf + num, "Watchdog running\n");
