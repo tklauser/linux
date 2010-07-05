@@ -201,7 +201,7 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
 
   num = sprintf(buf, "Reconfigured by: %s\n", msg);
   num += sprintf(buf + num,"Configured from 0x%06X\n",ioread32(altremote.base  + REG_BOOT_ADDR));
-  if(ioread32(altremote.base + REG_WDOG_ENABLE))
+  if(ioread32(altremote.base + (CFG_PREV1 | REG_WDOG_ENABLE)))
   {
     num += sprintf(buf + num, "Watchdog running\n");
   } else {
@@ -245,7 +245,8 @@ static ssize_t show_watchdog(struct device *dev, struct device_attribute *attr, 
 {
   if(altremote.initsteps>=4)
   {
-    return sprintf(buf, "%u\n", ioread32(altremote.base + REG_WDOG_COUNTER));
+    return sprintf(buf, "%u\n",
+	ioread32(altremote.base + (CFG_PREV1 | REG_WDOG_COUNTER)) >> 17);
   } else {
     return sprintf(buf, "%lu\n", wdt_timeout);
   }
