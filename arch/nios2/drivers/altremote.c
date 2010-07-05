@@ -179,29 +179,27 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
 {
   int num = 0;
   u32 reg = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
+  const char *msg;
+  char tempbuf[30];
   
-  num = sprintf(buf, "Reconfigured by: ");
-  switch(reg)
-  {
-    case CFG_SOURCE_USER: {
-      num += sprintf(buf + num, "user request\n");
-    } break;
-    case CFG_SOURCE_WDOG: {
-      num += sprintf(buf + num, "user watchdog timeout\n");
-    } break;
-    case CFG_SOURCE_NSTATUS: {
-      num += sprintf(buf + num, "nSTATUS assertion\n");
-    } break;
-    case CFG_SOURCE_CRC: {
-      num += sprintf(buf + num, "CRC Error in application\n");
-    } break;
-    case CFG_SOURCE_NCONFIG: {
-      num += sprintf(buf + num, "external configuration request (nCONFIG)\n");
-    } break;
-    default: {
-      num += sprintf(buf + num,"Unknown source 0x%X\n",reg);
-    }
+  if (reg > CFG_SOURCE_ALL) {
+    msg = tempbuf;
+    sprintf(tempbuf, "Unknown source 0x%X", reg);
   }
+  else if (reg & CFG_SOURCE_NCONFIG)
+    msg = "external configuration request (nCONFIG)";
+  else if (reg & CFG_SOURCE_CRC)
+    msg = "CRC Error in application";
+  else if (reg & CFG_SOURCE_NSTATUS)
+    msg = "nSTATUS assertion";
+  else if (reg & CFG_SOURCE_WDOG)
+    msg = "user watchdog timeout";
+  else if (reg & CFG_SOURCE_USER)
+    msg = "user request";
+  else
+    msg = "initial configuration";
+
+  num = sprintf(buf, "Reconfigured by: %s\n", msg);
   num += sprintf(buf + num,"Configured from 0x%06X\n",ioread32(altremote.base  + REG_BOOT_ADDR));
   if(ioread32(altremote.base + REG_WDOG_ENABLE))
   {
