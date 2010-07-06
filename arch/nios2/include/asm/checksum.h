@@ -20,17 +20,19 @@ __csum_tcpudp_nofold(__be32 saddr, __be32 daddr, unsigned short len,
 		unsigned short proto, __wsum sum)
 {
 	__asm__ __volatile__(
-		"add    %0, %0, %1\n"
-		"cmpltu r8, %0, %1\n"
-		"add    %0, %0, r8\n"	/* add carry */
-		"add    %0, %0, %2\n"
-		"cmpltu r8, %0, %2\n"
-		"add    %0, %0, r8\n"	/* add carry */
-		"add    %0, %0, %3\n"
-		"cmpltu r8, %0, %3\n"
-		"add    %0, %0, r8\n"	/* add carry */
-		: "=r" (sum)
-		: "r" (sum), "r" (saddr), "r" (daddr), "r" ((len + proto) << 8)
+		"add	%0, %1, %0\n"
+		"cmpltu	r8, %0, %1\n"
+		"add	%0, %0, r8\n"	/* add carry */
+		"add	%0, %2, %0\n"
+		"cmpltu	r8, %0, %2\n"
+		"add	%0, %0, r8\n"	/* add carry */
+		"add	%0, %3, %0\n"
+		"cmpltu	r8, %0, %3\n"
+		"add	%0, %0, r8\n"	/* add carry */
+		: "=r" (sum), "=r" (saddr)
+		: "r" (daddr), "r" ((ntohs(len)<<16) + (proto*256)),
+		  "0" (sum),
+		  "1" (saddr)
 		: "r8");
 
 	return sum;
