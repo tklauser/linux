@@ -231,7 +231,7 @@ static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 static ssize_t show_config_addr(struct device *dev, struct device_attribute *attr, char *buf)
 {
   u32 config_addr = ioread32(altremote.base + (CFG_INPUT | REG_BOOT_ADDR));
-  return sprintf(buf, "0x%X\n", config_addr<<3);
+  return sprintf(buf, "0x%X\n", config_addr << FPGA_IMAGE_SHIFT);
 }
 
 static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
