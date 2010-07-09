@@ -51,12 +51,6 @@
 # error "Flash type not supported"
 #endif
 
-static int altremote_wdt_pet(void);
-static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos);
-static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
-static int altremote_wdt_open(struct inode *inode, struct file *file);
-static int altremote_wdt_release(struct inode *inode, struct file *file);
-
 struct altremote_data {
   void __iomem *base;
   struct resource *res;
@@ -69,34 +63,18 @@ static struct altremote_data altremote = {
   .initsteps = 0,
 };
 
-static const struct file_operations altremote_wdt_fops = {
-  .owner    = THIS_MODULE,
-  .llseek   = no_llseek,
-  .write    = altremote_wdt_write,
-  .ioctl    = altremote_wdt_ioctl,
-  .open     = altremote_wdt_open,
-  .release  = altremote_wdt_release,
-};
-
-static struct miscdevice altremote_wdt_miscdev = {
-  .minor  = WATCHDOG_MINOR,
-  .name = "watchdog",
-  .fops = &altremote_wdt_fops,
-};
-
-
-
 static unsigned long wdt_is_open;
 static unsigned long wdt_timeout = 0;
+
 /**
  *  altremote_wdt_pet
  *
  *  Reload counter one with the watchdog heartbeat.
  */
-static int altremote_wdt_pet(void) {
+static void altremote_wdt_pet(void)
+{
   iowrite32(PET_WDOG, altremote.base + REG_GPR);
   iowrite32(0, altremote.base + REG_GPR);
-  return 0;
 }
 
 /**
@@ -127,7 +105,8 @@ static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, si
  *  according to their available features. We only actually usefully support
  *  querying capabilities and current status.
  */
-static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg) {
+static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
+{
   void __user *argp = (void __user *)arg;
 
   static struct watchdog_info ident = {
@@ -138,12 +117,14 @@ static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned 
 
   switch(cmd) {
     case WDIOC_GETSUPPORT:
-      return copy_to_user(argp, &ident, sizeof(ident))?-EFAULT:0;
+      if (copy_to_user(argp, &ident, sizeof(ident)))
+        return -EFAULT;
+      return 0;
     case WDIOC_KEEPALIVE:
       altremote_wdt_pet();
       return 0;
     default:
-      return -ENOIOCTLCMD;
+      return -EINVAL;
   }
 }
 
@@ -305,6 +286,21 @@ static ssize_t set_watchdog(struct device *dev, struct device_attribute *attr, c
 }
 
 static DEVICE_ATTR(watchdog, S_IWUSR | S_IRUGO, show_watchdog, set_watchdog);
+
+static const struct file_operations altremote_wdt_fops = {
+  .owner    = THIS_MODULE,
+  .llseek   = no_llseek,
+  .write    = altremote_wdt_write,
+  .ioctl    = altremote_wdt_ioctl,
+  .open     = altremote_wdt_open,
+  .release  = altremote_wdt_release,
+};
+
+static struct miscdevice altremote_wdt_miscdev = {
+  .minor  = WATCHDOG_MINOR,
+  .name = "watchdog",
+  .fops = &altremote_wdt_fops,
+};
 
 static int altremote_remove(struct platform_device* pdev)
 {
