@@ -237,7 +237,7 @@ static ssize_t show_config_addr(struct device *dev, struct device_attribute *att
 static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
   unsigned long val = simple_strtoul(buf, NULL, 16);
-  dev_printk(KERN_INFO, dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
+  dev_info(dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
   iowrite32(val >> FPGA_IMAGE_SHIFT, altremote.base + REG_BOOT_ADDR);
   return count;
 }
@@ -246,7 +246,7 @@ static DEVICE_ATTR(config_addr, S_IWUSR | S_IRUGO, show_config_addr, set_config_
 
 static ssize_t reconfig(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-  dev_printk(KERN_WARNING, dev, "Warning! We'll reboot!\n");
+  dev_warn(dev, "Warning! We'll reboot!\n");
   //Enable internal osc.
   iowrite32(0x00, altremote.base + REG_WDOG_ENABLE);
   if(wdt_timeout>0)
@@ -375,10 +375,10 @@ static int __devinit altremote_probe(struct platform_device *pdev)
         goto err_out_sysfs;
     } break;
     case 1: {
-      dev_printk(KERN_INFO, &pdev->dev, "Found altremote block in Application Mode\n");
+      dev_info(&pdev->dev, "Found altremote block in Application Mode\n");
     } break;
     case 3: {
-      dev_printk(KERN_INFO, &pdev->dev, "Found altremote block in Application Mode with Watchdog enabled\n");
+      dev_info(&pdev->dev, "Found altremote block in Application Mode with Watchdog enabled\n");
       ret = misc_register(&altremote_wdt_miscdev);
       if (ret) {
         printk(KERN_ERR "altremote_wdt: cannot register miscdev on minor=%d (err=%d)\n", WATCHDOG_MINOR, ret);
