@@ -922,28 +922,6 @@ config MTIP1000_ETH
 	  This is support for the MoreThanIP 10_100_1000 emac driver implemented
 	  in an FPGA.
 
-config ATSE
-	bool "Altera Tripple Speed Ethernet support (EXPERIMENTAL)"
-	help
-
-	  This is support for Altera Tripple Speed (TSE) Ethernet MAC
-	  implemented in an FPGA.
-
-	  If you have one of the following of Development Board
-	  Daughter Cards, say y:
-	  "10/100/1000 Ethernet PHY Daughter Board with Marvell PHY (88E1111)"
-
-	   default n
-	   depends on NIOS2
-
-config ALT_TSE
-	tristate "Altera Triple Speed Ethernet MAC support(SLS)"
-	depends on NIOS2
-	select PHYLIB
-	---help---
-	  This is support for Altera Triple Speed Ethernet MAC driver implemented
-	  for uClinux.
-
 #config PHY_IRQ_PRESENCE
 #	tristate "Board phy irq connection"
 #	depends on ALT_TSE
@@ -2548,6 +2526,26 @@ config S6GMAC
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called s6gmac.
+
+config ATSE
+	bool "Altera Triple Speed Ethernet support (EXPERIMENTAL)"
+	default n
+	depends on NIOS2
+	help
+	  This is support for Altera Triple Speed (TSE) Ethernet MAC
+	  implemented in an FPGA.
+
+	  If you have one of the following of Development Board
+	  Daughter Cards, say y:
+	  "10/100/1000 Ethernet PHY Daughter Board with Marvell PHY (88E1111)"
+
+config ALT_TSE
+	tristate "Altera Triple Speed Ethernet MAC support(SLS)"
+	depends on NIOS2
+	select PHYLIB
+	help
+	  This is support for Altera Triple Speed Ethernet MAC driver
+	  implemented for uClinux.
 
 source "drivers/net/stmmac/Kconfig"
 
