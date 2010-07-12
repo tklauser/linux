@@ -570,7 +570,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 					dev->name);
 			
 	//		tse_priv->mac_dev->command_config.image |= ALTERA_TSE_CMD_XOFF_GEN_MSK;	
-			tse_priv->status.rx_dropped++;
+			dev->stats.rx_dropped++;
 		}                      
 
 		//next descriptor
@@ -1233,9 +1233,8 @@ out:
 static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	struct net_device_stats *net_status =
-	    (struct net_device_stats *)&tse_priv->status;
-	
+	struct net_device_stats *net_status = &dev->stats;
+
 	/* total packets received without error*/
 	net_status->rx_packets =
 	    tse_priv->mac_dev->aFramesReceivedOK +
