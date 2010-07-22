@@ -35,8 +35,10 @@ extern void flush_cache_dup_mm(struct mm_struct *mm);
 extern void flush_cache_mm(struct mm_struct *mm);
 extern void flush_cache_page(struct vm_area_struct *vma, unsigned long vmaddr, unsigned long pfn);
 extern void flush_cache_range(struct vm_area_struct *vma, unsigned long start, unsigned long end);
+extern void flush_dcache_all(void);
 extern void flush_dcache_page(struct page* page);
 extern void flush_dcache_range(unsigned long start, unsigned long end);
+extern void flush_icache_all(void);
 extern void flush_icache_page(struct vm_area_struct *vma, struct page* page);
 extern void flush_icache_range(unsigned long start,unsigned long end);
 extern void copy_from_user_page(struct vm_area_struct *vma, struct page *page,
