@@ -6,9 +6,12 @@
  * Copyright (C) 2009, Wind River Systems Inc
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
+
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/pagemap.h>
+
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
@@ -386,11 +389,6 @@ void tlb_flush(struct mmu_gather *tlb)
 #include <linux/kernel.h>
 #include <asm/ptrace.h>
 #include <asm/nios.h>
-
-void initMMU(void)
-{
-   local_flush_tlb_all();
-}
 
 void unhandled_exception(struct pt_regs *fp, int cause)
 {

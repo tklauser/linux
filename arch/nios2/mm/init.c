@@ -170,7 +170,10 @@ void __init mem_init(void)
 	       );
 }
 
-
+void __init mmu_init(void)
+{
+	local_flush_tlb_all();
+}
 
 #ifdef CONFIG_BLK_DEV_INITRD
 void __init free_initrd_mem(unsigned long start, unsigned long end)
