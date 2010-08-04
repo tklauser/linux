@@ -125,7 +125,7 @@ static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,\
 extern void __init mmu_init(void);
 
 /* save args passed from u-boot, called from head.S */
-void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6, unsigned r7)
+asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6, unsigned r7)
 {
 	mmu_init();
 
