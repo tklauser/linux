@@ -159,6 +159,7 @@ asmlinkage void breakpoint_c(struct pt_regs *fp)
 }
 
 
+#ifndef CONFIG_ALIGNMENT_TRAP
 /* Alignment handler 
  */
 asmlinkage void handle_unaligned_c(struct pt_regs *fp)
@@ -192,6 +193,7 @@ asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 
 	force_sig_info(info.si_signo, &info, current);
 }
+#endif /* !CONFIG_ALIGNMENT_TRAP */
 
 /* Illegal instruction handler 
  */

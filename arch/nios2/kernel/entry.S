@@ -551,9 +551,17 @@ handle_breakpoint:
 	call breakpoint_c
 	br ret_from_exception
 
+#ifdef CONFIG_ALIGNMENT_TRAP
+handle_unaligned:
+	SAVE_SWITCH_STACK
+	call handle_unaligned_c
+	RESTORE_SWITCH_STACK
+	br ret_from_exception
+#else
 handle_unaligned:
 	call handle_unaligned_c
 	br ret_from_exception
+#endif
 	
 handle_illegal:
 	call handle_illegal_c

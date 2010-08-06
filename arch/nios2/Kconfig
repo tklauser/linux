@@ -150,6 +150,16 @@ config BINFMT_ELF
 config NOT_COHERENT_CACHE
 	def_bool n
 
+config ALIGNMENT_TRAP
+	bool "Catch alignment trap"
+	default y
+	help
+	  NIOS II cpus cannot fetch/store data which is not bus aligned,
+	  i.e., a 2 or 4 byte fetch must start at an address divisible by
+	  2 or 4. Any non-aligned load/store instructions will be trapped and
+	  emulated in software if you say Y here, which has a performance
+	  impact.
+
 config HZ
 	int
 	default 100
