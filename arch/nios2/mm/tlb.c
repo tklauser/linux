@@ -347,6 +347,7 @@ void flush_tlb_pid(unsigned long pid)
       tlbacc = RDCTL(CTL_TLBACC);
       
       if (((tlbmisc>>PID_SHIFT)&PID_MASK) == pid) {
+         WRCTL(CTL_TLBMISC, (1UL << 18) | (way << 20) | pid << PID_SHIFT);
          WRCTL(CTL_TLBACC, (MAX_PHYS_ADDR >> PAGE_SHIFT));
       }
     } 
@@ -360,7 +361,11 @@ void local_flush_tlb_all(void)
    int i;
    unsigned long vaddr = IO_REGION_BASE;
    unsigned int way;
+   unsigned long org_misc;
    statistics.local_flush_tlb_all++;
+
+   /* remember pid/way */
+   org_misc = (RDCTL(CTL_TLBMISC) & ((PID_MASK << PID_SHIFT) | (WAY_MASK << WAY_SHIFT)));
 
    /* Map each TLB entry to physcal address 0 
     * with no-access and a bad ptbase
@@ -369,12 +374,14 @@ void local_flush_tlb_all(void)
       for (i = 0; i < TLB_NUM_ENTRIES/TLB_NUM_WAYS; i++) {
 
          WRCTL(CTL_PTEADDR, ((vaddr) >> PAGE_SHIFT) << 2);
-	 // ivho: 1<<18 ?
          WRCTL(CTL_TLBMISC, (1<<18) | (way << 20));
          WRCTL(CTL_TLBACC, (MAX_PHYS_ADDR >> PAGE_SHIFT));
          vaddr += 1UL << 12;
       }
    }
+
+   /* restore pid/way */
+   WRCTL(CTL_TLBMISC, org_misc);
 }
 
 void tlb_flush(struct mmu_gather *tlb)
