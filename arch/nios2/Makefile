@@ -10,10 +10,14 @@
 # architecture-specific flags and dependencies. Remember to do have actions
 # for "archclean" cleaning up for this architecture.
 #
-#
 # Nios2 port by Wind River Systems Inc trough:
 #   fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
-#
+
+ifeq ($(CONFIG_MMU),y)
+UTS_SYSNAME = Linux
+else
+UTS_SYSNAME = uClinux
+endif
 
 cflags-y :=
 LDFLAGS		:=
@@ -27,6 +31,7 @@ KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_DIV_SUPPORT),-mhw-div,-mno-hw-div)
 
 KBUILD_CFLAGS += -fno-optimize-sibling-calls
 KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
+KBUILD_CFLAGS += -DUTS_SYSNAME=\"$(UTS_SYSNAME)\"
 KBUILD_CFLAGS += -fno-builtin
 KBUILD_CFLAGS += -G 0
 
