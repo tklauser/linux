@@ -152,20 +152,18 @@ static void nios_debug(struct pt_regs *pt,  unsigned long addr)
 }
 #endif
 
-/* All entries common to a mm share an asid.  To effectively flush
-   these entries, we just bump the asid. */
+/*
+ * All entries common to a mm share an asid.  To effectively flush these
+ * entries, we just bump the asid.
+ */
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
-   mm_context_t *context = &mm->context;
+	statistics.local_flush_tlb_mm++;
 
-   statistics.local_flush_tlb_mm++;
-   
-   if(current->mm == mm) {
-      local_flush_tlb_all();      
-   }
-   else {
-      memset(&context[0], 0, sizeof(mm_context_t));
-   }
+	if (current->mm == mm)
+		local_flush_tlb_all();
+	else
+		memset(&mm->context, 0, sizeof(mm_context_t));
 }
 
 /*

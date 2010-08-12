@@ -48,12 +48,13 @@ void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {
 }
 
-/* Set new context (pid), keep way
+/*
+ * Set new context (pid), keep way
  */
 static void set_context(mm_context_t context)
 {
-   extern void set_mmu_pid(unsigned long pid);
-   set_mmu_pid(CTX_PID(context[0]));
+	extern void set_mmu_pid(unsigned long pid);
+	set_mmu_pid(CTX_PID(context));
 }
 
 static unsigned long get_new_context(void)
@@ -85,13 +86,14 @@ static unsigned long get_new_context(void)
    return ctx;
 }
 
-/* Set all new contexts to 0, that way the generation will never match
+/*
+ * Set all new contexts to 0, that way the generation will never match
  * the currently running generation when this context is switched in.
  */
 int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
-  mm->context[0] = 0;
-  return 0;
+	mm->context = 0;
+	return 0;
 }
 
 void switch_mm(struct mm_struct *prev, struct mm_struct *next,
@@ -101,21 +103,18 @@ void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 
 	local_irq_save(flags);
 
-   /* If the process context we are swapping in has a 
-    * different context generation then we have it should
-    * get a new generation/pid.
-    */
-	if (unlikely(CTX_VERSION(next->context[0]) != CTX_VERSION(ctx))) {
-      next->context[0] = get_new_context();
-	}
-   /* Save the current pgd so the fast tlb handler can find it
-    */
+	/* If the process context we are swapping in has a different context
+	 * generation then we have it should get a new generation/pid.
+	 */
+	if (unlikely(CTX_VERSION(next->context) != CTX_VERSION(ctx)))
+		next->context = get_new_context();
+
+	/* Save the current pgd so the fast tlb handler can find it */
 	pgd_current[smp_processor_id()] = (unsigned long)next->pgd;
 
-   /* Set the current context
-    */
+	/* Set the current context */
 	set_context(next->context);
-   
+
 	local_irq_restore(flags);
 }
 
@@ -124,21 +123,26 @@ void deactivate_mm(struct task_struct *tsk, struct mm_struct *mm)
 
 }
 
-/* Destroy context related info for an mm_struct that is about
+/*
+ * Destroy context related info for an mm_struct that is about
  * to be put to rest.
  */
-void destroy_context(struct mm_struct *mm){
+void destroy_context(struct mm_struct *mm)
+{
 }
 
-/* After we have set current->mm to a new value, this activates
+/*
+ * After we have set current->mm to a new value, this activates
  * the context for the new mm so we see the new mappings.
  */
-void activate_mm(struct mm_struct *prev, struct mm_struct *next) {
-  next->context[0] = get_new_context();
-  set_context(next->context);
-  pgd_current[smp_processor_id()] = (unsigned long)next->pgd;
+void activate_mm(struct mm_struct *prev, struct mm_struct *next)
+{
+	next->context = get_new_context();
+	set_context(next->context);
+	pgd_current[smp_processor_id()] = (unsigned long)next->pgd;
 }
 
-unsigned long get_pid_from_context(mm_context_t* context) {
-   return CTX_PID((*context)[0]);
+unsigned long get_pid_from_context(mm_context_t* context)
+{
+	return CTX_PID((*context));
 }
