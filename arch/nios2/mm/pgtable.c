@@ -337,11 +337,6 @@ pgoff_t pte_to_pgoff(pte_t pte){
    BUG();
 }
 
-void pgd_ERROR(pgd_t e){
-   BUG();
-}
-
-
 struct page * pte_page(pte_t pte){
    return pfn_to_page(pte_pfn(pte));
 }

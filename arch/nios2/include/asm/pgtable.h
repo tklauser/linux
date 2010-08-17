@@ -207,8 +207,12 @@ pgd_t * pgd_offset_k(unsigned long address);
  */
 pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address);
 
-void pgd_ERROR(pgd_t e);
-
+#define pte_ERROR(e) \
+	printk(KERN_ERR "%s:%d: bad pte %08lx.\n", \
+		__FILE__, __LINE__, pte_val(e))
+#define pgd_ERROR(e) \
+	printk(KERN_ERR "%s:%d: bad pgd %08lx.\n", \
+		__FILE__, __LINE__, pgd_val(e))
 
 pte_t pfn_pte(unsigned long  pfn, pgprot_t prot);
 
