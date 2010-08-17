@@ -6,6 +6,7 @@
  * Copyright (C) 2009, Wind River Systems Inc
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
+
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/bootmem.h>
@@ -14,9 +15,6 @@
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
-
-#define DEBUG 0
-#define dprintk(fmt,args...) if(DEBUG) { printk(__FILE__   fmt, ##args); }
 
 /* pteaddr: 
  *   ptbase | vpn* | zero
@@ -36,24 +34,21 @@
  *  
  */
 
-#define CALLED()
-
 void pgd_init(unsigned long page)
 {
-  unsigned long *p = (unsigned long *) page;
-  int i;
-  CALLED();
-  
-  for (i = 0; i < USER_PTRS_PER_PGD; i+=8) {
-    p[i + 0] = (unsigned long) invalid_pte_table;
-    p[i + 1] = (unsigned long) invalid_pte_table;
-    p[i + 2] = (unsigned long) invalid_pte_table;
-    p[i + 3] = (unsigned long) invalid_pte_table;
-    p[i + 4] = (unsigned long) invalid_pte_table;
-    p[i + 5] = (unsigned long) invalid_pte_table;
-    p[i + 6] = (unsigned long) invalid_pte_table;
-    p[i + 7] = (unsigned long) invalid_pte_table;
-  }
+	unsigned long *p = (unsigned long *) page;
+	int i;
+
+	for (i = 0; i < USER_PTRS_PER_PGD; i += 8) {
+		p[i + 0] = (unsigned long) invalid_pte_table;
+		p[i + 1] = (unsigned long) invalid_pte_table;
+		p[i + 2] = (unsigned long) invalid_pte_table;
+		p[i + 3] = (unsigned long) invalid_pte_table;
+		p[i + 4] = (unsigned long) invalid_pte_table;
+		p[i + 5] = (unsigned long) invalid_pte_table;
+		p[i + 6] = (unsigned long) invalid_pte_table;
+		p[i + 7] = (unsigned long) invalid_pte_table;
+	}
 }
 
 void __init pagetable_init(void)
@@ -65,7 +60,7 @@ void __init pagetable_init(void)
 	pmd_t *pmd;
 	pte_t *pte;
 #endif
-	dprintk("check impl\n");
+	pr_debug("check impl\n");
 
 	/* Initialize the entire pgd.  */
 	pgd_init((unsigned long)swapper_pg_dir);
@@ -108,15 +103,12 @@ struct page * ZERO_PAGE(unsigned long vaddr)
   return page;
 }
 
-
 /*
  * (pmds are folded into puds so this doesn't get actually called,
  * but the define is needed for a generic inline function.)
  */
 void set_pmd(pmd_t *pmdptr, pmd_t pmdval)
 {
-  CALLED();
-
   pmdptr->pud.pgd.pgd = pmdval.pud.pgd.pgd;
 }
 
@@ -239,12 +231,12 @@ int pmd_none(pmd_t pmd){
 
   rv  = (pmd_val(pmd) == (unsigned long)invalid_pte_table);
   rv |= (pmd_val(pmd) == 0UL);
-  dprintk("pmd_none returns %#x (pmd=%#lx)\n", rv, pmd_val(pmd));
+  pr_debug("pmd_none returns %#x (pmd=%#lx)\n", rv, pmd_val(pmd));
   return rv;
 }
 
 int pmd_bad(pmd_t pmd){
-  dprintk("pmd_bad returns %#lx\n", pmd_val(pmd) & ~PAGE_MASK);
+  pr_debug ("pmd_bad returns %#lx\n", pmd_val(pmd) & ~PAGE_MASK);
   return pmd_val(pmd) & ~PAGE_MASK;
 }
 
@@ -268,8 +260,6 @@ void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep){
  */
 pte_t mk_pte(struct page *page, pgprot_t pgprot){
   pte_t rv;
-
-  CALLED();
 
   pte_val(rv) = (pgprot_val(pgprot) << 20) | page_to_pfn(page);
 
@@ -297,7 +287,7 @@ unsigned long pte_pfn(pte_t pte){
 
 pte_t * pte_offset_map(pmd_t *dir, unsigned long address){
   pte_t* rv;
-  CALLED();
+
   rv = (pte_t *)page_address(pmd_page(*dir)) + 
     ((address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1));
   return rv;
@@ -318,8 +308,8 @@ pgd_t * pgd_offset_k(unsigned long address)
  */
 pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address){
   pte_t* rv;
-  CALLED();
-  dprintk("pte_offset_kernel for address %#lx pmd=%#lx\n", 
+
+  pr_debug("pte_offset_kernel for address %#lx pmd=%#lx\n",
 	 address, pmd_val(*dir) );
   rv = (pte_t *)pmd_page_vaddr(*(dir)) + 
     ((address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1));
