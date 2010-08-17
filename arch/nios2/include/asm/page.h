@@ -56,19 +56,12 @@ extern void copy_page(void * to, void * from);
 
 extern unsigned long shm_align_mask;
 
-static inline unsigned long pages_do_alias(unsigned long addr1,
-	unsigned long addr2)
-{
-	return (addr1 ^ addr2) & shm_align_mask;
-}
-
 struct page;
 
 extern void clear_user_page(void *addr, unsigned long vaddr, struct page *page);
 
 extern void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 			   struct page *to);
-struct vm_area_struct;
 
 /*
  * These are used to make use of C type-checking..
