@@ -277,9 +277,10 @@ vmalloc_fault:
 		set_pmd(pmd, *pmd_k);
 
 		pte_k = pte_offset_kernel(pmd_k, address);
-		if (!pte_present(*pte_k)) {
+		if (!pte_present(*pte_k))
 			goto no_context;
-      }
+
+		flush_tlb_one(address);
 		return;
 	}
 }
