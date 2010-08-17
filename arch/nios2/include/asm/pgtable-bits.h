@@ -27,12 +27,4 @@
 #define _PAGE_VALID                 (1<<9)
 #define _PAGE_OLD                   (1<<10)
 
-#if 1
-/* ivho: lets not turn on caches right now...
- */
-#define PAGE_CACHABLE_DEFAULT	_PAGE_CACHED
-#else
-#define PAGE_CACHABLE_DEFAULT	0
-#endif
-
 #endif /* _ASM_NIOS2_PGTABLE_BITS_H */

@@ -26,12 +26,11 @@
 
 struct mm_struct;
 
-/* Helper macro
- */ 
-#define MKP(x,w,r) __pgprot(_PAGE_PRESENT|PAGE_CACHABLE_DEFAULT|\
-			    ((x)?_PAGE_EXEC:0)|			 \
-			    ((r)?_PAGE_READ:0)|			 \
-			    ((w)?_PAGE_WRITE:0))
+/* Helper macro */
+#define MKP(x,w,r) __pgprot(_PAGE_PRESENT | _PAGE_CACHED |	\
+			    ((x) ? _PAGE_EXEC : 0) |		\
+			    ((r) ? _PAGE_READ : 0) |		\
+			    ((w) ? _PAGE_WRITE : 0))
 /*
  * These are the macros that generic kernel code needs 
  * (to populate protection_map[])
@@ -59,9 +58,9 @@ struct mm_struct;
 #define __S110	MKP(1,1,0)
 #define __S111	MKP(1,1,1)
 
-/* Used all over the kernel
- */
-#define PAGE_KERNEL __pgprot(_PAGE_PRESENT|PAGE_CACHABLE_DEFAULT|_PAGE_READ|_PAGE_WRITE|_PAGE_EXEC|_PAGE_GLOBAL)
+/* Used all over the kernel */
+#define PAGE_KERNEL __pgprot(_PAGE_PRESENT | _PAGE_CACHED | _PAGE_READ | \
+			     _PAGE_WRITE | _PAGE_EXEC | _PAGE_GLOBAL)
 
 /* ivho:PAGE_COPY only used by read_zero_pagealigned() in mem.c
  */
