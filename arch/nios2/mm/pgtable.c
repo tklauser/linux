@@ -84,9 +84,6 @@ void __init pagetable_init(void)
 #endif
 }
 
-#define pgd_index(address)	(((address) >> PGDIR_SHIFT) & (PTRS_PER_PGD-1))
-
-
 /* FIXME: Avoiding cache alias for the zero-page is kind of stupid
  *        but we need to do it to avoid alias-warnings in the iss.
  */

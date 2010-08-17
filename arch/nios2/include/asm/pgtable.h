@@ -101,6 +101,9 @@ void set_pmd(pmd_t *pmdptr, pmd_t pmdval);
 
 extern void paging_init(void);
 
+#define pgd_index(address)	(((address) >> PGDIR_SHIFT) \
+				 & (PTRS_PER_PGD - 1))
+
 /* to find an entry in a pagetable-directory */
 //#define pgd_offset(mm,addr)	((mm)->pgd + pgd_index(addr))
 //ivho: checkme type of addr
