@@ -71,8 +71,6 @@ static unsigned long empty_bad_page;
 
 unsigned long empty_zero_page;
 
-unsigned long empty_zero_page, zero_page_mask;
-
 extern unsigned long rom_length;
 
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
