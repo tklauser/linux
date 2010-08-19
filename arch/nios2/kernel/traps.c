@@ -60,7 +60,6 @@ EXPORT_SYMBOL(dump_stack);
 
 /*
  * The show_stack is an external API which we do not use ourselves.
- * The oops is printed in die_if_kernel.
  */
 
 int kstack_depth_to_print = 48;
@@ -111,24 +110,6 @@ void show_stack(struct task_struct *task, unsigned long *stack)
 		}
 	}
 	printk(KERN_EMERG "\n");
-}
-
-static void die_if_kernel(char *str, struct pt_regs *pregs)
-{
-	printk("0x%08lx\n trapped to die_if_kernel\n", pregs->ra);
-	show_regs(pregs);
-	add_taint(TAINT_DIE);
-	if(!user_mode(pregs))
-		do_exit(SIGKILL);
-	do_exit(SIGSEGV);
-}
-
-void do_hw_interrupt(unsigned long type, unsigned long psr, unsigned long pc)
-{
-	if (type < 0x10) {
-		printk("Unimplemented Nios2 TRAP, type = %02lx\n", type);
-		die_if_kernel("Whee... Hello Mr. Penguin", current->thread.kregs);
-	}
 }
 
 void trap_init(void)
