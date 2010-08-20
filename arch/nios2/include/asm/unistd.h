@@ -1,5 +1,5 @@
-#ifndef _ASM_NIOS2_UNISTD_H_
-#define _ASM_NIOS2_UNISTD_H_
+#ifndef _ASM_NIOS2_UNISTD_H
+#define _ASM_NIOS2_UNISTD_H
 
 /*--------------------------------------------------------------------
  *
@@ -377,8 +377,11 @@ extern int unresolved_symbol;
 #define __NR_rt_tgsigqueueinfo	333
 #define __NR_perf_event_open	334
 #define __NR_recvmmsg		335
+#define __NR_fanotify_init	336
+#define __NR_fanotify_mark	337
+#define __NR_prlimit64		338
 
-#define NR_syscalls		336
+#define NR_syscalls		339
 
 #ifdef __KERNEL__
 
@@ -414,4 +417,4 @@ extern int unresolved_symbol;
 
 #endif  /* __KERNEL__ */
 
-#endif  /* _ASM_NIOS2_UNISTD_H_ */
+#endif  /* _ASM_NIOS2_UNISTD_H */
