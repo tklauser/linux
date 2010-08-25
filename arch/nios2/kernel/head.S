@@ -246,7 +246,7 @@ finish_move:
 	movia	r1,nios2_boot_init	// save args r4-r7 passed from u-boot
 	callr	r1
 	
-	movia	r1,main			// call main as a subroutine
+	movia	r1,start_kernel		// call start_kernel as a subroutine
 	callr	r1
 
 	//------------------------------------------------------------------
