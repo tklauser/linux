@@ -19,3 +19,4 @@ obj-$(CONFIG_CONSOLE) += console.o
 obj-$(CONFIG_AVALON_DMA) += dma.o
 obj-$(CONFIG_EARLY_PRINTK) += early_printk.o
 #obj-$(CONFIG_NIOS_DEBUG_DEV) += debugdev.o
+obj-$(CONFIG_ALIGNMENT_TRAP) += misaligned.o

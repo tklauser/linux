@@ -6,9 +6,12 @@
  * Copyright (C) 2009, Wind River Systems Inc
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
+
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/pagemap.h>
+
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
@@ -41,26 +44,7 @@ struct tlb_stat statistics;
  */
 #define MAX_PHYS_ADDR 0
 
-#define CTL_STATUS    0
-#define CTL_ESTATUS   1
-#define CTL_BSTATUS   2
-#define CTL_IENABLE   3
-#define CTL_IPENDING  4
-#define CTL_CPUID     5
-#define CTL_RSVo1      6
-#define CTL_EXCEPTION 7
-#define CTL_PTEADDR   8
-#define CTL_TLBACC    9
-#define CTL_TLBMISC   10
-#define CTL_RSV2      11
-#define CTL_BADADDR   12
-#define CTL_CONFIG    13
-#define CTL_MPUBASE   14
-#define CTL_MPUACC    15 
-#define CTL_SIM    6
-
-/* bit definitions for TLBMISC register
- */ 
+/* bit definitions for TLBMISC register */
 #define PID_SHIFT     4
 #define PID_MASK 0x3fff
 
@@ -149,20 +133,18 @@ static void nios_debug(struct pt_regs *pt,  unsigned long addr)
 }
 #endif
 
-/* All entries common to a mm share an asid.  To effectively flush
-   these entries, we just bump the asid. */
+/*
+ * All entries common to a mm share an asid.  To effectively flush these
+ * entries, we just bump the asid.
+ */
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
-   mm_context_t *context = &mm->context;
+	statistics.local_flush_tlb_mm++;
 
-   statistics.local_flush_tlb_mm++;
-   
-   if(current->mm == mm) {
-      local_flush_tlb_all();      
-   }
-   else {
-      memset(&context[0], 0, sizeof(mm_context_t));
-   }
+	if (current->mm == mm)
+		local_flush_tlb_all();
+	else
+		memset(&mm->context, 0, sizeof(mm_context_t));
 }
 
 /*
@@ -393,11 +375,6 @@ void tlb_flush(struct mmu_gather *tlb)
 #include <linux/kernel.h>
 #include <asm/ptrace.h>
 #include <asm/nios.h>
-
-void initMMU(void)
-{
-   local_flush_tlb_all();
-}
 
 void unhandled_exception(struct pt_regs *fp, int cause)
 {

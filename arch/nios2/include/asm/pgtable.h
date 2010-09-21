@@ -10,12 +10,12 @@
  *
  * Copyright (C) 2003 Ralf Baechle
  */
+
 #ifndef _ASM_NIOS2_PGTABLE_H
 #define _ASM_NIOS2_PGTABLE_H
 
 #include <asm/io.h>
 #include <asm/page.h>
-#include <asm/addrspace.h>
 
 #include <asm/pgtable-bits.h>
 #include <asm-generic/pgtable-nopmd.h>

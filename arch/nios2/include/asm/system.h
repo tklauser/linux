@@ -21,8 +21,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#ifndef _ASM_NIOS2_SYSTQEM_H
-#define _ASM_NIOS2_SYSTQEM_H
+
+#ifndef _ASM_NIOS2_SYSTEM_H
+#define _ASM_NIOS2_SYSTEM_H
 
 #include <linux/linkage.h>
 #include <linux/compiler.h>
@@ -30,7 +31,6 @@
 #include <asm/entry.h>
 #include <asm/nios.h>
 #include <linux/string.h>
-#include <asm/addrspace.h>
 
 /*
  * switch_to(n) should switch tasks to task ptr, first checking that

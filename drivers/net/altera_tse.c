@@ -570,7 +570,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 					dev->name);
 			
 	//		tse_priv->mac_dev->command_config.image |= ALTERA_TSE_CMD_XOFF_GEN_MSK;	
-			tse_priv->status.rx_dropped++;
+			dev->stats.rx_dropped++;
 		}                      
 
 		//next descriptor
@@ -1233,9 +1233,8 @@ out:
 static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	struct net_device_stats *net_status =
-	    (struct net_device_stats *)&tse_priv->status;
-	
+	struct net_device_stats *net_status = &dev->stats;
+
 	/* total packets received without error*/
 	net_status->rx_packets =
 	    tse_priv->mac_dev->aFramesReceivedOK +
@@ -1271,24 +1270,17 @@ static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 * arg3    : list of multicasts addresses
 */
 
-static void tse_set_hash_table(struct net_device *dev, int count,
-			       struct dev_mc_list *addrs)
+static void tse_set_hash_table(struct net_device *dev)
 {
-	int mac_octet, xor_bit, bitshift, hash, loop;
+	int mac_octet, xor_bit, bitshift, hash;
 	char octet;
-	struct dev_mc_list *cur_addr;
+	struct netdev_hw_addr *ha;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	alt_tse_mac *p_mac_base = tse_priv->mac_dev;
 
-	cur_addr = addrs;
-	for (loop = 0; loop < count; loop++, cur_addr = cur_addr->next) 
-	{
-		/* do we have a pointer here? */
-		if (!cur_addr)
-			break;
-
+	netdev_for_each_mc_addr(ha, dev) {
 		/* make sure this is a multicasts address    */
-		if (!(*cur_addr->dmi_addr & 1))	//
+		if (!(*ha->addr & 1))
 			continue;
 
 		//PRINTK1("dmi_addr %x-%x-%x-%x-%x-%x\n", cur_addr->dmi_addr[0],
@@ -1300,7 +1292,7 @@ static void tse_set_hash_table(struct net_device *dev, int count,
 
 		for (mac_octet = 5; mac_octet >= 0; mac_octet--) {
 			xor_bit = 0;
-			octet = cur_addr->dmi_addr[mac_octet];
+			octet = ha->addr[mac_octet];
 			for (bitshift = 0; bitshift < 8; bitshift++)
 				xor_bit ^= (int)((octet >> bitshift) & 0x01);
 			hash = (hash << 1) | xor_bit;
@@ -1342,8 +1334,7 @@ static void tse_set_multicast_list(struct net_device *dev)
 		for (hash_loop = 0; hash_loop < 64; hash_loop++)
 			tse_priv->mac_dev->hash_table[hash_loop] = 0;	// Clear any existing hash entries
 
-		if (dev->mc_count)
-			tse_set_hash_table(dev, dev->mc_count, dev->mc_list);
+		tse_set_hash_table(dev);
 	}
 }
 

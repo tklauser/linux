@@ -50,9 +50,12 @@ extern int fixup_exception(struct pt_regs *regs);
 
 #define segment_eq(a, b)	((a).seg == (b).seg)
 
-#define access_ok(type, from, len)		\
+#define __access_ok(addr, len)			\
 	(((signed long)(((long)get_fs().seg) &	\
-                   ((long)(from) | (((long)(from)) + (len)) | (len)))) == 0)
+			((long)(addr) | (((long)(addr)) + (len)) | (len)))) == 0)
+
+#define access_ok(type, addr, len)		\
+	likely(__access_ok((addr), (len)))
 
 extern long __copy_from_user(void* to, const void __user *from, unsigned long n);
 extern long __copy_to_user(void __user *to, const void *from, unsigned long n);
@@ -145,9 +148,8 @@ static inline size_t clear_user(void __user *addr, __kernel_size_t size)
       long __gu_err = -EFAULT;                                          \
       const __typeof__(*(ptr)) __user * __gu_ptr = (ptr);               \
       unsigned long __gu_val = 0;                                       \
-      if (likely(access_ok(VERIFY_READ,  __gu_ptr, sizeof(*__gu_ptr)))) { \
+      if (access_ok(VERIFY_READ,  __gu_ptr, sizeof(*__gu_ptr)))		\
          __get_user_common(__gu_val, sizeof(*__gu_ptr), __gu_ptr, __gu_err); \
-      }                                                                 \
       (x) = (__typeof__(x))__gu_val;                                    \
       __gu_err;                                                         \
    })
@@ -188,7 +190,7 @@ static inline size_t clear_user(void __user *addr, __kernel_size_t size)
       long __pu_err = -EFAULT;                                          \
       __typeof__(*(ptr)) __user * __pu_ptr = (ptr);                     \
       __typeof__(*(ptr)) __pu_val = (__typeof(*ptr))(x);                \
-      if(likely(access_ok(VERIFY_WRITE, __pu_ptr, sizeof(*__pu_ptr))))  \
+      if (access_ok(VERIFY_WRITE, __pu_ptr, sizeof(*__pu_ptr)))		\
          __put_user_common(__pu_val, sizeof(*__pu_ptr), __pu_ptr, __pu_err); \
       __pu_err;                                                         \
    })
@@ -198,7 +200,7 @@ static inline size_t clear_user(void __user *addr, __kernel_size_t size)
       long __pu_err = -EFAULT;                                          \
       __typeof__(*(ptr)) __user * __pu_ptr = (ptr);                     \
       __typeof__(*(ptr)) __pu_val = (__typeof(*ptr))(x);                \
-      if(likely(access_ok(VERIFY_WRITE, __pu_ptr, sizeof(*__pu_ptr))))  \
+      if (access_ok(VERIFY_WRITE, __pu_ptr, sizeof(*__pu_ptr)))		\
          __put_user_common(__pu_val, sizeof(*__pu_ptr), __pu_ptr, __pu_err); \
       __pu_err;                                                         \
    })

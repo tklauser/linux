@@ -368,7 +368,6 @@ struct alt_tse_config {
 * packets in and out, so there is place for a packet
 */
 struct alt_tse_private {
-	struct net_device_stats status;
 	struct net_device *dev;
 
 /* NAPI struct for NAPI interface */

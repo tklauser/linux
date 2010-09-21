@@ -760,7 +760,7 @@ static void oeth_set_multicast_list(struct net_device *dev)
             regs->hash_addr0 = 0xffffffff;
             regs->hash_addr1 = 0xffffffff;
         }
-        else if (dev->mc_count) {
+        else if (netdev_mc_count(dev)) {
 
           #if 1                                         //;dgt
             // FIXME...for now, until broken            //;dgt

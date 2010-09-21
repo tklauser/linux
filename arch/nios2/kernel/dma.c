@@ -49,6 +49,7 @@
 #define CT_DOUBLE		0x400
 #define CT_QUAD			0x800
 
+#define DMA_SIZE		0x08
 struct dma_channel {
 	unsigned int addr;	/* control address */
 	unsigned int irq;	/* interrupt number */
@@ -304,6 +305,12 @@ int __init init_dma(void)
 {
 	int i;
 
+	#ifdef na_dma_0
+		dma_channels[0].addr=ioremap(na_dma_0, DMA_SIZE);
+	#endif
+	#ifdef na_dma_1
+		dma_channels[1].addr=ioremap(na_dma_1, DMA_SIZE);
+	#endif
 	for (i = 0; i < MAX_DMA_CHANNELS; i++) {
 		sprintf(dma_channels[i].id, "dmac-%d", i);
 		/* disable the dmac channel */
@@ -325,6 +332,7 @@ static void __exit exit_dma(void)
 		/* disable the dmac channel */
 		disable_dma(i);
 		free_irq(dma_channels[i].irq, dma_channels[i].id);
+		iounmap(dma_channels[i].addr);
 	}
 }
 

@@ -34,9 +34,7 @@
 #include <linux/ptrace.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
-#include <linux/swap.h>
 #include <linux/init.h>
-#include <linux/highmem.h>
 #include <linux/pagemap.h>
 #include <linux/bootmem.h>
 #include <linux/slab.h>
@@ -49,9 +47,6 @@
 #include <asm/percpu.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
-
-//;dgt2;#include <asm/machdep.h>
-//;dgt2;#include <asm/shglcore.h>
 
 #define DEBUG
 
@@ -170,7 +165,10 @@ void __init mem_init(void)
 	       );
 }
 
-
+void __init mmu_init(void)
+{
+	local_flush_tlb_all();
+}
 
 #ifdef CONFIG_BLK_DEV_INITRD
 void __init free_initrd_mem(unsigned long start, unsigned long end)

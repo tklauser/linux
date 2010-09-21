@@ -1,31 +1,23 @@
 /*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
  *
- * Taken from the m68knommu.
- * 
- * Copyright (C) 2004, Microtronix Datacom Ltd.
+ * Taken from m68knommu.
  *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
 
 #ifndef _ASM_NIOS2_MMU_H
 #define _ASM_NIOS2_MMU_H
 
-typedef unsigned long mm_context_t[NR_CPUS];
+#ifndef CONFIG_MMU
+# include <asm-generic/mmu.h>
+#else
 
+/* Default "unsigned long" context */
+typedef unsigned long mm_context_t;
+
+#endif /* CONFIG_MMU */
 #endif /* _ASM_NIOS2_MMU_H */
