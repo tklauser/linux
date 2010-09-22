@@ -3,7 +3,7 @@
  * Copyright (C) 1996, 1997, 1998, 1999 by Ralf Baechle
  * Copyright (C) 1999 Silicon Graphics, Inc.
  *
- * based on MIPS mmu_context.h
+ * based on MIPS asm/mmu_context.h
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
