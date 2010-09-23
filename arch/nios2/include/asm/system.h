@@ -90,6 +90,8 @@ asmlinkage void resume(void);
 
 #define iret() __asm__ __volatile__ ("eret": : :"memory", "ea")
 
+#include <linux/irqflags.h>
+
 /*
  * Force strict CPU ordering.
  * Not really required on m68k...
