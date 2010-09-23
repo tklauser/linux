@@ -1,29 +1,14 @@
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
 #ifndef _ASM_NIOS2_STAT_H
 #define _ASM_NIOS2_STAT_H
-
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/stat.h
- *
- * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
-
 
 struct __old_kernel_stat {
 	unsigned short st_dev;
@@ -83,7 +68,12 @@ struct stat64 {
 
 	long long	st_size;
 	unsigned long	st_blksize;
+#ifdef CONFIG_MMU
 	unsigned long long st_blocks;	/* Number 512-byte blocks allocated. */
+#else
+	unsigned long	__pad4;		/* future possible st_blocks high bits */
+	unsigned long	st_blocks;	/* Number 512-byte blocks allocated. */
+#endif
 
 	unsigned long	st_atime;
 	unsigned long	st_atime_nsec;
