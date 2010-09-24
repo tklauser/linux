@@ -139,15 +139,6 @@ void machine_halt(void)
 
 EXPORT_SYMBOL(machine_halt);
 
-void exit_thread(void)
-{
-}
-
-void release_thread(struct task_struct *dead_task)
-{
-	/* nothing to do ... */
-}
-
 /*
  * There is no way to power off the development
  * boards. So just spin lock for now. If you have
@@ -432,12 +423,6 @@ unsigned long get_wchan(struct task_struct *p)
 	return 0;
 }
 EXPORT_SYMBOL(get_wchan);
-
-/* Return saved PC of a blocked thread. */
-unsigned long thread_saved_pc(struct task_struct *t)
-{
-	return (t->thread.kregs->ea);
-}
 
 /*
  * Do necessary setup to start up a newly executed thread.

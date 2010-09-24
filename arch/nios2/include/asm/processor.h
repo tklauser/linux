@@ -1,47 +1,37 @@
-/*--------------------------------------------------------------------
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ * Copyright (C) 2001 Ken Hill (khill@microtronix.com)
+ *                    Vic Phillips (vic@microtronix.com)
+ * Copyright (C) 1994 David S. Miller
  *
- * include/asm-nios2/processor.h
+ * based on SPARC asm/processor.h
  *
- * Copyright (C) 1994 David S. Miller (davem@caip.rutgers.edu)
- * Copyright (C) 2001  Ken Hill (khill@microtronix.com)    
- *                     Vic Phillips (vic@microtronix.com)
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * hacked from:
- *      include/asm-sparc/processor.h
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- * Nov/02/2003      dgt     Fix task_size
- *
- ---------------------------------------------------------------------*/
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
 
 #ifndef _ASM_NIOS2_PROCESSOR_H
 #define _ASM_NIOS2_PROCESSOR_H
+
+#include <asm/ptrace.h>
 
 #define NIOS2_FLAG_KTHREAD	0x00000001	/* task is a kernel thread */
 #define NIOS2_FLAG_COPROC	0x00000002	/* Thread used coprocess */
 #define NIOS2_FLAG_DEBUG	0x00000004	/* task is being debugged */
 
-#define NIOS2_OP_NOP 0x1883a
-#define NIOS2_OP_BREAK	0x3da03a
+#define NIOS2_OP_NOP		0x1883a
+#define NIOS2_OP_BREAK		0x3da03a
 
+#ifdef CONFIG_MMU
 #ifdef __KERNEL__
 
 #define STACK_TOP	TASK_SIZE
 #define STACK_TOP_MAX	STACK_TOP
 
-#endif
+#endif /* __KERNEL__ */
+#endif /* CONFIG_MMU */
 
 #ifndef __ASSEMBLY__
 
@@ -51,36 +41,27 @@
  */
 #define current_text_addr() ({ __label__ _l; _l: &&_l;})
 
-#include <linux/compiler.h>
-#include <linux/string.h>
-
-#include <asm/ptrace.h>
-#include <asm/signal.h>
-#include <asm/segment.h>
-#include <asm/system.h> /* for get_hi_limit */
-
-/*
- * Bus types
- */
-#define EISA_bus 0
-#define EISA_bus__is_a_macro /* for versions in ksyms.c */
-#define MCA_bus 0
-#define MCA_bus__is_a_macro /* for versions in ksyms.c */
-
-/*
- * The nios has no problems with write protection
- */
-#define wp_works_ok 1
-#define wp_works_ok__is_a_macro /* for versions in ksyms.c */
-
 /* Whee, this is STACK_TOP and the lowest kernel address too... */
-#define KERNBASE        0xc0000000UL /* First address the kernel will 
-                                      * eventually be 
-                                      */
-#define TASK_SIZE	0x7fff0000UL
-#define MAX_USER_ADDR	  0xc0000000UL
-#define MMAP_SEARCH_START 0x40000000UL
-#define TASK_UNMAPPED_BASE (PAGE_ALIGN(TASK_SIZE / 3))
+#ifdef CONFIG_MMU
+
+/* First address the kernel will eventually be */
+# define KERNBASE		0xc0000000UL
+# define TASK_SIZE		0x7fff0000UL
+# define MAX_USER_ADDR		0xc0000000UL
+# define MMAP_SEARCH_START	0x40000000UL
+# define TASK_UNMAPPED_BASE	(PAGE_ALIGN(TASK_SIZE / 3))
+
+#else
+
+# define TASK_SIZE		((unsigned int) nasys_program_mem_end)
+
+/*
+ * This decides where the kernel will search for a free chunk of vm
+ * space during mmap's. We won't be using it
+ */
+# define TASK_UNMAPPED_BASE	0
+
+#endif /* CONFIG_MMU */
 
 /* The Nios processor specific thread struct. */
 struct thread_struct {
@@ -89,45 +70,61 @@ struct thread_struct {
 	/* Context switch saved kernel state. */
 	unsigned long ksp;
 	unsigned long kpsr;
+#ifndef CONFIG_MMU
+	unsigned long kesr;
+#endif
 
-	/* Flags are defined below
-    */
+	/* Flags are defined below */
 	unsigned long flags;
 };
 
 #define INIT_MMAP \
-   { &init_mm, (0), (0), __pgprot(0x0) , VM_READ | VM_WRITE | VM_EXEC }
+	{ &init_mm, (0), (0), __pgprot(0x0), VM_READ | VM_WRITE | VM_EXEC }
 
-#define INIT_THREAD {                        \
-      .kregs	= 0,                          \
-      .ksp		= 0,                          \
-      .kpsr		= 0,                          \
-      .flags	= NIOS2_FLAG_KTHREAD,         \
+#ifdef CONFIG_MMU
+# define INIT_THREAD {			\
+	.kregs	= 0,			\
+	.ksp	= 0,			\
+	.kpsr	= 0,			\
+	.flags	= NIOS2_FLAG_KTHREAD,	\
 }
+#else
+# define INIT_THREAD { sizeof(init_stack) + (unsigned long) init_stack }
+#endif /* CONFIG_MMU */
+
+extern void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp);
 
 struct task_struct;
+
 /* Free all resources held by a thread. */
-extern void release_thread(struct task_struct *);
+static inline void release_thread(struct task_struct *dead_task)
+{
+}
 
-extern unsigned long thread_saved_pc(struct task_struct *t);
+/* Free current thread data structures etc.. */
+static inline void exit_thread(void)
+{
+}
 
-extern void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp);
+/* Return saved PC of a blocked thread. */
+#define thread_saved_pc(tsk)	((tsk)->thread.kregs->ea)
+
+extern unsigned long get_wchan(struct task_struct *p);
 
 /* Prepare to copy thread state - unlazy all lazy status */
 #define prepare_to_copy(tsk)	do { } while (0)
 
 extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
 
-#define THREAD_START_SP (THREAD_SIZE - sizeof(struct pt_regs))
-#define task_pt_regs(p) \
+#ifdef CONFIG_MMU
+# define THREAD_START_SP	(THREAD_SIZE - sizeof(struct pt_regs))
+# define task_pt_regs(p) \
 	((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
+#endif
 
-unsigned long get_wchan(struct task_struct *p);
-
-/* Used by procfs
- */
-#define KSTK_EIP(tsk)  ((tsk)->thread.kregs->ea)
-#define KSTK_ESP(tsk)  ((tsk)->thread.kregs->sp)
+/* Used by procfs */
+#define KSTK_EIP(tsk)	((tsk)->thread.kregs->ea)
+#define KSTK_ESP(tsk)	((tsk)->thread.kregs->sp)
 
 #define cpu_relax()	barrier()
 
