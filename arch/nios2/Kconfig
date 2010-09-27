@@ -9,6 +9,7 @@ config NIOS2
 	def_bool y
 	# Horrible source of confusion.  Die, die, die ...
 	select EMBEDDED
+	select HAVE_OPROFILE
 	select USB_ARCH_HAS_HCD
 
 config MMU

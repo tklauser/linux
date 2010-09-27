@@ -43,6 +43,7 @@ libs-y		+= arch/nios2/lib/
 core-y		+= arch/nios2/kernel/ arch/nios2/mm/
 
 drivers-y	+= arch/nios2/drivers/
+drivers-$(CONFIG_OPROFILE) += arch/$(ARCH)/oprofile/
 
 include $(srctree)/arch/$(ARCH)/boards/Makefile
 
