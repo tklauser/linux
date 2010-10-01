@@ -239,8 +239,8 @@ asmlinkage int nios2_execve(struct pt_regs *regs)
 	if (IS_ERR(filename))
 		goto out;
 	error = do_execve(filename,
-			  (char **) regs->r5,
-			  (char **) regs->r6,
+			  (const char __user *const __user *) regs->r5,
+			  (const char __user *const __user *) regs->r6,
 			  regs);
 	putname(filename);
 out:
