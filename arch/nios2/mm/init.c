@@ -94,7 +94,7 @@ void __init paging_init(void)
 	unsigned long end_mem   = memory_end;
 
    pagetable_init();
-   pgd_current[0] = (unsigned long)swapper_pg_dir;
+	pgd_current = (unsigned long)swapper_pg_dir;
 
 	/*
 	 * Initialize the bad page table and bad page to point
@@ -246,6 +246,6 @@ void __init fixrange_init(unsigned long start, unsigned long end,
 
 
 #define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE<<order)))
-unsigned long pgd_current[NR_CPUS];
+unsigned long pgd_current;
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned(PGD_ORDER);
 pte_t invalid_pte_table[PTRS_PER_PTE] __page_aligned(PTE_ORDER);

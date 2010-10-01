@@ -20,12 +20,11 @@
 #include <asm/tlbflush.h>
 #include <asm-generic/mm_hooks.h>
 
-/* ivho: leaving old MIPS comment
- * For the fast tlb miss handlers, we keep a per cpu array of pointers
- * to the current pgd for each processor. Also, the proc. id is stuffed
- * into the context register.
+/*
+ * For the fast tlb miss handlers, we keep a pointer to the current pgd.
+ * processor.
  */
-extern unsigned long pgd_current[];
+extern unsigned long pgd_current;
 
 void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk);
 

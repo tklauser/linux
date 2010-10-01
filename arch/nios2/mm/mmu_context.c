@@ -37,13 +37,6 @@
 
 static unsigned long ctx = FIRST_CTX;
 
-/* For the fast tlb miss handlers, we keep a per cpu array of pointers
- * to the current pgd for each processor. Also, the proc. id is stuffed
- * into the context register.
- */
-extern unsigned long pgd_current[];
-
-
 void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {
 }
@@ -110,7 +103,7 @@ void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		next->context = get_new_context();
 
 	/* Save the current pgd so the fast tlb handler can find it */
-	pgd_current[smp_processor_id()] = (unsigned long)next->pgd;
+	pgd_current = (unsigned long) next->pgd;
 
 	/* Set the current context */
 	set_context(next->context);
@@ -139,7 +132,7 @@ void activate_mm(struct mm_struct *prev, struct mm_struct *next)
 {
 	next->context = get_new_context();
 	set_context(next->context);
-	pgd_current[smp_processor_id()] = (unsigned long)next->pgd;
+	pgd_current = (unsigned long) next->pgd;
 }
 
 unsigned long get_pid_from_context(mm_context_t* context)

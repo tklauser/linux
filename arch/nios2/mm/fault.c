@@ -24,7 +24,6 @@
 #include <linux/ptrace.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
-#include <linux/smp.h>
 #include <linux/vt_kern.h>		/* For unblank_screen() */
 #include <linux/module.h>
 
@@ -256,7 +255,7 @@ vmalloc_fault:
 #if 1
       /* FIXME: Is this entierly correct ?
        */
-		pgd = (pgd_t *) pgd_current[raw_smp_processor_id()] + offset;
+		pgd = (pgd_t *) pgd_current + offset;
 #else
 		pgd = &current->mm->pgd[offset];
 #endif
