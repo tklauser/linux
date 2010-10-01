@@ -159,7 +159,7 @@ fast_handler_end:
 	 */
 
 	movia	r1,NIOS2_DCACHE_SIZE
-	movi	r2,NIOS2_DCACHE_LINE_SIZE
+	movui	r2,NIOS2_DCACHE_LINE_SIZE
 
 data_flush:
 	flushd	0(r1)
