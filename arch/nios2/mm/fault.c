@@ -14,6 +14,7 @@
  *
  * Copyright (C) 1995 - 2000 by Ralf Baechle
  */
+
 #include <linux/signal.h>
 #include <linux/sched.h>
 #include <linux/interrupt.h>
@@ -24,7 +25,6 @@
 #include <linux/ptrace.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
-#include <linux/vt_kern.h>		/* For unblank_screen() */
 #include <linux/module.h>
 
 #include <asm/mmu_context.h>
@@ -188,10 +188,9 @@ no_context:
 	 */
 	bust_spinlocks(1);
 
-	printk(KERN_ALERT "CPU %d Unable to handle kernel paging request at "
+	printk(KERN_ALERT "Unable to handle kernel paging request at "
 	       "virtual address %0*lx, epc == %0*lx, ra == %0*lx\n",
-	       raw_smp_processor_id(), field, address, field, regs->ea,
-	       field,  regs->ra);
+	       field, address, field, regs->ea, field,  regs->ra);
 	panic("Oops");
 
 /*

@@ -8,7 +8,6 @@
 #define _ASM_NIOS2_THREAD_INFO_H
 
 #include <asm/page.h>
-#include <asm/segment.h>
 
 /* thread information allocation */
 #ifndef PAGE_SIZE

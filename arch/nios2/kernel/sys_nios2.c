@@ -29,7 +29,6 @@
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
-#include <linux/smp.h>
 #include <linux/sem.h>
 #include <linux/msg.h>
 #include <linux/shm.h>
@@ -39,12 +38,9 @@
 #include <linux/file.h>
 #include <linux/utsname.h>
 #include <linux/uaccess.h>
-#include <linux/ipc.h>
 #include <linux/unistd.h>
 #include <linux/fs.h>
 
-#include <asm/setup.h>
-#include <asm/cachectl.h>
 #include <asm/cacheflush.h>
 
 asmlinkage long sys_mmap(unsigned long addr, unsigned long len,

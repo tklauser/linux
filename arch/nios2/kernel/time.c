@@ -12,7 +12,6 @@
 #include <linux/irq.h>
 #include <linux/clocksource.h>
 
-#include <asm/segment.h>
 #include <asm/io.h>
 
 #define	TICK_SIZE (tick_nsec / 1000)

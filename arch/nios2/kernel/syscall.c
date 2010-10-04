@@ -7,11 +7,11 @@
  * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
  * Copyright (C) 2001 MIPS Technologies, Inc.
  */
+
 #include <linux/capability.h>
 #include <linux/errno.h>
 #include <linux/linkage.h>
 #include <linux/mm.h>
-#include <linux/smp.h>
 #include <linux/mman.h>
 #include <linux/ptrace.h>
 #include <linux/sched.h>

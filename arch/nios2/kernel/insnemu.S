@@ -34,7 +34,6 @@
 #include <asm/thread_info.h>
 #include <asm/errno.h>
 #include <asm/setup.h>
-#include <asm/segment.h>
 #include <asm/entry.h>
 #include <asm/unistd.h>
 #include <asm/processor.h>
