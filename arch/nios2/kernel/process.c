@@ -45,7 +45,6 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
-#include <linux/smp_lock.h>
 #include <linux/stddef.h>
 #include <linux/unistd.h>
 #include <linux/ptrace.h>
@@ -230,20 +229,17 @@ asmlinkage int nios2_fork(struct pt_regs *regs)
 asmlinkage int nios2_execve(struct pt_regs *regs)
 {
 	int error;
-	char * filename;
+	char *filename;
 
-	lock_kernel();
 	filename = getname((char *) regs->r4);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
-		goto out;
+		return error;
 	error = do_execve(filename,
 			  (const char __user *const __user *) regs->r5,
 			  (const char __user *const __user *) regs->r6,
 			  regs);
 	putname(filename);
-out:
-	unlock_kernel();
 	return error;
 }
 
