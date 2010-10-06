@@ -56,6 +56,13 @@ BOOT_TARGETS = vmImage zImage
 PHONY += $(BOOT_TARGETS) install
 KBUILD_IMAGE := $(boot)/vmImage
 
+# define filename extension depending on memory management type
+ifeq ($(CONFIG_MMU),)
+MMU := -nommu
+endif
+
+export MMU
+
 all: vmImage
 
 $(BOOT_TARGETS): vmlinux
