@@ -184,27 +184,30 @@ static inline void io_insl(void __iomem *addr, void *buf, int len)
 extern void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag);
 extern void __iounmap(void *addr);
 
-extern inline void *ioremap(unsigned long physaddr, unsigned long size)
+static inline void *ioremap(unsigned long physaddr, unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
-extern inline void *ioremap_nocache(unsigned long physaddr, unsigned long size)
+
+static inline void *ioremap_nocache(unsigned long physaddr, unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
-extern inline void *ioremap_writethrough(unsigned long physaddr, unsigned long size)
+
+static inline void *ioremap_writethrough(unsigned long physaddr, unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
-extern inline void *ioremap_fullcache(unsigned long physaddr, unsigned long size)
+
+static inline void *ioremap_fullcache(unsigned long physaddr, unsigned long size)
 {
 	return __ioremap(physaddr, size, _PAGE_CACHED);
 }
 
-extern inline void iounmap(void *addr) {
-   __iounmap(addr);
+static inline void iounmap(void *addr)
+{
+	__iounmap(addr);
 }
-
 
 #define IO_SPACE_LIMIT 0xffffffff
 
