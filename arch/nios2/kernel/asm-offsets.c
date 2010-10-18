@@ -12,26 +12,22 @@
 #include <linux/sched.h>
 #include <linux/kernel_stat.h>
 #include <linux/ptrace.h>
+#include <linux/hardirq.h>
+#include <linux/thread_info.h>
+#include <linux/kbuild.h>
 #include <asm/irq.h>
-#include <asm/hardirq.h>
 #include <asm/nios.h>
 #include <asm/tlbstats.h>
 
-#define DEFINE(sym, val) \
-        asm volatile("\n->" #sym " %0 " #val : : "i" (val))
-
-#define BLANK() asm volatile("\n->" : : )
-
 int main(void)
 {
-
 	/* offsets into the task struct */
 	DEFINE(TASK_STATE, offsetof(struct task_struct, state));
 	DEFINE(TASK_FLAGS, offsetof(struct task_struct, flags));
 	DEFINE(TASK_PTRACE, offsetof(struct task_struct, ptrace));
 	DEFINE(TASK_BLOCKED, offsetof(struct task_struct, blocked));
 	DEFINE(TASK_THREAD, offsetof(struct task_struct, thread));
-/*	DEFINE(TASK_THREAD_INFO, offsetof(struct task_struct, stack));*/
+	DEFINE(TASK_THREAD_INFO, offsetof(struct task_struct, stack));
 	DEFINE(TASK_MM, offsetof(struct task_struct, mm));
 	DEFINE(TASK_ACTIVE_MM, offsetof(struct task_struct, active_mm));
 
@@ -41,11 +37,16 @@ int main(void)
 	/* offsets into the thread struct */
 	DEFINE(THREAD_KSP, offsetof(struct thread_struct, ksp));
 	DEFINE(THREAD_KPSR, offsetof(struct thread_struct, kpsr));
+#ifndef CONFIG_MMU
+	DEFINE(THREAD_KESR, offsetof(struct thread_struct, kesr));
+#endif
 	DEFINE(THREAD_FLAGS, offsetof(struct thread_struct, flags));
 
 	/* offsets into the pt_regs */
 	DEFINE(PT_ORIG_R2, offsetof(struct pt_regs, orig_r2));
+#ifdef CONFIG_MMU
 	DEFINE(PT_ORIG_R7, offsetof(struct pt_regs, orig_r7));
+#endif
 	DEFINE(PT_R1, offsetof(struct pt_regs, r1));
 	DEFINE(PT_R2, offsetof(struct pt_regs, r2));
 	DEFINE(PT_R3, offsetof(struct pt_regs, r3));
@@ -67,6 +68,9 @@ int main(void)
 	DEFINE(PT_SP, offsetof(struct pt_regs, sp));
 	DEFINE(PT_GP, offsetof(struct pt_regs, gp));
 	DEFINE(PT_ESTATUS, offsetof(struct pt_regs, estatus));
+#ifndef CONFIG_MMU
+	DEFINE(PT_STATUS_EXTENSION, offsetof(struct pt_regs, status_extension));
+#endif
 	DEFINE(PT_REGS_SIZE, sizeof(struct pt_regs));
 
 	/* offsets into the switch_stack */
@@ -83,12 +87,10 @@ int main(void)
 	DEFINE(SW_RA, offsetof(struct switch_stack, ra));
 	DEFINE(SWITCH_STACK_SIZE, sizeof(struct switch_stack));
 
-	DEFINE(ESTATUS_EU_ASM, ESTATUS_EU);
-
-	DEFINE(NIOS2_STATUS_PIE_MSK_ASM, NIOS2_STATUS_PIE_MSK);  
-	DEFINE(NIOS2_STATUS_PIE_OFST_ASM, NIOS2_STATUS_PIE_OFST); 
-	DEFINE(NIOS2_STATUS_U_MSK_ASM, NIOS2_STATUS_U_MSK);    
-	DEFINE(NIOS2_STATUS_U_OFST_ASM, NIOS2_STATUS_U_OFST);   
+	DEFINE(NIOS2_STATUS_PIE_MSK_ASM, NIOS2_STATUS_PIE_MSK);
+	DEFINE(NIOS2_STATUS_PIE_OFST_ASM, NIOS2_STATUS_PIE_OFST);
+	DEFINE(NIOS2_STATUS_U_MSK_ASM, NIOS2_STATUS_U_MSK);
+	DEFINE(NIOS2_STATUS_U_OFST_ASM, NIOS2_STATUS_U_OFST);
 
 	/* Offsets in thread_info structure, used in assembly code */
 	DEFINE(TI_TASK, offsetof(struct thread_info, task));
@@ -113,28 +115,29 @@ int main(void)
 
 	DEFINE(_TIF_WORK_MASK_ASM, _TIF_WORK_MASK);
 
-	/* TLB statistics
-	 */
-	DEFINE(STAT_TLB_FAST_HANDLER, offsetof(struct tlb_stat, tlb_fast_handler));
-
-	/* Currently not used by assembly...
-	 */
+	/* Currently not used by assembly... */
 	DEFINE(LINUX_SDRAM_START, DDR2_TOP_BASE);
 	DEFINE(LINUX_SDRAM_END, DDR2_TOP_BASE+DDR2_TOP_SPAN);
-	
-	/* Cache defines
-	 */
+
+	/* Cache defines */
 	DEFINE(NIOS2_ICACHE_SIZE, ICACHE_SIZE);
 	DEFINE(NIOS2_ICACHE_LINE_SIZE, ICACHE_LINE_SIZE);
 	DEFINE(NIOS2_DCACHE_SIZE, DCACHE_SIZE);
 	DEFINE(NIOS2_DCACHE_LINE_SIZE, DCACHE_LINE_SIZE);
 
-	/* Excpetion addresses (virtual 0xc0000000 addresses)
-	 */	
-   DEFINE(KERNEL_REGION_BASE_ASM, KERNEL_REGION_BASE);
+#ifdef CONFIG_MMU
+	DEFINE(ESTATUS_EU_ASM, ESTATUS_EU);
+
+	/* TLB statistics */
+	DEFINE(STAT_TLB_FAST_HANDLER, offsetof(struct tlb_stat, tlb_fast_handler));
+
+	/* Exception addresses (virtual 0xc0000000 addresses) */
+	DEFINE(KERNEL_REGION_BASE_ASM, KERNEL_REGION_BASE);
 	DEFINE(CPU_EXCEPT_VIRT_ADDRESS_ASM, EXCEPTION_ADDR);
 	DEFINE(CPU_FAST_TLB_MISS_EXCEPTION_VIRT_ADDR_ASM,  FAST_TLB_MISS_EXCEPTION_ADDR);
-	
+#else
+	DEFINE(PS_S_ASM, PS_S);
+#endif
 
 	return 0;
 }
