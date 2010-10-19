@@ -1,39 +1,15 @@
-/*--------------------------------------------------------------------
- *
- * arch/nios2/kernel/init_task.c
- *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
- *
- * Based on:
- *
- * arch/nios2nommu/kernel/init_task.c
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * Copyright (C) 2003 Microtronix Datacom Ltd.
  *
  * Ported from arch/m68knommu/kernel/init_task.c
  *
- * Copyright (C) 2003, Microtronix Datacom Ltd.
- *
- * All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
 
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -56,6 +32,7 @@ static struct sighand_struct init_sighand = INIT_SIGHAND(init_sighand);
  */
 __asm__(".align 2");
 struct task_struct init_task = INIT_TASK(init_task);
+EXPORT_SYMBOL(init_task);
 
 /*
  * Initial thread structure.
