@@ -18,6 +18,7 @@
     
     Written by Wentao Xu <xuwentao@microtronix.com>
 */
+
 #include <linux/moduleloader.h>
 #include <linux/elf.h>
 #include <linux/vmalloc.h>
@@ -25,14 +26,9 @@
 #include <linux/fs.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
+
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
-
-#if 0
-#define DEBUGP printk
-#else
-#define DEBUGP(fmt , ...)
-#endif
 
 /* FIXME:  modules should NOT be allocated with kmalloc
  * for (obvious) reasons. But we do it for now to avoid
@@ -104,8 +100,8 @@ int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
 	unsigned int i;
 	Elf32_Rela *rela = (void *)sechdrs[relsec].sh_addr;
 
-	DEBUGP ("Applying relocate section %u to %u\n", relsec,
-		sechdrs[relsec].sh_info);
+	pr_debug("Applying relocate section %u to %u\n", relsec,
+		 sechdrs[relsec].sh_info);
 
 	for (i = 0; i < sechdrs[relsec].sh_size / sizeof (*rela); i++) {
 		/* This is where to make the change */
@@ -119,18 +115,15 @@ int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
 			= ((Elf32_Sym *)sechdrs[symindex].sh_addr
 			   + ELF32_R_SYM (rela[i].r_info));
 		uint32_t v = sym->st_value + rela[i].r_addend;
-		DEBUGP("reltype %d 0x%x name:<%s>\n", ELF32_R_TYPE (rela[i].r_info),
-		       rela[i].r_offset,
-		       strtab+sym->st_name);
+		pr_debug("reltype %d 0x%x name:<%s>\n", ELF32_R_TYPE (rela[i].r_info),
+		         rela[i].r_offset, strtab + sym->st_name);
 
 		switch (ELF32_R_TYPE (rela[i].r_info)) {
 		case R_NIOS2_NONE:
 			break;
-			
 		case R_NIOS2_BFD_RELOC_32:
 			*loc += v;
 			break;
-			
 		case R_NIOS2_PCREL16:
 			v -= (uint32_t)loc + 4;
 			if ((int32_t)v > 0x7fff ||
@@ -143,7 +136,6 @@ int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
 			word = *loc;
 			*loc = ((((word >> 22) << 16) | (v & 0xffff)) << 6) | (word & 0x3f);
 			break;
-			
 		case R_NIOS2_CALL26:
 			if (v & 3) {
 				printk(KERN_ERR
@@ -159,23 +151,20 @@ int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
 			}
 			*loc = (*loc & 0x3f) | ((v >> 2) << 6);
 			break;
-			
 		case R_NIOS2_HI16:
 			word = *loc;
 			*loc = ((((word >> 22) << 16) | ((v >>16) & 0xffff)) << 6) | 
 					(word & 0x3f);
 			break;
-					
 		case R_NIOS2_LO16:
 			word = *loc;
 			*loc = ((((word >> 22) << 16) | (v & 0xffff)) << 6) | 
 					(word & 0x3f);
 			break;
-					
 		case R_NIOS2_HIADJ16:
 			{
 				Elf32_Addr word2;
-				
+
 				word = *loc;
 				word2 = ((v >> 16) + ((v >> 15) & 1)) & 0xffff;
 				*loc = ((((word >> 22) << 16) | word2) << 6) | 
