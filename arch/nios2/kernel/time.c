@@ -1,33 +1,39 @@
-#include <linux/errno.h>
-#include <linux/sched.h>
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
+#include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/param.h>
-#include <linux/string.h>
-#include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
 #include <linux/timex.h>
 #include <linux/profile.h>
-#include <linux/module.h>
 #include <linux/irq.h>
 #include <linux/clocksource.h>
 
 #include <asm/io.h>
+#include <asm/nios.h>
 
-#define	TICK_SIZE (tick_nsec / 1000)
-#define NIOS2_TIMER_PERIOD (TIMER_1MS_FREQ/HZ)
+#define	TICK_SIZE		(tick_nsec / 1000)
+#define NIOS2_TIMER_PERIOD	(TIMER_1MS_FREQ / HZ)
 
-#define ALTERA_TIMER_STATUS_REG              0
-#define ALTERA_TIMER_CONTROL_REG             4
-#define ALTERA_TIMER_PERIODL_REG             8
-#define ALTERA_TIMER_PERIODH_REG             12
-#define ALTERA_TIMER_SNAPL_REG               16
-#define ALTERA_TIMER_SNAPH_REG               20
+#define ALTERA_TIMER_STATUS_REG		0
+#define ALTERA_TIMER_CONTROL_REG	4
+#define ALTERA_TIMER_PERIODL_REG	8
+#define ALTERA_TIMER_PERIODH_REG	12
+#define ALTERA_TIMER_SNAPL_REG		16
+#define ALTERA_TIMER_SNAPH_REG		20
 
-#define ALTERA_TIMER_CONTROL_ITO_MSK         (0x1)
-#define ALTERA_TIMER_CONTROL_CONT_MSK        (0x2)
-#define ALTERA_TIMER_CONTROL_START_MSK       (0x4)
-#define ALTERA_TIMER_CONTROL_STOP_MSK        (0x8)
+#define ALTERA_TIMER_CONTROL_ITO_MSK	(0x1)
+#define ALTERA_TIMER_CONTROL_CONT_MSK	(0x2)
+#define ALTERA_TIMER_CONTROL_START_MSK	(0x4)
+#define ALTERA_TIMER_CONTROL_STOP_MSK	(0x8)
 
 static unsigned long nios2_timer_count;
 static unsigned long timer_membase;
@@ -86,31 +92,31 @@ static cycle_t nios2_timer_read(struct clocksource *cs)
 }
 
 static struct clocksource nios2_timer = {
-	.name = "timer",
-	.rating = 250,
-	.read = nios2_timer_read,
-	.shift = 20,
-	.mask = CLOCKSOURCE_MASK(32),
-	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
+	.name	= "timer",
+	.rating	= 250,
+	.read	= nios2_timer_read,
+	.shift	= 20,
+	.mask	= CLOCKSOURCE_MASK(32),
+	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
 static struct irqaction nios2_timer_irq = {
-	.name = "timer",
-	.flags = IRQF_DISABLED | IRQF_TIMER,
-	.handler = timer_interrupt,
+	.name		= "timer",
+	.flags		= IRQF_DISABLED | IRQF_TIMER,
+	.handler	= timer_interrupt,
 };
 
 void __init nios2_late_time_init(void)
 {
 	unsigned ctrl;
 
-	timer_membase = (unsigned long)ioremap(TIMER_1MS_BASE, TIMER_1MS_SPAN);
+	timer_membase = (unsigned long) ioremap(TIMER_1MS_BASE, TIMER_1MS_SPAN);
 	setup_irq(TIMER_1MS_IRQ, &nios2_timer_irq);
 	write_timerperiod(NIOS2_TIMER_PERIOD - 1);
 
 	/* clocksource initialize */
 	nios2_timer.mult =
-	    clocksource_hz2mult(TIMER_1MS_FREQ, nios2_timer.shift);
+		clocksource_hz2mult(TIMER_1MS_FREQ, nios2_timer.shift);
 	clocksource_register(&nios2_timer);
 
 	/* interrupt enable + continuous + start */
