@@ -183,7 +183,6 @@ void update_mmu_cache(struct vm_area_struct *vma,
 				    unsigned long address, pte_t *pte);
 
 void pte_unmap(pte_t *pte);
-void pte_unmap_nested(pte_t *pte);
 
 pte_t pgoff_to_pte(pgoff_t off);
 
@@ -200,7 +199,6 @@ pte_t pgoff_to_pte(pgoff_t off);
 
 unsigned long pte_pfn(pte_t pte);
 pte_t * pte_offset_map(pmd_t *dir, unsigned long address);
-pte_t * pte_offset_map_nested(pmd_t *dir, unsigned long address);
 
 /* to find an entry in a kernel page-table-directory */
 pgd_t * pgd_offset_k(unsigned long address);

@@ -284,11 +284,6 @@ void pte_unmap(pte_t *pte){
   (void)pte;
 }
 
-void pte_unmap_nested(pte_t *pte)
-{
-  (void)pte;
-}
-
 pte_t pgoff_to_pte(pgoff_t off){BUG();}
 
 /*
@@ -305,11 +300,6 @@ pte_t * pte_offset_map(pmd_t *dir, unsigned long address){
   rv = (pte_t *)page_address(pmd_page(*dir)) + 
     ((address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1));
   return rv;
-}
-
-pte_t * pte_offset_map_nested(pmd_t *dir, unsigned long address)
-{
-  return pte_offset_map(dir,address);
 }
 
 /* to find an entry in a kernel page-table-directory */
