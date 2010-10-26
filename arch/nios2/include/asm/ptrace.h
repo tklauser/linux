@@ -97,12 +97,12 @@ struct pt_regs {
 	unsigned long  sp;		/* Stack pointer */
 	unsigned long  gp;		/* Global pointer */
 	unsigned long  estatus;
+#ifndef CONFIG_MMU
+	unsigned long  status_extension;	/* Status extension. Used to fake user mode */
+#endif
 	unsigned long  ea;		/* Exception return address (pc) */
 #ifdef CONFIG_MMU
 	unsigned long  orig_r7;
-#else
-	/* Status extension. Used to fake user mode */
-	unsigned long  status_extension;
 #endif
 };
 
