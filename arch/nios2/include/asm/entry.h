@@ -1,25 +1,12 @@
 /*
- * Hacked from m68knommu port.
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
  *
- *  Copyright(C) 2004 Microtronix Datacom Ltd.
+ * Based on m68knommu asm/entry.h
  *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
 
 #ifndef _ASM_NIOS2_ENTRY_H
@@ -57,8 +44,8 @@
  *	48(sp) - sp
  *	4C(sp) - gp
  *	50(sp) - estatus
+ *	54(sp) - status_extension (NOMMU only)
  *	58(sp) - ea
- *
  */
 
 /* process bits for task_struct.flags */
@@ -71,7 +58,6 @@ PF_DTRACE_BIT = 5
 
 /*
  * This defines the normal kernel pt-regs layout.
- *
  */
 
 /*
@@ -79,9 +65,16 @@ PF_DTRACE_BIT = 5
  * Must be called with interrupts disabled.
  */
 .macro SAVE_ALL
+#ifdef CONFIG_MMU
 	rdctl	r24,estatus
 	andi	r24,r24,NIOS2_STATUS_U_MSK_ASM
 	beq	r24,r0,1f		// In supervisor mode, already on kernel stack
+#else
+	movia	r24,status_extension	// Read status extension
+	ldw	r24,0(r24)
+	andi	r24,r24,PS_S_ASM
+	bne	r24,r0,1f		// In supervisor mode, already on kernel stack
+#endif /* CONFIG_MMU */
 
 	movia	r24,_current_thread	// Switch to current kernel stack
 	ldw	r24,0(r24)		//  using the thread_info
@@ -109,17 +102,33 @@ PF_DTRACE_BIT = 5
 	stw	r14,PT_R14(sp)
 	stw	r15,PT_R15(sp)
 	stw	r2,PT_ORIG_R2(sp)
+#ifdef CONFIG_MMU
 	stw	r7,PT_ORIG_R7(sp)
+#endif
 	stw	ra,PT_RA(sp)
 	stw	fp,PT_FP(sp)
 	stw	gp,PT_GP(sp)
 	rdctl	r24,estatus
 	stw	r24,PT_ESTATUS(sp)
+#ifndef CONFIG_MMU
+	movia	r24,status_extension		// Read status extension
+	ldw	r1,0(r24)
+	stw	r1,PT_STATUS_EXTENSION(sp)	// Store user/supervisor status
+	ORI32	r1,r1,PS_S_ASM			// Set supervisor mode
+	stw	r1,0(r24)
+#endif /* CONFIG_MMU */
 	stw	ea,PT_EA(sp)
 .endm
 
 .macro RESTORE_ALL
- 	ldw	r1,PT_R1(sp)		// Restore registers
+#ifdef CONFIG_MMU
+	ldw	r1,PT_R1(sp)		// Restore registers
+#else
+	ldw	r1,PT_STATUS_EXTENSION(sp)	// Restore user/supervisor status
+	movia	r24,status_extension
+	stw	r1,0(r24)
+	ldw	r1,PT_R1(sp)		// Restore registers
+#endif /* CONFIG_MMU */
 	ldw	r2,PT_R2(sp)
 	ldw	r3,PT_R3(sp)
 	ldw	r4,PT_R4(sp)
