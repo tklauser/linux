@@ -1,10 +1,10 @@
 /*
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
 #include <linux/init.h>
@@ -34,7 +34,10 @@
  *  
  */
 
-void pgd_init(unsigned long page)
+/*
+ * Initialize a new pgd / pmd table with invalid pointers.
+ */
+static void pgd_init(unsigned long page)
 {
 	unsigned long *p = (unsigned long *) page;
 	int i;
@@ -49,6 +52,20 @@ void pgd_init(unsigned long page)
 		p[i + 6] = (unsigned long) invalid_pte_table;
 		p[i + 7] = (unsigned long) invalid_pte_table;
 	}
+}
+
+pgd_t *pgd_alloc(struct mm_struct *mm)
+{
+	pgd_t *ret, *init;
+	ret = (pgd_t *) __get_free_pages(GFP_KERNEL, PGD_ORDER);
+	if (ret) {
+		init = pgd_offset(&init_mm, 0UL);
+		pgd_init((unsigned long) ret);
+		memcpy(ret + USER_PTRS_PER_PGD, init + USER_PTRS_PER_PGD,
+		       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
+	}
+
+	return ret;
 }
 
 void __init pagetable_init(void)

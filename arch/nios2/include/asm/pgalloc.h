@@ -35,12 +35,7 @@ static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
  */
 extern void pmd_init(unsigned long page, unsigned long pagetable);
 
-/*
- * Initialize a new pgd / pmd table with invalid pointers.
- */
-extern void pgd_init(unsigned long page);
-
-pgd_t *pgd_alloc(struct mm_struct *mm); // ivho: moved imple to pgalloc.c
+extern pgd_t *pgd_alloc(struct mm_struct *mm);
 
 static inline void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
