@@ -1,28 +1,14 @@
 /*
- *  linux/arch/nios2/mm/init.c
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * Copyright (C) 2004 Microtronix Datacom Ltd
  *
- *  Copyright (C) 2009 Wind River Systems Inc trough
- *  Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * based on arch/m68k/mm/init.c
  *
- *  Based on:
- * 
- *  linux/arch/nios2nommu/mm/init.c
- *
- *  Copyright (C) 1998  D. Jeff Dionne <jeff@lineo.ca>,
- *                      Kenneth Albanowski <kjahds@kjahds.com>,
- *  Copyright (C) 2000  Lineo, Inc.  (www.lineo.com) 
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- *  Based on:
- *
- *  linux/arch/m68k/mm/init.c
- *
- *  Copyright (C) 1995  Hamish Macdonald
- *
- *  JAN/1999 -- hacked to support ColdFire (gerg@snapgear.com)
- *  DEC/2000 -- linux 2.4 support <davidm@snapgear.com>
- * Jan/20/2004		dgt	    NiosII
- *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
 
 #include <linux/signal.h>
@@ -72,7 +58,9 @@ unsigned long empty_zero_page;
 
 extern unsigned long rom_length;
 
+#ifdef CONFIG_MMU
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
+#endif
 
 extern unsigned long memory_start;
 extern unsigned long memory_end;
@@ -89,11 +77,18 @@ void __init paging_init(void)
 	 * Make sure start_mem is page aligned, otherwise bootmem and
 	 * page_alloc get different views of the world.
 	 */
+#ifdef CONFIG_MMU
 	unsigned long start_mem = PHYS_OFFSET;
 	unsigned long end_mem   = memory_end;
+#else
+	unsigned long start_mem = PAGE_ALIGN(memory_start);
+	unsigned long end_mem   = memory_end & PAGE_MASK;
+#endif /* CONFIG_MMU */
 
-   pagetable_init();
+#ifdef CONFIG_MMU
+	pagetable_init();
 	pgd_current = (unsigned long)swapper_pg_dir;
+#endif
 
 	/*
 	 * Initialize the bad page table and bad page to point
@@ -101,21 +96,29 @@ void __init paging_init(void)
 	 */
 	empty_bad_page_table = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 	empty_bad_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
+#ifdef CONFIG_MMU
 	empty_zero_page = (unsigned long)alloc_bootmem_pages(DCACHE_SIZE);
 	memset((void *)empty_zero_page, 0, DCACHE_SIZE);
-   flush_dcache_range(empty_zero_page, empty_zero_page + DCACHE_SIZE);
-
+	flush_dcache_range(empty_zero_page, empty_zero_page + DCACHE_SIZE);
+#else
+	empty_zero_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
+	memset((void *)empty_zero_page, 0, PAGE_SIZE);
+#endif /* CONFIG_MMU */
 	/*
 	 * Set up SFC/DFC registers (user data space).
 	 */
-#if 0
+#ifndef CONFIG_MMU
 	set_fs (USER_DS);
 #endif
 
 	{
 		unsigned long zones_size[MAX_NR_ZONES] = {0, };
 
+#ifdef CONFIG_MMU
 		zones_size[ZONE_DMA] = ((end_mem - start_mem) >> PAGE_SHIFT);
+#else
+		zones_size[ZONE_DMA] = (end_mem - PAGE_OFFSET) >> PAGE_SHIFT;
+#endif /* CONFIG_MMU */
 		zones_size[ZONE_NORMAL] = 0;
 #ifdef CONFIG_HIGHMEM
 		zones_size[ZONE_HIGHMEM] = 0;
@@ -132,17 +135,19 @@ void __init mem_init(void)
 	unsigned long start_mem = memory_start; /* DAVIDM - these must start at end of kernel */
 	unsigned long end_mem   = memory_end; /* DAVIDM - this must not include kernel stack at top */
 
-#ifdef DEBUG
-	printk(KERN_DEBUG "Mem_init: start=%lx, end=%lx\n", start_mem, end_mem);
-#endif
+	pr_debug("mem_init: start=%lx, end=%lx\n", start_mem, end_mem);
 
 	end_mem &= PAGE_MASK;
 	high_memory = __va(end_mem);
 
 	start_mem = PAGE_ALIGN(start_mem);
+#ifdef CONFIG_MMU
 	max_mapnr = ((unsigned long)end_mem) >> PAGE_SHIFT;
+#else
+	max_mapnr = MAP_NR(high_memory);
+#endif /* CONFIG_MMU */
 	num_physpages = max_mapnr;
-	printk("We have %ld pages of RAM\n", num_physpages);
+	pr_debug("We have %ld pages of RAM\n", num_physpages);
 
 	/* this will put all memory onto the freelists */
 	totalram_pages = free_all_bootmem();
@@ -162,10 +167,12 @@ void __init mem_init(void)
 	       );
 }
 
+#ifdef CONFIG_MMU
 void __init mmu_init(void)
 {
 	local_flush_tlb_all();
 }
+#endif
 
 #ifdef CONFIG_BLK_DEV_INITRD
 void __init free_initrd_mem(unsigned long start, unsigned long end)
@@ -206,8 +213,9 @@ void free_initmem(void)
 #endif
 }
 
+#ifdef CONFIG_MMU
 void __init fixrange_init(unsigned long start, unsigned long end,
-	pgd_t *pgd_base)
+                          pgd_t *pgd_base)
 {
 #if defined(CONFIG_HIGHMEM)
 	pgd_t *pgd;
@@ -240,11 +248,12 @@ void __init fixrange_init(unsigned long start, unsigned long end,
 		}
 		j = 0;
 	}
-#endif
+#endif /* CONFIG_HIGHMEM */
 }
-
 
 #define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE<<order)))
 unsigned long pgd_current;
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned(PGD_ORDER);
 pte_t invalid_pte_table[PTRS_PER_PTE] __page_aligned(PTE_ORDER);
+
+#endif /* CONFIG_MMU */

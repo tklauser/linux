@@ -1,5 +1,14 @@
-#ifndef __NIOS2_IO_H__
-#define __NIOS2_IO_H__
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
+#ifndef _ASM_NIOS2_IO_H
+#define _ASM_NIOS2_IO_H
 
 #include <asm/system.h>
 #include <asm/pgtable-bits.h>
@@ -180,31 +189,53 @@ static inline void io_insl(void __iomem *addr, void *buf, int len)
 #define iowrite16(val,X)		writew(val,X)
 #define iowrite32(val,X)		writel(val,X)
 
+#ifdef CONFIG_MMU
 
-extern void *__ioremap(unsigned long physaddr, unsigned long size, int cacheflag);
-extern void __iounmap(void *addr);
+extern void __iomem *__ioremap(unsigned long physaddr, unsigned long size,
+                               int cacheflag);
+extern void __iounmap(void __iomem *addr);
 
-static inline void *ioremap(unsigned long physaddr, unsigned long size)
+#else
+
+static inline void __iomem *__ioremap(unsigned long physaddr, unsigned long size,
+                                       unsigned long cacheflag)
+{
+	if (cacheflag & _PAGE_CACHED) {
+		return (void __iomem *)(physaddr & ~0x80000000);
+	} else {
+		flush_dcache_range(physaddr, physaddr + size);
+		return (void __iomem *)(physaddr | 0x80000000);
+	}
+}
+
+#define __iounmap(addr)		do {} while(0)
+
+#endif /* CONFIG_MMU */
+
+static inline void __iomem *ioremap(unsigned long physaddr, unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
 
-static inline void *ioremap_nocache(unsigned long physaddr, unsigned long size)
+static inline void __iomem *ioremap_nocache(unsigned long physaddr,
+                                            unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
 
-static inline void *ioremap_writethrough(unsigned long physaddr, unsigned long size)
+static inline void __iomem *ioremap_writethrough(unsigned long physaddr,
+                                                 unsigned long size)
 {
 	return __ioremap(physaddr, size, 0);
 }
 
-static inline void *ioremap_fullcache(unsigned long physaddr, unsigned long size)
+static inline void __iomem *ioremap_fullcache(unsigned long physaddr,
+                                              unsigned long size)
 {
 	return __ioremap(physaddr, size, _PAGE_CACHED);
 }
 
-static inline void iounmap(void *addr)
+static inline void iounmap(void __iomem *addr)
 {
 	__iounmap(addr);
 }
@@ -243,4 +274,4 @@ static inline void iounmap(void *addr)
 #define writesw(p, d, l)	outsw(p, d, l)
 #define writesl(p, d, l)	outsl(p, d, l)
 
-#endif /* __NIOS2_IO_H__ */
+#endif /* _ASM_NIOS2_IO_H */
