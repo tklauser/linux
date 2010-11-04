@@ -160,20 +160,3 @@ void icache_push(unsigned long vaddr, int len)
 {
 	cache_invalidate_inst(vaddr, len);
 }
-
-/*
- * Map some physical address range into the kernel address space. The
- * code is copied and adapted from map_chunk().
- */
-unsigned long kernel_map(unsigned long paddr, unsigned long size,
-			 int nocacheflag, unsigned long *memavailp)
-{
-	return paddr;
-}
-
-int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
-		      unsigned long address, int write_access)
-{
-	BUG();
-	return VM_FAULT_OOM;
-}
