@@ -1,40 +1,17 @@
-/*--------------------------------------------------------------------
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ * Copyright (C) 2000-2002 David McCullough <davidm@snapgear.com>
+ * Copyright (C) 1995  Hamish Macdonald
  *
- * arch/nios2/kernel/process.c
+ * based on m68k arch/m68k/kernel/process.c
  *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
- *
- * Derived from arch/nios2nommu/kernel/process.c
- *
- * Derived from M68knommu
- *
- *  Copyright (C) 1995  Hamish Macdonald
- *  Copyright (C) 2000-2002, David McCullough <davidm@snapgear.com>
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- *  68060 fixes by Jesper Skov
- * Jan/20/2004		dgt	    NiosII
- *                            rdusp() === (pt_regs *) regs->sp
- *                            Monday:
- *                             asm-nios2nommu\processor.h now bears
- *                              inline thread_saved_pc
- *                                      (struct thread_struct *t)
- *                             Friday: it's back here now
- *
- ---------------------------------------------------------------------*/
-
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
 
 /*
  * This file handles the architecture-dependent parts of process handling..
@@ -61,9 +38,6 @@
 #include <asm/setup.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
-
-#define print_mark(...)
-#define printd(...)
 
 asmlinkage void ret_from_fork(void);
 
@@ -108,22 +82,24 @@ void cpu_idle(void)
 }
 
 /*
- * The development boards have no way to pull a board
- * reset. Just jump to the cpu reset address and let
- * the boot loader take care of resetting periperals
+ * The development boards have no way to pull a board reset. Just jump to the
+ * cpu reset address and let the boot loader or the code in head.S take care of
+ * resetting peripherals.
  */
 void machine_restart(char * __unused)
 {
 	local_irq_disable();
-	if (__builtin_ldwio((void *)RESET_ADDR) == 0xffffffffUL){
-	  printk("boot loader not installed, refusing to jump to "
-            "jump to reset addr 0x%lx\n", (unsigned long)RESET_ADDR);		 
-	  for (;;);
+#ifdef CONFIG_MMU
+	if (__builtin_ldwio((void *)RESET_ADDR) == 0xffffffffUL) {
+		printk("boot loader not installed, refusing to jump to "
+		       "reset addr 0x%lx\n", (unsigned long) RESET_ADDR);
+		for (;;);
 	}
+#endif
 	__asm__ __volatile__ (
 	"jmp	%0\n\t"
-	: 
-	: "r" (RESET_ADDR)
+	:
+	: "r" (RESET_ADDR)	/* this was CPU_RESET_ADDRESS for nommu */
 	: "r4");
 }
 
@@ -143,16 +119,14 @@ EXPORT_SYMBOL(machine_halt);
  * your own board with power down circuits add you
  * specific code here.
  */
-
 void machine_power_off(void)
 {
 	local_irq_disable();
 	for (;;);
 }
-
 EXPORT_SYMBOL(machine_power_off);
 
-void show_regs(struct pt_regs * regs)
+void show_regs(struct pt_regs *regs)
 {
 	printk(KERN_NOTICE "\n");
 
@@ -173,33 +147,83 @@ void show_regs(struct pt_regs * regs)
 
 	printk(KERN_NOTICE "ea:  %08lx estatus:  %08lx\n",
 	       regs->ea,  regs->estatus);
+#ifndef CONFIG_MMU
+	printk(KERN_NOTICE "status_extension: %08lx\n", regs->status_extension);
+#endif
 }
 
-
-
+static void kernel_thread_helper(void *arg, int (*fn)(void *))
+{
+	do_exit(fn(arg));
+}
 
 /*
  * Create a kernel thread
  */
-static ATTRIB_NORET void kernel_thread_helper(void *arg, int (*fn)(void *))
+int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
-  int i;
-  print_mark(__FILE__, __LINE__);
-  printd("################ KTH arg=%p fn=%p sp=%p\n", arg, fn, &i);
-  do_exit(fn(arg));
-}
-
-int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
-{
+#ifdef CONFIG_MMU
 	struct pt_regs regs;
-        print_mark(__FILE__, __LINE__);
 
 	memset(&regs, 0, sizeof(regs));
-	regs.r4 = (unsigned long)arg;
-	regs.r5 = (unsigned long)fn;
-	regs.ea = (unsigned long)kernel_thread_helper;
-	regs.estatus =  NIOS2_STATUS_PIE_MSK;
+	regs.r4 = (unsigned long) arg;
+	regs.r5 = (unsigned long) fn;
+	regs.ea = (unsigned long) kernel_thread_helper;
+	regs.estatus = NIOS2_STATUS_PIE_MSK;
+
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
+#else /* !CONFIG_MMU */
+	long retval;
+	long clone_arg = flags | CLONE_VM;
+	mm_segment_t fs;
+
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	__asm__ __volatile(
+		"movi    r2,%6\n\t"		/* TRAP_ID_SYSCALL          */
+		"movi    r3,%1\n\t"		/* __NR_clone               */
+		"mov     r4,%5\n\t"		/* (clone_arg               */
+						/*   (flags | CLONE_VM))    */
+		"movia   r5,-1\n\t"		/* usp: -1                  */
+		"trap\n\t"			/* sys_clone                */
+		"\n\t"
+		"cmpeq   r4,r3,zero\n\t"	/* 2nd return value in r3   */
+		"bne     r4,zero,1f\n\t"	/* 0: parent, just return.  */
+						/* See copy_thread, called  */
+						/*  by do_fork, called by   */
+						/*  nios2_clone, called by  */
+						/*  sys_clone, called by    */
+						/*  syscall trap handler.   */
+
+		"mov     r4,%4\n\t"		/* fn's parameter (arg)     */
+		"\n\t"
+		"callr   %3\n\t"		/* Call function (fn)       */
+		"\n\t"
+		"mov     r4,r2\n\t"		/* fn's rtn code//;dgt2;tmp;*/
+		"movi    r2,%6\n\t"		/* TRAP_ID_SYSCALL          */
+		"movi    r3,%2\n\t"		/* __NR_exit                */
+		"trap\n\t"			/* sys_exit()               */
+
+		/* Not reached by child */
+		"1:\n\t"
+		"mov     %0,r2\n\t"		/* error rtn code (retval)  */
+
+		:   "=r" (retval)               /* %0                       */
+
+		:   "i" (__NR_clone)		/* %1                       */
+		  , "i" (__NR_exit)		/* %2                       */
+		  , "r" (fn)			/* %3                       */
+		  , "r" (arg)			/* %4                       */
+		  , "r" (clone_arg)		/* %5  (flags | CLONE_VM)   */
+		  , "i" (TRAP_ID_SYSCALL)	/* %6                       */
+
+		:   "r2", "r3", "r4", "r5", "ra"/* Clobbered                */
+	);
+
+	set_fs(fs);
+	return retval;
+#endif /* CONFIG_MMU */
 }
 EXPORT_SYMBOL(kernel_thread);
 
@@ -212,15 +236,18 @@ void flush_thread(void)
 }
 
 /*
- * "nios2_fork()".. By the time we get here, the
- * non-volatile registers have also been saved on the
- * stack. We do some ugly pointer stuff here.. (see
- * also copy_thread)
+ * "nios2_fork()".. By the time we get here, the non-volatile registers have
+ * also been saved on the stack. We do some ugly pointer stuff here.. (see also
+ * copy_thread)
  */
-
 asmlinkage int nios2_fork(struct pt_regs *regs)
 {
-   return do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
+#ifdef CONFIG_MMU
+	return do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
+#else
+	/* fork almost works, enough to trick you into looking elsewhere :-( */
+	return -EINVAL;
+#endif /* CONFIG_MMU */
 }
 
 /*
@@ -248,8 +275,7 @@ asmlinkage int nios2_vfork(struct pt_regs *regs)
 	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, 0, NULL, NULL);
 }
 
-
-asmlinkage int nios2_clone(struct pt_regs* regs)
+asmlinkage int nios2_clone(struct pt_regs *regs)
 {
 	unsigned long clone_flags;
 	unsigned long newsp;
@@ -257,62 +283,85 @@ asmlinkage int nios2_clone(struct pt_regs* regs)
 
 	clone_flags = regs->r4;
 	newsp = regs->r5;
+	if (newsp == 0)
+		newsp = regs->sp;
+#ifdef CONFIG_MMU
 	parent_tidptr = (int __user *) regs->r6;
-   child_tidptr = (int __user *) regs->r8;
+	child_tidptr = (int __user *) regs->r8;
+#else
+	parent_tidptr = NULL;
+	child_tidptr = NULL;
+#endif
 
-   if(newsp == 0) {
-      newsp = regs->sp;
-   }
-   
 	return do_fork(clone_flags, newsp, regs, 0, 
 	               parent_tidptr, child_tidptr);
 }
 
 int copy_thread(unsigned long clone_flags,
 		unsigned long usp, unsigned long topstk,
-		struct task_struct * p, struct pt_regs * regs)
+		struct task_struct *p, struct pt_regs *regs)
 {
-	struct pt_regs * childregs;
-	struct switch_stack * childstack, *stack;
+	struct pt_regs *childregs;
+	struct switch_stack *childstack, *stack;
 
-   childregs = task_pt_regs(p);
+#ifdef CONFIG_MMU
+	childregs = task_pt_regs(p);
+#else
+	childregs = (struct pt_regs *) ((unsigned long) p->stack +
+					(THREAD_SIZE - sizeof(struct pt_regs)));
+#endif /* CONFIG_MMU */
 
-   /* Save pointer to registers in thread_struct */
+	/* Save pointer to registers in thread_struct */
 	p->thread.kregs = childregs;
 
-   /* Copy registers */
+	/* Copy registers */
 	*childregs = *regs;
+#ifndef CONFIG_MMU
+	childregs->r2 = 0;	/* Redundant? See return values below */
+#endif
 
-   /* Copy stacktop and copy the top entrys from parent to child
-    */
+	/* Copy stacktop and copy the top entrys from parent to child */
 	stack = ((struct switch_stack *) regs) - 1;
 	childstack = ((struct switch_stack *) childregs) - 1;
 	*childstack = *stack;
+	childstack->ra = (unsigned long) ret_from_fork;
 
-	childstack->ra = (unsigned long)ret_from_fork;
+#ifdef CONFIG_MMU
+	if (childregs->estatus & NIOS2_STATUS_U_MSK)
+		childregs->sp = usp;
+	else
+		childregs->sp = (unsigned long) childstack;
+#else
+	if (usp == -1)
+		p->thread.kregs->sp = (unsigned long) childstack;
+	else
+		p->thread.kregs->sp = usp;
+#endif /* CONFIG_MMU */
 
-	if(childregs->estatus & NIOS2_STATUS_U_MSK) {
-	  childregs->sp = usp;
-	}
-	else {
-     childregs->sp = (unsigned long)childstack;
-	}
-   /* Store the kernel stack in thread_struct */
-	p->thread.ksp = (unsigned long)childstack;
+	/* Store the kernel stack in thread_struct */
+	p->thread.ksp = (unsigned long) childstack;
 
-   /* Initialize tls register.
-    */
-   if(clone_flags & CLONE_SETTLS) {
-      childstack->r23 = regs->r7;
-   }
+#ifdef CONFIG_MMU
+	/* Initialize tls register. */
+	if (clone_flags & CLONE_SETTLS)
+		childstack->r23 = regs->r7;
+#endif
 
 	/* Set the return value for the child. */
 	childregs->r2 = 0;
-   childregs->r7 = 0;
+#ifdef CONFIG_MMU
+	childregs->r7 = 0;
+#else
+	childregs->r3 = 1;	/* kernel_thread parent test */
+#endif
 
 	/* Set the return value for the parent. */
 	regs->r2 = p->pid;
-   regs->r7 = 0;  /* No error */
+#ifdef CONFIG_MMU
+	regs->r7 = 0;	/* No error */
+#else
+	regs->r3 = 0;	/* kernel_thread parent test */
+#endif
 
 	return 0;
 }
@@ -417,16 +466,20 @@ unsigned long get_wchan(struct task_struct *p)
 	} while (count++ < 16);                                 //;dgt2;tmp
 	return 0;
 }
-EXPORT_SYMBOL(get_wchan);
 
 /*
  * Do necessary setup to start up a newly executed thread.
  * Will statup in user mode (status_extension = 0).
  */
-void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
+void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 {
 	memset((void *) regs, 0, sizeof(struct pt_regs));
-	regs->estatus = NIOS2_STATUS_PIE_MSK|NIOS2_STATUS_U_MSK;
+#ifdef CONFIG_MMU
+	regs->estatus = NIOS2_STATUS_PIE_MSK | NIOS2_STATUS_U_MSK;
+#else
+	/* No user mode setting on NOMMU, at least for now */
+	regs->estatus = NIOS2_STATUS_PIE_MSK;
+#endif /* CONFIG_MMU */
 	regs->ea = pc;
 	regs->sp = sp;
 
@@ -434,15 +487,18 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	if (current->thread.flags & NIOS2_FLAG_DEBUG ) {
 		if ( *(u32*)pc == NIOS2_OP_NOP ) {
 			*(u32*)pc = NIOS2_OP_BREAK;
-			flush_dcache_range(pc, pc+4);
-			flush_icache_range(pc, pc+4);
+			flush_dcache_range(pc, pc + 4);
+			flush_icache_range(pc, pc + 4);
 		}
 	}
 }
 
-/* Fill in the fpu structure for a core dump.. */
+#ifdef CONFIG_MMU
+#include <linux/elfcore.h>
+
+/* Fill in the FPU structure for a core dump. */
 int dump_fpu(struct pt_regs *regs, elf_fpregset_t *r)
 {
-  return 0;
+	return 0; /* Nios2 has no FPU and thus no FPU registers */
 }
-
+#endif /* CONFIG_MMU */
