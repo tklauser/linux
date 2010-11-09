@@ -27,20 +27,13 @@
 * of California and by the laws of the United States of America.              *
 *                                                                             *
 ******************************************************************************/
-#include <linux/sys.h>
+
 #include <linux/linkage.h>
-#include <asm/asm-offsets.h>
-#include <asm/asm-macros.h>
-#include <asm/thread_info.h>
-#include <asm/errno.h>
-#include <asm/setup.h>
 #include <asm/entry.h>
-#include <asm/unistd.h>
-#include <asm/processor.h>
 
 .set noat
 .set nobreak
-	
+
      /*
       * Explicitly allow the use of r1 (the assembler temporary register)
       * within this code. This register is normally reserved for the use of
@@ -49,7 +42,7 @@
 
 ENTRY(instruction_trap)
 	RESTORE_ALL	// Clean off our save & setup for emulation
-	
+
     /* INSTRUCTION EMULATION
     *  ---------------------
     *
@@ -95,8 +88,8 @@ ENTRY(instruction_trap)
     *
     * R-type AAAAA,BBBBB,CCCCC,XXXXXX,NNNNN,-0x3a-
     *           27    22    17     11     6      0  <-- LSB of field
-    * 
-    * 
+    *
+    *
     * Opcode Encoding.  muli is identified by its OP value.  Then OPX & 0x02
     * is used to differentiate between the division opcodes and the remaining
     * multiplication opcodes.
@@ -338,7 +331,7 @@ div_skip:
     * r17 = MSB contains sign of quotient
     */
 
-    
+
     /*
     *  Conditionally negate signed quotient.  If quotient is unsigned,
     *  the sign already is initialized to 0.
