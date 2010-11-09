@@ -38,7 +38,7 @@
  *
  * We should really have some trampolines for this instead.
  */
-#if 0
+#ifndef CONFIG_MMU
 void *module_alloc(unsigned long size)
 {
 	if (size == 0)
@@ -54,7 +54,8 @@ void module_free(struct module *mod, void *module_region)
            table entries. */
 }
 
-#else
+#else /* CONFIG_MMU */
+
 void *module_alloc(unsigned long size)
 {
 	if (size == 0)
@@ -70,7 +71,7 @@ void module_free(struct module *mod, void *module_region)
            table entries. */
 }
 
-#endif
+#endif /* CONFIG_MMU */
 
 /* We don't need anything special. */
 int module_frob_arch_sections(Elf_Ehdr *hdr,
