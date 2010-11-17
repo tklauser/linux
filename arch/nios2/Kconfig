@@ -1,23 +1,37 @@
-#
-# Nios2 port by Wind River Systems Inc trough:
-#   fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
-#
-
-menu "Linux/NiosII Configuration"
-
 config NIOS2
 	def_bool y
-	# Horrible source of confusion.  Die, die, die ...
-	select EMBEDDED
 	select HAVE_OPROFILE
-	select USB_ARCH_HAS_HCD
+	select USB_ARCH_HAS_HCD if USB_SUPPORT
 
-config MMU
-	bool "MMU support"
-	default y
-	help
-	  This option enables support for the NiosII MMU. Only enable this
-	  option if your design contains a NiosII/f core with MMU enabled.
+config GENERIC_CSUM
+	def_bool y
+
+config GENERIC_FIND_NEXT_BIT
+	def_bool y
+
+config GENERIC_HWEIGHT
+	def_bool y
+
+config GENERIC_CALIBRATE_DELAY
+	def_bool y
+
+config GENERIC_TIME
+	def_bool y
+
+config GENERIC_HARDIRQS
+	def_bool y
+
+config GENERIC_HARDIRQS_NO__DO_IRQ
+	def_bool y
+
+config GENERIC_IRQ_PROBE
+	def_bool y
+
+config NO_IOPORT
+	def_bool y
+
+config ZONE_DMA
+	def_bool y
 
 config FPU
 	def_bool n
@@ -28,7 +42,32 @@ config SWAP
 config RWSEM_GENERIC_SPINLOCK
 	def_bool y
 
+# FIXME: really !
+config NOT_COHERENT_CACHE
+	def_bool n
+
+config TRACE_IRQFLAGS_SUPPORT
+	def_bool n
+
+config RAMKERNEL
+	def_bool y
+
+source "init/Kconfig"
+
+source "kernel/Kconfig.preempt"
+
+source "kernel/Kconfig.freezer"
+
 source "arch/nios2/boards/Kconfig"
+
+menu "Processor type and features"
+
+config MMU
+	bool "MMU support"
+	default y
+	help
+	  This option enables support for the NiosII MMU. Only enable this
+	  option if your design contains a NiosII/f core with MMU enabled.
 
 menu "NiosII specific compiler options"
 
@@ -72,17 +111,13 @@ config ALIGNMENT_TRAP
 	  emulated in software if you say Y here, which has a performance
 	  impact.
 
-choice
-	prompt "Kernel executes from"
-	help
-	  Choose the memory type that the kernel will be running in.
+source "mm/Kconfig"
 
-config RAMKERNEL
-	bool "RAM"
-	help
-	  The kernel will be resident in RAM when running.
+menu "Exectuable file formats"
 
-endchoice
+source "fs/Kconfig.binfmt"
+
+endmenu
 
 comment "Boot options"
 
@@ -112,6 +147,10 @@ config BOOT_LINK_OFFSET
 	  This can be useful if you are on a board which has a small amount of
 	  memory.
 
+source "kernel/Kconfig.hz"
+
+source "kernel/time/Kconfig"
+
 comment "Platform driver options"
 
 config AVALON_DMA
@@ -124,64 +163,6 @@ config AVALON_DMA
 source "arch/nios2/drivers/Kconfig"
 
 endmenu
-
-#
-# FIXME: Should UID16 really be set ?
-#
-config UID16
-	def_bool y
-
-config GENERIC_CSUM
-	def_bool y
-
-config GENERIC_FIND_NEXT_BIT
-	def_bool y
-
-config GENERIC_HWEIGHT
-	def_bool y
-
-config GENERIC_CALIBRATE_DELAY
-	def_bool y
-
-config GENERIC_TIME
-	def_bool y
-
-config GENERIC_HARDIRQS
-	def_bool y
-
-config GENERIC_HARDIRQS_NO__DO_IRQ
-	def_bool y
-
-config GENERIC_IRQ_PROBE
-	def_bool y
-
-config NO_IOPORT
-	def_bool y
-
-config ZONE_DMA
-	def_bool y
-
-config BINFMT_ELF
-	def_bool y
-
-# FIXME: really !
-config NOT_COHERENT_CACHE
-	def_bool n
-
-config HZ
-	int
-	default 100
-
-config TRACE_IRQFLAGS_SUPPORT
-	def_bool n
-
-source "mm/Kconfig"
-
-source "kernel/Kconfig.preempt"
-
-source "init/Kconfig"
-
-source "kernel/Kconfig.freezer"
 
 source "net/Kconfig"
 
