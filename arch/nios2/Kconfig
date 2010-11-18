@@ -99,6 +99,7 @@ config OF
 	def_bool n
 	select DTC
 	select OF_FLATTREE
+	select OF_EARLY_FLATTREE
 
 config DTC
 	bool
