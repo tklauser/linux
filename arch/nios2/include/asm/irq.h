@@ -4,6 +4,11 @@
 #define SYS_IRQS	32
 #define NR_IRQS		SYS_IRQS
 
+static inline void irq_dispose_mapping(unsigned int virq)
+{
+	return;
+}
+
 #include <asm-generic/irq.h>
 
 #endif

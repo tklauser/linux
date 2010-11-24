@@ -29,6 +29,7 @@
 #include <linux/bootmem.h>
 #include <linux/initrd.h>
 #include <linux/seq_file.h>
+#include <linux/of_fdt.h>
 
 #ifdef CONFIG_BLK_DEV_INITRD
 #include <linux/blkdev.h>
@@ -39,6 +40,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/pgtable.h>
 #include <asm/setup.h>
+#include <asm/prom.h>
 
 /*
  * Sanity check config options for HW supported mul, mulx, div against
@@ -88,7 +90,7 @@ EXPORT_SYMBOL(memory_end);
 #ifndef CONFIG_PASS_CMDLINE
 static char default_command_line[] = CONFIG_CMDLINE;
 #endif
-static char __initdata command_line[COMMAND_LINE_SIZE] = { 0, };
+char cmd_line[COMMAND_LINE_SIZE] = { 0, };
 
 
 /*				   r1  r2  r3  r4  r5  r6  r7  r8  r9 r10 r11*/
@@ -115,12 +117,17 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6, un
 			initrd_end = r6;
 		}
 #endif /* CONFIG_BLK_DEV_INITRD */
+#if defined(CONFIG_OF)
+		/* r6 may point to an fdt */
+		if (r6 && be32_to_cpup((__be32 *)r6) == OF_DT_HEADER)
+			early_init_devtree((void *)r6);
+#endif
 		if (r7)
-			strncpy(command_line, (char *)r7, COMMAND_LINE_SIZE);
+			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
 	}
 #endif
-	if (!command_line[0])
-		strncpy(command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+	if (!cmd_line[0])
+		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 }
 
 void __init setup_arch(char **cmdline_p)
@@ -138,7 +145,7 @@ void __init setup_arch(char **cmdline_p)
 	memory_end = (unsigned long) DDR2_TOP_BASE + DDR2_TOP_SPAN;
 
 #ifndef CONFIG_PASS_CMDLINE
-	memcpy(command_line, default_command_line, sizeof(default_command_line));
+	memcpy(cmd_line, default_command_line, sizeof(default_command_line));
 #endif
 
 	printk("%s/Nios II\n", UTS_SYSNAME);
@@ -150,9 +157,9 @@ void __init setup_arch(char **cmdline_p)
 	init_task.thread.kregs = &fake_regs;
 
 	/* Keep a copy of command line */
-	*cmdline_p = &command_line[0];
+	*cmdline_p = &cmd_line[0];
 
-	memcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
+	memcpy(boot_command_line, cmd_line, COMMAND_LINE_SIZE);
 	boot_command_line[COMMAND_LINE_SIZE-1] = 0;
 
 	/*
@@ -190,6 +197,7 @@ void __init setup_arch(char **cmdline_p)
 		reserve_bootmem(virt_to_phys((void *)initrd_start), initrd_end - initrd_start, BOOTMEM_DEFAULT);
 #endif /* CONFIG_BLK_DEV_INITRD */
 
+	device_tree_init();
 	/*
 	 * get kmalloc into gear
 	 */

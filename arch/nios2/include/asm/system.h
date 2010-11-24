@@ -15,6 +15,7 @@
 #include <asm/entry.h>
 #include <linux/string.h>
 #include <linux/irqflags.h>
+#include <asm/setup.h>
 
 asmlinkage void resume(void);
 
