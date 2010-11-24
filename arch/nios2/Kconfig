@@ -86,6 +86,12 @@ config NIOS2_HW_DIV_SUPPORT
 	help
 	  Enables the -mhw-div compiler flag.
 
+config NIOS2_FPU_SUPPORT
+       bool "Custom floating point instr support"
+       default n
+       help
+	Enables the -mcustom-fpu-cfg=60-1 compiler flag.
+
 endmenu
 
 config OF
