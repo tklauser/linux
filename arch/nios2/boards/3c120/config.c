@@ -88,6 +88,7 @@ struct altera_pio_port altera_pio_ports[] = {
 	{USER_DIPSW_PIO_8IN_BASE},
 	{USER_PB_PIO_4IN_BASE}
 };
+EXPORT_SYMBOL(altera_pio_ports);
 
 static void nios2_gpio_init(void)
 {

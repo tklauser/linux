@@ -83,6 +83,7 @@ static struct platform_device nios2_uart = {
 
 #ifdef CONFIG_GENERIC_GPIO
 resource_size_t nios2_gpio_mapbase;
+EXPORT_SYMBOL(nios2_gpio_mapbase);
 
 static void nios2_gpio_init(void)
 {
