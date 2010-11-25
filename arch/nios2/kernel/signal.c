@@ -287,9 +287,7 @@ rt_restore_ucontext(struct pt_regs *regs, struct switch_stack *sw,
 {
 	int temp;
 	greg_t *gregs = uc->uc_mcontext.gregs;
-	unsigned long usp;
 	int err;
-
 
 	err = __get_user(temp, &uc->uc_mcontext.version);
 	if (temp != MCONTEXT_VERSION)
@@ -327,10 +325,10 @@ rt_restore_ucontext(struct pt_regs *regs, struct switch_stack *sw,
 	err |= __get_user(sw->gp, &gregs[25]);  // Verify, should this be settable
 
 	err |= __get_user(temp, &gregs[26]);  // Not really necessary no user settable bits
-	regs->estatus = (regs->estatus & 0xffffffff) | (temp & 0x0);
+	regs->estatus = (regs->estatus & 0xffffffff);
 	regs->orig_r2 = -1;		/* disable syscall checks */
 
-	if (do_sigaltstack(&uc->uc_stack, NULL, usp) == -EFAULT)
+	if (do_sigaltstack(&uc->uc_stack, NULL, regs->sp) == -EFAULT)
 		goto badframe;
 
 	*pr2 = regs->r2;
