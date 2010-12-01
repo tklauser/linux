@@ -96,7 +96,6 @@ static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, si
 
 /**
  *  altremote_wdt_ioctl:
- *  @inode: inode of the device
  *  @file: file handle to the device
  *  @cmd: watchdog command
  *  @arg: argument pointer
@@ -105,7 +104,7 @@ static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, si
  *  according to their available features. We only actually usefully support
  *  querying capabilities and current status.
  */
-static int altremote_wdt_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg)
+static long altremote_wdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
   void __user *argp = (void __user *)arg;
 
@@ -291,7 +290,7 @@ static const struct file_operations altremote_wdt_fops = {
   .owner    = THIS_MODULE,
   .llseek   = no_llseek,
   .write    = altremote_wdt_write,
-  .ioctl    = altremote_wdt_ioctl,
+  .unlocked_ioctl = altremote_wdt_ioctl,
   .open     = altremote_wdt_open,
   .release  = altremote_wdt_release,
 };
