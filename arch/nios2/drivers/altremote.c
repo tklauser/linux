@@ -409,12 +409,25 @@ err_out_request_mem_region:
   return ret;
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id altremote_match_table[] = {
+	{
+		.compatible = "altera,altremote",
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, altremote_match_table);
+#endif
+
 static struct platform_driver altremote_driver = {
   .probe  = altremote_probe,
   .remove = __devexit_p(altremote_remove),
   .driver = {
     .owner = THIS_MODULE,
     .name = "altremote",
+#ifdef CONFIG_OF
+    .of_match_table = altremote_match_table,
+#endif
   },
 };
 
