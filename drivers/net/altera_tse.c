@@ -1185,6 +1185,9 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 	unsigned int free_loop;
 	int ret;
 
+	if (netif_running(dev))
+		return -EBUSY;
+
 	if ((new_mtu > (tse_priv->tse_tx_depth * ALT_TSE_MAC_FIFO_WIDTH)) ||
 	    (new_mtu > (tse_priv->tse_rx_depth * ALT_TSE_MAC_FIFO_WIDTH))) {
 		printk
