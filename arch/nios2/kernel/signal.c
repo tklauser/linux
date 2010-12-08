@@ -165,91 +165,6 @@ struct rt_sigframe
 	struct ucontext uc;
 };
 
-#ifdef CONFIG_FPU
-
-static unsigned char fpu_version = 0;	/* version number of fpu, set by setup_frame */
-
-static inline int restore_fpu_state(struct sigcontext *sc)
-{
-	int err = 1;
-
-	if (FPU_IS_EMU) {
-	    /* restore registers */
-	    memcpy(current->thread.fpcntl, sc->sc_fpcntl, 12);
-	    memcpy(current->thread.fp, sc->sc_fpregs, 24);
-	    return 0;
-	}
-
-	if (sc->sc_fpstate[0]) {
-	    /* Verify the frame format.  */
-	    if (sc->sc_fpstate[0] != fpu_version)
-		goto out;
-
-	    __asm__ volatile ("Nios II FPU"
-			      : /* no outputs */
-			      : );
-	}
-	__asm__ volatile ("Nios II FPU"
-			  : : );
-	err = 0;
-
-out:
-	return err;
-}
-
-#define FPCONTEXT_SIZE	216
-#define uc_fpstate	uc_filler[0]
-#define uc_formatvec	uc_filler[FPCONTEXT_SIZE/4]
-#define uc_extra	uc_filler[FPCONTEXT_SIZE/4+1]
-
-static inline int rt_restore_fpu_state(struct ucontext *uc)
-{
-	unsigned char fpstate[FPCONTEXT_SIZE];
-	int context_size = 0;
-	fpregset_t fpregs;
-	int err = 1;
-
-	if (FPU_IS_EMU) {
-		/* restore fpu control register */
-		if (__copy_from_user(current->thread.fpcntl,
-				&uc->uc_mcontext.fpregs.f_pcr, 12))
-			goto out;
-		/* restore all other fpu register */
-		if (__copy_from_user(current->thread.fp,
-				uc->uc_mcontext.fpregs.f_fpregs, 96))
-			goto out;
-		return 0;
-	}
-
-	if (__get_user(*(long *)fpstate, (long *)&uc->uc_fpstate))
-		goto out;
-	if (fpstate[0]) {
-		context_size = fpstate[1];
-
-		/* Verify the frame format.  */
-		if (fpstate[0] != fpu_version)
-			goto out;
-		if (__copy_from_user(&fpregs, &uc->uc_mcontext.fpregs,
-		     sizeof(fpregs)))
-			goto out;
-		__asm__ volatile ("Nios II FPU"
-				  : /* no outputs */
-				  : );
-	}
-	if (context_size &&
-	    __copy_from_user(fpstate + 4, (long *)&uc->uc_fpstate + 1,
-			     context_size))
-		goto out;
-	__asm__ volatile ("Nios II FPU"
-			   : : );
-	err = 0;
-
-out:
-	return err;
-}
-
-#endif
-
 static inline int
 restore_sigcontext(struct pt_regs *regs, struct sigcontext *usc, void *fp,
 		   int *pr2)
@@ -270,10 +185,6 @@ restore_sigcontext(struct pt_regs *regs, struct sigcontext *usc, void *fp,
 	regs->orig_r2 = -1;		/* disable syscall checks */
 
 	*pr2 = regs->r2;
-
-#ifdef CONFIG_FPU
-	err |= restore_fpu_state(&context);
-#endif
 
 	return err;
 
