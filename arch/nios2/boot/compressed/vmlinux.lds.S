@@ -8,7 +8,11 @@ ENTRY(_start)	/* Defined in head.S */
 
 SECTIONS
 {
+#ifdef CONFIG_MMU
   . = (DDR2_TOP_BASE + CONFIG_BOOT_LINK_OFFSET) | KERNEL_REGION_BASE;
+#else
+  . = DDR2_TOP_BASE + CONFIG_BOOT_LINK_OFFSET;
+#endif /* CONFIG_MMU */
 
   _text = .;
   .text : { *(.text) } = 0

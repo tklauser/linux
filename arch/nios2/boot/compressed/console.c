@@ -1,9 +1,21 @@
+/*
+ * Copyright (C) 2008-2010 Thomas Chou <thomas@wytron.com.tw>
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
 #include <asm/nios.h>
 #include <asm/io.h>
 
 static void *my_ioremap(unsigned long physaddr)
 {
+#ifdef CONFIG_MMU
 	return (void *)(physaddr | IO_REGION_BASE);
+#else
+	return (void *)(physaddr | 0x80000000);
+#endif /* CONFIG_MMU */
 }
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
@@ -39,7 +51,7 @@ static int putchar(int ch)
 
 static void console_init(void)
 {
-	uartbase = (unsigned long)my_ioremap(JTAG_UART_BASE);
+	uartbase = (unsigned long) my_ioremap((unsigned long) JTAG_UART_BASE);
 	writel(ALTERA_JTAGUART_CONTROL_AC_MSK,
 	       uartbase + ALTERA_JTAGUART_CONTROL_REG);
 }
@@ -77,7 +89,7 @@ static void console_init(void)
 {
 	unsigned int baud, baudclk;
 
-	uartbase = (unsigned long)my_ioremap((unsigned long)UART0_BASE);
+	uartbase = (unsigned long) my_ioremap((unsigned long) UART0_BASE);
 	baud = CONFIG_SERIAL_ALTERA_UART_BAUDRATE;
 	baudclk = UART0_FREQ / baud;
 	writew(baudclk, uartbase + ALTERA_UART_DIVISOR_REG);
@@ -101,36 +113,4 @@ static int puts(const char *s)
 	while (*s)
 		putchar(*s++);
 	return 0;
-}
-
-#define TOP_NIBBLE (sizeof(int) * 8 - 4)
-static int putx(unsigned x)
-{
-	int i;
-	int k;
-
-	putchar(' ');
-	for (i = (2 * sizeof(unsigned)); i > 0; i--) {
-		k = (x >> TOP_NIBBLE) & 0x000f;
-		if (k < 10)
-			k += '0';
-		else
-			k += 'a' - 10;
-
-		putchar(k);
-
-		x <<= 4;
-	}
-	return 0;
-}
-
-static void dump(unsigned a, int len)
-{
-	unsigned *p = (void *)a;
-	int i;
-	for (i = 0; i < len; i++) {
-		putx(*p++);
-		if ((i % 4) == 3)
-			putchar('\n');
-	}
 }

@@ -89,7 +89,11 @@ finish_move:
 	bgt	r1, r0, 1b
 	flushp
 	/* jump to start real kernel */
+#ifdef CONFIG_MMU
 	movia	r1, (LINUX_SDRAM_START | KERNEL_REGION_BASE_ASM)
+#else
+	movia	r1, LINUX_SDRAM_START
+#endif /* CONFIG_MMU */
 	jmp	r1
 
 	.balign 512

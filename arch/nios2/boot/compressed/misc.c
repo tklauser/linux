@@ -158,21 +158,18 @@ static void error(char *x)
 
 void decompress_kernel(void)
 {
-  output_data = (void *)(DDR2_TOP_BASE | KERNEL_REGION_BASE);
-  output_ptr = 0;
-  free_mem_ptr = (unsigned long)&_end;
-  free_mem_end_ptr = free_mem_ptr + HEAP_SIZE;
+#ifdef CONFIG_MMU
+	output_data = DDR2_TOP_BASE | KERNEL_REGION_BASE;
+#else
+	output_data = DDR2_TOP_BASE;
+#endif /* CONFIG_MMU */
+	output_ptr = 0;
+	free_mem_ptr = (unsigned long)&_end;
+	free_mem_end_ptr = free_mem_ptr + HEAP_SIZE;
 
-  console_init();
-  makecrc();
-  puts("Uncompressing Linux... ");
-  gunzip();
-  puts("Ok, booting the kernel.\n");
-#if 0
-  puts("start at ");
-  putx(DDR2_TOP_BASE | KERNEL_REGION_BASE);
-  putchar('\n');
-  dump(DDR2_TOP_BASE | KERNEL_REGION_BASE, 64);
-  putchar('\n');
-#endif
+	console_init();
+	makecrc();
+	puts("Uncompressing Linux... ");
+	gunzip();
+	puts("Ok, booting the kernel.\n");
 }
