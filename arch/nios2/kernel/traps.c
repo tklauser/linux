@@ -1,39 +1,20 @@
 /*
- * arch/niosnommu/kernel/traps.c
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
+ * Copyright (C) 2001 Vic Phillips
  *
- * Copyright 2004 Microtronix Datacom Ltd.
- * Copyright 2001 Vic Phillips
- * Copyright 1995 David S. Miller (davem@caip.rutgers.edu)
- *
- * hacked from:
- *
- * arch/sparcnommu/kernel/traps.c
- *
- * All rights reserved.          
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
- * NON INFRINGEMENT.  See the GNU General Public License for more
- * details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
+ * This file is subject to the terms and conditions of the GNU General
+ * Public License.  See the file COPYING in the main directory of this
+ * archive for more details.
  */
 
-#include <linux/sched.h>  /* for jiffies */
+#include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/signal.h>
 #include <linux/module.h>
 #include <linux/mm.h>
 
+#include <asm/exceptions.h>
 #include <asm/delay.h>
 #include <asm/system.h>
 #include <asm/ptrace.h>
@@ -43,8 +24,6 @@
 #include <linux/uaccess.h>
 
 #include <asm/nios.h>
-
-/* #define TRAP_DEBUG */
 
 /*
  * The architecture-independent backtrace generator
@@ -112,124 +91,66 @@ void show_stack(struct task_struct *task, unsigned long *stack)
 	printk(KERN_EMERG "\n");
 }
 
-void trap_init(void)
+void __init trap_init(void)
 {
-#ifdef DEBUG
-	printk("trap_init reached\n");
-#endif
+	/* Nothing to do here */
 }
 
 /* Breakpoint handler */
 asmlinkage void breakpoint_c(struct pt_regs *fp)
 {
-	siginfo_t info;
-
-/* 	The breakpoint entry code has moved the PC on by 4 bytes, so we must */
-/* 	move it back.  This could be done on the host but we do it here */
-/* 	because monitor.S of JATG gdbserver does it. */
+	/*
+	 * The breakpoint entry code has moved the PC on by 4 bytes, so we must
+	 * move it back. This could be done on the host but we do it here
+	 * because monitor.S of JTAG gdbserver does it too.
+	 */
 	fp->ea -= 4;
-
-	//	printk("Breakpoint detected, instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
-	
-	info.si_code = TRAP_BRKPT;
-	info.si_signo = SIGTRAP;
-	info.si_errno = 0;
-	info.si_addr = (void *) fp->ea;
-
-	force_sig_info(info.si_signo, &info, current);
+	_exception(SIGTRAP, fp, TRAP_BRKPT, fp->ea);
 }
 
-
 #ifndef CONFIG_ALIGNMENT_TRAP
-/* Alignment handler 
- */
+/* Alignment exception handler */
 asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 {
-	siginfo_t info;
-   unsigned long addr = RDCTL(CTL_BADADDR);
-   int cause = RDCTL(CTL_EXCEPTION)/4;
+	unsigned long addr = RDCTL(CTL_BADADDR);
+	int cause = RDCTL(CTL_EXCEPTION) >> 2;
 
 	fp->ea -= 4;
 
 	if (fixup_exception(fp))
 		return;
 
-   if(!user_mode(fp)) {
-      printk("Unaligned access from kernel mode, this might be a hardware\n");
-      printk("problem, dump registers and restart the instruction\n");
-      printk("  BADADDR 0x%08lx\n", addr);
-      printk("  cause   %d\n", cause);
-      printk("  op-code 0x%08lx\n", *(unsigned long*)(fp->ea));
-      show_regs(fp);
-      return;
-   }
+	if (!user_mode(fp)) {
+		printk("Unaligned access from kernel mode, this might be a hardware\n");
+		printk("problem, dump registers and restart the instruction\n");
+		printk("  BADADDR 0x%08lx\n", addr);
+		printk("  cause   %d\n", cause);
+		printk("  op-code 0x%08lx\n", *(unsigned long *)(fp->ea));
+		show_regs(fp);
+		return;
+	}
 
-   //	printk("Unaligned access instr=0x%08lx addr=%#lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
-   //   *(unsigned long*)fp->ea, addr, fp->ea, fp->ra, fp->sp);
-	
-	info.si_code = BUS_ADRALN;
-	info.si_signo = SIGBUS;
-	info.si_errno = 0;
-	info.si_addr = (void *) fp->ea;
-
-	force_sig_info(info.si_signo, &info, current);
+	_exception(SIGBUS, fp, BUS_ADRALN, addr);
 }
 #endif /* !CONFIG_ALIGNMENT_TRAP */
 
-/* Illegal instruction handler 
- */
+/* Illegal instruction handler */
 asmlinkage void handle_illegal_c(struct pt_regs *fp)
 {
-	siginfo_t info;
-
 	fp->ea -= 4;
-
-	//	printk("Illegal instruction instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
-	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
-	
-	info.si_code = ILL_PRVOPC;
-	info.si_signo = SIGILL;
-	info.si_errno = 0;
-	info.si_addr = (void *) fp->ea;
-
-	force_sig_info(info.si_signo, &info, current);
+	_exception(SIGILL, fp, ILL_ILLOPC, fp->ea);
 }
 
-/* Supervisor instruction handler 
- */
+/* Supervisor instruction handler */
 asmlinkage void handle_supervisor_instr(struct pt_regs *fp)
 {
-	siginfo_t info;
-
 	fp->ea -= 4;
-
-	//	printk("Supervisor instruction instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
-	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
-
-	info.si_code = ILL_PRVOPC;
-	info.si_signo = SIGILL;
-	info.si_errno = 0;
-	info.si_addr = (void *) fp->ea;
-
-	force_sig_info(info.si_signo, &info, current);
+	_exception(SIGILL, fp, ILL_PRVOPC, fp->ea);
 }
 
-
-/* Illegal division error
- */
+/* Division error handler */
 asmlinkage void handle_diverror_c(struct pt_regs *fp)
 {
-	siginfo_t info;
-
 	fp->ea -= 4;
-
-	//	printk("Division error instr=0x%08lx ea=0x%08lx ra=0x%08lx sp=0x%08lx\n", 
-	//          *(unsigned long*)fp->ea, fp->ea, fp->ra, fp->sp);
-	
-	info.si_code = FPE_INTDIV;
-	info.si_signo = SIGFPE;
-	info.si_errno = 0;
-	info.si_addr = (void *) fp->ea;
-
-	force_sig_info(info.si_signo, &info, current);
+	_exception(SIGFPE, fp, FPE_INTDIV, fp->ea);
 }
