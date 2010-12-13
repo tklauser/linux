@@ -22,6 +22,7 @@
 #include <linux/sched.h>
 #include <linux/uaccess.h>
 
+#include <asm/exceptions.h>
 #include <asm/unaligned.h>
 
 /* instructions we emulate */
@@ -66,7 +67,6 @@ static inline void put_reg_val(struct pt_regs *fp, int reg, u32 val)
  */
 asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 {
-	siginfo_t info;
 	u32 isn, addr, val;
 	int cause, in_kernel;
 	u8 a, b, d0, d1, d2, d3;
@@ -178,11 +178,7 @@ asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 			       (unsigned int)isn, addr, fp->sp,
 			       current->pid);
 
-			info.si_code = SEGV_MAPERR;
-			info.si_signo = SIGSEGV;
-			info.si_errno = 0;
-			info.si_addr = (void *)fp->ea;
-			force_sig_info(SIGSEGV, &info, current);
+			_exception(SIGSEGV, fp, SEGV_MAPERR, fp->ea);
 			return;
 		}
 	}
@@ -221,17 +217,10 @@ asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 		       fp->ea, fp->ra, fp->sp);
 	}
 
-	if (ma_usermode & UM_SIGNAL) {
-		info.si_code = BUS_ADRALN;
-		info.si_signo = SIGBUS;
-		info.si_errno = 0;
-		info.si_addr = (void *)fp->ea;
-
-		force_sig_info(info.si_signo, &info, current);
-	} else {
-		/* else advance */
-		fp->ea += 4;
-	}
+	if (ma_usermode & UM_SIGNAL)
+		_exception(SIGBUS, fp, BUS_ADRALN, fp->ea);
+	else
+		fp->ea += 4;	/* else advance */
 }
 
 #ifdef CONFIG_PROC_FS
