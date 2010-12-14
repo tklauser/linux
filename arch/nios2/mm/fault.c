@@ -1,18 +1,13 @@
 /*
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * Copyright (C) 1995 - 2000 by Ralf Baechle
+ *
+ * based on arch/mips/mm/fault.c
+ *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * linux/nios2/mm/fault.c
- *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
- *
- * Based on:
- *
- * linux/nios2nommu/mm/fault.c
- *
- * Copyright (C) 1995 - 2000 by Ralf Baechle
  */
 
 #include <linux/signal.h>
@@ -31,6 +26,7 @@
 #include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/ptrace.h>
+#include <asm/exceptions.h>
 
 #include <asm/tlbstats.h>
 
@@ -44,16 +40,14 @@ extern struct tlb_stat statistics;
 asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
                               unsigned long address)
 {
-	struct vm_area_struct * vma = NULL;
+	struct vm_area_struct *vma = NULL;
 	struct task_struct *tsk = current;
 	struct mm_struct *mm = tsk->mm;
-	const int field = sizeof(unsigned long) * 2;
-	siginfo_t info;
+	int code = SEGV_MAPERR;
 	int fault;
-   int write = 0;
+	unsigned int flags = 0;
 
 	statistics.do_page_fault++;
-	info.si_code = SEGV_MAPERR;
 
 	/*
 	 * We fault-in kernel-space virtual memory on-demand. The
@@ -65,20 +59,18 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
 	 * nothing more.
 	 */
 	if (unlikely(address >= VMALLOC_START && address <= VMALLOC_END)) {
-	  if (user_mode(regs)) {
-	    goto bad_area_nosemaphore;
-	  }
-	  else {
-        goto vmalloc_fault;
-	  }
-   }
+		if (user_mode(regs))
+			goto bad_area_nosemaphore;
+		else
+			goto vmalloc_fault;
+	}
 #ifdef MODULE_START
 	if (unlikely(address >= MODULE_START && address < MODULE_END))
                goto vmalloc_fault;
 #endif
-	if(unlikely(address >= TASK_SIZE)) {
+	if (unlikely(address >= TASK_SIZE))
 		goto bad_area_nosemaphore;
-	}
+
 	/*
 	 * If we're in an interrupt or have no user
 	 * context, we must not take the fault..
@@ -101,31 +93,26 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
  * we can handle it..
  */
 good_area:
-	info.si_code = SEGV_ACCERR;
+	code = SEGV_ACCERR;
 
-   switch(cause) {
-      case EXC_SUPERV_INSN_ACCESS:
-         goto bad_area;
-
-      case EXC_SUPERV_DATA_ACCESS:
-         goto bad_area;
-
-      case EXC_X_PROTECTION_FAULT:
-         if (!(vma->vm_flags & VM_EXEC)) {
-            goto bad_area;
-         }
-         break;
-      case EXC_R_PROTECTION_FAULT:
-         if (!(vma->vm_flags & VM_READ)) {
-            goto bad_area;
-         }
-         break;
-      case EXC_W_PROT_FAULT:
-         write = 1;
-         if (!(vma->vm_flags & VM_WRITE)) {
-            goto bad_area;
-         }
-         break;
+	switch(cause) {
+	case EXC_SUPERV_INSN_ACCESS:
+		goto bad_area;
+	case EXC_SUPERV_DATA_ACCESS:
+		goto bad_area;
+	case EXC_X_PROTECTION_FAULT:
+		if (!(vma->vm_flags & VM_EXEC))
+			goto bad_area;
+		break;
+	case EXC_R_PROTECTION_FAULT:
+		if (!(vma->vm_flags & VM_READ))
+			goto bad_area;
+		break;
+	case EXC_W_PROT_FAULT:
+		flags = FAULT_FLAG_WRITE;
+		if (!(vma->vm_flags & VM_WRITE))
+			goto bad_area;
+		break;
 	}
 
 survive:
@@ -134,7 +121,7 @@ survive:
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
-	fault = handle_mm_fault(mm, vma, address, write);
+	fault = handle_mm_fault(mm, vma, address, flags);
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		if (fault & VM_FAULT_OOM)
 			goto out_of_memory;
@@ -143,9 +130,9 @@ survive:
 		BUG();
 	}
 	if (fault & VM_FAULT_MAJOR)
-		current->maj_flt++;
+		tsk->maj_flt++;
 	else
-		current->min_flt++;
+		tsk->min_flt++;
 
 	up_read(&mm->mmap_sem);
 	return;
@@ -160,20 +147,7 @@ bad_area:
 bad_area_nosemaphore:
 	/* User mode accesses just cause a SIGSEGV */
 	if (user_mode(regs)) {
-#if 0
-		printk("do_page_fault() #2: sending SIGSEGV to %s for "
-		       "invalid %s\n%0*lx (ea == %0*lx)(ra == %0*lx)\n",
-		       tsk->comm,
-		       write ? "write access to" : "read access from",
-		       field, address,
-		       field, (unsigned long) regs->ea, 
-		       field, (unsigned long) regs->ra);
-#endif
-		info.si_signo = SIGSEGV;
-		info.si_errno = 0;
-		/* info.si_code has been set above */
-		info.si_addr = (void __user *) address;
-		force_sig_info(SIGSEGV, &info, tsk);
+		_exception(SIGSEGV, regs, code, address);
 		return;
 	}
 
@@ -189,8 +163,8 @@ no_context:
 	bust_spinlocks(1);
 
 	printk(KERN_ALERT "Unable to handle kernel paging request at "
-	       "virtual address %0*lx, epc == %0*lx, ra == %0*lx\n",
-	       field, address, field, regs->ea, field,  regs->ra);
+	       "virtual address %lx, epc == %lx, ra == %lx\n",
+	       address, regs->ea, regs->ra);
 	panic("Oops");
 
 /*
@@ -215,27 +189,10 @@ do_sigbus:
 	/* Kernel mode? Handle exceptions or die */
 	if (!user_mode(regs))
 		goto no_context;
-	else
-	/*
-	 * Send a sigbus, regardless of whether we were in kernel
-	 * or user mode.
-	 */
-#if 0
-		printk("do_page_fault() #3: sending SIGBUS to %s for "
-		       "invalid %s\n%0*lx (epc == %0*lx, ra == %0*lx)\n",
-		       tsk->comm,
-		       write ? "write access to" : "read access from",
-		       field, address,
-		       field, (unsigned long) regs->ea,
-		       field, (unsigned long) regs->ra);
-#endif
-	info.si_signo = SIGBUS;
-	info.si_errno = 0;
-	info.si_code = BUS_ADRERR;
-	info.si_addr = (void __user *) address;
-	force_sig_info(SIGBUS, &info, tsk);
 
+	_exception(SIGBUS, regs, BUS_ADRERR, address);
 	return;
+
 vmalloc_fault:
 	{
 		/*
@@ -252,8 +209,7 @@ vmalloc_fault:
 		pte_t *pte_k;
 
 #if 1
-      /* FIXME: Is this entierly correct ?
-       */
+		/* FIXME: Is this entirely correct ? */
 		pgd = (pgd_t *) pgd_current + offset;
 #else
 		pgd = &current->mm->pgd[offset];
