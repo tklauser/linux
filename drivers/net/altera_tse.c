@@ -516,8 +516,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 	volatile struct alt_sgdma_descriptor *temp_desc_pointer;
 	unsigned int desc_status, desc_control;
 	int howmany = 0;
-	unsigned int rx_bytes, netif_rx_status;
-	unsigned char *skb_Rxbuffer;
+	unsigned int rx_bytes;
 	struct sk_buff *skb;
 	unsigned long flags;
 	unsigned int tx_tail;
@@ -558,13 +557,10 @@ static int tse_poll(struct napi_struct *napi, int budget)
 		//process packet
 		/* Align IP header to 32 bits */
 		skb_reserve(skb, NET_IP_ALIGN);
-		skb_Rxbuffer = skb_put(skb, rx_bytes);
+		skb_put(skb, rx_bytes);
 		skb->protocol = eth_type_trans(skb, dev);
 
-		netif_rx_status = netif_receive_skb(skb);
-		
-		if (netif_rx_status == NET_RX_DROP)
-		{
+		if (netif_receive_skb(skb) == NET_RX_DROP) {
 			if(netif_msg_rx_err(tse_priv))
 				printk(KERN_WARNING "%s :NET_RX_DROP occurred\n",
 					dev->name);
