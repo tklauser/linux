@@ -159,9 +159,9 @@ static void error(char *x)
 void decompress_kernel(void)
 {
 #ifdef CONFIG_MMU
-	output_data = DDR2_TOP_BASE | KERNEL_REGION_BASE;
+	output_data = (void *) (DDR2_TOP_BASE | KERNEL_REGION_BASE);
 #else
-	output_data = DDR2_TOP_BASE;
+	output_data = (void *) DDR2_TOP_BASE;
 #endif /* CONFIG_MMU */
 	output_ptr = 0;
 	free_mem_ptr = (unsigned long)&_end;
