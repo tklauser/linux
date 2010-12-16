@@ -521,7 +521,6 @@ static int tse_poll(struct napi_struct *napi, int budget)
 	unsigned long flags;
 	unsigned int tx_tail;
 	unsigned int tx_loop;
-	int done;
 
 	if (netif_msg_intr(tse_priv))
 		printk(KERN_WARNING "%s :Entering tse_poll with budget = 0x%x\n",
@@ -664,8 +663,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 			spin_unlock_irqrestore(&tse_priv->tx_lock, flags);
 		}
 	}
-	                                                        
-	done = 0;
+
 	/* if all packets processed, complete rx, and turn on normal IRQs */
 	if (howmany < budget) {
 		if (netif_msg_intr(tse_priv))
@@ -679,15 +677,18 @@ static int tse_poll(struct napi_struct *napi, int budget)
 #ifndef NO_TX_IRQ
 		tse_priv->tx_sgdma_imask |= ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 		tse_priv->tx_sgdma_dev->control |= ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
-#endif		
-		done = 1;
+#endif
+
+		temp_desc_pointer = &tse_priv->sgdma_rx_desc[tse_priv->rx_sgdma_descriptor_tail];
+		desc_status = temp_desc_pointer->descriptor_status;
+
+		/* Check to see if the data at the RX_SGDMA tail is valid */
+		if (desc_status & ALT_SGDMA_DESCRIPTOR_STATUS_TERMINATED_BY_EOP_MSK)
+			napi_reschedule(napi);
 	}
 
-        budget -= howmany;
-	return done?0:1;
+	return howmany;
 }
-
-
 
 /* SG-DMA TX & RX FIFO interrupt routing
 * arg1     :irq number
@@ -720,14 +721,14 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
 				dev->name);
 	}
 
-	//reset IRQ 	
-	tse_priv->rx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
-	tse_priv->tx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
-	
+	/* reset IRQ */
+	if (irq == tse_priv->rx_fifo_interrupt)
+		tse_priv->rx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
+	else if (irq == tse_priv->tx_fifo_interrupt)
+		tse_priv->tx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
+
 	return IRQ_HANDLED;
-}      
-
-
+}
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
 /*
