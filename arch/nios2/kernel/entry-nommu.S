@@ -39,7 +39,7 @@ ENTRY(system_call)
 					/* original r2 is in orig_r2 */
 
 	movui	r1,NR_syscalls
-	bgtu	r3,r1,ret_from_exception
+	bgeu	r3,r1,ret_from_exception
 	slli	r1,r3,2
 	movhi	r11,%hiadj(sys_call_table)
 	add	r1,r1,r11
