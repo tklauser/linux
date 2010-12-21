@@ -1,36 +1,15 @@
-/*--------------------------------------------------------------------
+/*
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
+ * Copyright (C) 2004 Microtronix Datacom Ltd
  *
- * arch/nios2/kernel/syscalltable.S
+ * Derived from m68knommu
  *
- * Copyright (C) 2009, Wind River Systems Inc
- * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
- * 
- * Based on:
- *	
- * arch/nios2nommu/kernel/syscalltable.S	
- *
- * Derived from M68knommu
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *  Copyright (C) 2002, Greg Ungerer (gerg@snapgear.com)
- *  Copyright (C) 2000  Lineo Inc. (www.lineo.com) 
- *  Copyright (C) 1998  D. Jeff Dionne <jeff@lineo.ca>,
- *                      Kenneth Albanowski <kjahds@kjahds.com>,
- *  Copyright (C) 1991, 1992  Linus Torvalds
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
 
 #include <linux/sys.h>
 #include <linux/linkage.h>
@@ -47,7 +26,7 @@ ENTRY(sys_call_table)
 	.long sys_write
 	.long sys_open		/* 5 */
 	.long sys_close
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_waitpid */
 	.long sys_creat
 	.long sys_link
 	.long sys_unlink	/* 10 */
@@ -57,8 +36,8 @@ ENTRY(sys_call_table)
 	.long sys_mknod
 	.long sys_chmod		/* 15 */
 	.long sys_chown
-	.long sys_ni_syscall	/* sys_break */
-	.long sys_ni_syscall	/* sys_stat */
+	.long sys_ni_syscall	/* old sys_break */
+	.long sys_ni_syscall	/* old sys_stat */
 	.long sys_lseek
 	.long sys_getpid	/* 20 */
 	.long sys_mount
@@ -68,14 +47,14 @@ ENTRY(sys_call_table)
 	.long sys_stime		/* 25 */
 	.long sys_ptrace
 	.long sys_alarm
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_fstat */
 	.long sys_pause
 	.long sys_utime		/* 30 */
-	.long sys_ni_syscall	/* old stty syscall holder */
-	.long sys_ni_syscall	/* old gtty syscall holder */
+	.long sys_ni_syscall	/* old sys_stty */
+	.long sys_ni_syscall	/* old sys_gtty */
 	.long sys_access
 	.long sys_nice
-	.long sys_ni_syscall	/* 35 */ /* old ftime syscall holder */
+	.long sys_ni_syscall	/* 35: old sys_ftime */
 	.long sys_sync
 	.long sys_kill
 	.long sys_rename
@@ -84,22 +63,22 @@ ENTRY(sys_call_table)
 	.long sys_dup
 	.long sys_pipe
 	.long sys_times
-	.long sys_ni_syscall	/* old prof syscall holder */
+	.long sys_ni_syscall	/* old sys_prof */
 	.long sys_brk		/* 45 */
 	.long sys_setgid
 	.long sys_getgid
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_signal */
 	.long sys_geteuid
 	.long sys_getegid	/* 50 */
 	.long sys_acct
 	.long sys_umount	/* recycled never used phys() */
-	.long sys_ni_syscall	/* old lock syscall holder */
+	.long sys_ni_syscall	/* old sys_lock */
 	.long sys_ioctl
 	.long sys_fcntl		/* 55 */
-	.long sys_ni_syscall	/* old mpx syscall holder */
+	.long sys_ni_syscall	/* old sys_mpx */
 	.long sys_setpgid
-	.long sys_ni_syscall	/* old ulimit syscall holder */
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_ulimit */
+	.long sys_ni_syscall	/* old sys_olduname */
 	.long sys_umask		/* 60 */
 	.long sys_chroot
 	.long sys_ustat
@@ -108,15 +87,15 @@ ENTRY(sys_call_table)
 	.long sys_getpgrp	/* 65 */
 	.long sys_setsid
 	.long sys_sigaction
-	.long sys_ni_syscall
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_sgetmask */
+	.long sys_ni_syscall	/* old sys_ssetmask */
 	.long sys_setreuid	/* 70 */
 	.long sys_setregid
 	.long sys_sigsuspend
 	.long sys_sigpending
 	.long sys_sethostname
 	.long sys_setrlimit	/* 75 */
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_getrlimit */
 	.long sys_getrusage
 	.long sys_gettimeofday
 	.long sys_settimeofday
@@ -124,12 +103,12 @@ ENTRY(sys_call_table)
 	.long sys_setgroups
 	.long sys_old_select
 	.long sys_symlink
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* old sys_lstat */
 	.long sys_readlink	/* 85 */
 	.long sys_uselib
 	.long sys_swapon
 	.long sys_reboot
-	.long sys_ni_syscall	/* sys_readdir */
+	.long sys_ni_syscall	/* old sys_readdir */
 	.long sys_mmap		/* 90 */
 	.long sys_munmap
 	.long sys_truncate
@@ -138,10 +117,10 @@ ENTRY(sys_call_table)
 	.long sys_fchown	/* 95 */
 	.long sys_getpriority
 	.long sys_setpriority
-	.long sys_ni_syscall	/* sys_profil */
+	.long sys_ni_syscall	/* old sys_profil */
 	.long sys_statfs
 	.long sys_fstatfs	/* 100 */
-	.long sys_ni_syscall	/* sys_ioperm */
+	.long sys_ni_syscall	/* old sys_ioperm */
 	.long sys_socketcall
 	.long sys_syslog
 	.long sys_setitimer
@@ -149,13 +128,13 @@ ENTRY(sys_call_table)
 	.long sys_newstat
 	.long sys_newlstat
 	.long sys_newfstat
-	.long sys_ni_syscall	/* sys_uname */
-	.long sys_ni_syscall	/* sys_iopl */
+	.long sys_ni_syscall	/* old sys_uname */
+	.long sys_ni_syscall	/* old sys_iopl */
 	.long sys_vhangup
-	.long sys_ni_syscall	/* sys_idle */
+	.long sys_ni_syscall	/* old sys_idle */
 	.long sys_nios2cmpxchg	/* nios2-specific compare and exchange syscall for atomic operations */
 	.long sys_wait4
-	.long sys_swapoff	/* 115 */ /* sys_swapoff */
+	.long sys_swapoff	/* 115 */
 	.long sys_sysinfo
 	.long sys_ipc
 	.long sys_fsync
@@ -165,35 +144,35 @@ ENTRY(sys_call_table)
 	.long sys_newuname
 	.long sys_cacheflush	/* modify_ldt for i386 */
 	.long sys_adjtimex
-	.long sys_mprotect	/* 125 */ /* sys_mprotect */
+	.long sys_mprotect	/* 125 */
 	.long sys_sigprocmask
-	.long sys_ni_syscall	/* sys_creat_module */
+	.long sys_ni_syscall	/* old sys_create_module */
 	.long sys_init_module
 	.long sys_delete_module
-	.long sys_ni_syscall	/* 130: sys_get_kernel_syms */
+	.long sys_ni_syscall	/* 130: old sys_get_kernel_syms */
 	.long sys_quotactl
 	.long sys_getpgid
 	.long sys_fchdir
 	.long sys_bdflush
 	.long sys_sysfs		/* 135 */
 	.long sys_personality
-	.long sys_ni_syscall	/* sys_afs_syscall */
+	.long sys_ni_syscall	/* old sys_afs_syscall */
 	.long sys_setfsuid
 	.long sys_setfsgid
 	.long sys_llseek	/* 140 */
 	.long sys_getdents
 	.long sys_select
 	.long sys_flock
-	.long sys_msync		/* sys_msync */
+	.long sys_msync
 	.long sys_readv		/* 145 */
 	.long sys_writev
 	.long sys_getsid
 	.long sys_fdatasync
 	.long sys_sysctl
-	.long sys_mlock		/* 150 */ /* sys_mlock */
-	.long sys_munlock	/* sys_munlock */
-	.long sys_mlockall	/* sys_mlockall */
-	.long sys_munlockall	/* sys_munlockall */
+	.long sys_mlock		/* 150 */
+	.long sys_munlock
+	.long sys_mlockall
+	.long sys_munlockall
 	.long sys_sched_setparam
 	.long sys_sched_getparam /* 155 */
 	.long sys_sched_setscheduler
@@ -207,7 +186,7 @@ ENTRY(sys_call_table)
 	.long sys_setresuid
 	.long sys_getresuid	/* 165 */
 	.long sys_getpagesize
-	.long sys_ni_syscall	/* sys_query_module */
+	.long sys_ni_syscall	/* old sys_query_module */
 	.long sys_poll
 	.long sys_nfsservctl
 	.long sys_setresgid	/* 170 */
@@ -228,8 +207,8 @@ ENTRY(sys_call_table)
 	.long sys_capset	/* 185 */
 	.long sys_sigaltstack
 	.long sys_sendfile
-	.long sys_ni_syscall	/* streams1 */
-	.long sys_ni_syscall	/* streams2 */
+	.long sys_ni_syscall	/* old sys_getpmsg (streams1) */
+	.long sys_ni_syscall	/* old sys_putpmsg (streams2) */
 	.long sys_vfork		/* 190 */
 	.long sys_getrlimit
 	.long sys_mmap_pgoff
@@ -258,8 +237,8 @@ ENTRY(sys_call_table)
 	.long sys_setfsuid	/* 215 */
 	.long sys_setfsgid
 	.long sys_pivot_root
-	.long sys_ni_syscall
-	.long sys_ni_syscall
+	.long sys_ni_syscall	/* unused */
+	.long sys_ni_syscall	/* unused */
 	.long sys_getdents64	/* 220 */
 	.long sys_gettid
 	.long sys_tkill
@@ -277,8 +256,8 @@ ENTRY(sys_call_table)
 	.long sys_fremovexattr
 	.long sys_futex		/* 235 */
 	.long sys_sendfile64
-	.long sys_mincore	/* sys_mincore */
-	.long sys_madvise	/* sys_madvise */
+	.long sys_mincore
+	.long sys_madvise
 	.long sys_fcntl64
 	.long sys_readahead	/* 240 */
 	.long sys_io_setup
@@ -292,7 +271,7 @@ ENTRY(sys_call_table)
 	.long sys_epoll_create
 	.long sys_epoll_ctl	/* 250 */
 	.long sys_epoll_wait
-	.long sys_remap_file_pages	/* sys_remap_file_pages */
+	.long sys_remap_file_pages
 	.long sys_set_tid_address
 	.long sys_timer_create
 	.long sys_timer_settime	/* 255 */
@@ -308,7 +287,7 @@ ENTRY(sys_call_table)
 	.long sys_tgkill	/* 265 */
 	.long sys_utimes
 	.long sys_fadvise64_64
-	.long sys_mbind	
+	.long sys_mbind
 	.long sys_get_mempolicy
 	.long sys_set_mempolicy	/* 270 */
 	.long sys_mq_open
@@ -318,10 +297,10 @@ ENTRY(sys_call_table)
 	.long sys_mq_notify	/* 275 */
 	.long sys_mq_getsetattr
 	.long sys_waitid
-	.long sys_ni_syscall	/* sys_setaltroot */
-	.long sys_ni_syscall	/* sys_add_key */
-	.long sys_ni_syscall	/* 280 */ /* sys_request_key */
-	.long sys_ni_syscall	/* sys_keyctl */
+	.long sys_ni_syscall	/* old sys_setaltroot */
+	.long sys_ni_syscall	/* old sys_add_key */
+	.long sys_ni_syscall	/* 280: old sys_request_key */
+	.long sys_ni_syscall	/* old sys_keyctl */
 	.long sys_ioprio_set
 	.long sys_ioprio_get
 	.long sys_inotify_init
@@ -383,4 +362,3 @@ ENTRY(sys_call_table)
 	.rept NR_syscalls - 339
 		.long sys_ni_syscall
 	.endr
-
