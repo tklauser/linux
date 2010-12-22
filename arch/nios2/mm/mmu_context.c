@@ -37,10 +37,6 @@
 
 static unsigned long ctx = FIRST_CTX;
 
-void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
-{
-}
-
 /*
  * Set new context (pid), keep way
  */

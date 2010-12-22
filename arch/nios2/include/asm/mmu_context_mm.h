@@ -26,7 +26,9 @@
  */
 extern unsigned long pgd_current;
 
-void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk);
+static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
+{
+}
 
 /* ivho: leaving old MIPS comment
  * Initialize the context related info for a new mm_struct
