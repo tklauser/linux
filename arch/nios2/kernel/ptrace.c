@@ -1,13 +1,13 @@
 /*
- *  linux/arch/nios2/kernel/ptrace.c
+ * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
  *
- *  Copyright (C) 1994 by Hamish Macdonald
- *  Taken from linux/kernel/ptrace.c and modified for M680x0.
- *  linux/kernel/ptrace.c is by Ross Biro 1/23/92, edited by Linus Torvalds
+ * based on arch/m68knommu/kernel/ptrace.c
+ *
+ * Copyright (C) 1994 by Hamish Macdonald
  *
  * This file is subject to the terms and conditions of the GNU General
- * Public License.  See the file COPYING in the main directory of
- * this archive for more details.
+ * Public License.  See the file COPYING in the main directory of this
+ * archive for more details.
  */
 
 #include <linux/kernel.h>
@@ -23,14 +23,6 @@
 #include <asm/system.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
-
-/* #define DEBUG */
-
-#ifdef DEBUG
-# define PRINTK_DEBUG(str...)   printk(KERN_DEBUG str)
-#else
-# define PRINTK_DEBUG(str...)   do { } while (0)
-#endif
 
 /*
  * does not yet catch signals sent when the child dies.
@@ -123,7 +115,7 @@ long arch_ptrace(struct task_struct *child, long request,
 			    addr > sizeof(struct user) - 3)
 				break;
 
-			PRINTK_DEBUG("%s PEEKUSR: addr=0x%08x\n", __FUNCTION__, (u32)addr);
+			pr_debug("PEEKUSR: addr=0x%08lx\n", addr);
 			tmp = 0;  /* Default return condition */
 			addr = addr >> 2; /* temporary hack. */
 			ret = -EIO;
@@ -138,7 +130,7 @@ long arch_ptrace(struct task_struct *child, long request,
 			} else
 				break;
 			ret = put_user(tmp,(unsigned long *) data);
-			PRINTK_DEBUG("%s PEEKUSR: rdword=0x%08x\n", __FUNCTION__, (u32)tmp);
+			pr_debug("PEEKUSR: rdword=0x%08lx\n", tmp);
 			break;
 		}
 
@@ -147,9 +139,9 @@ long arch_ptrace(struct task_struct *child, long request,
 		case PTRACE_POKEDATA:
 			ret = generic_ptrace_pokedata(child, addr, data);
 			break;
-
-		case PTRACE_POKEUSR: /* write the word at location addr in the USER area */
-			PRINTK_DEBUG("%s POKEUSR: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
+		/* write the word at location addr in the USER area */
+		case PTRACE_POKEUSR:
+			pr_debug("POKEUSR: addr=0x%08lx, data=0x%08lx\n", addr, data);
 			ret = -EIO;
 			if ((addr & 3) || addr < 0 ||
 			    addr > sizeof(struct user) - 3)
@@ -168,48 +160,42 @@ long arch_ptrace(struct task_struct *child, long request,
 				break;
 			}
 			break;
-
-		case PTRACE_SYSCALL: /* continue and stop at next (return from) syscall */
-		case PTRACE_CONT: { /* restart after signal. */
-
-			PRINTK_DEBUG("%s CONT: addr=0x%08x, data=0x%08x\n", __FUNCTION__, (u32)addr, (u32)data);
+		/* continue and stop at next (return from) syscall */
+		case PTRACE_SYSCALL:
+		/* restart after signal. */
+		case PTRACE_CONT:
+			pr_debug("CONT: addr=0x%08lx, data=0x%08lx\n", addr, data);
 			ret = -EIO;
 			if ((unsigned long) data > _NSIG)
 				break;
-			if (request == PTRACE_SYSCALL) {
+			if (request == PTRACE_SYSCALL)
 				set_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-         }
-			else {
+			else
 				clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-         }
 			child->exit_code = data;
-			PRINTK_DEBUG("%s CONT: About to run wake_up_process()\n", __FUNCTION__);
+			pr_debug("CONT: About to run wake_up_process()\n");
 			wake_up_process(child);
 			ret = 0;
 			break;
-		}
 
 		/*
 		 * make the child exit.  Best I can do is send it a sigkill. 
 		 * perhaps it should be put in the status that it wants to 
 		 * exit.
 		 */
-		case PTRACE_KILL: {
-
-			PRINTK_DEBUG("%s KILL\n", __FUNCTION__);
+		case PTRACE_KILL:
+			pr_debug("KILL\n");
 			ret = 0;
 			if (child->state == EXIT_ZOMBIE) /* already dead */
 				break;
 			child->exit_code = SIGKILL;
 			wake_up_process(child);
 			break;
-		}
-
 		case PTRACE_GETREGS: { /* Get all gp regs from the child. */
 			int i;
 			unsigned long tmp;
 
-			PRINTK_DEBUG("%s GETREGS\n", __FUNCTION__);
+			pr_debug("GETREGS\n");
 			for (i = 0; i < ARRAY_SIZE(regoff); i++) {
 			    tmp = get_reg(child, i);
 			    if (put_user(tmp, (unsigned long *) data)) {
@@ -226,7 +212,7 @@ long arch_ptrace(struct task_struct *child, long request,
 			int i;
 			unsigned long tmp;
 
-			PRINTK_DEBUG("%s SETREGS\n", __FUNCTION__);
+			pr_debug("SETREGS\n");
 			for (i = 0; i < ARRAY_SIZE(regoff); i++) {
 			    if (get_user(tmp, (unsigned long *) data)) {
 				ret = -EFAULT;
@@ -244,7 +230,7 @@ long arch_ptrace(struct task_struct *child, long request,
 		}
 
 		default:
-			PRINTK_DEBUG("%s Undefined\n", __FUNCTION__);
+			pr_debug("Undefined\n");
 			ret = -EIO;
 			break;
 	}
