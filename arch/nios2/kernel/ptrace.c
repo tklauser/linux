@@ -22,7 +22,6 @@
 #include <asm/pgtable.h>
 #include <asm/system.h>
 #include <asm/processor.h>
-#include <asm/cacheflush.h>
 
 /*
  * does not yet catch signals sent when the child dies.
@@ -97,143 +96,87 @@ void ptrace_disable(struct task_struct *child)
 long arch_ptrace(struct task_struct *child, long request,
 		 unsigned long addr, unsigned long data)
 {
+	unsigned long tmp;
+	unsigned int i;
 	int ret;
 
 	switch (request) {
-		/* when I and D space are separate, these will need to be fixed. */
-		case PTRACE_PEEKTEXT: /* read word at location addr. */
-		case PTRACE_PEEKDATA:
-			ret = generic_ptrace_peekdata(child, addr, data);
+	/* read the word at location addr in the USER area. */
+	case PTRACE_PEEKUSR:
+		pr_debug("PEEKUSR: addr=0x%08lx\n", addr);
+		ret = -EIO;
+		if ((addr & 3) || addr > sizeof(struct user) - 3)
 			break;
 
-		/* read the word at location addr in the USER area. */
-		case PTRACE_PEEKUSR: {
-			unsigned long tmp;
-
-			ret = -EIO;
-			if ((addr & 3) || addr < 0 ||
-			    addr > sizeof(struct user) - 3)
-				break;
-
-			pr_debug("PEEKUSR: addr=0x%08lx\n", addr);
-			tmp = 0;  /* Default return condition */
-			addr = addr >> 2; /* temporary hack. */
-			ret = -EIO;
-			if (addr < ARRAY_SIZE(regoff)) {
-				tmp = get_reg(child, addr);
-			} else if (addr == PT_TEXT_ADDR/4) {
-				tmp = child->mm->start_code;
-			} else if (addr == PT_DATA_ADDR/4) {
-				tmp = child->mm->start_data;
-			} else if (addr == PT_TEXT_END_ADDR/4) {
-				tmp = child->mm->end_code;
-			} else
-				break;
-			ret = put_user(tmp,(unsigned long *) data);
-			pr_debug("PEEKUSR: rdword=0x%08lx\n", tmp);
+		addr = addr >> 2; /* temporary hack. */
+		ret = -EIO;
+		if (addr < ARRAY_SIZE(regoff))
+			tmp = get_reg(child, addr);
+		else if (addr == PT_TEXT_ADDR / 4)
+			tmp = child->mm->start_code;
+		else if (addr == PT_DATA_ADDR / 4)
+			tmp = child->mm->start_data;
+		else if (addr == PT_TEXT_END_ADDR / 4)
+			tmp = child->mm->end_code;
+		else
 			break;
+		ret = put_user(tmp,(unsigned long *) data);
+		pr_debug("PEEKUSR: rdword=0x%08lx\n", tmp);
+		break;
+	/* write the word at location addr in the USER area */
+	case PTRACE_POKEUSR:
+		pr_debug("POKEUSR: addr=0x%08lx, data=0x%08lx\n", addr, data);
+		ret = -EIO;
+		if ((addr & 3) || addr > sizeof(struct user) - 3)
+			break;
+
+		addr = addr >> 2; /* temporary hack. */
+
+		if (addr == PTR_ESTATUS) {
+			data &= SR_MASK;
+			data |= get_reg(child, PTR_ESTATUS) & ~(SR_MASK);
 		}
-
-		/* when I and D space are separate, this will have to be fixed. */
-		case PTRACE_POKETEXT: /* write the word at location addr. */
-		case PTRACE_POKEDATA:
-			ret = generic_ptrace_pokedata(child, addr, data);
-			break;
-		/* write the word at location addr in the USER area */
-		case PTRACE_POKEUSR:
-			pr_debug("POKEUSR: addr=0x%08lx, data=0x%08lx\n", addr, data);
-			ret = -EIO;
-			if ((addr & 3) || addr < 0 ||
-			    addr > sizeof(struct user) - 3)
+		if (addr < ARRAY_SIZE(regoff)) {
+			if (put_reg(child, addr, data))
 				break;
-
-			addr = addr >> 2; /* temporary hack. */
-
-			if (addr == PTR_ESTATUS) {
-				data &= SR_MASK;
-				data |= get_reg(child, PTR_ESTATUS) & ~(SR_MASK);
-			}
-			if (addr < ARRAY_SIZE(regoff)) {
-				if (put_reg(child, addr, data))
-					break;
-				ret = 0;
-				break;
-			}
-			break;
-		/* continue and stop at next (return from) syscall */
-		case PTRACE_SYSCALL:
-		/* restart after signal. */
-		case PTRACE_CONT:
-			pr_debug("CONT: addr=0x%08lx, data=0x%08lx\n", addr, data);
-			ret = -EIO;
-			if ((unsigned long) data > _NSIG)
-				break;
-			if (request == PTRACE_SYSCALL)
-				set_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-			else
-				clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
-			child->exit_code = data;
-			pr_debug("CONT: About to run wake_up_process()\n");
-			wake_up_process(child);
-			ret = 0;
-			break;
-
-		/*
-		 * make the child exit.  Best I can do is send it a sigkill. 
-		 * perhaps it should be put in the status that it wants to 
-		 * exit.
-		 */
-		case PTRACE_KILL:
-			pr_debug("KILL\n");
-			ret = 0;
-			if (child->state == EXIT_ZOMBIE) /* already dead */
-				break;
-			child->exit_code = SIGKILL;
-			wake_up_process(child);
-			break;
-		case PTRACE_GETREGS: { /* Get all gp regs from the child. */
-			int i;
-			unsigned long tmp;
-
-			pr_debug("GETREGS\n");
-			for (i = 0; i < ARRAY_SIZE(regoff); i++) {
-			    tmp = get_reg(child, i);
-			    if (put_user(tmp, (unsigned long *) data)) {
-				ret = -EFAULT;
-				break;
-			    }
-			    data += sizeof(long);
-			}
 			ret = 0;
 			break;
 		}
-
-		case PTRACE_SETREGS: { /* Set all gp regs in the child. */
-			int i;
-			unsigned long tmp;
-
-			pr_debug("SETREGS\n");
-			for (i = 0; i < ARRAY_SIZE(regoff); i++) {
-			    if (get_user(tmp, (unsigned long *) data)) {
+		break;
+	 /* Get all gp regs from the child. */
+	case PTRACE_GETREGS:
+		pr_debug("GETREGS\n");
+		for (i = 0; i < ARRAY_SIZE(regoff); i++) {
+			tmp = get_reg(child, i);
+			if (put_user(tmp, (unsigned long *) data)) {
 				ret = -EFAULT;
 				break;
-			    }
-			    if (i == PTR_ESTATUS) {
+			}
+			data += sizeof(long);
+		}
+		ret = 0;
+		break;
+	/* Set all gp regs in the child. */
+	case PTRACE_SETREGS:
+		pr_debug("SETREGS\n");
+		for (i = 0; i < ARRAY_SIZE(regoff); i++) {
+			if (get_user(tmp, (unsigned long *) data)) {
+				ret = -EFAULT;
+				break;
+			}
+			if (i == PTR_ESTATUS) {
 				tmp &= SR_MASK;
 				tmp |= get_reg(child, PTR_ESTATUS) & ~(SR_MASK);
-			    }
-			    put_reg(child, i, tmp);
-			    data += sizeof(long);
 			}
-			ret = 0;
-			break;
+			put_reg(child, i, tmp);
+			data += sizeof(long);
 		}
-
-		default:
-			pr_debug("Undefined\n");
-			ret = -EIO;
-			break;
+		ret = 0;
+		break;
+	default:
+		ret = ptrace_request(child, request, addr, data);
 	}
+
 	return ret;
 }
 
