@@ -34,8 +34,6 @@ struct tlb_stat statistics;
 
 #define TLB_NUM_LINES (TLB_NUM_ENTRIES/TLB_NUM_WAYS)
 
-#define DEBUG 0
-#define dprintk(fmt,args...) if(DEBUG) { printk(__FILE__   fmt, ##args); }
 #define nios_iss_set_trace(d)
 
 /* Used as illegal PHYS_ADDR for TLB mappings
@@ -161,8 +159,8 @@ void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
   unsigned long org_misc;
 
   statistics.local_flush_tlb_one_pid++;
-  
-  dprintk("Flush tlb-entry for vaddr=%#lx\n", addr);
+
+  pr_debug("Flush tlb-entry for vaddr=%#lx\n", addr);
   /* remember pid/way until we return. 
    * CHECKME: is there a race here when writing org_misc back?
    */
@@ -180,7 +178,7 @@ void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
     if(((((pteaddr >> 2) & 0xfffff)) == (addr >> PAGE_SHIFT)) &&
        pid == mmu_pid) {
       unsigned long vaddr = IO_REGION_BASE + (PAGE_SIZE * TLB_NUM_ENTRIES/TLB_NUM_WAYS)*way + (addr & TLB_INDEX_MASK);
-      dprintk("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
+      pr_debug("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
       
       WRCTL(CTL_PTEADDR, (vaddr >> 12) << 2);
       WRCTL(CTL_TLBMISC, (1UL << 18) | (way << 20) | pid << PID_SHIFT);
@@ -231,9 +229,10 @@ void local_flush_tlb_one(unsigned long addr)
 {
   int way;
   unsigned long pid, org_misc;
+
   statistics.local_flush_tlb_one++;
-  dprintk("Flush tlb-entry for vaddr=%#lx\n", addr);
-  /* remember pid/way until we return. 
+  pr_debug("Flush tlb-entry for vaddr=%#lx\n", addr);
+  /* remember pid/way until we return.
    * CHECKME: is there a race here when writing org_misc back?
    */
   org_misc = (RDCTL(CTL_TLBMISC) & ((PID_MASK << PID_SHIFT) | (WAY_MASK << WAY_SHIFT)));
@@ -248,8 +247,8 @@ void local_flush_tlb_one(unsigned long addr)
     if((((pteaddr >> 2) & 0xfffff)) == (addr >> PAGE_SHIFT)) {
       unsigned long vaddr = IO_REGION_BASE + (PAGE_SIZE * TLB_NUM_ENTRIES/TLB_NUM_WAYS)*way + (addr & TLB_INDEX_MASK);
       pid = (tlbmisc >> PID_SHIFT) & PID_MASK;
-      dprintk("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
-      
+      pr_debug("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
+
       WRCTL(CTL_PTEADDR, (vaddr >> 12) << 2);
       WRCTL(CTL_TLBMISC, (1UL << 18) | (way << 20) | pid << PID_SHIFT);
       WRCTL(CTL_TLBACC, (MAX_PHYS_ADDR >> PAGE_SHIFT));
