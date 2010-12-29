@@ -113,43 +113,11 @@ static void altera_spi_chipsel(struct spi_device *spi, int value)
 
 static int altera_spi_setupxfer(struct spi_device *spi, struct spi_transfer *t)
 {
-	struct altera_spi *hw = to_hw(spi);
-
-	spin_lock(&hw->bitbang.lock);
-	if (!hw->bitbang.busy) {
-		hw->bitbang.chipselect(spi, BITBANG_CS_INACTIVE);
-		/* need to ndelay for 0.5 clocktick ? */
-	}
-	spin_unlock(&hw->bitbang.lock);
-
 	return 0;
 }
 
-/* the spi->mode bits understood by this driver: */
-#define MODEBITS (SPI_CPOL | SPI_CPHA | SPI_CS_HIGH)
-
 static int altera_spi_setup(struct spi_device *spi)
 {
-	int ret;
-
-	if (!spi->bits_per_word)
-		spi->bits_per_word = 8;
-
-	if (spi->mode & ~MODEBITS) {
-		dev_dbg(&spi->dev, "setup: unsupported mode bits %x\n",
-			spi->mode & ~MODEBITS);
-		return -EINVAL;
-	}
-
-	ret = altera_spi_setupxfer(spi, NULL);
-	if (ret < 0) {
-		dev_err(&spi->dev, "setupxfer returned %d\n", ret);
-		return ret;
-	}
-
-	dev_dbg(&spi->dev, "%s: mode %d, %u bpw, %d hz\n",
-		__func__, spi->mode, spi->bits_per_word, spi->max_speed_hz);
-
 	return 0;
 }
 
@@ -263,6 +231,7 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 
 	master->bus_num = pdev->id;
 	master->num_chipselect = 16;
+	master->mode_bits = SPI_CS_HIGH;
 
 	/* setup the state for the bitbang driver */
 
