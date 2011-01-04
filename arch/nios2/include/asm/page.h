@@ -49,10 +49,8 @@
 #include <linux/pfn.h>
 #include <asm/io.h>
 
-static inline void clear_page(void * page) {
-  memset(page, 0, PAGE_SIZE);
-}
-extern void copy_page(void * to, void * from);
+#define clear_page(page)	memset((page), 0, PAGE_SIZE)
+#define copy_page(to, from)	memcpy((to), (from), PAGE_SIZE)
 
 extern unsigned long shm_align_mask;
 
