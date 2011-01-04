@@ -17,27 +17,35 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
-#define REG_MSM_STATE     0x00
-#define REG_CDONE_CHECK   0x04
-#define REG_WDOG_COUNTER  0x08
-#define REG_WDOG_ENABLE   0x0C
-#define REG_BOOT_ADDR     0x10
-#define REG_INT_OSC       0x18
-#define REG_CFG_SOURCE    0x1C
-#define REG_GPR           0x80
-#define CFG_CURR          0x00
-#define CFG_PREV1         0x20
-#define CFG_PREV2         0x40
-#define CFG_INPUT         0x60
+/*
+ * See www.altera.com/literature/ug/ug_altremote.pdf for details on these
+ * register offsets/masks and values.
+ */
+#define REG_MSM_STATE		0x00
+#define REG_CDONE_CHECK		0x04
+#define REG_WDOG_COUNTER	0x08
+#define REG_WDOG_ENABLE		0x0C
+#define REG_BOOT_ADDR		0x10
+#define REG_INT_OSC		0x18
+#define REG_CFG_SOURCE		0x1C
+#define REG_GPR			0x80	/* status/config register */
+#define CFG_CURR		0x00	/* current configuration registers */
+#define CFG_PREV1		0x20	/* previous configuration 1 register */
+#define CFG_PREV2		0x40	/* previous configuration 2 register */
+#define CFG_INPUT		0x60	/* value in input register */
 
-#define CFG_SOURCE_USER     0x01
-#define CFG_SOURCE_WDOG     0x02
-#define CFG_SOURCE_NSTATUS  0x04
-#define CFG_SOURCE_CRC      0x08
-#define CFG_SOURCE_NCONFIG  0x10
-#define CFG_SOURCE_ALL      0x1F
+#define CFG_SOURCE_USER		0x01
+#define CFG_SOURCE_WDOG		0x02
+#define CFG_SOURCE_NSTATUS	0x04
+#define CFG_SOURCE_CRC		0x08
+#define CFG_SOURCE_NCONFIG	0x10
+#define CFG_SOURCE_ALL		0x1F
 
-#define PET_WDOG            0x02
+#define PET_WDOG		0x02
+
+#define STATE_FACTORY		0
+#define STATE_APPLICATION	1
+#define STATE_APPLICATION_WDT	3
 
 /*
  * Set configuration offset shift depending on flash data width selected in
@@ -198,15 +206,14 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
   } else {
     num += sprintf(buf + num, "Watchdog NOT running\n");
   }
-  switch (msmstate)
-  {
-  case 0:
+  switch (msmstate) {
+  case STATE_FACTORY:
     msg = "factory";
     break;
-  case 1:
+  case STATE_APPLICATION:
     msg = "application";
     break;
-  case 3:
+  case STATE_APPLICATION_WDT:
     msg = "application with watchdog";
     break;
   default:
@@ -361,9 +368,8 @@ static int __devinit altremote_probe(struct platform_device *pdev)
     goto err_out_sysfs;
 
   status = ioread32(altremote.base + REG_MSM_STATE);
-  switch(status)
-  {
-    case 0: {
+  switch(status) {
+    case STATE_FACTORY:
       dev_info(&pdev->dev, "Found altremote block in Factory Mode\n");
       ret = device_create_file(&pdev->dev, &dev_attr_config_addr);
       if (ret)
@@ -372,11 +378,11 @@ static int __devinit altremote_probe(struct platform_device *pdev)
       ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
       if (ret)
         goto err_out_sysfs;
-    } break;
-    case 1: {
+      break;
+    case STATE_APPLICATION:
       dev_info(&pdev->dev, "Found altremote block in Application Mode\n");
-    } break;
-    case 3: {
+      break;
+    case STATE_APPLICATION_WDT:
       dev_info(&pdev->dev, "Found altremote block in Application Mode with Watchdog enabled\n");
       ret = misc_register(&altremote_wdt_miscdev);
       if (ret) {
@@ -387,10 +393,9 @@ static int __devinit altremote_probe(struct platform_device *pdev)
       if (ret)
         goto err_out_wdt;
       altremote.initsteps++;
-    } break;
-    default: {
+      break;
+    default:
       dev_info(&pdev->dev, "Found altremote block unknwon state 0x%X\n", status);
-    }
   }
   return 0;
 
