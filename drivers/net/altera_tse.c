@@ -436,7 +436,6 @@ static int sgdma_async_write(struct alt_tse_private *tse_priv,
 */
 static int tse_sgdma_add_buffer(struct net_device *dev)
 {
-
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	int next_head;
 	struct sk_buff *skb;
@@ -477,7 +476,6 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	tse_priv->rx_sgdma_descriptor_head = next_head;
 
 	return SUCCESS;
-
 }
 
 /* Init and setup SGDMA descriptor chain */
@@ -748,8 +746,6 @@ static void tse_net_poll_controller(struct net_device *dev)
 }
 #endif
 
-
-
 /*******************************************************************************
 * TX and RX functions
 *	Send Function
@@ -757,7 +753,6 @@ static void tse_net_poll_controller(struct net_device *dev)
 *	Clear Transmit buffers - Called from NAPI softirq
 *
 *******************************************************************************/
-
 
 /* Send Packet Function
 * arg1     :skb to send
@@ -775,7 +770,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	unsigned long flags;
 	char	req_tx_shift_16;
 //	struct sk_buff *new_skb;
-
 
 	aligned_tx_buffer = (unsigned int)skb->data;
 	len = skb->len;
@@ -872,9 +866,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 		0x0 //channel
 	);
 
-
-
-
 	//now check is the sgdma is running, if it is then do nothing.
 	//if it is not, start it up with irq's enabled.
 
@@ -887,7 +878,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	tse_priv->tx_sgdma_descriptor_head = next_head;
 
 	spin_unlock_irqrestore(&tse_priv->tx_lock,flags);
-
 
 	tse_priv->dev->trans_start = jiffies;
 
@@ -975,7 +965,6 @@ static void adjust_link(struct net_device *dev)
 		phy_print_status(phydev);
 
 	spin_unlock_irqrestore(&tse_priv->tx_lock, flags);
-
 }
 
 /*******************************************************************************
@@ -1164,16 +1153,13 @@ static int init_mac(struct net_device *dev)
 	return 0;
 }
 
-
-
 /*
-* Open and Initialize the interface
+* Change the MTU
 * The interface is opened whenever 'ifconfig' activates it
 *  arg1   : 'net_device' structure pointer
 *  arg2   : new mtu value
 *  return : 0
 */
-
 /* Jumbo-grams seem to work :-( */
 #define TSE_MIN_MTU 64
 #define TSE_MAX_MTU 16384
@@ -1206,7 +1192,7 @@ static int tse_change_mtu(struct net_device *dev, int new_mtu)
 	dev->mtu = new_mtu;
 	tse_priv->mac_dev->max_frame_length = tse_priv->current_mtu;
 
-	/* Disable receiver and transmitter  descriptor(SGDAM) */
+	/* Disable receiver and transmitter  descriptor(SGDMA) */
 	for (free_loop = 0; free_loop < ALT_TSE_RX_SGDMA_DESC_COUNT;
 	     free_loop++) {
 	/* Free the original skb */
@@ -1271,7 +1257,6 @@ static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 * arg2    : multicasts address count
 * arg3    : list of multicasts addresses
 */
-
 static void tse_set_hash_table(struct net_device *dev)
 {
 	int mac_octet, xor_bit, bitshift, hash;
@@ -1304,7 +1289,6 @@ static void tse_set_hash_table(struct net_device *dev)
 
 		p_mac_base->hash_table[hash] = 1;
 	}
-
 }
 
 /*
@@ -1400,7 +1384,6 @@ static int tse_set_hw_address(struct net_device *dev, void *port)
 * Driver Open, shutdown, probe functions
 *
 *******************************************************************************/
-
 
 /*
 * Open and Initialize the interface
@@ -1499,17 +1482,13 @@ static int tse_open(struct net_device *dev)
 *  arg1   : 'net_device' structure pointer
 *  return : 0
 */
-
 static int tse_shutdown(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int free_loop;
 	int counter;
 
-
-
 	napi_disable(&tse_priv->napi);
-
 
 	//tasklet_kill(&tse_priv->tse_rx_tasklet);
 
