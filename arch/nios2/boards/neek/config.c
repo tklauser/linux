@@ -1238,8 +1238,11 @@ static struct alt_tse_config tsemac0_config = {
 	.speed = SPEED_100, /* SPEED_10, SPEED_100, SPEED_1000 */
 	.duplex = DUPLEX_HALF, /* DUPLEX_HALF, DUPLEX_FULL */
 
-	.rx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
-	.tx_fifo_depth = ALT_TSE_TX_RX_FIFO_DEPTH,
+	/* RX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
+	.rx_fifo_depth = TSE_MAC_RECEIVE_FIFO_DEPTH,
+	/* TX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
+	.tx_fifo_depth = TSE_MAC_TRANSMIT_FIFO_DEPTH,
+
 	.ethaddr = {0x00 , 0x70 , 0xed , 0x11 , 0x12 , 0x12},
 };
 

@@ -69,8 +69,6 @@
 #define ALT_TX_RING_MOD_MASK		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
 #define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
 
-#define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
-
 /************************************************************************/
 /*                                                                      */
 /* Altera Triple Speed Ethernet MAC IP related definitions              */
@@ -81,6 +79,7 @@
 
 #define ALT_TSE_MAX_FRAME_LENGTH             1518    /* maximum length for RX and TX packets */
 
+/* Assume TSE_MAC_FIFO_WIDTH == 32 from SOPC builder */
 #define ALT_TSE_MAC_FIFO_WIDTH               4        /* TX/RX FIFO width in bytes */
 
 #define ALT_TSE_DEFAULT_DUPLEX_MODE          1
@@ -340,7 +339,9 @@ struct alt_tse_config {
 	int autoneg;
 	int speed;
 	int duplex;
+	/* RX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
 	int rx_fifo_depth;
+	/* TX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
 	int tx_fifo_depth;
 	char ethaddr[6];
 };
