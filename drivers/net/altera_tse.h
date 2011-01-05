@@ -361,9 +361,6 @@ struct alt_tse_private {
 	volatile struct alt_sgdma_registers *rx_sgdma_dev;
 	volatile struct alt_sgdma_registers *tx_sgdma_dev;
 
-	struct alt_tse_phy_profile *pphy_profile;
-	unsigned int phy_address;
-
 	unsigned int tx_fifo_interrupt;
 	unsigned int rx_fifo_interrupt;
 	unsigned char tx_shift_16_ok;
@@ -381,8 +378,6 @@ struct alt_tse_private {
 	volatile struct alt_sgdma_descriptor *sgdma_rx_desc;
 	volatile struct alt_sgdma_descriptor *sgdma_tx_desc;
 
-	volatile struct alt_sgdma_descriptor *desc_pointer;
-
 	unsigned int current_mtu;
 
 	volatile unsigned int rx_sgdma_imask;
@@ -391,15 +386,12 @@ struct alt_tse_private {
 	unsigned int rx_sgdma_descriptor_tail;
 	unsigned int rx_sgdma_descriptor_head;
 
-	//unsigned int tse_tx_sgdma_cur;
 	unsigned int tx_sgdma_descriptor_tail;
 	unsigned int tx_sgdma_descriptor_head;
 
 	struct sk_buff *rx_skb[ALT_TSE_RX_SGDMA_DESC_COUNT];
 	struct sk_buff *tx_skb[ALT_TSE_TX_SGDMA_DESC_COUNT];
 
-/* Tasklets for handling hardware IRQ related operations outside hw IRQ handler */
-//	struct tasklet_struct tse_rx_tasklet;
 	spinlock_t rx_lock;
 	spinlock_t tx_lock;
 
@@ -409,19 +401,12 @@ struct alt_tse_private {
 	int oldduplex;
 	int oldlink;
 
-/*	unsigned int link_status;
-	unsigned int speed;
-	unsigned int duplex;
-	unsigned int phy_speed;
-	unsigned int phy_duplex;
-	unsigned int antoneg_enable;
-*/
-
 	struct alt_tse_config *tse_config;
 
-/*link info */
-//	unsigned int alarm_irq;
+#ifdef CONFIG_PHY_IRQ_PRESENCE
+	unsigned int alarm_irq;
 //	struct timer_reg *alarm_link_check;
+#endif
 
 	u32 msg_enable;
 };
