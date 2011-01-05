@@ -1246,7 +1246,7 @@ static struct alt_tse_config tsemac0_config = {
 		PHY_INTERFACE_MODE_RGMII_TXID
 		PHY_INTERFACE_MODE_RTBI
 */
-	.flags = 0,  /* these are apparently phy specific... */
+	.phy_flags = 0,  /* these are apparently phy specific... */
 
 	.autoneg = AUTONEG_ENABLE,
 	/* speed and duplex only valid if autoneg is AUTONED_DISABLE */

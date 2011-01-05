@@ -994,9 +994,11 @@ static int init_phy(struct net_device *dev)
 	char phy_id[MII_BUS_ID_SIZE];
 	char mii_id[MII_BUS_ID_SIZE];
 	phy_interface_t interface;
+	u32 phy_flags;
 
 	/* hard code for now */
 	interface = tse_config->interface;
+	phy_flags = tse_config->phy_flags;
 
 	tse_priv->oldlink = 0;
 	tse_priv->oldspeed = 0;
@@ -1005,7 +1007,7 @@ static int init_phy(struct net_device *dev)
 	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
 	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
 
-	phydev = phy_connect(dev, phy_id, &adjust_link, 0, interface);
+	phydev = phy_connect(dev, phy_id, &adjust_link, phy_flags, interface);
 
 	if (IS_ERR(phydev)) {
 		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);

@@ -353,7 +353,7 @@ struct alt_tse_config {
 	unsigned int phy_addr;			//phy's mdio address
 	unsigned int tse_supported_modes;	//supported modes for the TSE as defined in phy.h
 	phy_interface_t interface;		//Physical insterface MII/RMII/RGMII/SGMII
-	unsigned int flags;			//flags to pass to the phy config functions
+	u32 phy_flags;				//flags to pass to the phy config functions
 	int autoneg;
 	int speed;
 	int duplex;
