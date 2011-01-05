@@ -402,8 +402,8 @@ struct alt_tse_private {
 
 	unsigned int current_mtu;
 
-	unsigned int rx_sgdma_imask;
-	unsigned int tx_sgdma_imask;
+	volatile unsigned int rx_sgdma_imask;
+	volatile unsigned int tx_sgdma_imask;
 
 	unsigned int rx_sgdma_descriptor_tail;
 	unsigned int rx_sgdma_descriptor_head;
