@@ -292,27 +292,26 @@ static void alt_sgdma_construct_descriptor_burst(volatile struct
 	//	printk("read_addr %p\n", read_addr);
 #if TX_DEEP_DEBUG
 	if (read_addr != 0) {
-	  unsigned char *buf = ((unsigned char *)read_addr) + 2;
-	  int i;
-	  int len  = length_or_eop;
+		unsigned char *buf = ((unsigned char *)read_addr) + 2;
+		int i;
+		int len  = length_or_eop;
 
-	  /* first 2 bytes of the mac-address of my laptop...
-	   */
-	  if (buf[0] == 0 && buf[1] == 0x12) {
-
-	    printk("incoming tx descriptor read_addr:%p len:%d", read_addr, len);
-	    BUG_ON(write_addr != 0);
-	    for (i = 0; i < len-2; i++) {
-	      if ((i % 16) == 0) {
-		printk("\n%04x: ", i);
-	      }
-	      if ((i % 16) == 8) { // emulate wireshark output
-		printk(" ");
-	      }
-	      printk("%02x ", buf[i]); //assume tx_shift
-	    }
-	    printk("\n -- end of packet data\n");
-	  }
+		/* first 2 bytes of the mac-address of my laptop...
+		*/
+		if (buf[0] == 0 && buf[1] == 0x12) {
+			printk("incoming tx descriptor read_addr:%p len:%d", read_addr, len);
+			BUG_ON(write_addr != 0);
+			for (i = 0; i < len-2; i++) {
+				if ((i % 16) == 0) {
+					printk("\n%04x: ", i);
+				}
+				if ((i % 16) == 8) { // emulate wireshark output
+					printk(" ");
+				}
+				printk("%02x ", buf[i]); //assume tx_shift
+			}
+			printk("\n -- end of packet data\n");
+		}
 	}
 #endif
 	desc->source = read_addr;
@@ -542,11 +541,8 @@ static int tse_poll(struct napi_struct *napi, int budget)
 					dev->name, desc_status);
 
 		//get desc SKB
-		skb =
-		    tse_priv->rx_skb[tse_priv->
-				     rx_sgdma_descriptor_tail];
-		tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_tail] =
-		    NULL;
+		skb = tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_tail];
+		tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_tail] = NULL;
 
 		rx_bytes = temp_desc_pointer->actual_bytes_transferred;
 		rx_bytes -= NET_IP_ALIGN;
@@ -735,14 +731,12 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
 */
 static void tse_net_poll_controller(struct net_device *dev)
 {
-
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	disable_irq(tse_priv->rx_fifo_interrupt);
 	disable_irq(tse_priv->tx_fifo_interrupt);
 	alt_sgdma_isr(tse_priv->rx_fifo_interrupt, dev, NULL);
 	enable_irq(tse_priv->rx_fifo_interrupt);
 	enable_irq(tse_priv->tx_fifo_interrupt);
-
 }
 #endif
 
