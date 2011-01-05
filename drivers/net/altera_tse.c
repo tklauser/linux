@@ -4,7 +4,7 @@
 * Copyright (C) 2008 Altera Corporation.
 *
 * History:
-*    o  SLS  - Linux 2.6.27                                                            
+*    o  SLS  - Linux 2.6.27
 *
 *  All rights reserved.
 *
@@ -23,7 +23,7 @@
 * along with this program; if not, write to the Free Software
 * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 *
-*******************************************************************************/  
+*******************************************************************************/
 
 #include <linux/module.h>	/* for module-version */
 #include <linux/kernel.h>	/* printk(), and other useful stuff */
@@ -58,21 +58,21 @@ static const char version[] =
     "developed by SLS,August-2008\n";
 
 /* DEBUG flags */
-//#define DEBUG_INFO     1  
+//#define DEBUG_INFO     1
 //#define DEBUG_WARNING  1
 //#define DEBUG_ERROR    1
 //
 //#if DEBUG_INFO == 1
 //#define PRINTK1(args...) printk(args)
-//#else                                
+//#else
 //#define PRINTK1(args...)
-//#endif                                                     
+//#endif
 //
 //#if DEBUG_WARNING == 1
 //#define PRINTK2(args...) printk(args)
-//#else                                                          
+//#else
 //#define PRINTK2(args...)
-//#endif                                                                  
+//#endif
 //
 //#if DEBUG_ERROR == 1
 //#define PRINTK3(args...) printk(args)
@@ -248,7 +248,7 @@ static void sgdma_config(struct alt_tse_private *tse_priv)
 
 	//reset tx_sgdma
 	tse_priv->tx_sgdma_dev->control = ALT_SGDMA_CONTROL_SOFTWARERESET_MSK;
-	tse_priv->tx_sgdma_dev->control = 0x0;                       
+	tse_priv->tx_sgdma_dev->control = 0x0;
 }
 
 /* This is a generic routine that the SGDMA mode-specific routines
@@ -301,7 +301,7 @@ static void alt_sgdma_construct_descriptor_burst(volatile struct
 	  if (buf[0] == 0 && buf[1] == 0x12) {
 
 	    printk("incoming tx descriptor read_addr:%p len:%d", read_addr, len);
-	    BUG_ON(write_addr != 0);	
+	    BUG_ON(write_addr != 0);
 	    for (i = 0; i < len-2; i++) {
 	      if ((i % 16) == 0) {
 		printk("\n%04x: ", i);
@@ -344,11 +344,11 @@ static void alt_sgdma_construct_descriptor_burst(volatile struct
 	* bit) until all other descriptor information has been set up.
 	*/
 
-	desc->descriptor_control = ( 
-		(ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK) | 
-		(generate_eop ? ALT_SGDMA_DESCRIPTOR_CONTROL_GENERATE_EOP_MSK : 0x0) | 
-		(read_fixed ? ALT_SGDMA_DESCRIPTOR_CONTROL_READ_FIXED_ADDRESS_MSK : 0x0) | 
-		(write_fixed_or_sop ? ALT_SGDMA_DESCRIPTOR_CONTROL_WRITE_FIXED_ADDRESS_MSK : 0x0) | 
+	desc->descriptor_control = (
+		(ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK) |
+		(generate_eop ? ALT_SGDMA_DESCRIPTOR_CONTROL_GENERATE_EOP_MSK : 0x0) |
+		(read_fixed ? ALT_SGDMA_DESCRIPTOR_CONTROL_READ_FIXED_ADDRESS_MSK : 0x0) |
+		(write_fixed_or_sop ? ALT_SGDMA_DESCRIPTOR_CONTROL_WRITE_FIXED_ADDRESS_MSK : 0x0) |
 		(atlantic_channel ? ((atlantic_channel & 0x0F) << 3) : 0)
 	    );
 }
@@ -387,9 +387,9 @@ static int sgdma_async_read(struct alt_tse_private *tse_priv,
 		}
 	}
 
-	tse_priv->rx_sgdma_dev->next_descriptor_pointer = 
+	tse_priv->rx_sgdma_dev->next_descriptor_pointer =
            (int)(volatile struct alt_sgdma_descriptor *)rx_desc;
-	
+
 	//Don't just enable IRQs adhoc
 	tse_priv->rx_sgdma_dev->control = tse_priv->rx_sgdma_imask | ALT_SGDMA_CONTROL_RUN_MSK;
 
@@ -422,9 +422,9 @@ static int sgdma_async_write(struct alt_tse_private *tse_priv,
 		}
 	}
 
-	tse_priv->tx_sgdma_dev->next_descriptor_pointer = 
+	tse_priv->tx_sgdma_dev->next_descriptor_pointer =
            (int)(volatile struct alt_sgdma_descriptor *)tx_desc;
-	
+
 	//Don't just enable IRQs adhoc
 	tse_priv->tx_sgdma_dev->control = tse_priv->tx_sgdma_imask | ALT_SGDMA_CONTROL_RUN_MSK;
 
@@ -440,9 +440,9 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	int next_head;
 	struct sk_buff *skb;
-	
+
 	next_head = ((tse_priv->rx_sgdma_descriptor_head +1) & (ALT_RX_RING_MOD_MASK));
-	    
+
 	if (next_head == tse_priv->rx_sgdma_descriptor_tail)
 		return -EBUSY;
 
@@ -450,14 +450,14 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	skb = dev_alloc_skb(tse_priv->current_mtu + 4);
 	if (skb == NULL) {
 		if (netif_msg_rx_err(tse_priv))
-			printk(KERN_WARNING "%s :ENOMEM:::skb_size=%d\n", 
+			printk(KERN_WARNING "%s :ENOMEM:::skb_size=%d\n",
 				dev->name, tse_priv->current_mtu + 4);
 		return -ENOMEM;
 	}
 	flush_dcache_range((unsigned long)skb->data,
 			   ((unsigned long)skb->data) + skb->len);
 	skb->dev = dev;
-	
+
 	tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_head] = skb;
 
 	alt_sgdma_construct_descriptor_burst(
@@ -525,7 +525,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 	if (netif_msg_intr(tse_priv))
 		printk(KERN_WARNING "%s :Entering tse_poll with budget = 0x%x\n",
 			dev->name, budget);
-	
+
 	temp_desc_pointer =
 	    &tse_priv->sgdma_rx_desc[tse_priv->
 				     rx_sgdma_descriptor_tail];
@@ -533,16 +533,16 @@ static int tse_poll(struct napi_struct *napi, int budget)
 
 	//loop over descriptors until one is not complete
 	while ((desc_status &
-	       ALT_SGDMA_DESCRIPTOR_STATUS_TERMINATED_BY_EOP_MSK) && (howmany < budget)) 
+	       ALT_SGDMA_DESCRIPTOR_STATUS_TERMINATED_BY_EOP_MSK) && (howmany < budget))
 	{
 		if (netif_msg_intr(tse_priv))
 			printk(KERN_WARNING "%s NAPI RX Loop\n", dev->name);
-		
+
 		if ((desc_status & ALT_SGDMA_DESCRIPTOR_STATUS_ERROR_MSK) &&
 			(netif_msg_rx_err(tse_priv)))
 				printk(KERN_WARNING "%s :TSE RX Err: Status = 0x%x\n",
 					dev->name, desc_status);
-		
+
 		//get desc SKB
 		skb =
 		    tse_priv->rx_skb[tse_priv->
@@ -563,16 +563,16 @@ static int tse_poll(struct napi_struct *napi, int budget)
 			if(netif_msg_rx_err(tse_priv))
 				printk(KERN_WARNING "%s :NET_RX_DROP occurred\n",
 					dev->name);
-			
-	//		tse_priv->mac_dev->command_config.image |= ALTERA_TSE_CMD_XOFF_GEN_MSK;	
+
+	//		tse_priv->mac_dev->command_config.image |= ALTERA_TSE_CMD_XOFF_GEN_MSK;
 			dev->stats.rx_dropped++;
-		}                      
+		}
 
 		//next descriptor
-		tse_priv->rx_sgdma_descriptor_tail = 
-			((tse_priv->rx_sgdma_descriptor_tail + 1) & (ALT_RX_RING_MOD_MASK));                      
-		   
-		//add new desc	
+		tse_priv->rx_sgdma_descriptor_tail =
+			((tse_priv->rx_sgdma_descriptor_tail + 1) & (ALT_RX_RING_MOD_MASK));
+
+		//add new desc
 		if ((tse_sgdma_add_buffer(dev)) && (netif_msg_rx_err(tse_priv)))
 			printk(KERN_WARNING "%s :ah, something happened, and no desc was added to rx",
 				dev->name);
@@ -582,43 +582,43 @@ static int tse_poll(struct napi_struct *napi, int budget)
 		    &tse_priv->sgdma_rx_desc[tse_priv->
 					     rx_sgdma_descriptor_tail];
 		desc_status = temp_desc_pointer->descriptor_status;
-		
+
 		howmany++;
 	}
-	
+
 	if (netif_msg_rx_status(tse_priv))
 		printk(KERN_INFO "%s : RX SGDMA STATUS=0x%x, tail=0x%x, head=0x%x\n",
-			dev->name, tse_priv->rx_sgdma_dev->status, 
+			dev->name, tse_priv->rx_sgdma_dev->status,
 			tse_priv->rx_sgdma_descriptor_tail,
 			tse_priv->rx_sgdma_descriptor_head);
-	
+
 	//check sgdma status, and restart as needed
-	if ((tse_priv->rx_sgdma_dev->status & ALT_SGDMA_STATUS_CHAIN_COMPLETED_MSK) || 
-		!(tse_priv->rx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK)) 
+	if ((tse_priv->rx_sgdma_dev->status & ALT_SGDMA_STATUS_CHAIN_COMPLETED_MSK) ||
+		!(tse_priv->rx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK))
 	{
 		if (netif_msg_rx_status(tse_priv))
 			printk(KERN_INFO "%s :starting with rx_tail = %d and rx_head = %d\n",
 				dev->name,
-				tse_priv->rx_sgdma_descriptor_tail, 
+				tse_priv->rx_sgdma_descriptor_tail,
 				tse_priv->rx_sgdma_descriptor_head);
 //		spin_lock(tse_priv->rx_lock);
 		sgdma_async_read(tse_priv,
 			&tse_priv->sgdma_rx_desc[tse_priv->rx_sgdma_descriptor_tail]);
 //		spin_unlock(tse_priv->rx_lock);
 	}
-	
+
 
 	//now do TX stuff
 	if (tse_priv->tx_sgdma_descriptor_tail != tse_priv->tx_sgdma_descriptor_head) {
 		if (spin_trylock_irqsave(&tse_priv->tx_lock, flags))
-		{       
+		{
 			if (netif_msg_intr(tse_priv))
-				printk(KERN_WARNING "%s :NAPI TX Section\n", dev->name);     
-		
-			tx_tail = tse_priv->tx_sgdma_descriptor_tail; 
+				printk(KERN_WARNING "%s :NAPI TX Section\n", dev->name);
+
+			tx_tail = tse_priv->tx_sgdma_descriptor_tail;
 			temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];
-			desc_control = temp_desc_pointer->descriptor_control;	
-			
+			desc_control = temp_desc_pointer->descriptor_control;
+
 			//loop over tx desc from tail till head, check for !hw owned
 			//for (tx_loop = 0; tx_loop < ALT_TSE_TX_SGDMA_DESC_COUNT; tx_loop++)
 			tx_loop = 0;
@@ -627,39 +627,39 @@ static int tse_poll(struct napi_struct *napi, int budget)
 			{
 				dev_kfree_skb(tse_priv->tx_skb[tx_tail]);
 				tse_priv->tx_skb[tx_tail] = NULL;
-			
+
 				tx_loop++;
-				tx_tail = ((tx_tail + 1) & (ALT_TX_RING_MOD_MASK));         
+				tx_tail = ((tx_tail + 1) & (ALT_TX_RING_MOD_MASK));
 				temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];
 				desc_control = temp_desc_pointer->descriptor_control;
-				
+
 				//if((desc_control & ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK))
 				//	break;
 			}
 			tse_priv->tx_sgdma_descriptor_tail = tx_tail;
-			temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];                                    
+			temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];
 
 			//check is tx sgdma is running, and if it should be
-			if (!(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) & 
-				(temp_desc_pointer->descriptor_control & ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK)) 
+			if (!(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) &
+				(temp_desc_pointer->descriptor_control & ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK))
 			{
 				if (netif_msg_intr(tse_priv))
-					printk(KERN_WARNING "%s :NAPI Starting TX SGDMA with Desc %d\n", 
+					printk(KERN_WARNING "%s :NAPI Starting TX SGDMA with Desc %d\n",
 						dev->name, tx_tail);
 				//restart sgdma
 				sgdma_async_write(tse_priv, &tse_priv->sgdma_tx_desc[tx_tail]);
-				
+
 			}
-			
+
 			//restart queue if it was stopped
 			if (netif_queue_stopped(dev))
 			{
 				if (netif_msg_intr(tse_priv))
-					printk(KERN_WARNING "%s :Cleared %d descriptors,tail = %d, head = %d, Waking QUEUE\n", 
+					printk(KERN_WARNING "%s :Cleared %d descriptors,tail = %d, head = %d, Waking QUEUE\n",
 						dev->name, tx_loop, tx_tail, tse_priv->tx_sgdma_descriptor_head);
 				netif_wake_queue(dev);
 			}
-	
+
 			spin_unlock_irqrestore(&tse_priv->tx_lock, flags);
 		}
 	}
@@ -667,7 +667,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 	/* if all packets processed, complete rx, and turn on normal IRQs */
 	if (howmany < budget) {
 		if (netif_msg_intr(tse_priv))
-			printk(KERN_WARNING "%s :NAPI Complete, did %d packets with budget = %d\n", 
+			printk(KERN_WARNING "%s :NAPI Complete, did %d packets with budget = %d\n",
 				dev->name, howmany, budget);
 		napi_complete(napi);
 
@@ -699,11 +699,11 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
 {
 	struct net_device *dev = dev_id;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	
+
 	if (netif_msg_intr(tse_priv))
-		printk(KERN_WARNING "%s :TSE IRQ TX head = %d, tail = %d\n", 
+		printk(KERN_WARNING "%s :TSE IRQ TX head = %d, tail = %d\n",
 			dev->name, tse_priv->tx_sgdma_descriptor_head, tse_priv->tx_sgdma_descriptor_tail);
-	//turn off desc irqs and enable napi rx 
+	//turn off desc irqs and enable napi rx
 	if (napi_schedule_prep(&tse_priv->napi)) {
 		if (netif_msg_intr(tse_priv))
 			printk(KERN_WARNING "%s :NAPI Starting\n", dev->name);
@@ -765,7 +765,7 @@ static void tse_net_poll_controller(struct net_device *dev)
 */
 static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 {
-	struct alt_tse_private *tse_priv = netdev_priv(dev);             
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int len;
 	unsigned int next_head;
 	unsigned int next_head_check;
@@ -775,7 +775,7 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	unsigned long flags;
 	char	req_tx_shift_16;
 //	struct sk_buff *new_skb;
-	
+
 
 	aligned_tx_buffer = (unsigned int)skb->data;
 	len = skb->len;
@@ -792,7 +792,7 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	 /* Align len on 4, otherwise it seems we get truncated frames */
 
 //       if (len & 3) {
-//	 printk(KERN_WARNING "TSE align to word, skb->data = 0x%x, start address = 0x%x, len=%d, saved_len=%d, offset = %d\n", (unsigned int) skb->data, aligned_tx_buffer, len, saved_len, offset); 
+//	 printk(KERN_WARNING "TSE align to word, skb->data = 0x%x, start address = 0x%x, len=%d, saved_len=%d, offset = %d\n", (unsigned int) skb->data, aligned_tx_buffer, len, saved_len, offset);
          len += 3;
          len &= ~3UL;
 //	 printk(KERN_WARNING "TSE new length = %d\n", len);
@@ -812,15 +812,15 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 //		len = skb->len + NET_IP_ALIGN;
 //		dev_kfree_skb(skb);
 //		skb = new_skb;
-//	}       
+//	}
 
-	/* len in align later in alt_sgdma_construct_descriptor_burst(), but 
-	 * we can safely ingorned the extra alignement added in  on len here 
+	/* len in align later in alt_sgdma_construct_descriptor_burst(), but
+	 * we can safely ingorned the extra alignement added in  on len here
 	 * since it's not actually part of the data and/or checksum
-	 */	
-	//Flush raw data from data cache	
+	 */
+	//Flush raw data from data cache
 	flush_dcache_range(aligned_tx_buffer, aligned_tx_buffer + len);
-	
+
 	spin_lock_irqsave(&tse_priv->tx_lock, flags);
 	//get the heads
 	head = tse_priv->tx_sgdma_descriptor_head;
@@ -829,10 +829,10 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	next_head_check = (head + 2) & (ALT_TX_RING_MOD_MASK);
 
 	if (netif_msg_tx_queued(tse_priv))
-		printk(KERN_WARNING "%s :head = %d, next_head = %d, tail = %d\n", 
+		printk(KERN_WARNING "%s :head = %d, next_head = %d, tail = %d\n",
 			dev->name, head, next_head, tse_priv->tx_sgdma_descriptor_tail);
-		
-	//if next next head is == tail, stop the queue                                 
+
+	//if next next head is == tail, stop the queue
 	//next_head = (next_head + 1) & (ALT_TX_RING_MOD_MASK);
 	if (next_head_check == tse_priv->tx_sgdma_descriptor_tail) {
 		//no space in ring, we stop the queue
@@ -848,16 +848,16 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	//wait till tx is done, change shift 16
 	if(req_tx_shift_16 != tse_priv->last_tx_shift_16)
-	{                                
+	{
 		if (netif_msg_tx_queued(tse_priv))
 			printk(KERN_WARNING "%s :tx_shift does not match\n", dev->name);
-		
+
 		while(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK)
 		{}
 		tse_priv->mac_dev->tx_cmd_stat.bits.tx_shift16 = req_tx_shift_16 & 0x1;
 		tse_priv->last_tx_shift_16 = req_tx_shift_16;
-	}               
-	
+	}
+
 	alt_sgdma_construct_descriptor_burst(
 		(volatile struct alt_sgdma_descriptor *)&tse_priv->sgdma_tx_desc[head],
 		(volatile struct alt_sgdma_descriptor *)&tse_priv->sgdma_tx_desc[next_head],
@@ -866,15 +866,15 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 		(len), //length or EOP
 		0x1, //gen eop
 		0x0, //read fixed
-		0x1, //write fixed or sop                                            
+		0x1, //write fixed or sop
 		0x0, //read burst
 		0x0, //write burst
 		0x0 //channel
-	);	
+	);
 
 
-                                                           
-	
+
+
 	//now check is the sgdma is running, if it is then do nothing.
 	//if it is not, start it up with irq's enabled.
 
@@ -882,41 +882,41 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 		if (netif_msg_tx_queued(tse_priv))
 			printk(KERN_WARNING "%s :TX SGDMA Not Running\n", dev->name);
 		sgdma_async_write(tse_priv, &tse_priv->sgdma_tx_desc[tail]);
-	}                                                        
-	
+	}
+
 	tse_priv->tx_sgdma_descriptor_head = next_head;
-	
+
 	spin_unlock_irqrestore(&tse_priv->tx_lock,flags);
 
-	
-	tse_priv->dev->trans_start = jiffies;	
-	
+
+	tse_priv->dev->trans_start = jiffies;
+
 	return SUCCESS;
-}            
+}
 
 /* Called every time the controller might need to be made
- * aware of new link state.  The PHY code conveys this                                  
+ * aware of new link state.  The PHY code conveys this
  * information through variables in the phydev structure, and this
  * function converts those variables into the appropriate
- * register values, and can bring down the device if needed.               
- */                         
+ * register values, and can bring down the device if needed.
+ */
 static void adjust_link(struct net_device *dev)
 {
-	struct alt_tse_private *tse_priv = netdev_priv(dev); 
-	unsigned long flags;                                              
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
+	unsigned long flags;
 	struct phy_device *phydev = tse_priv->phydev;
 	int new_state = 0;
 	unsigned int refvar;
-	
+
 	//only change config if there is a link
 	spin_lock_irqsave(&tse_priv->tx_lock, flags);
-	if (phydev->link) 
-	{              
+	if (phydev->link)
+	{
 		//read old config
 		refvar = tse_priv->mac_dev->command_config.image;
-		
+
 		//check duplex
-		if (phydev->duplex != tse_priv->oldduplex) 
+		if (phydev->duplex != tse_priv->oldduplex)
 		{
 			new_state = 1;
 			//not duplex
@@ -924,30 +924,30 @@ static void adjust_link(struct net_device *dev)
 				refvar |= ALTERA_TSE_CMD_HD_ENA_MSK;
 			else
 				refvar &= ~ALTERA_TSE_CMD_HD_ENA_MSK;
-			
+
 			if (netif_msg_link(tse_priv))
-				printk(KERN_WARNING "%s :Link duplex = 0x%x\n", dev->name, 
+				printk(KERN_WARNING "%s :Link duplex = 0x%x\n", dev->name,
 					phydev->duplex);
-			
+
 			tse_priv->oldduplex = phydev->duplex;
 		}
-		
-		if (phydev->speed != tse_priv->oldspeed) 
+
+		if (phydev->speed != tse_priv->oldspeed)
 		{
 			new_state = 1;
 			switch (phydev->speed) {
 			case 1000:
 				refvar |= ALTERA_TSE_CMD_ETH_SPEED_MSK;
 				refvar &= ~ALTERA_TSE_CMD_ENA_10_MSK;
-				break;				
+				break;
 			case 100:
 				refvar &= ~ALTERA_TSE_CMD_ETH_SPEED_MSK;
 				refvar &= ~ALTERA_TSE_CMD_ENA_10_MSK;
-				break;				
+				break;
 			case 10:
 				refvar &= ~ALTERA_TSE_CMD_ETH_SPEED_MSK;
 				refvar |= ALTERA_TSE_CMD_ENA_10_MSK;
-				break;				
+				break;
 			default:
 				if (netif_msg_link(tse_priv))
 					printk(KERN_WARNING
@@ -955,22 +955,22 @@ static void adjust_link(struct net_device *dev)
 						dev->name, phydev->speed);
 				break;
 			}
-			
+
 			tse_priv->oldspeed = phydev->speed;
 		}
-		
-		tse_priv->mac_dev->command_config.image = refvar;         
-		
+
+		tse_priv->mac_dev->command_config.image = refvar;
+
 		netif_carrier_on(tse_priv->dev);
-		
+
 	} else if (tse_priv->oldlink) {
 		new_state = 1;
 		tse_priv->oldlink = 0;
 		tse_priv->oldspeed = 0;
-		tse_priv->oldduplex = -1;                   
+		tse_priv->oldduplex = -1;
 		netif_carrier_off(tse_priv->dev);
-	} 
-	
+	}
+
 	if (new_state && netif_msg_link(tse_priv))
 		phy_print_status(phydev);
 
@@ -1032,22 +1032,22 @@ static int init_phy(struct net_device *dev)
 * MAC setup and control
 *	MAC init, and various setting functions
 *
-*******************************************************************************/ 
+*******************************************************************************/
 /* Initialize MAC core registers
-*  arg1   : 'net_device' structure pointer 
+*  arg1   : 'net_device' structure pointer
 *
 */
 static int init_mac(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-        int counter;     
+        int counter;
 	int dat;
-	
+
 	/* reset the mac */
 	tse_priv->mac_dev->command_config.bits.transmit_enable=0;
-	tse_priv->mac_dev->command_config.bits.receive_enable=0;      
+	tse_priv->mac_dev->command_config.bits.receive_enable=0;
 	tse_priv->mac_dev->command_config.bits.software_reset = 1;
-	
+
 	counter = 0;
 	while (tse_priv->mac_dev->command_config.bits.software_reset) {
 		ndelay(100);
@@ -1055,13 +1055,13 @@ static int init_mac(struct net_device *dev)
 			break;
 	}
 
-	if ((counter >= ALT_TSE_SW_RESET_WATCHDOG_CNTR) && 
+	if ((counter >= ALT_TSE_SW_RESET_WATCHDOG_CNTR) &&
 		(netif_msg_drv(tse_priv)))
 	{
 		printk(KERN_WARNING "%s: TSEMAC SW reset bit never cleared!\n",
 			dev->name);
 	}
-	
+
 	//default config is enabled HERE including TX and rx
 	dat = tse_priv->mac_dev->command_config.image;
 
@@ -1070,10 +1070,10 @@ static int init_mac(struct net_device *dev)
 		    (KERN_WARNING "%s: RX/TX not disabled after reset... CMD_CONFIG=0x%08x\n",
 		     dev->name, dat);
 	} else if (netif_msg_drv(tse_priv)) {
-		printk(KERN_INFO "%s: OK, counter=%d, CMD_CONFIG=0x%08x\n", 
+		printk(KERN_INFO "%s: OK, counter=%d, CMD_CONFIG=0x%08x\n",
 			dev->name, counter, dat);
-	}	
-	
+	}
+
 	/* Initialize MAC registers */
 	tse_priv->mac_dev->max_frame_length = tse_priv->current_mtu;	//ALT_TSE_MAX_FRAME_LENGTH;
 	tse_priv->mac_dev->rx_almost_empty_threshold = 8;
@@ -1084,9 +1084,9 @@ static int init_mac(struct net_device *dev)
 	tse_priv->mac_dev->tx_sel_full_threshold = 0;
 	tse_priv->mac_dev->rx_sel_empty_threshold = tse_priv->tse_rx_depth - 16;
 	tse_priv->mac_dev->rx_sel_full_threshold = 0;
-	
+
 	/*Enable RX shift 16 for alignment of all received frames on 16-bit start address */
-	tse_priv->mac_dev->rx_cmd_stat.bits.rx_shift16 = 1;                
+	tse_priv->mac_dev->rx_cmd_stat.bits.rx_shift16 = 1;
 	tse_priv->last_rx_shift_16 = 1;
 	/* check if the MAC supports the 16-bit shift option at the RX CMD STATUS Register  */
 	if (tse_priv->mac_dev->rx_cmd_stat.bits.rx_shift16) {
@@ -1095,7 +1095,7 @@ static int init_mac(struct net_device *dev)
 		tse_priv->rx_shift_16_ok = 0;
 		printk(KERN_WARNING "%s: Incompatible with RX_CMD_STAT register return RxShift16 value. \n",
 			dev->name);
-		return -1;                                                  
+		return -1;
 	}
 
 	/*Enable TX shift 16 for alignment of all transmitting frames on 16-bit start address */
@@ -1113,25 +1113,25 @@ static int init_mac(struct net_device *dev)
 		printk(KERN_WARNING "%s: Incompatible value with TX_CMD_STAT register return TxShift16 value. \n",
 			dev->name);
 		return -1;
-	}	
-	
+	}
+
 	//pause quanta??
 	//tse_priv->mac_dev->pause_quanta=10;
-	
+
 	/* enable MAC */
 	dat = 0;
 	dat = ALTERA_TSE_CMD_TX_ENA_MSK | ALTERA_TSE_CMD_RX_ENA_MSK |
 
 	//enable pause frame generation
-//		ALTERA_TSE_CMD_XOFF_GEN_MSK |	
+//		ALTERA_TSE_CMD_XOFF_GEN_MSK |
 #if ENABLE_PHY_LOOPBACK
 		ALTERA_TSE_CMD_PROMIS_EN_MSK |	// promiscuous mode
 		ALTERA_TSE_CMD_LOOPBACK_MSK |	// loopback mode
 #endif
 	    ALTERA_TSE_CMD_RX_ERR_DISC_MSK;	/* automatically discard frames with CRC errors */
-	    
+
 	    tse_priv->mac_dev->command_config.image = dat;
-	    
+
 	    if (netif_msg_drv(tse_priv))
 	    	printk(KERN_INFO "%s: MAC post-initialization: CMD_CONFIG=0x%08x\n",
 			dev->name, tse_priv->mac_dev->command_config.image);
@@ -1162,16 +1162,16 @@ static int init_mac(struct net_device *dev)
 
 	//tse_priv->mac_dev->command_config.bits.src_mac_addr_sel_on_tx=0;
 	return 0;
-}    
+}
 
 
 
 /*
 * Open and Initialize the interface
 * The interface is opened whenever 'ifconfig' activates it
-*  arg1   : 'net_device' structure pointer 
+*  arg1   : 'net_device' structure pointer
 *  arg2   : new mtu value
-*  return : 0                     
+*  return : 0
 */
 
 /* Jumbo-grams seem to work :-( */
@@ -1241,32 +1241,32 @@ static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 	net_status->rx_packets =
 	    tse_priv->mac_dev->aFramesReceivedOK +
 	    tse_priv->mac_dev->ifInErrors;
-	
+
 	/* total packets received without error*/
 	net_status->tx_packets =
 	    tse_priv->mac_dev->aFramesTransmittedOK +
 	    tse_priv->mac_dev->ifOutErrors;
-	
+
 	/* total bytes received without error  */
 	net_status->rx_bytes = tse_priv->mac_dev->aOctetsReceivedOK;
-	
+
 	/* total bytes transmitted without error   */
 	net_status->tx_bytes = tse_priv->mac_dev->aOctetsTransmittedOK;
-	                                                               
+
 	/* bad received packets  */
-	net_status->rx_errors = tse_priv->mac_dev->ifInErrors;       
-	
+	net_status->rx_errors = tse_priv->mac_dev->ifInErrors;
+
 	/* bad Transmitted packets */
 	net_status->tx_errors = tse_priv->mac_dev->ifOutErrors;
-	
+
 	/* multicasts packets received */
 	net_status->multicast = tse_priv->mac_dev->ifInMulticastPkts;
-	
+
 	return net_status;
 }
 
 /*
-* Program multicasts mac addresses into hash look-up table                   
+* Program multicasts mac addresses into hash look-up table
 * arg1    : net device for which multicasts filter is adjusted
 * arg2    : multicasts address count
 * arg3    : list of multicasts addresses
@@ -1300,9 +1300,9 @@ static void tse_set_hash_table(struct net_device *dev)
 			hash = (hash << 1) | xor_bit;
 			//PRINTK1("\t\thash=%d,xor_bit=%d octet=%x\n", hash,
 			//	xor_bit, octet);
-		}                
+		}
 
-		p_mac_base->hash_table[hash] = 1;                                
+		p_mac_base->hash_table[hash] = 1;
 	}
 
 }
@@ -1318,7 +1318,7 @@ static void tse_set_multicast_list(struct net_device *dev)
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	int hash_loop;
 
-	if (dev->flags & IFF_PROMISC) 
+	if (dev->flags & IFF_PROMISC)
 	{
 		/* Log any net taps */
 		//PRINTK1("%s: Promiscuous mode enabled.\n", dev->name);
@@ -1424,7 +1424,7 @@ static int tse_open(struct net_device *dev)
 
 	if(init_mac(dev)) {
 		napi_disable(&tse_priv->napi);
-		return -EAGAIN;  	
+		return -EAGAIN;
 	}
 
 	/* Initialize SGDMA */
@@ -1432,7 +1432,7 @@ static int tse_open(struct net_device *dev)
 	tse_priv->rx_sgdma_descriptor_head = 0;
 	tse_priv->tx_sgdma_descriptor_tail = 0;
 	tse_priv->tx_sgdma_descriptor_head = 0;
-	
+
 	sgdma_config(tse_priv);
 
 	/* Prepare RX SGDMA to receive packets */
@@ -1488,7 +1488,7 @@ static int tse_open(struct net_device *dev)
 	//start phy
 	phy_start(tse_priv->phydev);
 
-	/* Start network queue */     	
+	/* Start network queue */
 	netif_start_queue(dev);
 	//tasklet_init(&tse_priv->tse_rx_tasklet, tse_sgdma_rx, (unsigned long)dev);
 	return SUCCESS;
@@ -1505,11 +1505,11 @@ static int tse_shutdown(struct net_device *dev)
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int free_loop;
 	int counter;
-	
 
-	
+
+
 	napi_disable(&tse_priv->napi);
-	
+
 
 	//tasklet_kill(&tse_priv->tse_rx_tasklet);
 
@@ -1531,13 +1531,13 @@ static int tse_shutdown(struct net_device *dev)
 			break;
 	}
 
-	if ((counter >= ALT_TSE_SW_RESET_WATCHDOG_CNTR) && 
+	if ((counter >= ALT_TSE_SW_RESET_WATCHDOG_CNTR) &&
 		netif_msg_ifdown(tse_priv))
 	{
 		printk(KERN_WARNING "%s :SHUTDOWN: TSEMAC SW reset bit never cleared!\n",
 			dev->name);
 	}
-	
+
 	spin_lock(&tse_priv->rx_lock);
 	spin_lock(&tse_priv->tx_lock);
 
@@ -1546,7 +1546,7 @@ static int tse_shutdown(struct net_device *dev)
 
 	/* Disable receiver and transmitter  descriptor(SGDAM) */
 	for (free_loop = 0; free_loop < ALT_TSE_TX_SGDMA_DESC_COUNT;
-	     free_loop++) 
+	     free_loop++)
 	{
 		/* Free the original skb */
 		if (tse_priv->tx_skb[free_loop] != NULL) {
@@ -1557,7 +1557,7 @@ static int tse_shutdown(struct net_device *dev)
 
 	/* Disable receiver and transmitter  descriptor(SGDMA) */
 	for (free_loop = 0; free_loop < ALT_TSE_RX_SGDMA_DESC_COUNT;
-	     free_loop++) 
+	     free_loop++)
 	{
 		/* Free the original skb */
 		if (tse_priv->rx_skb[free_loop] != NULL) {

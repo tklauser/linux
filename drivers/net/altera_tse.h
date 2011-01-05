@@ -66,7 +66,7 @@
 #define ALT_TSE_TX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for TX */
 #define ALT_TSE_RX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for RX*/
 #define ALT_TSE_TOTAL_SGDMA_DESC_SIZE   (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
-#define ALT_TX_RING_MOD_MASK 		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
+#define ALT_TX_RING_MOD_MASK		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
 #define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
 
 #define ALT_TSE_TX_RX_FIFO_DEPTH             1024     //for 4096 for 3C120
@@ -293,7 +293,7 @@ typedef volatile struct {
   unsigned int            ifInMulticastPkts;              /*Number of valid received multicasts frames (without pause).*/
   unsigned int            ifInBroadcastPkts;              /*Number of valid received broadcast frames.*/
   unsigned int            ifOutDiscards;
-  unsigned int            ifOutUcastPkts;                                             
+  unsigned int            ifOutUcastPkts;
   unsigned int            ifOutMulticastPkts;
   unsigned int            ifOutBroadcastPkts;
 
@@ -361,7 +361,7 @@ struct alt_tse_config {
 	int tx_fifo_depth;
 	char ethaddr[6];
 };
-	
+
 
 /*
 * This structure is private to each device. It is used to pass
@@ -401,10 +401,10 @@ struct alt_tse_private {
 	volatile struct alt_sgdma_descriptor *desc_pointer;
 
 	unsigned int current_mtu;
-	
+
 	unsigned int rx_sgdma_imask;
 	unsigned int tx_sgdma_imask;
-	
+
 	unsigned int rx_sgdma_descriptor_tail;
 	unsigned int rx_sgdma_descriptor_head;
 
@@ -414,7 +414,7 @@ struct alt_tse_private {
 
 	struct sk_buff *rx_skb[ALT_TSE_RX_SGDMA_DESC_COUNT];
 	struct sk_buff *tx_skb[ALT_TSE_TX_SGDMA_DESC_COUNT];
-	
+
 /* Tasklets for handling hardware IRQ related operations outside hw IRQ handler */
 //	struct tasklet_struct tse_rx_tasklet;
 	spinlock_t rx_lock;
@@ -425,7 +425,7 @@ struct alt_tse_private {
 	int oldspeed;
 	int oldduplex;
 	int oldlink;
-	
+
 /*	unsigned int link_status;
 	unsigned int speed;
 	unsigned int duplex;
@@ -435,7 +435,7 @@ struct alt_tse_private {
 */
 
 	struct alt_tse_config *tse_config;
-	
+
 /*link info */
 //	unsigned int alarm_irq;
 //	struct timer_reg *alarm_link_check;
