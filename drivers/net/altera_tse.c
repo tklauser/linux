@@ -322,7 +322,7 @@ static void alt_sgdma_construct_descriptor_burst(volatile struct
 * function does not return the actual bytes transferred for current descriptor
 * arg1     :TSE private data structure
 * arg2     :Pointer to first descriptor structure of RX SGDMA chain
-* return   SUCCESS on success
+* return   0 on success
 *          less than 0 on errors
 */
 static int sgdma_async_read(struct alt_tse_private *tse_priv,
@@ -433,7 +433,7 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 
 	tse_priv->rx_sgdma_descriptor_head = next_head;
 
-	return SUCCESS;
+	return 0;
 }
 
 /* Init and setup SGDMA descriptor chain */
@@ -813,7 +813,7 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	tse_priv->dev->trans_start = jiffies;
 
-	return SUCCESS;
+	return 0;
 }
 
 /* Called every time the controller might need to be made
@@ -1389,7 +1389,7 @@ static int tse_open(struct net_device *dev)
 	/* Start network queue */
 	netif_start_queue(dev);
 	//tasklet_init(&tse_priv->tse_rx_tasklet, tse_sgdma_rx, (unsigned long)dev);
-	return SUCCESS;
+	return 0;
 }
 
 /*
@@ -1468,7 +1468,7 @@ static int tse_shutdown(struct net_device *dev)
 
 	netif_stop_queue(dev);
 
-	return SUCCESS;
+	return 0;
 }
 
 static const struct net_device_ops tse_netdev_ops = {

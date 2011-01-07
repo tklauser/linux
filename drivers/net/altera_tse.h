@@ -40,13 +40,6 @@
 #include <linux/ethtool.h>
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
-//#define REMAP_CACHED(address) ((unsigned int) address | 0x80000000)
-
-/*** Define global return types ***/
-
-#define SUCCESS             0  /* call was successfully returned */
-#define ENP_RESOURCE      -22  /* unavailable resource error */
-#define SOURCE_BUSY       -23
 
 #define ALT_TSE_NAME               "altera_tse"
 #define TSE_RESOURCE_MAC_DEV       "Altera_tse_resource_mac_dev"
