@@ -149,12 +149,47 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 	hw->bytes_per_word = (t->bits_per_word ? : spi->bits_per_word) / 8;
 	hw->len = t->len / hw->bytes_per_word;
 
-	init_completion(&hw->done);
+	if (hw->irq >= 0) {
+		init_completion(&hw->done);
 
-	/* send the first byte */
-	writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
+		/* send the first byte */
+		writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
 
-	wait_for_completion(&hw->done);
+		wait_for_completion(&hw->done);
+	} else {
+		/* send the first byte */
+		writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
+
+		while (1) {
+			unsigned int rxd;
+
+			while (!(readl(hw->base + ALTERA_SPI_STATUS) &
+				 ALTERA_SPI_STATUS_RRDY_MSK))
+				cpu_relax();
+
+			rxd = readl(hw->base + ALTERA_SPI_RXDATA);
+			if (hw->rx) {
+				switch (hw->bytes_per_word) {
+				case 1:
+					hw->rx[hw->count] = rxd;
+					break;
+				case 2:
+					hw->rx[hw->count * 2] = rxd;
+					hw->rx[hw->count * 2 + 1] = rxd >> 8;
+					break;
+				}
+			}
+
+			hw->count++;
+
+			if (hw->count < hw->len)
+				writel(hw_txbyte(hw, hw->count),
+				       hw->base + ALTERA_SPI_TXDATA);
+			else
+				break;
+		}
+
+	}
 
 	return hw->count * hw->bytes_per_word;
 }
@@ -163,7 +198,6 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 {
 	struct altera_spi *hw = dev;
 	unsigned int spsta = readl(hw->base + ALTERA_SPI_STATUS);
-	unsigned int count = hw->count;
 	unsigned int rxd;
 
 	if (spsta & ALTERA_SPI_STATUS_ROE_MSK) {
@@ -178,25 +212,23 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 		goto irq_done;
 	}
 
-	hw->count++;
-
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
 	if (hw->rx) {
 		switch (hw->bytes_per_word) {
 		case 1:
-			hw->rx[count] = rxd;
+			hw->rx[hw->count] = rxd;
 			break;
 		case 2:
-			hw->rx[count * 2] = rxd;
-			hw->rx[count * 2 + 1] = rxd >> 8;
+			hw->rx[hw->count * 2] = rxd;
+			hw->rx[hw->count * 2 + 1] = rxd >> 8;
 			break;
 		}
 	}
 
-	count++;
+	hw->count++;
 
-	if (count < hw->len)
-		writel(hw_txbyte(hw, count), hw->base + ALTERA_SPI_TXDATA);
+	if (hw->count < hw->len)
+		writel(hw_txbyte(hw, hw->count), hw->base + ALTERA_SPI_TXDATA);
 	else
 		complete(&hw->done);
 
@@ -270,11 +302,6 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 	}
 
 	hw->irq = platform_get_irq(pdev, 0);
-	if (hw->irq < 0) {
-		dev_err(&pdev->dev, "No IRQ specified\n");
-		err = -ENOENT;
-		goto err_no_irq;
-	}
 
 	/* program defaults into the registers */
 	hw->imr = 0;		/* disable spi interrupts */
@@ -283,15 +310,17 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 	if (readl(hw->base + ALTERA_SPI_STATUS) & ALTERA_SPI_STATUS_RRDY_MSK)
 		readl(hw->base + ALTERA_SPI_RXDATA);	/* flush rxdata */
 
-	err = request_irq(hw->irq, altera_spi_irq, 0, pdev->name, hw);
-	if (err) {
-		dev_err(&pdev->dev, "Cannot claim IRQ\n");
-		goto err_no_irq;
-	}
+	if (hw->irq >= 0) {
+		err = request_irq(hw->irq, altera_spi_irq, 0, pdev->name, hw);
+		if (err) {
+			dev_err(&pdev->dev, "Cannot claim IRQ\n");
+			goto err_no_irq;
+		}
 
-	/* enable receive interrupt */
-	hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
-	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+		/* enable receive interrupt */
+		hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
+		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+	}
 
 	/* register our spi controller */
 
@@ -304,7 +333,8 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 	return 0;
 
 err_register:
-	free_irq(hw->irq, hw);
+	if (hw->irq >= 0)
+		free_irq(hw->irq, hw);
 err_no_irq:
 	iounmap((void *)hw->base);
 err_no_iomap:
@@ -328,7 +358,8 @@ static int __exit altera_spi_remove(struct platform_device *dev)
 
 	spi_unregister_master(hw->master);
 
-	free_irq(hw->irq, hw);
+	if (hw->irq >= 0)
+		free_irq(hw->irq, hw);
 	iounmap((void *)hw->base);
 
 	release_resource(hw->ioarea);
