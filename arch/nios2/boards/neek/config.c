@@ -421,11 +421,6 @@ static struct resource epcs_controller_resource[] = {
 	       .end = EPCS_CONTROLLER_BASE + EPCS_CONTROLLER_REGISTER_OFFSET + 31,
 	       .flags = IORESOURCE_MEM,
 	       },
-	[1] = {
-	       .start = EPCS_CONTROLLER_IRQ,
-	       .end = EPCS_CONTROLLER_IRQ,
-	       .flags = IORESOURCE_IRQ,
-	       },
 };
 
 static struct platform_device epcs_controller_device = {
@@ -480,11 +475,6 @@ static struct resource touch_panel_spi_resource[] = {
 	       .start = TOUCH_PANEL_SPI_BASE,
 	       .end = TOUCH_PANEL_SPI_BASE + 31,
 	       .flags = IORESOURCE_MEM,
-	       },
-	[1] = {
-	       .start = TOUCH_PANEL_SPI_IRQ,
-	       .end = TOUCH_PANEL_SPI_IRQ,
-	       .flags = IORESOURCE_IRQ,
 	       },
 };
 
@@ -545,11 +535,6 @@ static struct resource mmc_spi_resource[] = {
 	       .start = MMC_SPI_BASE,
 	       .end = MMC_SPI_BASE + MMC_SPI_SPAN - 1,
 	       .flags = IORESOURCE_MEM,
-	       },
-	[1] = {
-	       .start = MMC_SPI_IRQ,
-	       .end = MMC_SPI_IRQ,
-	       .flags = IORESOURCE_IRQ,
 	       },
 };
 
