@@ -709,8 +709,6 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	aligned_tx_buffer = (unsigned int)skb->data;
 	len = skb->len;
-//	saved_len = skb->len;
-//	offset = aligned_tx_buffer & 0x3;
 	if ((unsigned int)skb->data & 0x2) {
 		req_tx_shift_16 = 0x1;
 		aligned_tx_buffer -= NET_IP_ALIGN;
@@ -1028,9 +1026,6 @@ static int init_mac(struct net_device *dev)
 		return -1;
 	}
 
-	//pause quanta??
-	//tse_priv->mac_dev->pause_quanta=10;
-
 	/* enable MAC */
 	dat = ALTERA_TSE_CMD_TX_ENA_MSK | ALTERA_TSE_CMD_RX_ENA_MSK |
 
@@ -1191,11 +1186,6 @@ static void tse_set_hash_table(struct net_device *dev)
 		if (!(*ha->addr & 1))
 			continue;
 
-		//PRINTK1("dmi_addr %x-%x-%x-%x-%x-%x\n", cur_addr->dmi_addr[0],
-		//	cur_addr->dmi_addr[1],
-		//	cur_addr->dmi_addr[2],
-		//	cur_addr->dmi_addr[3],
-		//	cur_addr->dmi_addr[4], cur_addr->dmi_addr[5]);
 		hash = 0;	// the hash value
 
 		for (mac_octet = 5; mac_octet >= 0; mac_octet--) {
@@ -1388,7 +1378,7 @@ static int tse_open(struct net_device *dev)
 
 	/* Start network queue */
 	netif_start_queue(dev);
-	//tasklet_init(&tse_priv->tse_rx_tasklet, tse_sgdma_rx, (unsigned long)dev);
+
 	return 0;
 }
 
@@ -1404,8 +1394,6 @@ static int tse_shutdown(struct net_device *dev)
 	int counter;
 
 	napi_disable(&tse_priv->napi);
-
-	//tasklet_kill(&tse_priv->tse_rx_tasklet);
 
 	/* Free interrupt handler */
 	free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
@@ -1563,11 +1551,8 @@ static int __devinit alt_tse_probe(struct platform_device *pdev)
 		printk(KERN_ERR "Could not allocate network device\n");
 		return -ENODEV;
 	}
-	//printk("\n\nTSE DEV NAME : %s", dev->name);
-	//sprintf(dev->name, "eth0");
+
 	netdev_boot_setup_check(dev);
-	//dev->priv = (void *)ioremap_nocache((unsigned long)dev->priv,
-	//				    sizeof(struct alt_tse_private));
 	tse_priv = netdev_priv(dev);
 
 	/* Get TSE MAC base address */
