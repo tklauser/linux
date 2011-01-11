@@ -930,16 +930,7 @@ config BCM63XX_WDT
 	  To compile this driver as a loadable module, choose M here.
 	  The module will be called bcm63xx_wdt.
 
-# NIOS Architecture
-
-config ALTERA_REMOTE_UPDATE_WATCHDOG
-	bool "Enable Remote update watchdog"
-	depends on ALTERA_REMOTE_UPDATE
-	default y
-	help
-	  When enable this feature adds a watchdog device to your system which
-	  needs to be serviced in order for the Remote Update component not to
-	  time-out.
+# NIOS2 Architecture
 
 # PARISC Architecture
 
