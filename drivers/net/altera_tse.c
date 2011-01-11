@@ -694,7 +694,7 @@ static void tse_net_poll_controller(struct net_device *dev)
 * arg1     :skb to send
 * arg2     :netdev device
 */
-static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
+static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned int len;
@@ -707,40 +707,22 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 	char	req_tx_shift_16;
 //	struct sk_buff *new_skb;
 
-	aligned_tx_buffer = (unsigned int)skb->data;
-	len = skb->len;
-	if ((unsigned int)skb->data & 0x2) {
+	/* Align frame data to 32bit boundaries */
+	if (((unsigned int) skb->data) & 0x2) {
 		req_tx_shift_16 = 0x1;
-		aligned_tx_buffer -= NET_IP_ALIGN;
-		len += NET_IP_ALIGN;
+		skb_push(skb, 2);
 	} else {
 		req_tx_shift_16 = 0x0;
 	}
 
-	 /* Align len on 4, otherwise it seems we get truncated frames */
+	aligned_tx_buffer = (unsigned int) skb->data;
+	len = skb->len;
 
-//       if (len & 3) {
-//	 printk(KERN_WARNING "TSE align to word, skb->data = 0x%x, start address = 0x%x, len=%d, saved_len=%d, offset = %d\n", (unsigned int) skb->data, aligned_tx_buffer, len, saved_len, offset);
-         len += 3;
-         len &= ~3UL;
-//	 printk(KERN_WARNING "TSE new length = %d\n", len);
-//       }
-
-//	tse_priv->mac_dev->tx_cmd_stat.bits.tx_shift16 = 1;
-//	aligned_tx_buffer = (unsigned int)skb->data;
-//	len = skb->len;
-//	if (aligned_tx_buffer & 0x2) {
-//		aligned_tx_buffer -= NET_IP_ALIGN;
-//		len += NET_IP_ALIGN;
-//	} else {
-//		new_skb = alloc_skb(skb->len + NET_IP_ALIGN, GFP_KERNEL);
-//		skb_reserve(new_skb, NET_IP_ALIGN);
-//		memcpy(new_skb->data, skb->data,  skb->len);
-//		aligned_tx_buffer = (unsigned int)new_skb->data - NET_IP_ALIGN;
-//		len = skb->len + NET_IP_ALIGN;
-//		dev_kfree_skb(skb);
-//		skb = new_skb;
-//	}
+	/* Align len on 4, otherwise it seems we get truncated frames */
+	len += 3;
+	len &= ~3UL;
+	if (skb_padto(skb, len))
+		return NETDEV_TX_OK;
 
 	/* len in align later in alt_sgdma_construct_descriptor_burst(), but
 	 * we can safely ingorned the extra alignement added in  on len here
@@ -809,9 +791,9 @@ static int tse_hardware_send_pkt(struct sk_buff *skb, struct net_device *dev)
 
 	spin_unlock_irqrestore(&tse_priv->tx_lock,flags);
 
-	tse_priv->dev->trans_start = jiffies;
+	dev->trans_start = jiffies;
 
-	return 0;
+	return NETDEV_TX_OK;
 }
 
 /* Called every time the controller might need to be made
@@ -1462,7 +1444,7 @@ static int tse_shutdown(struct net_device *dev)
 static const struct net_device_ops tse_netdev_ops = {
 	.ndo_open		= tse_open,
 	.ndo_stop		= tse_shutdown,
-	.ndo_start_xmit		= tse_hardware_send_pkt,
+	.ndo_start_xmit		= tse_start_xmit,
 	.ndo_get_stats		= tse_get_statistics,
 	.ndo_set_mac_address	= tse_set_hw_address,
 	.ndo_set_multicast_list	= tse_set_multicast_list,
