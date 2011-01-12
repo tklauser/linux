@@ -1,5 +1,6 @@
 board-$(CONFIG_3C120) := 3c120
 board-$(CONFIG_NEEK) := neek
+board-$(CONFIG_NIOS2_GENERIC_DTS) := generic-dts
 BOARD := $(board-y)
 export BOARD
 

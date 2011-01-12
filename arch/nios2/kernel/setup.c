@@ -121,9 +121,17 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6, un
 		/* r6 may point to an fdt */
 		if (r6 && be32_to_cpup((__be32 *)r6) == OF_DT_HEADER)
 			early_init_devtree((void *)r6);
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
+		else
+			early_init_devtree((void *)CONFIG_NIOS2_DTB_PHYS_ADDR);
+#endif
 #endif
 		if (r7)
 			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
+	} else {
+		early_init_devtree((void *)CONFIG_NIOS2_DTB_PHYS_ADDR);
+#endif
 	}
 #endif
 	if (!cmd_line[0])

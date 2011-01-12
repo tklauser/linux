@@ -103,10 +103,16 @@ void __init device_tree_init(void)
 	size = be32_to_cpu(initial_boot_params->totalsize);
 
 	/* Before we do anything, lets reserve the dt blob */
-	reserve_mem_mach(base, size);
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
+	if(initial_boot_params != (void *)CONFIG_NIOS2_DTB_PHYS_ADDR)
+#endif
+		reserve_mem_mach(base, size);
 
 	unflatten_device_tree();
 
 	/* free the space reserved for the dt blob */
-	free_mem_mach(base, size);
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
+	if(initial_boot_params != (void *)CONFIG_NIOS2_DTB_PHYS_ADDR)
+#endif
+		free_mem_mach(base, size);
 }
