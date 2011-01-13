@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <asm/io.h>
+#include <asm/prom.h>
 
 static unsigned long base_addr;
 
@@ -90,7 +91,9 @@ static struct console early_console = {
 
 void __init setup_early_printk(void)
 {
-#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
+#if defined(CONFIG_OF) && (defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE) || defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE))
+	base_addr = early_altera_uart_or_juart_console();
+#elif defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
 	base_addr = JTAG_UART_BASE + IO_REGION_BASE;
 #elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
 	base_addr = UART_BASE + IO_REGION_BASE;

@@ -12,6 +12,7 @@
 #define __ASM_NIOS2_PROM_H
 
 #ifdef CONFIG_OF
+extern int early_altera_uart_or_juart_console(void);
 extern int early_init_dt_scan_memory_arch(unsigned long node,
 	const char *uname, int depth, void *data);
 

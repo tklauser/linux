@@ -116,3 +116,37 @@ void __init device_tree_init(void)
 #endif
 		free_mem_mach(base, size);
 }
+#ifdef CONFIG_EARLY_PRINTK
+static int __init early_init_dt_scan_serial(unsigned long node,
+                                const char *uname, int depth, void *data)
+{
+        u32 *addr;
+        u64 *addr64 = (u64*)data;
+
+        /* find the first serial node */
+        if (strncmp(uname, "serial", 6) != 0)
+                return 0;
+        /* Check for compatible */
+
+        addr = of_get_flat_dt_prop(node, "reg", NULL);
+        if(!addr)
+            return 0;
+
+        *addr64 = (u64)be32_to_cpup(addr);
+        return early_init_dt_translate_address(node,addr64);
+}
+
+
+int __init early_altera_uart_or_juart_console(void)
+{
+        u64 base = 0;
+        if(of_scan_flat_dt(early_init_dt_scan_serial, &base))
+        {
+                printk("Scan for serial got: %08llX\n",base);
+                return (int)(base) + IO_REGION_BASE;
+        } else {
+                printk("Scan for serial failed\n");
+                return 0;
+        }
+}
+#endif /* CONFIG_EARLY_PRINTK */

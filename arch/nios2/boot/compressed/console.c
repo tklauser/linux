@@ -18,7 +18,7 @@ static void *my_ioremap(unsigned long physaddr)
 #endif /* CONFIG_MMU */
 }
 
-#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE) && defined(JTAG_UART_BASE)
 
 #define ALTERA_JTAGUART_SIZE                      8
 #define ALTERA_JTAGUART_DATA_REG                  0
@@ -56,7 +56,7 @@ static void console_init(void)
 	       uartbase + ALTERA_JTAGUART_CONTROL_REG);
 }
 
-#elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
+#elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE) && defined(UART0_BASE)
 
 #define ALTERA_UART_SIZE                  32
 #define ALTERA_UART_TXDATA_REG            4
