@@ -19,6 +19,9 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#ifdef CONFIG_OF
+#include <linux/of.h>
+#endif
 
 #define DRV_NAME "altera_ps2"
 
@@ -173,6 +176,16 @@ static int __devexit altera_ps2_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id altera_ps2_match[] = {
+	{ 
+		.compatible = "altera,altera_ps2",
+	},
+	{},
+}
+MODULE_DEVICE_TABLE(of, altera_jtaguart_match);
+#endif /* CONFIG_OF */
+
 /*
  * Our device driver structure
  */
@@ -182,6 +195,9 @@ static struct platform_driver altera_ps2_driver = {
 	.driver	= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = altera_ps2_match,
+#endif
 	},
 };
 
