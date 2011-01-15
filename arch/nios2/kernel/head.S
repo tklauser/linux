@@ -18,17 +18,6 @@
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
-#ifdef CONFIG_CRC_CHECK
-/**********************************************/
-/* Define where the CRC table lives in flash. */
-/* The __CRC_Sector_Size is the flash sector  */
-/* size for the address range.                */
-/**********************************************/
-
-	GEQU	__CRC_Table_Begin,(na_flash)+0x4000   /* Second sector of main board flash */
-	GEQU	__CRC_Sector_Size,0x2000
-#endif
-
 /*
  * This global variable is used as an extension to the nios'
  * STATUS register to emulate a user/supervisor mode.
