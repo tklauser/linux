@@ -24,37 +24,40 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
+#include <linux/spi/spi_altera.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #define DRV_NAME "spi_altera"
 
 #define ALTERA_SPI_RXDATA	0
-#define ALTERA_SPI_TXDATA       4
-#define ALTERA_SPI_STATUS       8
-#define ALTERA_SPI_CONTROL      12
-#define ALTERA_SPI_SLAVE_SEL    20
+#define ALTERA_SPI_TXDATA	4
+#define ALTERA_SPI_STATUS	8
+#define ALTERA_SPI_CONTROL	12
+#define ALTERA_SPI_SLAVE_SEL	20
 
-#define ALTERA_SPI_STATUS_ROE_MSK              (0x8)
-#define ALTERA_SPI_STATUS_TOE_MSK              (0x10)
-#define ALTERA_SPI_STATUS_TMT_MSK              (0x20)
-#define ALTERA_SPI_STATUS_TRDY_MSK             (0x40)
-#define ALTERA_SPI_STATUS_RRDY_MSK             (0x80)
-#define ALTERA_SPI_STATUS_E_MSK                (0x100)
+#define ALTERA_SPI_STATUS_ROE_MSK	0x8
+#define ALTERA_SPI_STATUS_TOE_MSK	0x10
+#define ALTERA_SPI_STATUS_TMT_MSK	0x20
+#define ALTERA_SPI_STATUS_TRDY_MSK	0x40
+#define ALTERA_SPI_STATUS_RRDY_MSK	0x80
+#define ALTERA_SPI_STATUS_E_MSK		0x100
 
-#define ALTERA_SPI_CONTROL_IROE_MSK            (0x8)
-#define ALTERA_SPI_CONTROL_ITOE_MSK            (0x10)
-#define ALTERA_SPI_CONTROL_ITRDY_MSK           (0x40)
-#define ALTERA_SPI_CONTROL_IRRDY_MSK           (0x80)
-#define ALTERA_SPI_CONTROL_IE_MSK              (0x100)
-#define ALTERA_SPI_CONTROL_SSO_MSK             (0x400)
+#define ALTERA_SPI_CONTROL_IROE_MSK	0x8
+#define ALTERA_SPI_CONTROL_ITOE_MSK	0x10
+#define ALTERA_SPI_CONTROL_ITRDY_MSK	0x40
+#define ALTERA_SPI_CONTROL_IRRDY_MSK	0x80
+#define ALTERA_SPI_CONTROL_IE_MSK	0x100
+#define ALTERA_SPI_CONTROL_SSO_MSK	0x400
 
 struct altera_spi {
 	/* bitbang has to be first */
 	struct spi_bitbang bitbang;
 	struct completion done;
 
-	unsigned long base;
+	void __iomem *base;
 	int irq;
+	int interrupt; /* use interrupt driven data transfer, slow */
 	int len;
 	int count;
 	int bytes_per_word;
@@ -64,10 +67,6 @@ struct altera_spi {
 	const unsigned char *tx;
 	unsigned char *rx;
 
-	struct resource *ioarea;
-	struct spi_master *master;
-	struct spi_device *curdev;
-	struct device *dev;
 };
 
 static inline struct altera_spi *to_hw(struct spi_device *sdev)
@@ -140,22 +139,25 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 {
 	struct altera_spi *hw = to_hw(spi);
 
-	dev_dbg(&spi->dev, "txrx: tx %p, rx %p, len %d\n",
-		t->tx_buf, t->rx_buf, t->len);
-
 	hw->tx = t->tx_buf;
 	hw->rx = t->rx_buf;
 	hw->count = 0;
 	hw->bytes_per_word = (t->bits_per_word ? : spi->bits_per_word) / 8;
 	hw->len = t->len / hw->bytes_per_word;
 
-	if (hw->irq >= 0) {
+	if (hw->irq >= 0 && hw->interrupt) {
 		init_completion(&hw->done);
+		/* enable receive interrupt */
+		hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
+		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 
 		/* send the first byte */
 		writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
 
 		wait_for_completion(&hw->done);
+		/* disable receive interrupt */
+		hw->imr &= ~ALTERA_SPI_CONTROL_IRRDY_MSK;
+		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 	} else {
 		/* send the first byte */
 		writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
@@ -197,20 +199,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 static irqreturn_t altera_spi_irq(int irq, void *dev)
 {
 	struct altera_spi *hw = dev;
-	unsigned int spsta = readl(hw->base + ALTERA_SPI_STATUS);
 	unsigned int rxd;
-
-	if (spsta & ALTERA_SPI_STATUS_ROE_MSK) {
-		dev_dbg(hw->dev, "data-collision\n");
-		complete(&hw->done);
-		goto irq_done;
-	}
-
-	if (!(spsta & ALTERA_SPI_STATUS_TRDY_MSK)) {
-		dev_dbg(hw->dev, "spi not ready for tx?\n");
-		complete(&hw->done);
-		goto irq_done;
-	}
 
 	rxd = readl(hw->base + ALTERA_SPI_RXDATA);
 	if (hw->rx) {
@@ -232,12 +221,32 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	else
 		complete(&hw->done);
 
-irq_done:
 	return IRQ_HANDLED;
 }
 
-static int __init altera_spi_probe(struct platform_device *pdev)
+#ifdef CONFIG_OF
+static int __devinit altera_spi_of_probe(struct platform_device *pdev,
+				       struct altera_spi *hw)
 {
+	const __be32 *val;
+
+	hw->bitbang.master->dev.of_node = pdev->dev.of_node;
+	val = of_get_property(pdev->dev.of_node, "interrupt-driven", NULL);
+	if (val)
+		hw->interrupt = be32_to_cpup(val);
+	return 0;
+}
+#else
+static int __devinit altera_spi_of_probe(struct platform_device *pdev,
+				       struct altera_spi *hw)
+{
+	return 0;
+}
+#endif
+
+static int __devinit altera_spi_probe(struct platform_device *pdev)
+{
+	struct altera_spi_platform_data *platp = pdev->dev.platform_data;
 	struct altera_spi *hw;
 	struct spi_master *master;
 	struct resource *res;
@@ -247,134 +256,126 @@ static int __init altera_spi_probe(struct platform_device *pdev)
 	if (master == NULL) {
 		dev_err(&pdev->dev, "No memory for spi_master\n");
 		err = -ENOMEM;
-		goto err_nomem;
+		goto err_no_mem;
 	}
 
-	hw = spi_master_get_devdata(master);
-	memset(hw, 0, sizeof(struct altera_spi));
-
-	hw->master = spi_master_get(master);
-	hw->dev = &pdev->dev;
-
-	platform_set_drvdata(pdev, hw);
-	init_completion(&hw->done);
-
 	/* setup the master state. */
-
 	master->bus_num = pdev->id;
 	master->num_chipselect = 16;
 	master->mode_bits = SPI_CS_HIGH;
+	master->setup = altera_spi_setup;
+
+	hw = spi_master_get_devdata(master);
+	platform_set_drvdata(pdev, hw);
 
 	/* setup the state for the bitbang driver */
-
-	hw->bitbang.master = hw->master;
+	hw->bitbang.master = spi_master_get(master);
+	if (hw->bitbang.master == NULL) {
+		dev_err(&pdev->dev, "Cannot get device\n");
+		err = -ENODEV;
+		goto err_no_dev;
+	}
 	hw->bitbang.setup_transfer = altera_spi_setupxfer;
 	hw->bitbang.chipselect = altera_spi_chipsel;
 	hw->bitbang.txrx_bufs = altera_spi_txrx;
-	hw->bitbang.master->setup = altera_spi_setup;
-
-	dev_dbg(hw->dev, "bitbang at %p\n", &hw->bitbang);
 
 	/* find and map our resources */
-
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res == NULL) {
 		dev_err(&pdev->dev, "Cannot get IORESOURCE_MEM\n");
 		err = -ENOENT;
 		goto err_no_iores;
 	}
-
-	hw->ioarea = request_mem_region(res->start, (res->end - res->start) + 1,
-					pdev->name);
-
-	if (hw->ioarea == NULL) {
-		dev_err(&pdev->dev, "Cannot reserve region\n");
-		err = -ENXIO;
-		goto err_no_iores;
-	}
-
-	hw->base =
-	    (unsigned long)ioremap(res->start, (res->end - res->start) + 1);
+	hw->base = ioremap(res->start, (res->end - res->start) + 1);
 	if (hw->base == 0) {
 		dev_err(&pdev->dev, "Cannot map IO\n");
 		err = -ENXIO;
 		goto err_no_iomap;
 	}
-
-	hw->irq = platform_get_irq(pdev, 0);
-
 	/* program defaults into the registers */
 	hw->imr = 0;		/* disable spi interrupts */
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 	writel(0, hw->base + ALTERA_SPI_STATUS);	/* clear status reg */
 	if (readl(hw->base + ALTERA_SPI_STATUS) & ALTERA_SPI_STATUS_RRDY_MSK)
 		readl(hw->base + ALTERA_SPI_RXDATA);	/* flush rxdata */
-
+	/* irq is optional */
+	hw->irq = platform_get_irq(pdev, 0);
 	if (hw->irq >= 0) {
+		init_completion(&hw->done);
 		err = request_irq(hw->irq, altera_spi_irq, 0, pdev->name, hw);
 		if (err) {
 			dev_err(&pdev->dev, "Cannot claim IRQ\n");
 			goto err_no_irq;
 		}
-
-		/* enable receive interrupt */
-		hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
-		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
+	}
+	/* find platform data */
+	if (platp) {
+		hw->interrupt = platp->interrupt;
+	} else {
+		err = altera_spi_of_probe(pdev, hw);
+		if (err)
+			goto err_no_of;
 	}
 
 	/* register our spi controller */
-
 	err = spi_bitbang_start(&hw->bitbang);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to register SPI master\n");
 		goto err_register;
 	}
+	dev_info(&pdev->dev, "base %p, irq %d\n", hw->base, hw->irq);
 
 	return 0;
 
 err_register:
+err_no_of:
 	if (hw->irq >= 0)
 		free_irq(hw->irq, hw);
 err_no_irq:
 	iounmap((void *)hw->base);
 err_no_iomap:
-	release_resource(hw->ioarea);
-	kfree(hw->ioarea);
 err_no_iores:
-	spi_master_put(hw->master);;
-err_nomem:
+	spi_master_put(master);;
+err_no_mem:
+err_no_dev:
 	return err;
 }
 
-static int __exit altera_spi_remove(struct platform_device *dev)
+static int __devexit altera_spi_remove(struct platform_device *dev)
 {
 	struct altera_spi *hw = platform_get_drvdata(dev);
+	struct spi_master *master = hw->bitbang.master;
 
-	/* disable spi interrupts */
-	hw->imr = 0;
-	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
-
-	platform_set_drvdata(dev, NULL);
-
-	spi_unregister_master(hw->master);
+	spi_bitbang_stop(&hw->bitbang);
 
 	if (hw->irq >= 0)
 		free_irq(hw->irq, hw);
 	iounmap((void *)hw->base);
 
-	release_resource(hw->ioarea);
-	kfree(hw->ioarea);
-
-	spi_master_put(hw->master);
+	platform_set_drvdata(dev, NULL);
+	spi_master_put(master);
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static struct of_device_id altera_spi_match[] = {
+	{
+		.compatible = "altera,spi_altera",
+	},
+	{},
+}
+MODULE_DEVICE_TABLE(of, altera_spi_match);
+#endif
+
 static struct platform_driver altera_spidrv = {
-	.remove = __exit_p(altera_spi_remove),
+	.remove = __devexit_p(altera_spi_remove),
 	.driver = {
 		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
+#ifdef CONFIG_OF
+		.of_match_table = altera_spi_match,
+#endif
 	},
 };
 
