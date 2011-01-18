@@ -141,7 +141,7 @@ void __init nios2_late_time_init(void)
 
 	/* clocksource initialize */
 	nios2_timer.mult =
-		clocksource_hz2mult(TIMER_1MS_FREQ, nios2_timer.shift);
+		clocksource_hz2mult(timer_freq, nios2_timer.shift);
 	clocksource_register(&nios2_timer);
 
 	/* interrupt enable + continuous + start */
