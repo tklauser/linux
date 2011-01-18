@@ -19,9 +19,11 @@
 
 #include <asm/io.h>
 #include <asm/nios.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 #define	TICK_SIZE		(tick_nsec / 1000)
-#define NIOS2_TIMER_PERIOD	(TIMER_1MS_FREQ / HZ)
+#define NIOS2_TIMER_PERIOD	(timer_freq / HZ)
 
 #define ALTERA_TIMER_STATUS_REG		0
 #define ALTERA_TIMER_CONTROL_REG	4
@@ -37,6 +39,7 @@
 
 static unsigned long nios2_timer_count;
 static unsigned long timer_membase;
+static unsigned long timer_freq;
 
 static inline unsigned long read_timersnapshot(void)
 {
@@ -109,9 +112,31 @@ static struct irqaction nios2_timer_irq = {
 void __init nios2_late_time_init(void)
 {
 	unsigned ctrl;
+#if defined(CONFIG_OF)
+	int i = 0;
+	struct device_node *timer = NULL;
+	const char * const timer_list[] = {
+		"altera,timer",
+		NULL
+	};
+
+	for (i = 0; timer_list[i] != NULL; i++) {
+		timer = of_find_compatible_node(NULL, NULL, timer_list[i]);
+		if (timer)
+			break;
+	}
+	BUG_ON(!timer);
+	timer_membase = of_translate_address(timer, of_get_address(timer, 0, NULL, NULL));
+	timer_membase = (unsigned long) ioremap(timer_membase, PAGE_SIZE);
+	timer_freq = be32_to_cpup(of_get_property(timer, "clock-frequency", NULL));
+	setup_irq(be32_to_cpup(of_get_property(timer, "interrupts", NULL)),
+				&nios2_timer_irq);
+#else
 
 	timer_membase = (unsigned long) ioremap(TIMER_1MS_BASE, TIMER_1MS_SPAN);
+	timer_freq = TIMER_1MS_FREQ;
 	setup_irq(TIMER_1MS_IRQ, &nios2_timer_irq);
+#endif
 	write_timerperiod(NIOS2_TIMER_PERIOD - 1);
 
 	/* clocksource initialize */
