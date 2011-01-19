@@ -35,6 +35,7 @@ void tlb_flush(struct mmu_gather *tlb);
 #define tlb_end_vma(tlb, vma)	do { } while (0)
 #define __tlb_remove_tlb_entry(tlb, ptep, address)	do { } while (0)
 
+#include <linux/pagemap.h>
 #include <asm-generic/tlb.h>
 
 #endif /* _ASM_NIOS2_TLB_H */
