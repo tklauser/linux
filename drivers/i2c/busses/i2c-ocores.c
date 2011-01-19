@@ -131,7 +131,6 @@ static void ocores_process(struct ocores_i2c *i2c)
 	if ((i2c->state == STATE_START) || (i2c->state == STATE_WRITE)) {
 		i2c->state =
 			(msg->flags & I2C_M_RD) ? STATE_READ : STATE_WRITE;
-		oc_setreg(i2c, OCI2C_CMD, OCI2C_CMD_IACK);
 
 		if (stat & OCI2C_STAT_NACK) {
 			i2c->state = STATE_ERROR;
@@ -166,7 +165,6 @@ static void ocores_process(struct ocores_i2c *i2c)
 					? STATE_READ : STATE_WRITE;
 		} else {
 			i2c->state = STATE_DONE;
-			oc_setreg(i2c, OCI2C_CMD, OCI2C_CMD_IACK);
 			oc_setreg(i2c, OCI2C_CMD, OCI2C_CMD_STOP);
 			return;
 		}
@@ -337,21 +335,12 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 #endif
 
 	/* add i2c adapter to i2c tree */
-#ifdef CONFIG_I2C_BOARDINFO
-	i2c->adap.nr = pdev->id;
-	ret = i2c_add_numbered_adapter(&i2c->adap);
-#else
-	res = i2c_add_adapter(&i2c->adap);
-#endif
+	ret = i2c_add_adapter(&i2c->adap);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to add adapter\n");
 		return ret;
 	}
 
-	printk(KERN_INFO "i2c-%d: I2C OpenCores Bus Adapter, MMIO = 0x%X, irq = %d\n",
-			i2c_adapter_id(&i2c->adap), (int) res->start, (int) res2->start);
-	printk(KERN_INFO "i2c-%d: Using %dkHz clock source\n", i2c_adapter_id(&i2c->adap),
-			i2c->clock_khz);
 	/* add in known devices to the bus */
 	if (pdata) {
 		for (i = 0; i < pdata->num_devices; i++)
