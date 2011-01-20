@@ -169,6 +169,8 @@ int altera_tse_mdio_register(struct alt_tse_private *tse_priv)
 		return ret;
 	}
 
+	tse_priv->mdio = mdio_bus;
+
 	/* report available PHYs */
 	for (i = 31; i >= 0; i--) {
 		u32 phy_id;
@@ -902,14 +904,22 @@ static int init_phy(struct net_device *dev)
 	tse_priv->oldspeed = 0;
 	tse_priv->oldduplex = -1;
 
-	snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
-	snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
+	if (tse_config->phy_addr != -1) {
+		snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
+		snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
 
-	phydev = phy_connect(dev, phy_id, &adjust_link, phy_flags, interface);
+		phydev = phy_connect(dev, phy_id, &adjust_link, phy_flags, interface);
 
-	if (IS_ERR(phydev)) {
-		printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
-		return PTR_ERR(phydev);
+		if (IS_ERR(phydev)) {
+			printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
+			return PTR_ERR(phydev);
+		}
+	} else {
+		phydev = phy_find_first(tse_priv->mdio);
+		if (!phydev) {
+			dev_err(&dev->dev, "No PHY found\n");
+			return -ENXIO;
+		}
 	}
 
 	phydev->supported &= tse_config->tse_supported_modes;
@@ -1715,6 +1725,12 @@ out_mac_dev:
 static int __devexit alt_tse_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
+	struct alt_tse_private *priv = netdev_priv(ndev);
+
+	if (priv->mdio) {
+		mdiobus_unregister(priv->mdio);
+		mdiobus_free(priv->mdio);
+	}
 
 	/* TODO: Release all mem regions and do iounmap, see error paths of
 	 * alt_tse_probe above */

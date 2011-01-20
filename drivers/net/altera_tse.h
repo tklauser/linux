@@ -320,12 +320,10 @@ typedef volatile struct {
   unsigned int            reservedx320[56];
 } alt_tse_mac;
 
-
-
 /* TSE Setup info mainly for phy, but need to also report supported TSE modes */
 struct alt_tse_config {
 	unsigned int mii_id;			//id for mii bus, pdev->id
-	unsigned int phy_addr;			//phy's mdio address
+	int phy_addr;				/* PHY's MDIO address, -1 for autodetection */
 	unsigned int tse_supported_modes;	//supported modes for the TSE as defined in phy.h
 	phy_interface_t interface;		//Physical insterface MII/RMII/RGMII/SGMII
 	u32 phy_flags;				//flags to pass to the phy config functions
@@ -338,7 +336,6 @@ struct alt_tse_config {
 	int tx_fifo_depth;
 	char ethaddr[6];
 };
-
 
 /*
 * This structure is private to each device. It is used to pass
@@ -390,6 +387,7 @@ struct alt_tse_private {
 	spinlock_t tx_lock;
 
 /* system info */
+	struct mii_bus *mdio;
 	struct phy_device *phydev;
 	int oldspeed;
 	int oldduplex;
