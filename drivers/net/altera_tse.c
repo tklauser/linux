@@ -1157,24 +1157,21 @@ static struct net_device_stats *tse_get_statistics(struct net_device *dev)
 */
 static void tse_set_hash_table(struct net_device *dev)
 {
-	int mac_octet, xor_bit, bitshift, hash;
-	char octet;
-	struct netdev_hw_addr *ha;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	alt_tse_mac *p_mac_base = tse_priv->mac_dev;
+	struct netdev_hw_addr *ha;
 
 	netdev_for_each_mc_addr(ha, dev) {
-		/* make sure this is a multicasts address    */
-		if (!(*ha->addr & 1))
-			continue;
-
-		hash = 0;	// the hash value
+		unsigned int hash = 0;
+		int mac_octet;
 
 		for (mac_octet = 5; mac_octet >= 0; mac_octet--) {
-			xor_bit = 0;
-			octet = ha->addr[mac_octet];
+			unsigned char xor_bit = 0;
+			unsigned char octet = ha->addr[mac_octet];
+			unsigned int bitshift;
+
 			for (bitshift = 0; bitshift < 8; bitshift++)
-				xor_bit ^= (int)((octet >> bitshift) & 0x01);
+				xor_bit ^= ((octet >> bitshift) & 0x01);
 			hash = (hash << 1) | xor_bit;
 		}
 
