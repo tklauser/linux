@@ -40,6 +40,7 @@
 #include <linux/init.h>		/* __init (when not using as a module) */
 #include <linux/mii.h>
 #include <linux/phy.h>
+#include <linux/io.h>
 
 #include <linux/pm.h>		/* pm_message_t */
 #include <linux/platform_device.h>
@@ -48,14 +49,11 @@
 
 #include <asm/processor.h>	/* Processor type for cache alignment. */
 #include <asm/bitops.h>
-#include <asm/io.h>		/* I/O functions */
 #include <asm/uaccess.h>	/* User space memory access functions */
 
 #include "altera_tse.h"
 
-static const char version[] =
-    "Altera Triple Speed MAC IP Driver(v8.0) "
-    "developed by SLS,August-2008\n";
+#define DRV_NAME ALT_TSE_NAME
 
 /* 1 -> print contents of all tx packets on printk */
 #define TX_DEEP_DEBUG 0
@@ -106,90 +104,6 @@ static int altera_tse_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u1
 	writel(data, &mdio_regs[regnum]);
 
 	return 0;
-}
-
-static int altera_tse_mdio_irqs[] = {
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-	PHY_POLL,
-};
-
-int altera_tse_mdio_register(struct alt_tse_private *tse_priv)
-{
-	struct mii_bus *mdio_bus;
-	int ret;
-	int i;
-
-	mdio_bus = mdiobus_alloc();
-	if (!mdio_bus)
-		return -ENOMEM;
-
-	mdio_bus->name = "Altera TSE MII Bus";
-	mdio_bus->read = &altera_tse_mdio_read;
-	mdio_bus->write = &altera_tse_mdio_write;
-	snprintf(mdio_bus->id, MII_BUS_ID_SIZE, "%u", tse_priv->tse_config->mii_id);
-
-	mdio_bus->irq = altera_tse_mdio_irqs;
-	mdio_bus->priv = (void *) tse_priv->mac_dev;
-
-	ret = mdiobus_register(mdio_bus);
-	if (ret) {
-		printk(KERN_ERR "%s: Cannot register as MDIO bus\n",
-				mdio_bus->name);
-		mdiobus_free(mdio_bus);
-		return ret;
-	}
-
-	tse_priv->mdio = mdio_bus;
-
-	/* report available PHYs */
-	for (i = 31; i >= 0; i--) {
-		u32 phy_id;
-		u32 phy_id_bottom;
-		u32 phy_id_top;
-		int r;
-
-		r = get_phy_id(mdio_bus, i, &phy_id);
-		phy_id_top = (phy_id >> 16) & 0xffff;
-		phy_id_bottom = (phy_id) & 0xffff;
-		if (r)
-			return r;
-
-		if (phy_id_top != phy_id_bottom)
-			printk(KERN_INFO "Found PHY with ID=0x%x at address=0x%x\n",
-				phy_id, i);
-	}
-
-	return ret;
 }
 
 /*******************************************************************************
@@ -1448,7 +1362,7 @@ static int tse_shutdown(struct net_device *dev)
 	return 0;
 }
 
-static const struct net_device_ops tse_netdev_ops = {
+static const struct net_device_ops altera_tse_netdev_ops = {
 	.ndo_open		= tse_open,
 	.ndo_stop		= tse_shutdown,
 	.ndo_start_xmit		= tse_start_xmit,
@@ -1457,22 +1371,13 @@ static const struct net_device_ops tse_netdev_ops = {
 	.ndo_set_multicast_list	= tse_set_multicast_list,
 	.ndo_change_mtu		= tse_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller	= tse_net_poll_controller;
+#endif
 };
 
-/*
-* Initialize 'net_device' structure, resets and re-configures MAC and PHY
-* arg1   : 'net_device' structure pointer allocated for TSE interface
-* arg2   : Interface number
-*/
-static void __devinit tse_dev_probe(struct net_device *dev)
+static void __devinit altera_tse_sgdma_setup(struct alt_tse_private *tse_priv)
 {
-	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	struct alt_tse_config *tse_config = tse_priv->tse_config;
-
-	tse_priv->dev = dev;
-
-	dev->base_addr = (unsigned long)tse_priv->mac_dev;	//TSE_MAC_BASE;
-
 	/* Set initial SGDMA descriptor address */
 	tse_priv->desc =
 	    (volatile struct alt_sgdma_descriptor *)tse_priv->desc_mem_base;
@@ -1482,294 +1387,307 @@ static void __devinit tse_dev_probe(struct net_device *dev)
 	    (volatile struct alt_sgdma_descriptor *)&tse_priv->
 	    desc[ALT_TSE_TX_SGDMA_DESC_COUNT];
 
-//	tse_priv->antoneg_enable = AUTONEG_ENABLE;
-
-	tse_priv->rx_sgdma_imask =  ( ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK \
-                                    | ALT_SGDMA_STATUS_DESC_COMPLETED_MSK      \
-                                    | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK );
+	tse_priv->rx_sgdma_imask = ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK
+	                           | ALT_SGDMA_STATUS_DESC_COMPLETED_MSK
+	                           | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 #ifndef NO_TX_IRQ
-	tse_priv->tx_sgdma_imask =  ( ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK \
-                                    | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK );
+	tse_priv->tx_sgdma_imask = ALT_SGDMA_CONTROL_IE_CHAIN_COMPLETED_MSK
+	                           | ALT_SGDMA_CONTROL_IE_GLOBAL_MSK;
 #else
 	tse_priv->tx_sgdma_imask = 0;
 #endif
-
-	/* set MTU as max frame size */
-	tse_priv->current_mtu = ALT_TSE_MAX_FRAME_LENGTH;
-
-	/* Set default MAC address */
-	memcpy(dev->dev_addr, tse_config->ethaddr, ETH_ALEN);
-
-	/* Fill in the fields of the device structure with Ethernet values */
-	ether_setup(dev);
-
-	dev->netdev_ops = &tse_netdev_ops;
-	tse_set_ethtool_ops(dev);
-//	dev->features = NETIF_F_HIGHDMA;
-
-	/* add napi interface */
-	netif_napi_add(dev, &tse_priv->napi, tse_poll, ALT_TSE_RX_SGDMA_DESC_COUNT);
-
-#ifdef CONFIG_NET_POLL_CONTROLLER
-
-	dev->poll_controller = tse_net_poll_controller;
-#endif
-
-	/* Spin lock variable initialize */
-	spin_lock_init(&tse_priv->rx_lock);
-	spin_lock_init(&tse_priv->tx_lock);
 }
 
-/*
-* Driver entry point called by Platform devise driver
-* arg    : platform_device object
-* return : 'net_device' structure pointer on success else 0
-*/
-static int __devinit alt_tse_probe(struct platform_device *pdev)
+/**
+ * altera_tse_probe() - probe Altera TSE MAC device
+ * pdev:	platform device
+ */
+static int __devinit altera_tse_probe(struct platform_device *pdev)
 {
 	struct net_device *dev;
 	int ret = -ENODEV;
-	struct resource *res_alt_tse;
+	struct resource *res, *regs, *sgdma_rx, *sgdma_tx, *desc_mem;
 	struct alt_tse_private *tse_priv;
-	struct alt_tse_config *tse_config = (struct alt_tse_config *) pdev->dev.platform_data;
-	resource_size_t mac_dev_base, sgdma_rx_base, sgdma_tx_base, desc_mem_base;
-	resource_size_t mac_dev_size, sgdma_rx_size, sgdma_tx_size, desc_mem_size;
+	struct alt_tse_config *tse_config = pdev->dev.platform_data;
+	struct mii_bus *mdio;
+	int i;
 
 	dev = alloc_etherdev(sizeof(struct alt_tse_private));
 	if (!dev) {
-		printk(KERN_ERR "Could not allocate network device\n");
+		dev_err(&pdev->dev, "Could not allocate network device\n");
 		return -ENODEV;
 	}
 
 	netdev_boot_setup_check(dev);
 	tse_priv = netdev_priv(dev);
 
-	/* Get TSE MAC base address */
-	/* ioremap() requires buffer_size as the 2nd argument, but it is not being used inside anyway, so put 0xFFFF */
-	/* 1. Get tse MAC resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			TSE_RESOURCE_MAC_DEV);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_mac_dev;
-	}
-
-	mac_dev_base = res_alt_tse->start;
-	mac_dev_size = resource_size(res_alt_tse);
-	if (!request_mem_region(mac_dev_base, mac_dev_size, "altera_tse")) {
-		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
-		ret = -EBUSY;
-		goto out_mac_dev;
-	}
-
-	tse_priv->mac_dev = ioremap_nocache(mac_dev_base, sizeof(alt_tse_mac));
-	if (!tse_priv->mac_dev) {
-		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
-		ret = -ENOMEM;
-		goto out_mac_dev_ioremap;
-	}
-
-	/* Get RX and TX SGDMA addresses */
-	/* 2. Get sgdma_rx mem resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			TSE_RESOURCE_SGDMA_RX_DEV);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_sgdma_rx;
-	}
-
-	sgdma_rx_base = res_alt_tse->start;
-	sgdma_rx_size = resource_size(res_alt_tse);
-	if (!request_mem_region(sgdma_rx_base, sgdma_rx_size, "altera_tse")) {
-		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
-		ret = -EBUSY;
-		goto out_sgdma_rx;
-	}
-
-	tse_priv->rx_sgdma_dev = ioremap_nocache(sgdma_rx_base, sizeof(struct alt_sgdma_registers));
-	if (!tse_priv->rx_sgdma_dev) {
-		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
-		ret = -ENOMEM;
-		goto out_sgdma_rx_ioremap;
-	}
-
-	/* 3. Get sgdma_tx mem resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			TSE_RESOURCE_SGDMA_TX_DEV);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_sgdma_tx;
-	}
-
-	sgdma_tx_base = res_alt_tse->start;
-	sgdma_tx_size = resource_size(res_alt_tse);
-	if (!request_mem_region(sgdma_tx_base, sgdma_tx_size, "altera_tse")) {
-		printk(KERN_ERR "ERROR: %s:%d: request_mem_region() failed\n", __FILE__, __LINE__);
-		ret = -EBUSY;
-		goto out_sgdma_tx;
-	}
-
-	tse_priv->tx_sgdma_dev = ioremap_nocache(sgdma_tx_base, sizeof(struct alt_sgdma_registers));
-	if (!tse_priv->tx_sgdma_dev) {
-		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
-		ret = -ENOMEM;
-		goto out_sgdma_tx_ioremap;
-	}
-
-	/* 4. Get sgdma_rx irq resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-			TSE_RESOURCE_SGDMA_RX_IRQ);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_sgdma_irq;
-	}
-	tse_priv->rx_fifo_interrupt = res_alt_tse->start;;
-
-	/* 5. Get sgdma_tx irq resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_IRQ,
-			TSE_RESOURCE_SGDMA_TX_IRQ);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_sgdma_irq;
-	}
-	tse_priv->tx_fifo_interrupt = res_alt_tse->start;
-
-	/* 6. Get sgdma_tx/rx fifo mem resource */
-
-	/* Set TSE MAC RX and TX fifo depth */
-	tse_priv->tse_rx_depth = tse_config->rx_fifo_depth;
-	tse_priv->tse_tx_depth = tse_config->tx_fifo_depth;
-
-	/* 7. Get sgdma descriptor mem resource */
-	res_alt_tse = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			TSE_RESOURCE_SGDMA_DES_DEV);
-	if (!res_alt_tse) {
-		printk(KERN_ERR "ERROR: %s:%d: platform_get_resource_byname() failed\n", __FILE__, __LINE__);
-		ret = -ENODEV;
-		goto out_sgdma_irq;
-	}
-
-	desc_mem_base = res_alt_tse->start;
-	desc_mem_size = resource_size(res_alt_tse);
-#if 0
-	/* FIXME: this fails and I don't know why...
-	 * we don't need it since we'll just ioremap later...
-	 */
-	if (!request_mem_region (desc_mem_base, desc_mem_size, "altera_tse")) {
-		printk("ERROR: %s:%d: request_mem_region() failed\n", __FILE__,
-				__LINE__);
-		ret = -EBUSY;
-		goto out_sgdma_irq;
-	}
-#endif
-	tse_priv->desc_mem_base = (unsigned int) ioremap_nocache(desc_mem_base,
-			ALT_TSE_TOTAL_SGDMA_DESC_SIZE);
-	if (!tse_priv->desc_mem_base) {
-		printk(KERN_ERR "ERROR: %s:%d: ioremap_nocache() failed\n", __FILE__, __LINE__);
-		ret = -ENOMEM;
-		goto out_desc_mem;
-	}
-
-	tse_priv->tse_config = tse_config;
-
-	ret = altera_tse_mdio_register(tse_priv);
-	if (ret)
-		goto out_desc_mem;
-
-	/* Probe ethernet device */
-	tse_dev_probe(dev);
-
-	/* Register ethernet device driver */
-	ret = register_netdev(dev);
-	if (ret) {
-		printk(KERN_ERR "%s: Failed to register TSE net device\n",
-				dev->name);
-		goto out;
-	}
-
 	SET_NETDEV_DEV(dev, &pdev->dev);
 	platform_set_drvdata(pdev, dev);
 
-	printk("%s", version);
+	/* TSE MAC register area */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain MAC register area\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	regs = devm_request_mem_region(&pdev->dev, res->start,
+			resource_size(res), DRV_NAME);
+	if (!regs) {
+		dev_err(&pdev->dev, "cannot request MAC register area\n");
+		ret = -EBUSY;
+		goto out_free;
+	}
+
+	tse_priv->mac_dev = devm_ioremap_nocache(&pdev->dev, regs->start,
+					resource_size(regs));
+	if (!tse_priv->mac_dev) {
+		dev_err(&pdev->dev, "cannot remap MAC register area\n");
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	/* RX SGDMA register area */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain SGDMA RX register area\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	sgdma_rx = devm_request_mem_region(&pdev->dev, res->start,
+			resource_size(res), DRV_NAME);
+	if (!sgdma_rx) {
+		dev_err(&pdev->dev, "cannot request SGDMA RX register area\n");
+		ret = -EBUSY;
+		goto out_free;
+	}
+
+	tse_priv->rx_sgdma_dev = devm_ioremap_nocache(&pdev->dev,
+					sgdma_rx->start,
+					resource_size(sgdma_rx));
+	if (!tse_priv->rx_sgdma_dev) {
+		dev_err(&pdev->dev, "cannot remap SGDMA RX register area\n");
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	/* TX SGDMA register area */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain SGDMA TX register area\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	sgdma_tx = devm_request_mem_region(&pdev->dev, res->start,
+			resource_size(res), DRV_NAME);
+	if (!sgdma_tx) {
+		dev_err(&pdev->dev, "cannot request SGDMA TX register area\n");
+		ret = -EBUSY;
+		goto out_free;
+	}
+
+	tse_priv->tx_sgdma_dev = devm_ioremap_nocache(&pdev->dev,
+					sgdma_tx->start,
+					resource_size(sgdma_tx));
+	if (!tse_priv->tx_sgdma_dev) {
+		dev_err(&pdev->dev, "cannot remap SGDMA TX register area\n");
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	/* descriptor memory area */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain descriptor memory area\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	desc_mem = devm_request_mem_region(&pdev->dev, res->start,
+			resource_size(res), DRV_NAME);
+	if (!desc_mem) {
+		dev_err(&pdev->dev, "cannot request descriptor memory area\n");
+		ret = -EBUSY;
+		goto out_free;
+	}
+
+	tse_priv->desc_mem_base = devm_ioremap_nocache(&pdev->dev,
+					desc_mem->start,
+					resource_size(desc_mem));
+	if (!tse_priv->desc_mem_base) {
+		dev_err(&pdev->dev, "cannot remap descriptor memory area\n");
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	/* RX SGDMA IRQ */
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain SGDMA RX IRQ\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	tse_priv->rx_fifo_interrupt = res->start;
+
+	/* TX SGDMA IRQ  */
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain SGDMA TX IRQ\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+
+	tse_priv->tx_fifo_interrupt = res->start;
+
+	tse_priv->dev = dev;
+	tse_priv->tse_config = tse_config;
+
+	/* get TSE MAC RX and TX FIFO depths from platform data */
+	tse_priv->tse_rx_depth = tse_config->rx_fifo_depth;
+	tse_priv->tse_tx_depth = tse_config->tx_fifo_depth;
+
+	/* set MTU to max frame size */
+	tse_priv->current_mtu = ALT_TSE_MAX_FRAME_LENGTH;
+
+	mdio = mdiobus_alloc();
+	if (!mdio) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	mdio->name = "altera_tse-mdio";
+	mdio->read = &altera_tse_mdio_read;
+	mdio->write = &altera_tse_mdio_write;
+	snprintf(mdio->id, MII_BUS_ID_SIZE, "%u", tse_config->mii_id);
+
+	mdio->irq = kcalloc(PHY_MAX_ADDR, sizeof(int), GFP_KERNEL);
+	if (!mdio->irq) {
+		ret = -ENOMEM;
+		goto out_free_mdio;
+	}
+
+	for (i = 0; i < PHY_MAX_ADDR; i++)
+		mdio->irq[i] = PHY_POLL;
+
+	mdio->priv = (void *) tse_priv->mac_dev;
+
+	ret = mdiobus_register(mdio);
+	if (ret) {
+		dev_err(&pdev->dev, "cannot register MDIO bus\n");
+		goto out_free_mdio_irq;
+	}
+
+	tse_priv->mdio = mdio;
+
+	/* initialize SGDMAs */
+	altera_tse_sgdma_setup(tse_priv);
+
+	/* initialize netdev */
+	ether_setup(dev);
+	dev->base_addr = (unsigned long ) tse_priv->mac_dev;
+	dev->netdev_ops = &altera_tse_netdev_ops;
+	tse_set_ethtool_ops(dev);
+
+	/* set default MAC address */
+	memcpy(dev->dev_addr, tse_config->ethaddr, ETH_ALEN);
+
+	/* setup NAPI interface */
+	netif_napi_add(dev, &tse_priv->napi, tse_poll, ALT_TSE_RX_SGDMA_DESC_COUNT);
+
+	spin_lock_init(&tse_priv->rx_lock);
+	spin_lock_init(&tse_priv->tx_lock);
+
+	ret = register_netdev(dev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register TSE net device\n");
+		goto out_free_mdio_irq;
+	}
+
+	pr_info("%s: Altera TSE MAC at 0x%08lx irq %d/%d\n", dev->name,
+			tse_priv->mac_dev, tse_priv->rx_fifo_interrupt,
+			tse_priv->tx_fifo_interrupt);
+
+	pr_info("%s: Reporting available PHYs:\n", dev->name);
+	for (i = PHY_MAX_ADDR; i >= 0; i--) {
+		u32 phy_id;
+		u32 phy_id_bottom;
+		u32 phy_id_top;
+
+		if (get_phy_id(mdio, i, &phy_id))
+			continue;
+
+		phy_id_top = (phy_id >> 16) & 0xffff;
+		phy_id_bottom = (phy_id) & 0xffff;
+
+		if (phy_id_top != phy_id_bottom)
+			pr_info("%s: PHY with ID 0x%x at 0x%x\n", dev->name,
+					phy_id, i);
+	}
 
 	return 0;
 
-out:
-	iounmap((void *) tse_priv->desc_mem_base);
-out_desc_mem:
-#if 0
-	release_mem_region(desc_mem_base, desc_mem_size);
-#endif
-out_sgdma_irq:
-	iounmap((void *) tse_priv->tx_sgdma_dev);
-out_sgdma_tx_ioremap:
-	release_mem_region(sgdma_tx_base, sgdma_tx_size);
-out_sgdma_tx:
-	iounmap((void *) tse_priv->rx_sgdma_dev);
-out_sgdma_rx_ioremap:
-	release_mem_region(sgdma_rx_base, sgdma_rx_size);
-out_sgdma_rx:
-	iounmap((void *) tse_priv->mac_dev);
-out_mac_dev_ioremap:
-	release_mem_region(mac_dev_base, mac_dev_size);
-out_mac_dev:
+out_free_mdio_irq:
+	kfree(mdio->irq);
+out_free_mdio:
+	mdiobus_free(mdio);
+out_free:
 	free_netdev(dev);
 	return ret;
 }
 
-static int __devexit alt_tse_remove(struct platform_device *pdev)
+/**
+ * altera_tse_remove() - remove Altera TSE MAC device
+ * pdev:	platform device
+ */
+static int __devexit altera_tse_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct alt_tse_private *priv = netdev_priv(ndev);
 
-	if (priv->mdio) {
-		mdiobus_unregister(priv->mdio);
-		mdiobus_free(priv->mdio);
+	platform_set_drvdata(pdev, NULL);
+
+	if (ndev) {
+		unregister_netdev(ndev);
+		free_netdev(ndev);
 	}
 
-	/* TODO: Release all mem regions and do iounmap, see error paths of
-	 * alt_tse_probe above */
-	platform_set_drvdata(pdev, NULL);
-	unregister_netdev(ndev);
-	free_netdev(ndev);
+	if (priv->mdio) {
+		mdiobus_unregister(priv->mdio);
+		kfree(priv->mdio->irq);
+		mdiobus_free(priv->mdio);
+	}
 
 	return 0;
 }
 
-/*******************************************************************************
-* Driver init, platform driver register
-*
-*******************************************************************************/
-static struct platform_driver alt_tse_driver = {
-	.driver = {
-		   .name = ALT_TSE_NAME,
-		   .owner = THIS_MODULE,
-		   },
-	.probe = alt_tse_probe,
-	.remove = __devexit_p(alt_tse_remove),
-	.suspend = NULL,
-	.resume = NULL,
+static struct platform_driver altera_tse_driver = {
+	.probe		= altera_tse_probe,
+	.remove		= __devexit_p(altera_tse_remove),
+	.suspend	= NULL,
+	.resume		= NULL,
+	.driver		= {
+		.name	= DRV_NAME,
+		.owner	= THIS_MODULE,
+	},
 };
 
-static int __init atse_init(void)
+static int __init altera_tse_init(void)
 {
-	/* probe board and register */
-	return platform_driver_register(&alt_tse_driver);
+	return platform_driver_register(&altera_tse_driver);
 }
 
-static void __exit atse_exit(void)
+static void __exit altera_tse_exit(void)
 {
-	platform_driver_unregister(&alt_tse_driver);
+	platform_driver_unregister(&altera_tse_driver);
 }
 
-module_init(atse_init);
-module_exit(atse_exit);
+module_init(altera_tse_init);
+module_exit(altera_tse_exit);
 
-MODULE_AUTHOR("Altera");
-MODULE_DESCRIPTION("Altera Triple Speed MAC IP");
+MODULE_AUTHOR("Altera Corporation");
+MODULE_DESCRIPTION("Altera Triple Speed Ethernet MAC driver");
 MODULE_LICENSE("GPL");

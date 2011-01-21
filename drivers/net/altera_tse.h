@@ -359,7 +359,7 @@ struct alt_tse_private {
 	unsigned char last_tx_shift_16;
 	unsigned char last_rx_shift_16;
 
-	unsigned int desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
+	void __iomem *desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
 
 	unsigned int tse_tx_depth;	/* TX Receive FIFO depth                                 */
 	unsigned int tse_rx_depth;	/* RX Receive FIFO depth                                 */
