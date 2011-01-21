@@ -86,11 +86,12 @@ static void altremote_wdt_pet(void)
  *  A write to a watchdog device is defined as a keepalive signal. Any
  *  write of data will do, as we we don't define content meaning.
  */
-static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos) {
-  if(count) {
-    altremote_wdt_pet();
-  }
-  return count;
+static ssize_t altremote_wdt_write(struct file *file, const char __user *buf,
+				   size_t count, loff_t *ppos)
+{
+	if (count)
+		altremote_wdt_pet();
+	return count;
 }
 
 /**
@@ -103,27 +104,27 @@ static ssize_t altremote_wdt_write(struct file *file, const char __user *buf, si
  *  according to their available features. We only actually usefully support
  *  querying capabilities and current status.
  */
-static long altremote_wdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long altremote_wdt_ioctl(struct file *file, unsigned int cmd,
+				unsigned long arg)
 {
-  void __user *argp = (void __user *)arg;
+	void __user *argp = (void __user *) arg;
+	static struct watchdog_info ident = {
+		.options =  WDIOF_KEEPALIVEPING,
+		.firmware_version = 1,
+		.identity = "altremote_wdt",
+	};
 
-  static struct watchdog_info ident = {
-    .options =  WDIOF_KEEPALIVEPING,
-    .firmware_version = 1,
-    .identity = "altremote_wdt",
-  };
-
-  switch(cmd) {
-    case WDIOC_GETSUPPORT:
-      if (copy_to_user(argp, &ident, sizeof(ident)))
-        return -EFAULT;
-      return 0;
-    case WDIOC_KEEPALIVE:
-      altremote_wdt_pet();
-      return 0;
-    default:
-      return -EINVAL;
-  }
+	switch(cmd) {
+	case WDIOC_GETSUPPORT:
+		if (copy_to_user(argp, &ident, sizeof(ident)))
+			return -EFAULT;
+		return 0;
+	case WDIOC_KEEPALIVE:
+		altremote_wdt_pet();
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 /**
@@ -132,13 +133,14 @@ static long altremote_wdt_ioctl(struct file *file, unsigned int cmd, unsigned lo
  *  @file: file handle to device
  *
  *  The watchdog device has been opened. The watchdog device is single
- *  open and on opening we load the counters. 
+ *  open and on opening we load the counters.
  *  The timeout depends on the value you selected in SOPC-builder.
  */
-static int altremote_wdt_open(struct inode *inode, struct file *file) {
-  if(test_and_set_bit(0, &wdt_is_open))
-    return -EBUSY;
-  return nonseekable_open(inode, file);
+static int altremote_wdt_open(struct inode *inode, struct file *file)
+{
+	if (test_and_set_bit(0, &wdt_is_open))
+		return -EBUSY;
+	return nonseekable_open(inode, file);
 }
 
 /**
@@ -147,129 +149,146 @@ static int altremote_wdt_open(struct inode *inode, struct file *file) {
  *  @file: file handle to board
  *
  */
-static int altremote_wdt_release(struct inode *inode, struct file *file) {
-  clear_bit(0, &wdt_is_open);
-  printk(KERN_CRIT "altremote: WDT device closed unexpectedly.  WDT will (can) not stop!\n");
-  altremote_wdt_pet();
-  return 0;
+static int altremote_wdt_release(struct inode *inode, struct file *file)
+{
+	clear_bit(0, &wdt_is_open);
+	printk(KERN_CRIT "altremote: WDT device closed unexpectedly.  WDT will (can) not stop!\n");
+	altremote_wdt_pet();
+	return 0;
 }
 
 /* following are the sysfs callback functions */
 static ssize_t show_status(struct device *dev, struct device_attribute *attr, char *buf)
 {
-  int num = 0;
-  u32 reg;
-  u32 cfgfrom;
-  u32 msmstate;
-  const char *msg;
-  char tempbuf[30];
-  
-  msmstate = ioread32(altremote_base + REG_MSM_STATE);
-  cfgfrom = ioread32(altremote_base + (CFG_PREV1 | REG_CFG_SOURCE));
-  if (cfgfrom > CFG_SOURCE_ALL) {
-    msg = tempbuf;
-    sprintf(tempbuf, "Unknown source 0x%X", cfgfrom);
-  }
-  else if (cfgfrom & CFG_SOURCE_NCONFIG)
-    msg = "external configuration request (nCONFIG)";
-  else if (cfgfrom & CFG_SOURCE_CRC)
-    msg = "CRC Error in application";
-  else if (cfgfrom & CFG_SOURCE_NSTATUS)
-    msg = "nSTATUS assertion";
-  else if (cfgfrom & CFG_SOURCE_WDOG)
-    msg = "user watchdog timeout";
-  else if (cfgfrom & CFG_SOURCE_USER)
-    msg = "user request";
-  else
-    msg = "initial configuration";
+	int num = 0;
+	u32 reg;
+	u32 cfgfrom;
+	u32 msmstate;
+	const char *msg;
+	char tempbuf[30];
 
-  num = sprintf(buf, "Reconfigured by: %s\n", msg);
-  /* Read the boot address.  In application mode, this seems to be in the
-   * "past status 2" area (not documented). */
-  if (msmstate & 1)
-    reg = ioread32(altremote_base + (CFG_PREV2 | REG_BOOT_ADDR));
-  else
-    reg = ioread32(altremote_base + REG_BOOT_ADDR);
-  num += sprintf(buf + num,"Configured from 0x%06X\n", reg);
-  if(ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_ENABLE)))
-  {
-    num += sprintf(buf + num, "Watchdog running\n");
-  } else {
-    num += sprintf(buf + num, "Watchdog NOT running\n");
-  }
-  switch (msmstate) {
-  case STATE_FACTORY:
-    msg = "factory";
-    break;
-  case STATE_APPLICATION:
-    msg = "application";
-    break;
-  case STATE_APPLICATION_WDT:
-    msg = "application with watchdog";
-    break;
-  default:
-    msg = tempbuf;
-    sprintf(tempbuf, "unknown 0x%X", msmstate);
-    break;
-  }
-  num += sprintf(buf + num, "Mode: %s\n", msg);
-  if (((msmstate & 1) == 0) && (cfgfrom != 0)) {
-    reg = ioread32(altremote_base + (CFG_PREV1 | REG_BOOT_ADDR));
-  } else {
-    reg = 0;
-  }
-  num += sprintf(buf + num, "Previously configured from 0x%06X\n", reg);
+	msmstate = ioread32(altremote_base + REG_MSM_STATE);
+	cfgfrom = ioread32(altremote_base + (CFG_PREV1 | REG_CFG_SOURCE));
+	if (cfgfrom > CFG_SOURCE_ALL) {
+		msg = tempbuf;
+		sprintf(tempbuf, "Unknown source 0x%X", cfgfrom);
+	}
+	else if (cfgfrom & CFG_SOURCE_NCONFIG)
+		msg = "external configuration request (nCONFIG)";
+	else if (cfgfrom & CFG_SOURCE_CRC)
+		msg = "CRC Error in application";
+	else if (cfgfrom & CFG_SOURCE_NSTATUS)
+		msg = "nSTATUS assertion";
+	else if (cfgfrom & CFG_SOURCE_WDOG)
+		msg = "user watchdog timeout";
+	else if (cfgfrom & CFG_SOURCE_USER)
+		msg = "user request";
+	else
+		msg = "initial configuration";
 
-  return num;
+	num = sprintf(buf, "Reconfigured by: %s\n", msg);
+
+	/* Read the boot address.  In application mode, this seems to be in the
+	 * "past status 2" area (not documented). */
+	if (msmstate & 1)
+		reg = ioread32(altremote_base + (CFG_PREV2 | REG_BOOT_ADDR));
+	else
+		reg = ioread32(altremote_base + REG_BOOT_ADDR);
+
+	num += sprintf(buf + num,"Configured from 0x%06X\n", reg);
+
+	if (ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_ENABLE)))
+		num += sprintf(buf + num, "Watchdog running\n");
+	else
+		num += sprintf(buf + num, "Watchdog NOT running\n");
+
+	switch (msmstate) {
+	case STATE_FACTORY:
+		msg = "factory";
+		break;
+	case STATE_APPLICATION:
+		msg = "application";
+		break;
+	case STATE_APPLICATION_WDT:
+		msg = "application with watchdog";
+		break;
+	default:
+		msg = tempbuf;
+		sprintf(tempbuf, "unknown 0x%X", msmstate);
+		break;
+	}
+
+	num += sprintf(buf + num, "Mode: %s\n", msg);
+
+	if (((msmstate & 1) == 0) && (cfgfrom != 0))
+		reg = ioread32(altremote_base + (CFG_PREV1 | REG_BOOT_ADDR));
+	else
+		reg = 0;
+
+	num += sprintf(buf + num, "Previously configured from 0x%06X\n", reg);
+
+	return num;
 }
 
 static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 
-static ssize_t show_config_addr(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t show_config_addr(struct device *dev,
+				struct device_attribute *attr, char *buf)
 {
-  u32 config_addr = ioread32(altremote_base + (CFG_INPUT | REG_BOOT_ADDR));
-  return sprintf(buf, "0x%X\n", config_addr << FPGA_IMAGE_SHIFT);
+	u32 config_addr = ioread32(altremote_base + (CFG_INPUT | REG_BOOT_ADDR));
+
+	return sprintf(buf, "0x%X\n", config_addr << FPGA_IMAGE_SHIFT);
 }
 
-static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t set_config_addr(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
 {
-  unsigned long val = simple_strtoul(buf, NULL, 16);
-  dev_info(dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
-  iowrite32(val >> FPGA_IMAGE_SHIFT, altremote_base + REG_BOOT_ADDR);
-  return count;
+	unsigned long val = simple_strtoul(buf, NULL, 16);
+
+	dev_info(dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
+	iowrite32(val >> FPGA_IMAGE_SHIFT, altremote_base + REG_BOOT_ADDR);
+	return count;
 }
 
-static DEVICE_ATTR(config_addr, S_IWUSR | S_IRUGO, show_config_addr, set_config_addr);
+static DEVICE_ATTR(config_addr, S_IWUSR | S_IRUGO, show_config_addr,
+		   set_config_addr);
 
-static ssize_t reconfig(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t reconfig(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
 {
-  dev_warn(dev, "Warning! We'll reboot!\n");
-  //Enable internal osc.
-  iowrite32(0x00, altremote_base + REG_WDOG_ENABLE);
-  if(wdt_timeout>0)
-  {
-    iowrite32(wdt_timeout, altremote_base + REG_WDOG_COUNTER);
-    iowrite32(0x01, altremote_base + REG_WDOG_ENABLE);
-  }
-  iowrite32(0x01, altremote_base + REG_INT_OSC);
-  iowrite32(0x01, altremote_base + REG_CDONE_CHECK);
-  iowrite32(CFG_SOURCE_ALL, altremote_base + REG_CFG_SOURCE);
-  iowrite32(0x01, altremote_base + REG_GPR);
-  return count;
+	dev_warn(dev, "Warning! We'll reboot!\n");
+
+	/* Enable internal osc. */
+	iowrite32(0x00, altremote_base + REG_WDOG_ENABLE);
+	if (wdt_timeout > 0) {
+		iowrite32(wdt_timeout, altremote_base + REG_WDOG_COUNTER);
+		iowrite32(0x01, altremote_base + REG_WDOG_ENABLE);
+	}
+
+	iowrite32(0x01, altremote_base + REG_INT_OSC);
+	iowrite32(0x01, altremote_base + REG_CDONE_CHECK);
+	iowrite32(CFG_SOURCE_ALL, altremote_base + REG_CFG_SOURCE);
+	iowrite32(0x01, altremote_base + REG_GPR);
+
+	return count;
 }
 
 static DEVICE_ATTR(reconfig, S_IWUSR, NULL, reconfig);
 
-static ssize_t show_watchdog(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t show_watchdog(struct device *dev, struct device_attribute *attr,
+			     char *buf)
 {
+	u32 val = ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_COUNTER)) >> 17;
+
 	if (watchdog_enabled)
-		return sprintf(buf, "%u\n",
-			ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_COUNTER)) >> 17);
+		return sprintf(buf, "%u\n", val);
 	else
 		return sprintf(buf, "%lu\n", wdt_timeout);
 }
 
-static ssize_t set_watchdog(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t set_watchdog(struct device *dev, struct device_attribute *attr,
+			    const char *buf, size_t count)
 {
 	if (watchdog_enabled && count)
 		altremote_wdt_pet();
@@ -282,18 +301,18 @@ static ssize_t set_watchdog(struct device *dev, struct device_attribute *attr, c
 static DEVICE_ATTR(watchdog, S_IWUSR | S_IRUGO, show_watchdog, set_watchdog);
 
 static const struct file_operations altremote_wdt_fops = {
-  .owner    = THIS_MODULE,
-  .llseek   = no_llseek,
-  .write    = altremote_wdt_write,
-  .unlocked_ioctl = altremote_wdt_ioctl,
-  .open     = altremote_wdt_open,
-  .release  = altremote_wdt_release,
+	.owner		= THIS_MODULE,
+	.llseek		= no_llseek,
+	.write		= altremote_wdt_write,
+	.unlocked_ioctl	= altremote_wdt_ioctl,
+	.open		= altremote_wdt_open,
+	.release	= altremote_wdt_release,
 };
 
 static struct miscdevice altremote_wdt_miscdev = {
-  .minor  = WATCHDOG_MINOR,
-  .name = "watchdog",
-  .fops = &altremote_wdt_fops,
+	.minor	= WATCHDOG_MINOR,
+	.name	= "watchdog",
+	.fops	= &altremote_wdt_fops,
 };
 
 static int __devexit altremote_remove(struct platform_device* pdev)
@@ -406,34 +425,32 @@ err_out:
 
 #ifdef CONFIG_OF
 static struct of_device_id altremote_match_table[] = {
-	{
-		.compatible = "altera,altremote",
-	},
+	{ .compatible = "altera,altremote", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, altremote_match_table);
 #endif
 
 static struct platform_driver altremote_driver = {
-  .probe  = altremote_probe,
-  .remove = __devexit_p(altremote_remove),
-  .driver = {
-    .owner = THIS_MODULE,
-    .name = "altremote",
+	.probe	= altremote_probe,
+	.remove	= __devexit_p(altremote_remove),
+	.driver	= {
+		.owner	= THIS_MODULE,
+		.name	= "altremote",
 #ifdef CONFIG_OF
-    .of_match_table = altremote_match_table,
+		.of_match_table = altremote_match_table,
 #endif
-  },
+	},
 };
 
 static int __init altremote_init(void)
 {
-  return platform_driver_register(&altremote_driver);
+	return platform_driver_register(&altremote_driver);
 }
 
 static void __exit altremote_exit(void)
 {
-  platform_driver_unregister(&altremote_driver);
+	platform_driver_unregister(&altremote_driver);
 }
 
 module_init(altremote_init);
