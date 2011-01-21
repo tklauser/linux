@@ -59,17 +59,8 @@
 # error "Flash type not supported"
 #endif
 
-struct altremote_data {
-  void __iomem *base;
-  struct resource *res;
-  int initsteps;
-};
-
-static struct altremote_data altremote = {
-  .base = NULL,
-  .res = NULL,
-  .initsteps = 0,
-};
+static void __iomem *altremote_base = NULL;
+static bool watchdog_enabled = false;
 
 static unsigned long wdt_is_open;
 static unsigned long wdt_timeout = 0;
@@ -81,8 +72,8 @@ static unsigned long wdt_timeout = 0;
  */
 static void altremote_wdt_pet(void)
 {
-  iowrite32(PET_WDOG, altremote.base + REG_GPR);
-  iowrite32(0, altremote.base + REG_GPR);
+	iowrite32(PET_WDOG, altremote_base + REG_GPR);
+	iowrite32(0, altremote_base + REG_GPR);
 }
 
 /**
@@ -173,8 +164,8 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
   const char *msg;
   char tempbuf[30];
   
-  msmstate = ioread32(altremote.base + REG_MSM_STATE);
-  cfgfrom = ioread32(altremote.base + (CFG_PREV1 | REG_CFG_SOURCE));
+  msmstate = ioread32(altremote_base + REG_MSM_STATE);
+  cfgfrom = ioread32(altremote_base + (CFG_PREV1 | REG_CFG_SOURCE));
   if (cfgfrom > CFG_SOURCE_ALL) {
     msg = tempbuf;
     sprintf(tempbuf, "Unknown source 0x%X", cfgfrom);
@@ -196,11 +187,11 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
   /* Read the boot address.  In application mode, this seems to be in the
    * "past status 2" area (not documented). */
   if (msmstate & 1)
-    reg = ioread32(altremote.base + (CFG_PREV2 | REG_BOOT_ADDR));
+    reg = ioread32(altremote_base + (CFG_PREV2 | REG_BOOT_ADDR));
   else
-    reg = ioread32(altremote.base + REG_BOOT_ADDR);
+    reg = ioread32(altremote_base + REG_BOOT_ADDR);
   num += sprintf(buf + num,"Configured from 0x%06X\n", reg);
-  if(ioread32(altremote.base + (CFG_PREV1 | REG_WDOG_ENABLE)))
+  if(ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_ENABLE)))
   {
     num += sprintf(buf + num, "Watchdog running\n");
   } else {
@@ -223,7 +214,7 @@ static ssize_t show_status(struct device *dev, struct device_attribute *attr, ch
   }
   num += sprintf(buf + num, "Mode: %s\n", msg);
   if (((msmstate & 1) == 0) && (cfgfrom != 0)) {
-    reg = ioread32(altremote.base + (CFG_PREV1 | REG_BOOT_ADDR));
+    reg = ioread32(altremote_base + (CFG_PREV1 | REG_BOOT_ADDR));
   } else {
     reg = 0;
   }
@@ -236,7 +227,7 @@ static DEVICE_ATTR(status, S_IRUGO, show_status, NULL);
 
 static ssize_t show_config_addr(struct device *dev, struct device_attribute *attr, char *buf)
 {
-  u32 config_addr = ioread32(altremote.base + (CFG_INPUT | REG_BOOT_ADDR));
+  u32 config_addr = ioread32(altremote_base + (CFG_INPUT | REG_BOOT_ADDR));
   return sprintf(buf, "0x%X\n", config_addr << FPGA_IMAGE_SHIFT);
 }
 
@@ -244,7 +235,7 @@ static ssize_t set_config_addr(struct device *dev, struct device_attribute *attr
 {
   unsigned long val = simple_strtoul(buf, NULL, 16);
   dev_info(dev, "We'll try to reboot to 0x%lX (0x%lX)\n", val, val >> FPGA_IMAGE_SHIFT);
-  iowrite32(val >> FPGA_IMAGE_SHIFT, altremote.base + REG_BOOT_ADDR);
+  iowrite32(val >> FPGA_IMAGE_SHIFT, altremote_base + REG_BOOT_ADDR);
   return count;
 }
 
@@ -254,16 +245,16 @@ static ssize_t reconfig(struct device *dev, struct device_attribute *attr, const
 {
   dev_warn(dev, "Warning! We'll reboot!\n");
   //Enable internal osc.
-  iowrite32(0x00, altremote.base + REG_WDOG_ENABLE);
+  iowrite32(0x00, altremote_base + REG_WDOG_ENABLE);
   if(wdt_timeout>0)
   {
-    iowrite32(wdt_timeout, altremote.base + REG_WDOG_COUNTER);
-    iowrite32(0x01, altremote.base + REG_WDOG_ENABLE);
+    iowrite32(wdt_timeout, altremote_base + REG_WDOG_COUNTER);
+    iowrite32(0x01, altremote_base + REG_WDOG_ENABLE);
   }
-  iowrite32(0x01, altremote.base + REG_INT_OSC);
-  iowrite32(0x01, altremote.base + REG_CDONE_CHECK);
-  iowrite32(CFG_SOURCE_ALL, altremote.base + REG_CFG_SOURCE);
-  iowrite32(0x01, altremote.base + REG_GPR);
+  iowrite32(0x01, altremote_base + REG_INT_OSC);
+  iowrite32(0x01, altremote_base + REG_CDONE_CHECK);
+  iowrite32(CFG_SOURCE_ALL, altremote_base + REG_CFG_SOURCE);
+  iowrite32(0x01, altremote_base + REG_GPR);
   return count;
 }
 
@@ -271,24 +262,21 @@ static DEVICE_ATTR(reconfig, S_IWUSR, NULL, reconfig);
 
 static ssize_t show_watchdog(struct device *dev, struct device_attribute *attr, char *buf)
 {
-  if(altremote.initsteps>=4)
-  {
-    return sprintf(buf, "%u\n",
-	ioread32(altremote.base + (CFG_PREV1 | REG_WDOG_COUNTER)) >> 17);
-  } else {
-    return sprintf(buf, "%lu\n", wdt_timeout);
-  }
+	if (watchdog_enabled)
+		return sprintf(buf, "%u\n",
+			ioread32(altremote_base + (CFG_PREV1 | REG_WDOG_COUNTER)) >> 17);
+	else
+		return sprintf(buf, "%lu\n", wdt_timeout);
 }
 
 static ssize_t set_watchdog(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-  if(altremote.initsteps>=4)
-  {
-    altremote_wdt_pet();
-  } else {
-    wdt_timeout = simple_strtoul(buf, NULL, 10);
-  }
-  return count;
+	if (watchdog_enabled && count)
+		altremote_wdt_pet();
+	else
+		wdt_timeout = simple_strtoul(buf, NULL, 10);
+
+	return count;
 }
 
 static DEVICE_ATTR(watchdog, S_IWUSR | S_IRUGO, show_watchdog, set_watchdog);
@@ -308,110 +296,112 @@ static struct miscdevice altremote_wdt_miscdev = {
   .fops = &altremote_wdt_fops,
 };
 
-static int altremote_remove(struct platform_device* pdev)
+static int __devexit altremote_remove(struct platform_device* pdev)
 {
-  if(altremote.initsteps>=4)
-  {
-    misc_deregister(&altremote_wdt_miscdev);
-  }
-  if(altremote.initsteps>=3)
-  {
-    device_remove_file(&pdev->dev, &dev_attr_watchdog);
-    device_remove_file(&pdev->dev, &dev_attr_config_addr);
-    device_remove_file(&pdev->dev, &dev_attr_reconfig);
-    device_remove_file(&pdev->dev, &dev_attr_status);
-    iounmap(altremote.base);
-  }
-  if(altremote.initsteps>=2)
-  {
-    release_mem_region(altremote.res->start, resource_size(altremote.res));
-  }
-  altremote.initsteps = 0;
-  return 0;
+	struct resource *res;
+
+	watchdog_enabled = false;
+
+	misc_deregister(&altremote_wdt_miscdev);
+	iounmap(altremote_base);
+	altremote_base = NULL;
+
+	device_remove_file(&pdev->dev, &dev_attr_watchdog);
+	device_remove_file(&pdev->dev, &dev_attr_config_addr);
+	device_remove_file(&pdev->dev, &dev_attr_reconfig);
+	device_remove_file(&pdev->dev, &dev_attr_status);
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (res)
+		release_mem_region(res->start, resource_size(res));
+
+	return 0;
 }
 
 static int __devinit altremote_probe(struct platform_device *pdev)
 {
-  u32 status;
-  int ret;
+	struct resource *res;
+	char *mode;
+	u32 status;
+	int ret;
 
-  if(altremote.initsteps != 0)
-  {
-    //We only allow ONE instance!!
-    return -ENODEV;
-  }
-  altremote.res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-  if (!altremote.res)
-    return -ENODEV;
+	/* Only one instance allowed */
+	if (altremote_base)
+		return -EBUSY;
 
-  altremote.initsteps++;
-  if (!request_mem_region(altremote.res->start, resource_size(altremote.res), pdev->name)) {
-    dev_err(&pdev->dev, "Memory region busy\n");
-    ret = -EBUSY;
-    goto err_out_request_mem_region;
-  }
-  altremote.initsteps++;
-  altremote.base = ioremap(altremote.res->start, resource_size(altremote.res));
-  if (!altremote.base) {
-    dev_err(&pdev->dev, "Unable to map registers\n");
-    ret = -EIO;
-    goto err_out_ioremap;
-  }
-  altremote.initsteps++;
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENODEV;
 
-  ret = device_create_file(&pdev->dev, &dev_attr_status);
-  if (ret)
-    goto err_out_sysfs;
+	if (!request_mem_region(res->start, resource_size(res), pdev->name)) {
+		dev_err(&pdev->dev, "Memory region busy\n");
+		return -EBUSY;
+	}
 
-  ret = device_create_file(&pdev->dev, &dev_attr_reconfig);
-  if (ret)
-    goto err_out_sysfs;
+	altremote_base = ioremap(res->start, resource_size(res));
+	if (!altremote_base) {
+		dev_err(&pdev->dev, "Unable to map registers\n");
+		ret = -EIO;
+		goto err_out;
+	}
 
-  status = ioread32(altremote.base + REG_MSM_STATE);
-  switch(status) {
-    case STATE_FACTORY:
-      dev_info(&pdev->dev, "Found altremote block in Factory Mode\n");
-      ret = device_create_file(&pdev->dev, &dev_attr_config_addr);
-      if (ret)
-        goto err_out_sysfs;
+	ret = device_create_file(&pdev->dev, &dev_attr_status);
+	if (ret)
+		goto err_out_sysfs;
 
-      ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
-      if (ret)
-        goto err_out_sysfs;
-      break;
-    case STATE_APPLICATION:
-      dev_info(&pdev->dev, "Found altremote block in Application Mode\n");
-      break;
-    case STATE_APPLICATION_WDT:
-      dev_info(&pdev->dev, "Found altremote block in Application Mode with Watchdog enabled\n");
-      ret = misc_register(&altremote_wdt_miscdev);
-      if (ret) {
-        printk(KERN_ERR "altremote_wdt: cannot register miscdev on minor=%d (err=%d)\n", WATCHDOG_MINOR, ret);
-        goto err_out_misc_register;
-      }
-      ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
-      if (ret)
-        goto err_out_wdt;
-      altremote.initsteps++;
-      break;
-    default:
-      dev_info(&pdev->dev, "Found altremote block unknwon state 0x%X\n", status);
-  }
-  return 0;
+	ret = device_create_file(&pdev->dev, &dev_attr_reconfig);
+	if (ret)
+		goto err_out_sysfs;
+
+	status = ioread32(altremote_base + REG_MSM_STATE);
+	switch(status) {
+	case STATE_FACTORY:
+		mode = "Factory Mode";
+		ret = device_create_file(&pdev->dev, &dev_attr_config_addr);
+		if (ret)
+			goto err_out_sysfs;
+
+		ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
+		if (ret)
+			goto err_out_sysfs;
+		break;
+	case STATE_APPLICATION:
+		mode = "Application Mode";
+		break;
+	case STATE_APPLICATION_WDT:
+		mode = "Application Mode with Watchdog enabled";
+		ret = misc_register(&altremote_wdt_miscdev);
+		if (ret) {
+			dev_err(&pdev->dev, "cannot register miscdev on minor=%d\n", WATCHDOG_MINOR);
+			goto err_out_sysfs;
+		}
+
+		ret = device_create_file(&pdev->dev, &dev_attr_watchdog);
+		if (ret)
+			goto err_out_wdt;
+
+		watchdog_enabled = true;
+		break;
+	default:
+		mode = "unknown state";
+	}
+
+
+	dev_info(&pdev->dev, "Found altremote block in %s (%x)\n", mode, status);
+	return 0;
 
 err_out_wdt:
-  misc_deregister(&altremote_wdt_miscdev);
-err_out_misc_register:
+	misc_deregister(&altremote_wdt_miscdev);
 err_out_sysfs:
-  device_remove_file(&pdev->dev, &dev_attr_config_addr);
-  device_remove_file(&pdev->dev, &dev_attr_reconfig);
-  device_remove_file(&pdev->dev, &dev_attr_status);
-  iounmap(altremote.base);
-err_out_ioremap:
-  release_mem_region(altremote.res->start, resource_size(altremote.res));
-err_out_request_mem_region:
-  altremote_remove(pdev);
-  return ret;
+	device_remove_file(&pdev->dev, &dev_attr_watchdog);
+	device_remove_file(&pdev->dev, &dev_attr_config_addr);
+	device_remove_file(&pdev->dev, &dev_attr_reconfig);
+	device_remove_file(&pdev->dev, &dev_attr_status);
+	iounmap(altremote_base);
+	altremote_base = NULL;
+err_out:
+	release_mem_region(res->start, resource_size(res));
+	return ret;
 }
 
 #ifdef CONFIG_OF
