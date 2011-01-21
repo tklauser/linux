@@ -16,11 +16,12 @@
 #include <linux/profile.h>
 #include <linux/irq.h>
 #include <linux/clocksource.h>
+#include <linux/device.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 #include <asm/io.h>
 #include <asm/nios.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
 
 #define	TICK_SIZE		(tick_nsec / 1000)
 #define NIOS2_TIMER_PERIOD	(timer_freq / HZ)
