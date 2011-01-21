@@ -28,16 +28,8 @@
 #ifndef _ALTERA_TSE_H_
 #define _ALTERA_TSE_H_
 
-#include <linux/kernel.h>
-#include <linux/string.h>
-#include <linux/interrupt.h>
 #include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/skbuff.h>
-#include <linux/spinlock.h>
-#include <linux/mii.h>
 #include <linux/phy.h>
-#include <linux/ethtool.h>
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
 

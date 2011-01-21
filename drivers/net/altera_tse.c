@@ -25,31 +25,17 @@
 *
 *******************************************************************************/
 
-#include <linux/module.h>	/* for module-version */
-#include <linux/kernel.h>	/* printk(), and other useful stuff */
-#include <linux/sched.h>	/* for jiffies, HZ, etc. */
-#include <linux/string.h>	/* inline memset(), etc. */
-#include <linux/errno.h>	/* return codes */
-#include <linux/ioport.h>	/* request_region(), release_region() */
-#include <linux/interrupt.h>
-#include <linux/delay.h>
-#include <linux/netdevice.h>	/* struct net_device, and other headers */
-#include <linux/etherdevice.h>	/* eth_type_trans */
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 #include <linux/skbuff.h>
-#include <linux/ethtool.h>
-#include <linux/init.h>		/* __init (when not using as a module) */
-#include <linux/mii.h>
+#include <linux/platform_device.h>
 #include <linux/phy.h>
 #include <linux/io.h>
 
-#include <linux/pm.h>		/* pm_message_t */
-#include <linux/platform_device.h>
-
 #include <asm/cacheflush.h>
-
-#include <asm/processor.h>	/* Processor type for cache alignment. */
-#include <asm/bitops.h>
-#include <asm/uaccess.h>	/* User space memory access functions */
 
 #include "altera_tse.h"
 
@@ -57,12 +43,6 @@
 
 /* 1 -> print contents of all tx packets on printk */
 #define TX_DEEP_DEBUG 0
-
-#if 1
-#define my_flush_dcache_range(x,y) do{flush_dcache_range(x,y);}while(0)
-#else
-#define my_flush_dcache_range(x,y) flush_cache_all()
-#endif
 
 /*
  * MDIO specific functions
