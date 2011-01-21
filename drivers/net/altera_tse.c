@@ -1588,7 +1588,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	}
 
 	pr_info("%s: Altera TSE MAC at 0x%08lx irq %d/%d\n", dev->name,
-			tse_priv->mac_dev, tse_priv->rx_fifo_interrupt,
+			dev->base_addr, tse_priv->rx_fifo_interrupt,
 			tse_priv->tx_fifo_interrupt);
 
 	pr_info("%s: Reporting available PHYs:\n", dev->name);
