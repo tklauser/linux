@@ -18,10 +18,12 @@
 #include <linux/of.h>
 #include <linux/of_fdt.h>
 #include <linux/of_irq.h>
-#include <linux/of_platform.h> 
+#include <linux/of_platform.h>
 
 #include <asm/page.h>
 #include <asm/prom.h>
+
+static void *dtb_passed; /* need to reserve bootmem */
 
 int __init early_init_dt_scan_memory_arch(unsigned long node,
 					  const char *uname, int depth,
@@ -33,16 +35,6 @@ int __init early_init_dt_scan_memory_arch(unsigned long node,
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
 	return;
-}
-
-int __init reserve_mem_mach(unsigned long addr, unsigned long size)
-{
-	return reserve_bootmem(addr, size, BOOTMEM_DEFAULT);
-}
-
-void __init free_mem_mach(unsigned long addr, unsigned long size)
-{
-	return free_bootmem(addr, size);
 }
 
 void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
@@ -76,8 +68,19 @@ EXPORT_SYMBOL_GPL(irq_create_of_mapping);
 
 void __init early_init_devtree(void *params)
 {
-	/* Setup flat device-tree pointer */
-	initial_boot_params = params;
+	extern int __dtb_start;
+
+	if (params && be32_to_cpup((__be32 *)params) == OF_DT_HEADER)
+		initial_boot_params = dtb_passed = params;
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR) && CONFIG_NIOS2_DTB_AT_PHYS_ADDR
+	else if (be32_to_cpup((__be32 *)CONFIG_NIOS2_DTB_AT_PHYS_ADDR) ==
+		 OF_DT_HEADER)
+		initial_boot_params = (void *)CONFIG_NIOS2_DTB_AT_PHYS_ADDR;
+#endif
+	else if (be32_to_cpu((__be32)__dtb_start) == OF_DT_HEADER)
+		initial_boot_params = (void *)&__dtb_start;
+	else
+		return;
 
 	/* Retrieve various informations from the /chosen node of the
 	 * device-tree, including the platform type, initrd location and
@@ -92,59 +95,48 @@ void __init early_init_devtree(void *params)
 
 void __init device_tree_init(void)
 {
-	unsigned long base, size;
-
 	if (!initial_boot_params)
 		return;
 
-	base = virt_to_phys((void *)initial_boot_params);
-	size = be32_to_cpu(initial_boot_params->totalsize);
+	if (dtb_passed) {
+		unsigned long base, size;
 
-	/* Before we do anything, lets reserve the dt blob */
-#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
-	if(initial_boot_params != (void *)CONFIG_NIOS2_DTB_PHYS_ADDR)
-#endif
-		reserve_mem_mach(base, size);
-
-	unflatten_device_tree();
-
-	/* free the space reserved for the dt blob */
-#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
-	if(initial_boot_params != (void *)CONFIG_NIOS2_DTB_PHYS_ADDR)
-#endif
-		free_mem_mach(base, size);
+		base = virt_to_phys((void *)initial_boot_params);
+		size = be32_to_cpu(initial_boot_params->totalsize);
+		reserve_bootmem(base, size, BOOTMEM_DEFAULT);
+		unflatten_device_tree();
+		free_bootmem(base, size);
+	} else
+		unflatten_device_tree();
 }
+
 #ifdef CONFIG_EARLY_PRINTK
 static int __init early_init_dt_scan_serial(unsigned long node,
-                                const char *uname, int depth, void *data)
+			const char *uname, int depth, void *data)
 {
-        u32 *addr;
-        u64 *addr64 = (u64*)data;
+	u32 *addr;
+	u64 *addr64 = (u64*)data;
 
-        /* find the first serial node */
-        if (strncmp(uname, "serial", 6) != 0)
-                return 0;
-        /* Check for compatible */
+	/* find the first serial node */
+	if (strncmp(uname, "serial", 6) != 0)
+		return 0;
+	/* Check for compatible */
+	addr = of_get_flat_dt_prop(node, "reg", NULL);
+	if(!addr)
+		return 0;
 
-        addr = of_get_flat_dt_prop(node, "reg", NULL);
-        if(!addr)
-            return 0;
-
-        *addr64 = (u64)be32_to_cpup(addr);
-        return early_init_dt_translate_address(node,addr64);
+	*addr64 = (u64)be32_to_cpup(addr);
+	return early_init_dt_translate_address(node,addr64);
 }
 
 
 int __init early_altera_uart_or_juart_console(void)
 {
-        u64 base = 0;
-        if(of_scan_flat_dt(early_init_dt_scan_serial, &base))
-        {
-                printk("Scan for serial got: %08llX\n",base);
-                return (int)(base) + IO_REGION_BASE;
-        } else {
-                printk("Scan for serial failed\n");
-                return 0;
-        }
+	u64 base = 0;
+
+	if(of_scan_flat_dt(early_init_dt_scan_serial, &base))
+		return (int)(base) + IO_REGION_BASE;
+	else
+		return 0;
 }
 #endif /* CONFIG_EARLY_PRINTK */

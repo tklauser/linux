@@ -30,10 +30,7 @@
 #include <linux/initrd.h>
 #include <linux/seq_file.h>
 #include <linux/of_fdt.h>
-
-#ifdef CONFIG_BLK_DEV_INITRD
 #include <linux/blkdev.h>
-#endif
 
 #include <asm/irq.h>
 #include <asm/byteorder.h>
@@ -101,41 +98,30 @@ static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 extern void __init mmu_init(void);
 
 /* save args passed from u-boot, called from head.S */
-asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6, unsigned r7)
+asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
+				       unsigned r7)
 {
 	mmu_init();
 
 #if defined(CONFIG_PASS_CMDLINE)
-	if (r4 == 0x534f494e) {	/* r4 is magic NIOS, to become board info check in the future */
+	if (r4 == 0x534f494e) { /* r4 is magic NIOS */
 #if defined(CONFIG_BLK_DEV_INITRD)
-		/*
-		 * If the init RAM disk has been configured in, and there's a valid
-		 * starting address for it, set it up.
-		 */
-		if (r5) {
+		if (r5) { /* initramfs */
 			initrd_start = r5;
 			initrd_end = r6;
 		}
 #endif /* CONFIG_BLK_DEV_INITRD */
-#if defined(CONFIG_OF)
-		/* r6 may point to an fdt */
-		if (r6 && be32_to_cpup((__be32 *)r6) == OF_DT_HEADER)
-			early_init_devtree((void *)r6);
-#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
-		else
-			early_init_devtree((void *)CONFIG_NIOS2_DTB_PHYS_ADDR);
-#endif
-#endif
 		if (r7)
 			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
-#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
-	} else {
-		early_init_devtree((void *)CONFIG_NIOS2_DTB_PHYS_ADDR);
-#endif
-	}
+	} else
+		r6 = 0; /* no magic, invalidate r6 as dtb */
 #endif
 	if (!cmd_line[0])
 		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+
+#if defined(CONFIG_OF)
+	early_init_devtree((void *)r6);
+#endif
 }
 
 void __init setup_arch(char **cmdline_p)
@@ -201,8 +187,10 @@ void __init setup_arch(char **cmdline_p)
         reserve_bootmem(memory_start, bootmap_size, BOOTMEM_DEFAULT);
 
 #ifdef CONFIG_BLK_DEV_INITRD
-	if (initrd_start)
-		reserve_bootmem(virt_to_phys((void *)initrd_start), initrd_end - initrd_start, BOOTMEM_DEFAULT);
+	if (initrd_start) {
+		reserve_bootmem(virt_to_phys((void *)initrd_start),
+				initrd_end - initrd_start, BOOTMEM_DEFAULT);
+	}
 #endif /* CONFIG_BLK_DEV_INITRD */
 
 	device_tree_init();

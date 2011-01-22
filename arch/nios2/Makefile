@@ -57,6 +57,10 @@ BOOT_TARGETS = vmImage zImage
 PHONY += $(BOOT_TARGETS) install
 KBUILD_IMAGE := $(boot)/vmImage
 
+ifneq ($(CONFIG_DTB_SOURCE),"")
+	core-y	+= $(boot)/
+endif
+
 # define filename extension depending on memory management type
 ifeq ($(CONFIG_MMU),)
 MMU := -nommu

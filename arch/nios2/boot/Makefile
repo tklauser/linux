@@ -37,5 +37,18 @@ $(obj)/zImage: $(obj)/compressed/vmlinux FORCE
 $(obj)/compressed/vmlinux: $(obj)/vmlinux.gz FORCE
 	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
 
+# Rule to build device tree blobs
+DTB_SRC := $(subst ",,$(CONFIG_DTB_SOURCE))
+
+$(obj)/system.dtb: $(DTB_SRC)
+	$(call cmd,dtc)
+
+# Ensure system.dtb exists
+$(obj)/linked_dtb.o: $(obj)/system.dtb
+
+#ifneq ($(CONFIG_DTB_SOURCE),"")
+obj-y += linked_dtb.o
+#endif
+
 install:
 	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(BOOTIMAGE) System.map "$(INSTALL_PATH)"

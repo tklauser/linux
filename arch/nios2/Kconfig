@@ -105,6 +105,14 @@ config DTC
 	bool
 	depends on OF
 
+config DTB_SOURCE
+	string "Devicetree source file"
+	depends on OF
+	default ""
+	help
+	  This is the dts file which will be compiled and linked into
+	  kernel.
+
 config ALIGNMENT_TRAP
 	bool "Catch alignment trap"
 	default y
