@@ -117,7 +117,9 @@ void __init nios2_late_time_init(void)
 	int i = 0;
 	struct device_node *timer = NULL;
 	const char * const timer_list[] = {
-		"altera,timer",
+		"altera,timer",	/* Will be removed later on */
+		"altr,timer-8.0",
+		"altr,timer-1.0",
 		NULL
 	};
 
