@@ -3,7 +3,7 @@
 
 static struct of_device_id altera_of_bus_ids[] __initdata = {
     { .compatible = "simple-bus", },
-    { .compatible = "altera,avalon", },
+    { .compatible = "altr,avalon", },
     {}
 };
 
