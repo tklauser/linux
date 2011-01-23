@@ -425,7 +425,8 @@ err_out:
 
 #ifdef CONFIG_OF
 static struct of_device_id altremote_match_table[] = {
-	{ .compatible = "altera,altremote", },
+	{ .compatible = "altera,altremote", }, /* Will be removed! */
+	{ .compatible = "altr,altremote-8.1" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, altremote_match_table);
