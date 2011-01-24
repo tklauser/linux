@@ -432,23 +432,47 @@ static int __devinit altera_jtaguart_probe(struct platform_device *pdev)
 	struct altera_jtaguart_platform_uart *platp = pdev->dev.platform_data;
 	struct uart_port *port;
 	int i;
+	int res = 0;
 
-	for (i = 0; i < ALTERA_JTAGUART_MAXPORTS && platp[i].mapbase; i++) {
+	for (i = 0; i < ALTERA_JTAGUART_MAXPORTS; i++) {
 		port = &altera_jtaguart_ports[i].port;
 
+		if(platp)
+		{
+			if(!platp[i].mapbase) {
+				res = -ENODEV;
+				break;
+			}
+			port->mapbase = platp[i].mapbase;
+			port->irq = platp[i].irq;
+		} else {
+#ifdef CONFIG_OF
+			struct resource *res_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+			struct resource *res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+			if((!res_mem) || (!res_irq))
+			{
+				res = -ENODEV;
+				break;
+			}
+
+			port->mapbase = res_mem->start;
+			port->irq = res_irq->start;
+#else
+			res = -ENODEV;
+			break;
+#endif
+		}
 		port->line = i;
 		port->type = PORT_ALTERA_JTAGUART;
-		port->mapbase = platp[i].mapbase;
 		port->membase = ioremap(port->mapbase, ALTERA_JTAGUART_SIZE);
 		port->iotype = SERIAL_IO_MEM;
-		port->irq = platp[i].irq;
 		port->ops = &altera_jtaguart_ops;
 		port->flags = ASYNC_BOOT_AUTOCONF;
 
 		uart_add_one_port(&altera_jtaguart_driver, port);
 	}
 
-	return 0;
+	return res;
 }
 
 static int __devexit altera_jtaguart_remove(struct platform_device *pdev)
@@ -464,6 +488,15 @@ static int __devexit altera_jtaguart_remove(struct platform_device *pdev)
 
 	return 0;
 }
+#ifdef CONFIG_OF
+static struct of_device_id altera_jtaguart_match[] = {
+	{ 
+		.compatible = "altr,juart-1.0",
+	},
+	{},
+}
+MODULE_DEVICE_TABLE(of, altera_jtaguart_match);
+#endif /* CONFIG_OF */
 
 static struct platform_driver altera_jtaguart_platform_driver = {
 	.probe	= altera_jtaguart_probe,
@@ -471,6 +504,9 @@ static struct platform_driver altera_jtaguart_platform_driver = {
 	.driver	= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = altera_jtaguart_match,
+#endif
 	},
 };
 
