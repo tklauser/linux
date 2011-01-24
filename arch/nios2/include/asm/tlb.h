@@ -11,9 +11,9 @@
 #ifndef _ASM_NIOS2_TLB_H
 #define _ASM_NIOS2_TLB_H
 
-#ifdef CONFIG_MMU
+#define tlb_flush(tlb)	flush_tlb_mm((tlb)->mm)
 
-void tlb_flush(struct mmu_gather *tlb);
+#ifdef CONFIG_MMU
 
 /*
  * NiosII doesn't need any special per-pte or per-vma handling, except
@@ -27,7 +27,6 @@ void tlb_flush(struct mmu_gather *tlb);
 
 #else
 
-#define tlb_flush(tlb)		flush_tlb_mm((tlb)->mm)
 #define tlb_start_vma(tlb, vma)	do { } while (0)
 
 #endif /* CONFIG_MMU */

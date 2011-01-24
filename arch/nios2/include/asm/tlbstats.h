@@ -10,7 +10,6 @@ struct tlb_stat {
       uint32_t local_flush_tlb_one;
       uint32_t flush_tlb_pid;
       uint32_t local_flush_tlb_all;
-      uint32_t tlb_flush;
       uint32_t tlb_fast_handler;
       uint32_t tlb_c_handler;
       uint32_t do_page_fault_prot;

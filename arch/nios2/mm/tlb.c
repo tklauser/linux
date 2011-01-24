@@ -86,8 +86,6 @@ static void start_new_stats(struct tlb_stat *stat)
 	  stat->flush_tlb_pid);
    printk("tlb.c: stats->local_flush_tlb_all = %d\r\n",
 	  stat->local_flush_tlb_all);
-   printk("tlb.c: stats->tlb_flush = %d\r\n",
-	  stat->tlb_flush);
    printk("tlb.c: stats->tlb_c_handler = %d\r\n",
 	  stat->tlb_c_handler);
    printk("tlb.c: stats->tlb_fast_handler = %d\r\n",
@@ -364,16 +362,6 @@ void local_flush_tlb_all(void)
    /* restore pid/way */
    WRCTL(CTL_TLBMISC, org_misc);
 }
-
-void tlb_flush(struct mmu_gather *tlb)
-{
-  statistics.tlb_flush++;
-  flush_tlb_mm(tlb->mm);
-}
-
-#include <linux/kernel.h>
-#include <asm/ptrace.h>
-#include <asm/nios.h>
 
 void unhandled_exception(struct pt_regs *fp, int cause)
 {
