@@ -29,10 +29,8 @@
 
 /* <== END REMOVE */
 
-/* Fake CPU frequency if not defined by the design header file */
-#ifndef CPU_FREQ
-# define CPU_FREQ	0
-#endif
+/* Fake CPU frequency */
+#define CPU_FREQ	0
 
 /* Nios II Constants */
 #define NIOS2_STATUS_PIE_MSK  0x1
