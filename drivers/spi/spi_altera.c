@@ -24,7 +24,6 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
-#include <linux/spi/spi_altera.h>
 #include <linux/io.h>
 #include <linux/of.h>
 
@@ -57,7 +56,6 @@ struct altera_spi {
 
 	void __iomem *base;
 	int irq;
-	int interrupt; /* use interrupt driven data transfer, slow */
 	int len;
 	int count;
 	int bytes_per_word;
@@ -66,17 +64,16 @@ struct altera_spi {
 	/* data buffers */
 	const unsigned char *tx;
 	unsigned char *rx;
-
 };
 
-static inline struct altera_spi *to_hw(struct spi_device *sdev)
+static inline struct altera_spi *altera_spi_to_hw(struct spi_device *sdev)
 {
 	return spi_master_get_devdata(sdev->master);
 }
 
 static void altera_spi_chipsel(struct spi_device *spi, int value)
 {
-	struct altera_spi *hw = to_hw(spi);
+	struct altera_spi *hw = altera_spi_to_hw(spi);
 
 	if (spi->mode & SPI_CS_HIGH) {
 		switch (value) {
@@ -131,13 +128,12 @@ static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 				| (hw->tx[count * 2 + 1] << 8));
 		}
 	}
-
 	return 0;
 }
 
 static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 {
-	struct altera_spi *hw = to_hw(spi);
+	struct altera_spi *hw = altera_spi_to_hw(spi);
 
 	hw->tx = t->tx_buf;
 	hw->rx = t->rx_buf;
@@ -145,8 +141,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 	hw->bytes_per_word = (t->bits_per_word ? : spi->bits_per_word) / 8;
 	hw->len = t->len / hw->bytes_per_word;
 
-	if (hw->irq >= 0 && hw->interrupt) {
-		init_completion(&hw->done);
+	if (hw->irq >= 0) {
 		/* enable receive interrupt */
 		hw->imr |= ALTERA_SPI_CONTROL_IRRDY_MSK;
 		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
@@ -224,26 +219,6 @@ static irqreturn_t altera_spi_irq(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_OF
-static int __devinit altera_spi_of_probe(struct platform_device *pdev,
-				       struct altera_spi *hw)
-{
-	const __be32 *val;
-
-	hw->bitbang.master->dev.of_node = pdev->dev.of_node;
-	val = of_get_property(pdev->dev.of_node, "interrupt-driven", NULL);
-	if (val)
-		hw->interrupt = be32_to_cpup(val);
-	return 0;
-}
-#else
-static int __devinit altera_spi_of_probe(struct platform_device *pdev,
-				       struct altera_spi *hw)
-{
-	return 0;
-}
-#endif
-
 static int __devinit altera_spi_probe(struct platform_device *pdev)
 {
 	struct altera_spi_platform_data *platp = pdev->dev.platform_data;
@@ -309,13 +284,8 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 		}
 	}
 	/* find platform data */
-	if (platp) {
-		hw->interrupt = platp->interrupt;
-	} else {
-		err = altera_spi_of_probe(pdev, hw);
-		if (err)
-			goto err_no_of;
-	}
+	if (!platp)
+		hw->bitbang.master->dev.of_node = pdev->dev.of_node;
 
 	/* register our spi controller */
 	err = spi_bitbang_start(&hw->bitbang);
@@ -328,16 +298,15 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 	return 0;
 
 err_register:
-err_no_of:
 	if (hw->irq >= 0)
 		free_irq(hw->irq, hw);
 err_no_irq:
-	iounmap((void *)hw->base);
+	iounmap(hw->base);
 err_no_iomap:
 err_no_iores:
-	spi_master_put(master);;
-err_no_mem:
 err_no_dev:
+	spi_master_put(master);
+err_no_mem:
 	return err;
 }
 
@@ -350,22 +319,18 @@ static int __devexit altera_spi_remove(struct platform_device *dev)
 
 	if (hw->irq >= 0)
 		free_irq(hw->irq, hw);
-	iounmap((void *)hw->base);
+	iounmap(hw->base);
 
 	platform_set_drvdata(dev, NULL);
 	spi_master_put(master);
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static struct of_device_id altera_spi_match[] = {
-	{ .compatible = "altera,spi_altera", }, /* Will be removed */
-	{ .compatible = "altr,spi-9.1", },
+static const struct of_device_id altera_spi_match[] = {
 	{ .compatible = "altr,spi-1.0", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, altera_spi_match);
-#endif
 
 static struct platform_driver altera_spidrv = {
 	.remove = __devexit_p(altera_spi_remove),
@@ -373,9 +338,7 @@ static struct platform_driver altera_spidrv = {
 		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
-#ifdef CONFIG_OF
 		.of_match_table = altera_spi_match,
-#endif
 	},
 };
 
@@ -383,13 +346,12 @@ static int __init altera_spi_init(void)
 {
 	return platform_driver_probe(&altera_spidrv, altera_spi_probe);
 }
+module_init(altera_spi_init);
 
 static void __exit altera_spi_exit(void)
 {
 	platform_driver_unregister(&altera_spidrv);
 }
-
-module_init(altera_spi_init);
 module_exit(altera_spi_exit);
 
 MODULE_DESCRIPTION("Altera SPI driver");
