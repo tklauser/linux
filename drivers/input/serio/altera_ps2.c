@@ -189,7 +189,9 @@ static struct platform_driver altera_ps2_driver = {
 	.driver	= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
 		.of_match_table = altera_ps2_match,
+#endif
 	},
 };
 
