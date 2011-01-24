@@ -389,9 +389,8 @@ static int __devexit tiny_spi_remove(struct platform_device *dev)
 
 #ifdef CONFIG_OF
 static struct of_device_id oc_tiny_spi_match[] = {
-	{
-		.compatible = "opencores,oc_tiny_spi",
-	},
+	{ .compatible = "opencores,oc_tiny_spi", }, /* Will be removed */
+	{ .compatible = "opencores,tiny-spi-1.0", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, oc_tiny_spi_match);
