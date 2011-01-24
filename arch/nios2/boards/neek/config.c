@@ -59,21 +59,18 @@ static struct platform_device nios2_jtaguart = {
  *	Altera UART
  */
 
-static struct altera_uart_platform_uart nios2_uart_platform[] = {
 #ifdef UART_BASE
-	{
-	 .mapbase = UART_BASE,
-	 .irq = UART_IRQ,
-	 .uartclk = UART_FREQ,
-	 },
-#endif
-	{},
+static struct altera_uart_platform_uart nios2_uart_platform = {
+	.mapbase = UART_BASE,
+	.irq = UART_IRQ,
+	.uartclk = UART_FREQ,
 };
+#endif
 
 static struct platform_device nios2_uart = {
 	.name = "altera_uart",
 	.id = 0,
-	.dev.platform_data = nios2_uart_platform,
+	.dev.platform_data = &nios2_uart_platform,
 };
 #endif
 
