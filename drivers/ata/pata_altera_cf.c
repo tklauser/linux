@@ -46,6 +46,7 @@
 #include <linux/libata.h>
 #include <linux/platform_device.h>
 #include <linux/kthread.h>
+#include <linux/of.h>
 
 #define DRV_NAME "pata_altera_cf"
 #define DRV_VERSION "0.01"
@@ -550,6 +551,12 @@ static int __devexit altcf_platform_remove(struct platform_device *pdev)
 	return altcf_remove(&pdev->dev);
 }
 
+static const struct of_device_id altera_cf_match[] = {
+	{ .compatible = "altr,cf-1.0", },
+	{},
+}
+MODULE_DEVICE_TABLE(of, altera_cf_match);
+
 /* We are a platform device driver. */
 static struct platform_driver altcf_platform_driver = {
 	.probe		= altcf_platform_probe,
@@ -557,6 +564,9 @@ static struct platform_driver altcf_platform_driver = {
 	.driver = {
 		.name		= DRV_NAME,
 		.owner		= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = altera_cf_match,
+#endif
 	},
 };
 
