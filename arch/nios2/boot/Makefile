@@ -8,10 +8,6 @@
 
 MKIMAGE := $(srctree)/scripts/mkuboot.sh
 
-targets := vmImage
-extra-y += vmlinux.bin vmlinux.gz
-subdir- := compressed
-
 quiet_cmd_uimage = UIMAGE  $@
       cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A $(ARCH) -O linux -T kernel \
                    -C gzip -n 'Linux-$(KERNELRELEASE)' \
