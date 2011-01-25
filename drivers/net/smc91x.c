@@ -2396,7 +2396,8 @@ static int smc_drv_resume(struct device *dev)
 }
 
 static const struct of_device_id smc91x_match[] = {
-	{ .compatible = "smsc,smc91x", },
+	{ .compatible = "smsc,smc91c94", },
+	{ .compatible = "smsc,smc91c111", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, smc91x_match);
