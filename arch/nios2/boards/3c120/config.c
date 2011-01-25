@@ -64,6 +64,7 @@ static struct altera_uart_platform_uart nios2_uart_platform = {
 	.mapbase = UART_BASE,
 	.irq = UART_IRQ,
 	.uartclk = UART_FREQ,
+	.bus_shift = 0,
 };
 #endif
 
