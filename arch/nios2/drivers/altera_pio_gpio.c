@@ -19,7 +19,7 @@ int gpio_direction_output(unsigned gpio, int value)
 {
 	struct altera_pio_port *p = &altera_pio_ports[gpio / 32];
 	u32 mask = 1 << (gpio % 32);
-	u32 flags;
+	unsigned long flags;
 	local_irq_save(flags);
 	if (value)
 		p->data_reg |= mask;
@@ -45,7 +45,7 @@ void gpio_set_value(unsigned gpio, int value)
 {
 	struct altera_pio_port *p = &altera_pio_ports[gpio / 32];
 	u32 mask = 1 << (gpio % 32);
-	u32 flags;
+	unsigned long flags;
 	local_irq_save(flags);
 	if (value)
 		p->data_reg |= mask;
