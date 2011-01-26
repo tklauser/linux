@@ -3,6 +3,8 @@ config NIOS2
 	select HAVE_OPROFILE
 	select USB_ARCH_HAS_HCD if USB_SUPPORT
 	select ARCH_WANT_OPTIONAL_GPIOLIB
+	select HAVE_GENERIC_HARDIRQS
+	select GENERIC_IRQ_PROBE
 
 config GENERIC_CSUM
 	def_bool y
@@ -17,12 +19,6 @@ config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
 config GENERIC_GPIO
-	def_bool y
-
-config GENERIC_HARDIRQS
-	def_bool y
-
-config GENERIC_IRQ_PROBE
 	def_bool y
 
 config NO_IOPORT
