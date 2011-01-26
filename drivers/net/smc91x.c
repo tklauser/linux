@@ -2395,12 +2395,14 @@ static int smc_drv_resume(struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
 static const struct of_device_id smc91x_match[] = {
 	{ .compatible = "smsc,lan91c94", },
 	{ .compatible = "smsc,lan91c111", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, smc91x_match);
+#endif
 
 static struct dev_pm_ops smc_drv_pm_ops = {
 	.suspend	= smc_drv_suspend,
