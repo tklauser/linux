@@ -24,6 +24,7 @@
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/io.h>
 #include <linux/altera_uart.h>
 
@@ -86,16 +87,12 @@ struct altera_uart {
 
 static u32 altera_uart_readl(struct uart_port *port, int reg)
 {
-	struct altera_uart_platform_uart *platp = port->private_data;
-
-	return readl(port->membase + (reg << platp->bus_shift));
+	return readl(port->membase + (reg << port->regshift));
 }
 
 static void altera_uart_writel(struct uart_port *port, u32 dat, int reg)
 {
-	struct altera_uart_platform_uart *platp = port->private_data;
-
-	writel(dat, port->membase + (reg << platp->bus_shift));
+	writel(dat, port->membase + (reg << port->regshift));
 }
 
 static unsigned int altera_uart_tx_empty(struct uart_port *port)
@@ -523,13 +520,29 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	if (!port->membase)
 		return -ENOMEM;
 
+#ifdef CONFIG_OF
+	if (!platp) {
+		const __be32 *clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+
+		if (!clk)
+			return -ENODEV;
+
+		port->uartclk = be32_to_cpup(clk);
+	}
+#else
+	port->uartclk = platp->uartclk;
+#endif
+
 	port->line = i;
 	port->type = PORT_ALTERA_UART;
 	port->iotype = SERIAL_IO_MEM;
-	port->uartclk = platp->uartclk;
 	port->ops = &altera_uart_ops;
 	port->flags = UPF_BOOT_AUTOCONF;
-	port->private_data = platp;
+
+	if (platp)
+		port->regshift = platp->bus_shift;
+	else
+		port->regshift = 0;
 
 	uart_add_one_port(&altera_uart_driver, port);
 
