@@ -122,6 +122,9 @@ obj-$(CONFIG_TXX9_WDT) += txx9wdt.o
 obj-$(CONFIG_OCTEON_WDT) += octeon-wdt.o
 octeon-wdt-y := octeon-wdt-main.o octeon-wdt-nmi.o
 
+# NIOS2 Architecture
+obj-$(CONFIG_ALTERA_WDT) += altera_wdt.o
+
 # PARISC Architecture
 
 # POWERPC Architecture

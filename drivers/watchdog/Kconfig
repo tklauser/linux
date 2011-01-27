@@ -974,6 +974,12 @@ config BCM63XX_WDT
 
 # NIOS2 Architecture
 
+config ALTERA_WDT
+	tristate "Altera Watchdog Timer"
+	help
+	  Watchdog driver for the Altera Watchdog Timer found on Altera
+	  Nios2 SOPC systems.
+
 # PARISC Architecture
 
 # POWERPC Architecture
