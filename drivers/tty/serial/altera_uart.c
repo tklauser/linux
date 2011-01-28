@@ -485,6 +485,34 @@ static struct uart_driver altera_uart_driver = {
 	.cons		= ALTERA_UART_CONSOLE,
 };
 
+#ifdef CONFIG_OF
+static int altera_uart_get_uartclk(struct platform_device *pdev,
+				   struct uart_port *port)
+{
+	const __be32 *clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+
+	if (!clk)
+		return -ENODEV;
+
+	port->uartclk = be32_to_cpup(clk);
+
+	return 0;
+}
+#else
+static int altera_uart_get_uartclk(struct platform_device *pdev,
+				   struct uart_port *port)
+{
+	struct altera_uart_platform_uart *platp = pdev->dev.platform_data;
+
+	if (!platp)
+		return -ENODEV;
+
+	port->uartclk = platp->uartclk;
+
+	return 0;
+}
+#endif /* CONFIG_OF */
+
 static int __devinit altera_uart_probe(struct platform_device *pdev)
 {
 	struct altera_uart_platform_uart *platp = pdev->dev.platform_data;
@@ -492,6 +520,7 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	struct resource *res_mem;
 	struct resource *res_irq;
 	int i = pdev->id;
+	int ret;
 
 	/* -1 emphasizes that the platform must have one port, no .N suffix */
 	if (i == -1)
@@ -520,29 +549,22 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	if (!port->membase)
 		return -ENOMEM;
 
-#ifdef CONFIG_OF
-	if (!platp) {
-		const __be32 *clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
-
-		if (!clk)
-			return -ENODEV;
-
-		port->uartclk = be32_to_cpup(clk);
+	ret = altera_uart_get_uartclk(pdev, port);
+	if (ret) {
+		iounmap(port->membase);
+		return ret;
 	}
-#else
-	port->uartclk = platp->uartclk;
-#endif
+
+	if (platp)
+		port->regshift = platp->bus_shift;
+	else
+		port->regshift = 0;
 
 	port->line = i;
 	port->type = PORT_ALTERA_UART;
 	port->iotype = SERIAL_IO_MEM;
 	port->ops = &altera_uart_ops;
 	port->flags = UPF_BOOT_AUTOCONF;
-
-	if (platp)
-		port->regshift = platp->bus_shift;
-	else
-		port->regshift = 0;
 
 	uart_add_one_port(&altera_uart_driver, port);
 
