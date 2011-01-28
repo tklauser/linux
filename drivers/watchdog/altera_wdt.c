@@ -29,6 +29,7 @@
 #include <linux/timer.h>
 #include <linux/io.h>
 #include <linux/uaccess.h>
+#include <linux/of_platform.h>
 
 #define WATCHDOG_NAME	"altera_wdt"
 
@@ -39,9 +40,6 @@
 #define ALTERA_WDT_PERIODH	0x0C
 
 #define ALTERA_WDT_RUN_BIT	0x04
-
-/* Timer heartbeat (500ms) */
-#define WDT_TIMEOUT	(HZ / 2)
 
 /* User land timeout */
 #define WDT_HEARTBEAT 15
@@ -57,6 +55,8 @@ MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started "
 
 static struct {
 	void __iomem *base;
+	unsigned long wdt_timeout;	/* timeout of the hardware timer */
+
 	unsigned long next_heartbeat;	/* the next_heartbeat for the timer */
 	unsigned long is_open;
 	char expect_close;
@@ -91,7 +91,7 @@ static void altera_wdt_ping(unsigned long data)
 	if (time_before(jiffies, altera_wdt_priv.next_heartbeat) ||
 			(!nowayout && !altera_wdt_priv.is_open)) {
 		altera_wdt_reset();
-		mod_timer(&altera_wdt_priv.timer, jiffies + WDT_TIMEOUT);
+		mod_timer(&altera_wdt_priv.timer, jiffies + altera_wdt_priv.wdt_timeout);
 	} else
 		pr_crit(WATCHDOG_NAME ": I will reset your machine!\n");
 }
@@ -104,7 +104,7 @@ static void altera_wdt_keepalive(void)
 static void altera_wdt_start(void)
 {
 	altera_wdt_keepalive();
-	mod_timer(&altera_wdt_priv.timer, jiffies + WDT_TIMEOUT);
+	mod_timer(&altera_wdt_priv.timer, jiffies + altera_wdt_priv.wdt_timeout);
 }
 
 static int altera_wdt_open(struct inode *inode, struct file *file)
@@ -220,6 +220,8 @@ static struct miscdevice altera_wdt_miscdev = {
 static int __devinit altera_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res, *mem;
+	const u32 *freq_prop, *timeout_prop;
+	unsigned long timeout;
 	int ret;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -236,6 +238,25 @@ static int __devinit altera_wdt_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
+	ret = -ENODEV;
+
+	freq_prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+	if (!freq_prop)
+		goto err_misc;
+
+	timeout_prop = of_get_property(pdev->dev.of_node, "timeout", NULL);
+	if (!timeout_prop)
+		goto err_misc;
+
+	/* Add 1 as the timeout property actually holds the load value */
+	timeout = be32_to_cpup(timeout_prop) + 1;
+	/* Convert timeout to msecs */
+	timeout = timeout / (be32_to_cpup(freq_prop) / MSEC_PER_SEC);
+	/* Tickle the watchdog twice per timeout period */
+	altera_wdt_priv.wdt_timeout = msecs_to_jiffies(timeout / 2);
+
+	/* TODO: Should we do a lower bounds check on timeout here? */
+
 	ret = misc_register(&altera_wdt_miscdev);
 	if (ret)
 		goto err_misc;
@@ -243,7 +264,7 @@ static int __devinit altera_wdt_probe(struct platform_device *pdev)
 	altera_wdt_setup();
 	altera_wdt_priv.next_heartbeat = jiffies + heartbeat * HZ;
 	setup_timer(&altera_wdt_priv.timer, altera_wdt_ping, 0);
-	mod_timer(&altera_wdt_priv.timer, jiffies + WDT_TIMEOUT);
+	mod_timer(&altera_wdt_priv.timer, jiffies + altera_wdt_priv.wdt_timeout);
 
 	pr_info(WATCHDOG_NAME " enabled (heartbeat=%d sec, nowayout=%d)\n",
 		heartbeat, nowayout);
@@ -269,13 +290,11 @@ static int __devexit altera_wdt_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id altera_wdt_match[] = {
 	{ .compatible = "altr,wdt-1.0", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, altera_wdt_match);
-#endif /* CONFIG_OF */
 
 static struct platform_driver altera_wdt_driver = {
 	.probe		= altera_wdt_probe,
@@ -283,9 +302,7 @@ static struct platform_driver altera_wdt_driver = {
 	.driver		= {
 		.owner		= THIS_MODULE,
 		.name		= WATCHDOG_NAME,
-#ifdef CONFIG_OF
 		.of_match_table	= altera_wdt_match,
-#endif
 	},
 };
 

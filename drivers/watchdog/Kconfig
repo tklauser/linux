@@ -976,6 +976,7 @@ config BCM63XX_WDT
 
 config ALTERA_WDT
 	tristate "Altera Watchdog Timer"
+	depends on OF
 	help
 	  Watchdog driver for the Altera Watchdog Timer found on Altera
 	  Nios2 SOPC systems.
