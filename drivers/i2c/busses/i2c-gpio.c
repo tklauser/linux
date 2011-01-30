@@ -220,6 +220,8 @@ err_request_sda:
 err_alloc_bit_data:
 	kfree(adap);
 err_alloc_adap:
+	if (!pdev->dev.platform_data)
+		kfree(pdata);
 err_no_pdata:
 err_alloc_pdata:
 err_gpio_pin:
