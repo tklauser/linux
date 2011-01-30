@@ -14,6 +14,9 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/of_platform.h>
+#include <linux/of_gpio.h>
+#include <linux/of_i2c.h>
 
 #include <asm/gpio.h>
 
@@ -83,11 +86,52 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	struct i2c_gpio_platform_data *pdata;
 	struct i2c_algo_bit_data *bit_data;
 	struct i2c_adapter *adap;
+	struct device_node *np = pdev->dev.of_node;
 	int ret;
 
 	pdata = pdev->dev.platform_data;
-	if (!pdata)
-		return -ENXIO;
+	if (!pdata) {
+		if (np && of_gpio_count(np) >= 2) {
+			const __be32 *prop;
+			int sda_pin, scl_pin;
+
+			sda_pin = of_get_gpio_flags(np, 0, NULL);
+			scl_pin = of_get_gpio_flags(np, 1, NULL);
+			if (sda_pin < 0 || scl_pin < 0) {
+				pr_err("%s: invalid GPIO pins, sda=%d/scl=%d\n",
+				       np->full_name, sda_pin, scl_pin);
+				ret = -EINVAL;
+				goto err_gpio_pin;
+			}
+			pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+			if (!pdata) {
+				ret = -ENOMEM;
+				goto err_alloc_pdata;
+			}
+			pdata->sda_pin = sda_pin;
+			pdata->scl_pin = scl_pin;
+			prop = of_get_property(np, "sda-is-open-drain", NULL);
+			if (prop)
+				pdata->sda_is_open_drain = 1;
+			prop = of_get_property(np, "scl-is-open-drain", NULL);
+			if (prop)
+				pdata->scl_is_open_drain = 1;
+			prop = of_get_property(np, "scl-is-output-only", NULL);
+			if (prop)
+				pdata->scl_is_output_only = 1;
+			prop = of_get_property(np, "udelay", NULL);
+			if (prop)
+				pdata->udelay = be32_to_cpup(prop);
+			prop = of_get_property(np, "timeout", NULL);
+			if (prop) {
+				pdata->timeout =
+					msecs_to_jiffies(be32_to_cpup(prop));
+			}
+		} else {
+			ret = -ENXIO;
+			goto err_no_pdata;
+		}
+	}
 
 	ret = -ENOMEM;
 	adap = kzalloc(sizeof(struct i2c_adapter), GFP_KERNEL);
@@ -143,6 +187,7 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	adap->algo_data = bit_data;
 	adap->class = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 	adap->dev.parent = &pdev->dev;
+	adap->dev.of_node = np;
 
 	/*
 	 * If "dev->id" is negative we consider it as zero.
@@ -161,6 +206,9 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 		 pdata->scl_is_output_only
 		 ? ", no clock stretching" : "");
 
+	/* Now register all the child nodes */
+	of_i2c_register_devices(adap);
+
 	return 0;
 
 err_add_bus:
@@ -172,6 +220,9 @@ err_request_sda:
 err_alloc_bit_data:
 	kfree(adap);
 err_alloc_adap:
+err_no_pdata:
+err_alloc_pdata:
+err_gpio_pin:
 	return ret;
 }
 
@@ -179,23 +230,33 @@ static int __devexit i2c_gpio_remove(struct platform_device *pdev)
 {
 	struct i2c_gpio_platform_data *pdata;
 	struct i2c_adapter *adap;
+	struct i2c_algo_bit_data *bit_data;
 
 	adap = platform_get_drvdata(pdev);
-	pdata = pdev->dev.platform_data;
+	bit_data = adap->algo_data;
+	pdata = bit_data->data;
 
 	i2c_del_adapter(adap);
 	gpio_free(pdata->scl_pin);
 	gpio_free(pdata->sda_pin);
 	kfree(adap->algo_data);
 	kfree(adap);
+	if (!pdev->dev.platform_data)
+		kfree(pdata);
 
 	return 0;
 }
+
+static const struct of_device_id i2c_gpio_match[] = {
+	{ .compatible = "i2c-gpio", },
+	{},
+};
 
 static struct platform_driver i2c_gpio_driver = {
 	.driver		= {
 		.name	= "i2c-gpio",
 		.owner	= THIS_MODULE,
+		.of_match_table = i2c_gpio_match,
 	},
 	.probe		= i2c_gpio_probe,
 	.remove		= __devexit_p(i2c_gpio_remove),
