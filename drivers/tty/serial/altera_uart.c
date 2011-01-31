@@ -493,7 +493,6 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	struct resource *res_irq;
 	const __be32 *clk;
 	int i = pdev->id;
-	int ret;
 
 	/* -1 emphasizes that the platform must have one port, no .N suffix */
 	if (i == -1)
