@@ -71,8 +71,12 @@ static inline unsigned int of_gpio_count(struct device_node *np)
 	return 0;
 }
 
+#ifdef CONFIG_GPIOLIB
+
 static inline void of_gpiochip_add(struct gpio_chip *gc) { }
 static inline void of_gpiochip_remove(struct gpio_chip *gc) { }
+
+#endif /* CONFIG_GPIOLIB */
 
 #endif /* CONFIG_OF_GPIO */
 
