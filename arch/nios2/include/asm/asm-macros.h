@@ -309,14 +309,6 @@
 .endm
 
 /*
- * Clears reg
- */
-
-.macro CLR	reg
-	  mov	\reg,r0
-.endm
-
-/*
  * The preprocessor macro does not work for
  * the nios2 compiler. Undefine ENTRY and define
  * a real assembler macro.

@@ -97,7 +97,7 @@ Lsignal_return:
 	BTBZ	r1,r10,TIF_SIGPENDING_ASM,restore_all
 	mov	r5,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
-	CLR	r4			/* oldset = 0 */
+	mov	r4,r0			/* oldset = 0 */
 	call	do_signal
 	RESTORE_SWITCH_STACK
 	br	restore_all
