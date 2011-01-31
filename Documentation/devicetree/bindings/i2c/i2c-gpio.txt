@@ -6,7 +6,8 @@ Required properties:
 Optional properties:
 - sda-is-open-drain : present if SDA gpio is open-drain.
 - scl-is-open-drain : present if SCL gpio is open-drain.
-- scl-is-output-only : present if SCL is an output gpio only.
+- scl-is-output-only : present if the output driver for SCL cannot be
+	turned off. this will prevent clock stretching from working.
 - udelay : signal toggle delay. SCL frequency is (500 / udelay) kHz
 - timeout : clock stretching timeout in milliseconds.
 
