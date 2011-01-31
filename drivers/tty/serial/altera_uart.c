@@ -485,40 +485,13 @@ static struct uart_driver altera_uart_driver = {
 	.cons		= ALTERA_UART_CONSOLE,
 };
 
-#ifdef CONFIG_OF
-static int altera_uart_get_uartclk(struct platform_device *pdev,
-				   struct uart_port *port)
-{
-	const __be32 *clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
-
-	if (!clk)
-		return -ENODEV;
-
-	port->uartclk = be32_to_cpup(clk);
-
-	return 0;
-}
-#else
-static int altera_uart_get_uartclk(struct platform_device *pdev,
-				   struct uart_port *port)
-{
-	struct altera_uart_platform_uart *platp = pdev->dev.platform_data;
-
-	if (!platp)
-		return -ENODEV;
-
-	port->uartclk = platp->uartclk;
-
-	return 0;
-}
-#endif /* CONFIG_OF */
-
 static int __devinit altera_uart_probe(struct platform_device *pdev)
 {
 	struct altera_uart_platform_uart *platp = pdev->dev.platform_data;
 	struct uart_port *port;
 	struct resource *res_mem;
 	struct resource *res_irq;
+	const __be32 *clk;
 	int i = pdev->id;
 	int ret;
 
@@ -545,15 +518,17 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	else if (platp->irq)
 		port->irq = platp->irq;
 
+	clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+	if (clk)
+		port->uartclk = be32_to_cpup(clk);
+	else if (platp && platp->uartclk)
+		port->uartclk = platp->uartclk;
+	else
+		return -ENODEV;
+
 	port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);
 	if (!port->membase)
 		return -ENOMEM;
-
-	ret = altera_uart_get_uartclk(pdev, port);
-	if (ret) {
-		iounmap(port->membase);
-		return ret;
-	}
 
 	if (platp)
 		port->regshift = platp->bus_shift;
@@ -585,13 +560,11 @@ static int __devexit altera_uart_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id altera_uart_match[] = {
 	{ .compatible = "altr,uart-1.0", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, altera_uart_match);
-#endif /* CONFIG_OF */
 
 static struct platform_driver altera_uart_platform_driver = {
 	.probe	= altera_uart_probe,
@@ -599,9 +572,7 @@ static struct platform_driver altera_uart_platform_driver = {
 	.driver	= {
 		.name		= DRV_NAME,
 		.owner		= THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table	= altera_uart_match,
-#endif
 	},
 };
 
