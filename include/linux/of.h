@@ -222,5 +222,13 @@ extern void of_attach_node(struct device_node *);
 extern void of_detach_node(struct device_node *);
 #endif
 
+#else /* !CONFIG_OF */
+
+static inline const void *of_get_property(const struct device_node *node,
+				const char *name, int *lenp)
+{
+	return NULL;
+}
+
 #endif /* CONFIG_OF */
 #endif /* _LINUX_OF_H */
