@@ -51,8 +51,6 @@
 
 #define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
 
-asmlinkage long sys_wait4(pid_t pid, unsigned int * stat_addr, int options,
-			struct rusage * ru);
 asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall);
 
 /*
