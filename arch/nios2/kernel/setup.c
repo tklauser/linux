@@ -217,7 +217,7 @@ void arch_gettod(int *year, int *month, int *date, int *hour, int *min, int *sec
 #ifdef CONFIG_PROC_FS
 
 /*
- *	Get CPU information for use by the procfs.
+ * Get CPU information for use by the procfs.
  */
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
@@ -227,19 +227,13 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 
 	count = seq_printf(m,
 			"CPU:\t\tNios II/%s\n"
-#if defined(MMU_PRESENT) && defined(CONFIG_MMU)
-			"MMU:\t\t%u-way TLB, %d entries\n"
-#else
-			"MMU:\t\tnone\n"
-#endif
+			"MMU:\t\t%s\n"
 			"FPU:\t\tnone\n"
 			"Clocking:\t%u.%02u MHz\n"
 			"BogoMips:\t%lu.%02lu\n"
 			"Calibration:\t%lu loops\n",
+			cpuinfo.mmu ? "present" : "none",
 			cpu_impl,
-#if defined(MMU_PRESENT) && defined(CONFIG_MMU)
-			TLB_NUM_WAYS, TLB_NUM_ENTRIES,
-#endif
 			clockfreq / 1000000, (clockfreq / 100000) % 10,
 			(loops_per_jiffy * HZ) / 500000, ((loops_per_jiffy * HZ) / 5000) % 100,
 			(loops_per_jiffy * HZ));
@@ -262,6 +256,12 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			"Dcache:\t\t%ukB, line length: %u\n",
 			cpuinfo.dcache_size >> 10,
 			cpuinfo.dcache_line_size);
+
+	if (cpuinfo.mmu)
+		count += seq_printf(m,
+				"TLB:\t\t%u ways, %u entries\n",
+				cpuinfo.tlb_num_ways,
+				cpuinfo.tlb_num_entries);
 
 	return 0;
 }

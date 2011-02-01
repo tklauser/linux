@@ -24,16 +24,19 @@ struct cpuinfo {
 	/* CPU caches */
 	u32 icache_line_size;
 	u32 icache_size;
-
 	u32 dcache_line_size;
 	u32 dcache_size;
+
+	/* TLB */
+	u32 tlb_num_ways;
+	u32 tlb_num_entries;
 };
 
 extern struct cpuinfo cpuinfo;
 
 extern void setup_cpuinfo(void);
 
-static inline unsigned int fcpu(struct device_node *cpu, char *n)
+static inline u32 fcpu(struct device_node *cpu, char *n)
 {
 	u32 *val;
 	return (val = (u32 *) of_get_property(cpu, n, NULL)) ? be32_to_cpup(val) : 0;
