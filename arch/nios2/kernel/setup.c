@@ -38,6 +38,7 @@
 #include <asm/pgtable.h>
 #include <asm/setup.h>
 #include <asm/prom.h>
+#include <asm/cpuinfo.h>
 
 /*
  * Sanity check config options for HW supported mul, mulx, div against
@@ -45,7 +46,7 @@
  */
 #if defined(CONFIG_NIOS2_HW_MUL_SUPPORT)
 # if HARDWARE_MULTIPLY_PRESENT == 0
-#  error Kernel compiled with MUL support although not enabled in design
+#  warning Kernel compiled with MUL support although not enabled in design
 # endif
 #else
 # if HARDWARE_MULTIPLY_PRESENT != 0
@@ -55,7 +56,7 @@
 
 #if defined(CONFIG_NIOS2_HW_MULX_SUPPORT)
 # if HARDWARE_MULX_PRESENT == 0
-#  error Kernel compiled with MULX support although not enabled in design
+#  warning Kernel compiled with MULX support although not enabled in design
 # endif
 #else
 # if HARDWARE_MULX_PRESENT != 0
@@ -65,7 +66,7 @@
 
 #if defined(CONFIG_NIOS2_HW_DIV_SUPPORT)
 # if HARDWARE_DIVIDE_PRESENT == 0
-#  error Kernel compiled with DIV support although not enabled in design
+#  warning Kernel compiled with DIV support although not enabled in design
 # endif
 #else
 # if HARDWARE_DIVIDE_PRESENT != 0
@@ -194,6 +195,9 @@ void __init setup_arch(char **cmdline_p)
 #endif /* CONFIG_BLK_DEV_INITRD */
 
 	device_tree_init();
+
+	setup_cpuinfo();
+
 	/*
 	 * get kmalloc into gear
 	 */
@@ -219,7 +223,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	int count = 0;
 	const char *cpu_impl = CPU_IMPLEMENTATION;
-	const u_long clockfreq = CPU_FREQ;
+	const u32 clockfreq = cpuinfo.cpu_clock_freq;
 
 	count = seq_printf(m,
 			"CPU:\t\tNios II/%s\n"
@@ -229,7 +233,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			"MMU:\t\tnone\n"
 #endif
 			"FPU:\t\tnone\n"
-			"Clocking:\t%lu.%02lu MHz\n"
+			"Clocking:\t%u.%02u MHz\n"
 			"BogoMips:\t%lu.%02lu\n"
 			"Calibration:\t%lu loops\n",
 			cpu_impl,
@@ -245,19 +249,19 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			" MUL:\t\t%s\n"
 			" MULX:\t\t%s\n"
 			" DIV:\t\t%s\n",
-			HARDWARE_MULTIPLY_PRESENT ? "yes" : "no",
-			HARDWARE_MULX_PRESENT ? "yes" : "no",
-			HARDWARE_DIVIDE_PRESENT ? "yes" : "no");
+			cpuinfo.has_mul ? "yes" : "no",
+			cpuinfo.has_mulx ? "yes" : "no",
+			cpuinfo.has_div ? "yes" : "no");
 
 	count += seq_printf(m,
 			"Icache:\t\t%ukB, line length: %u\n",
-			ICACHE_SIZE >> 10,
-			ICACHE_LINE_SIZE);
+			cpuinfo.icache_size >> 10,
+			cpuinfo.icache_line_size);
 
 	count += seq_printf(m,
 			"Dcache:\t\t%ukB, line length: %u\n",
-			DCACHE_SIZE >> 10,
-			DCACHE_LINE_SIZE);
+			cpuinfo.dcache_size >> 10,
+			cpuinfo.dcache_line_size);
 
 	return 0;
 }
