@@ -452,6 +452,12 @@ config PCH_PHUB
 	  To compile this driver as a module, choose M here: the module will
 	  be called pch_phub.
 
+config ALTERA_SYSID
+	tristate "Altera system ID Driver"
+	help
+	  This enables support for the Altera SYSID core wich identifies a
+	  system created with Altera's SOPCBuilder
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
