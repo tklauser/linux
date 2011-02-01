@@ -363,27 +363,8 @@ void local_flush_tlb_all(void)
    WRCTL(CTL_TLBMISC, org_misc);
 }
 
-void unhandled_exception(struct pt_regs *fp, int cause)
-{
-   cause /= 4;
-   /* print "safe" output first
-    */
-   printk("Unhandled exception #%d , fp 0x%p\n", cause, fp);
-
-   /* Now dereference fp
-    */
-   fp->ea -= 4;   
-   show_regs(fp);
-
-   /* Halt the ISS
-    */
-   WRCTL(6,1);
-   for(;;);
-}
-
 extern asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long write,
                                      unsigned long address);
-
 
 static int maybe_debug_register_access(struct pt_regs* regs, unsigned long addr) {
     if (DEBUG_ADDR == (addr & PAGE_MASK)) {

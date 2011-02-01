@@ -1,4 +1,6 @@
 /*
+ * Hardware exception handling
+ *
  * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
  *
  * based on arch/microblaze/kernel/exceptions.c
@@ -42,4 +44,18 @@ void _exception(int signo, struct pt_regs *regs, int code, unsigned long addr)
 	info.si_code = code;
 	info.si_addr = (void __user *) addr;
 	force_sig_info(signo, &info, current);
+}
+
+void unhandled_exception(struct pt_regs *regs, int cause)
+{
+	cause /= 4;
+
+	pr_warn("Unhandled exception #%d in %s mode\n",
+			cause, user_mode(regs) ? "user" : "kernel");
+
+	regs->ea -= 4;
+	show_regs(regs);
+
+	/* TODO: What should we do here? WRS code was halting the ISS with
+	 * WRCTL(6,1) and spinning forever afterwards. */
 }
