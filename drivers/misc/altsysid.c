@@ -50,6 +50,8 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 	struct altera_sysid *sys;
 	struct tm tstamp;
 	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	int ret;
+
 	if(!res)
 		return -ENODEV;
 
@@ -80,8 +82,13 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 			tstamp.tm_mon + 1, tstamp.tm_mday, tstamp.tm_hour,
 			tstamp.tm_min, tstamp.tm_sec);
 
-	device_create_file(&pdev->dev, &dev_attr_id);
-	device_create_file(&pdev->dev, &dev_attr_timestamp);
+	ret = device_create_file(&pdev->dev, &dev_attr_id);
+	if (ret)
+		return ret;
+	ret = device_create_file(&pdev->dev, &dev_attr_timestamp);
+	if (ret)
+		return ret;
+
 	return 0;
 }
 
