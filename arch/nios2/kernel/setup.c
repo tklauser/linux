@@ -200,8 +200,3 @@ void __init setup_arch(char **cmdline_p)
 #endif
 #endif
 }
-
-void arch_gettod(int *year, int *month, int *date, int *hour, int *min, int *sec)
-{
-	*year = *month = *date = *hour = *min = *sec = 0;
-}
