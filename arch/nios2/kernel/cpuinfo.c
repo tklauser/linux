@@ -31,6 +31,10 @@ void __init setup_cpuinfo(void)
 
 	cpuinfo.cpu_clock_freq = fcpu(cpu, "clock-frequency");
 
+	cpuinfo.cpu_impl = of_get_property(cpu, "altr,implementation", NULL);
+	if (!cpuinfo.cpu_impl)
+		cpuinfo.cpu_impl = "<unknown>";
+
 	cpuinfo.has_div = fcpu(cpu, "altr,has-div");
 	cpuinfo.has_mul = fcpu(cpu, "altr,has-mul");
 	cpuinfo.has_mulx = fcpu(cpu, "altr,has-mulx");

@@ -15,6 +15,7 @@
 
 struct cpuinfo {
 	/* Core CPU configuration */
+	const char *cpu_impl;
 	u32 cpu_clock_freq;
 	u32 mmu;
 	u32 has_div;

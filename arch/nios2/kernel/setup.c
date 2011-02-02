@@ -223,7 +223,6 @@ void arch_gettod(int *year, int *month, int *date, int *hour, int *min, int *sec
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	int count = 0;
-	const char *cpu_impl = CPU_IMPLEMENTATION;
 	const u32 clockfreq = cpuinfo.cpu_clock_freq;
 
 	count = seq_printf(m,
@@ -233,7 +232,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			"Clocking:\t%u.%02u MHz\n"
 			"BogoMips:\t%lu.%02lu\n"
 			"Calibration:\t%lu loops\n",
-			cpu_impl,
+			cpuinfo.cpu_impl,
 			cpuinfo.mmu ? "present" : "none",
 			clockfreq / 1000000, (clockfreq / 100000) % 10,
 			(loops_per_jiffy * HZ) / 500000, ((loops_per_jiffy * HZ) / 5000) % 100,
