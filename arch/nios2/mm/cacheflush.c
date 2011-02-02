@@ -9,20 +9,21 @@
 
 #include <linux/mm.h>
 #include <linux/fs.h>
+#include <asm/cpuinfo.h>
 #include <asm/cacheflush.h>
 
 static void __flush_dcache(unsigned long start, unsigned long end)
 {
 	unsigned long addr;
 
-	start &= ~(DCACHE_LINE_SIZE - 1);
-	end += (DCACHE_LINE_SIZE - 1);
-	end &= ~(DCACHE_LINE_SIZE - 1);
+	start &= ~(cpuinfo.dcache_line_size - 1);
+	end += (cpuinfo.dcache_line_size - 1);
+	end &= ~(cpuinfo.dcache_line_size - 1);
 
-	if (end > start + DCACHE_SIZE)
-		end = start + DCACHE_SIZE;
+	if (end > start + cpuinfo.dcache_size)
+		end = start + cpuinfo.dcache_size;
 
-	for (addr = start; addr < end; addr += DCACHE_LINE_SIZE) {
+	for (addr = start; addr < end; addr += cpuinfo.dcache_line_size) {
 		__asm__ __volatile__ ("   flushd 0(%0)\n"
 					: /* Outputs */
 					: /* Inputs  */ "r"(addr)
@@ -34,14 +35,14 @@ static void __flush_icache(unsigned long start, unsigned long end)
 {
 	unsigned long addr;
 
-	start &= ~(ICACHE_LINE_SIZE - 1);
-	end += (ICACHE_LINE_SIZE - 1);
-	end &= ~(ICACHE_LINE_SIZE - 1);
+	start &= ~(cpuinfo.icache_line_size - 1);
+	end += (cpuinfo.icache_line_size - 1);
+	end &= ~(cpuinfo.icache_line_size - 1);
 
-	if (end > start + ICACHE_SIZE)
-		end = start + ICACHE_SIZE;
+	if (end > start + cpuinfo.icache_size)
+		end = start + cpuinfo.icache_size;
 
-	for (addr = start; addr < end; addr += ICACHE_LINE_SIZE) {
+	for (addr = start; addr < end; addr += cpuinfo.icache_line_size) {
 		__asm__ __volatile__ ("   flushi %0\n"
 					: /* Outputs */
 					: /* Inputs  */ "r"(addr)
@@ -76,12 +77,12 @@ static void flush_aliases(struct address_space *mapping, struct page *page)
 
 void flush_dcache_all(void)
 {
-	__flush_dcache(0, DCACHE_SIZE);
+	__flush_dcache(0, cpuinfo.dcache_size);
 }
 
 void flush_icache_all(void)
 {
-	__flush_icache(0, ICACHE_SIZE);
+	__flush_icache(0, cpuinfo.icache_size);
 }
 
 void flush_cache_all(void)

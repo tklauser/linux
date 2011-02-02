@@ -32,6 +32,7 @@
 #include <asm/percpu.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
+#include <asm/cpuinfo.h>
 
 #define DEBUG
 
@@ -97,9 +98,9 @@ void __init paging_init(void)
 	empty_bad_page_table = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 	empty_bad_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 #ifdef CONFIG_MMU
-	empty_zero_page = (unsigned long)alloc_bootmem_pages(DCACHE_SIZE);
-	memset((void *)empty_zero_page, 0, DCACHE_SIZE);
-	flush_dcache_range(empty_zero_page, empty_zero_page + DCACHE_SIZE);
+	empty_zero_page = (unsigned long) alloc_bootmem_pages(cpuinfo.dcache_size);
+	memset((void *) empty_zero_page, 0, cpuinfo.dcache_size);
+	flush_dcache_range(empty_zero_page, empty_zero_page + cpuinfo.dcache_size);
 #else
 	empty_zero_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 	memset((void *)empty_zero_page, 0, PAGE_SIZE);

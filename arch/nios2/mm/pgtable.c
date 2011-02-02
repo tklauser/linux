@@ -15,6 +15,7 @@
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
+#include <asm/cpuinfo.h>
 
 /* pteaddr: 
  *   ptbase | vpn* | zero
@@ -110,7 +111,7 @@ struct page * ZERO_PAGE(unsigned long vaddr)
   struct page* page;
   unsigned long poffset;
 
-  poffset = vaddr & ((DCACHE_SIZE - 1) & ~(PAGE_SIZE - 1));
+  poffset = vaddr & ((cpuinfo.dcache_size - 1) & ~(PAGE_SIZE - 1));
 
   page = virt_to_page(empty_zero_page + poffset);
 
