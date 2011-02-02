@@ -14,8 +14,6 @@
 #include <linux/of.h>
 #include <asm/cpuinfo.h>
 
-struct cpuinfo cpuinfo;
-
 void __init setup_cpuinfo(void)
 {
 	struct device_node *cpu;

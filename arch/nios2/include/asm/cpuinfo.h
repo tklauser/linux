@@ -34,6 +34,8 @@ struct cpuinfo {
 
 extern struct cpuinfo cpuinfo;
 
+#ifdef CONFIG_OF
+
 extern void setup_cpuinfo(void);
 
 static inline u32 fcpu(struct device_node *cpu, char *n)
@@ -41,5 +43,11 @@ static inline u32 fcpu(struct device_node *cpu, char *n)
 	u32 *val;
 	return (val = (u32 *) of_get_property(cpu, n, NULL)) ? be32_to_cpup(val) : 0;
 }
+
+#else
+
+static inline void setup_cpuinfo(void) {};
+
+#endif
 
 #endif /* _ASM_NIOS2_CPUINFO_H */

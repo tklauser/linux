@@ -90,6 +90,7 @@ static char default_command_line[] = CONFIG_CMDLINE;
 #endif
 char cmd_line[COMMAND_LINE_SIZE] = { 0, };
 
+struct cpuinfo cpuinfo;
 
 /*				   r1  r2  r3  r4  r5  r6  r7  r8  r9 r10 r11*/
 /*				   r12 r13 r14 r15 or2                      ra  fp  sp  gp es  ste  ea*/
