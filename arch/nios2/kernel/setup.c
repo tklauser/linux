@@ -232,8 +232,8 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			"Clocking:\t%u.%02u MHz\n"
 			"BogoMips:\t%lu.%02lu\n"
 			"Calibration:\t%lu loops\n",
-			cpuinfo.mmu ? "present" : "none",
 			cpu_impl,
+			cpuinfo.mmu ? "present" : "none",
 			clockfreq / 1000000, (clockfreq / 100000) % 10,
 			(loops_per_jiffy * HZ) / 500000, ((loops_per_jiffy * HZ) / 5000) % 100,
 			(loops_per_jiffy * HZ));
