@@ -36,6 +36,7 @@
 #include <asm/byteorder.h>
 #include <asm/asm-offsets.h>
 #include <asm/pgtable.h>
+#include <asm/mmu_context.h>
 #include <asm/setup.h>
 #include <asm/prom.h>
 #include <asm/cpuinfo.h>
@@ -198,6 +199,14 @@ void __init setup_arch(char **cmdline_p)
 	device_tree_init();
 
 	setup_cpuinfo();
+
+#ifdef CONFIG_MMU
+	/*
+	 * Initialize MMU context handling here because data from cpuinfo needed
+	 * for this
+	 */
+	mmu_context_init();
+#endif
 
 	/*
 	 * get kmalloc into gear

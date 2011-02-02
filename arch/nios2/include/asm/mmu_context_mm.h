@@ -20,6 +20,8 @@
 #include <asm/tlbflush.h>
 #include <asm-generic/mm_hooks.h>
 
+extern void mmu_context_init(void);
+
 /*
  * For the fast tlb miss handlers, we keep a pointer to the current pgd.
  * processor.

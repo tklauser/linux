@@ -11,6 +11,7 @@
 #ifndef _ASM_NIOS2_CPUINFO_H
 #define _ASM_NIOS2_CPUINFO_H
 
+#include <linux/types.h>
 #include <asm/prom.h>
 
 struct cpuinfo {
@@ -29,6 +30,7 @@ struct cpuinfo {
 	u32 dcache_size;
 
 	/* TLB */
+	u32 pid_num_bits;	/* number of bits used for the PID in TLBMISC */
 	u32 tlb_num_ways;
 	u32 tlb_num_entries;
 };
@@ -38,12 +40,6 @@ extern struct cpuinfo cpuinfo;
 #ifdef CONFIG_OF
 
 extern void setup_cpuinfo(void);
-
-static inline u32 fcpu(struct device_node *cpu, char *n)
-{
-	u32 *val;
-	return (val = (u32 *) of_get_property(cpu, n, NULL)) ? be32_to_cpup(val) : 0;
-}
 
 #else
 

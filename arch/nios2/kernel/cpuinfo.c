@@ -14,6 +14,12 @@
 #include <linux/of.h>
 #include <asm/cpuinfo.h>
 
+static inline u32 fcpu(struct device_node *cpu, char *n)
+{
+	u32 *val;
+	return (val = (u32 *) of_get_property(cpu, n, NULL)) ? be32_to_cpup(val) : 0;
+}
+
 void __init setup_cpuinfo(void)
 {
 	struct device_node *cpu;
@@ -44,6 +50,7 @@ void __init setup_cpuinfo(void)
 	cpuinfo.dcache_line_size = fcpu(cpu, "dcache-line-size");
 	cpuinfo.dcache_size = fcpu(cpu, "dcache-size");
 
+	cpuinfo.pid_num_bits = fcpu(cpu, "altr,pid-num-bits");
 	cpuinfo.tlb_num_ways = fcpu(cpu, "altr,tlb-num-ways");
 	cpuinfo.tlb_num_entries = fcpu(cpu, "altr,tlb-num-entries");
 }
