@@ -21,16 +21,12 @@
 #define TLB_NUM_WAYS_LOG2 4
 #define TLB_PTR_SZ 8
 #define TLB_NUM_ENTRIES 256
-#define CPU_IMPLEMENTATION "fast"
 #define HARDWARE_DIVIDE_PRESENT 0
 #define HARDWARE_MULTIPLY_PRESENT 1
 #define HARDWARE_MULX_PRESENT 0
 #define PROCESS_ID_NUM_BITS 10
 
 /* <== END REMOVE */
-
-/* Fake CPU frequency */
-#define CPU_FREQ	0
 
 /* Nios II Constants */
 #define NIOS2_STATUS_PIE_MSK  0x1
