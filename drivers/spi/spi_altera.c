@@ -284,10 +284,8 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 		}
 	}
 	/* find platform data */
-#ifdef CONFIG_OF
 	if (!platp)
 		hw->bitbang.master->dev.of_node = pdev->dev.of_node;
-#endif
 
 	/* register our spi controller */
 	err = spi_bitbang_start(&hw->bitbang);
@@ -329,7 +327,7 @@ static int __devexit altera_spi_remove(struct platform_device *dev)
 }
 
 static const struct of_device_id altera_spi_match[] = {
-	{ .compatible = "altr,spi-1.0", },
+	{ .compatible = "ALTR,spi-1.0", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, altera_spi_match);
@@ -340,9 +338,7 @@ static struct platform_driver altera_spidrv = {
 		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
-#ifdef CONFIG_OF
 		.of_match_table = altera_spi_match,
-#endif
 	},
 };
 
