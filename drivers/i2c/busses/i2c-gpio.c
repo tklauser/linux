@@ -15,8 +15,6 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
-#include <linux/of_platform.h>
-#include <linux/of_gpio.h>
 #include <linux/of_i2c.h>
 
 /* Toggle SDA by changing the direction of the pin */
@@ -80,63 +78,73 @@ static int i2c_gpio_getscl(void *data)
 	return gpio_get_value(pdata->scl_pin);
 }
 
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+
 /* Check if devicetree nodes exist and build platform data */
 static struct i2c_gpio_platform_data *i2c_gpio_of_probe(
 	struct platform_device *pdev)
 {
 	struct i2c_gpio_platform_data *pdata = NULL;
 	struct device_node *np = pdev->dev.of_node;
+	const __be32 *prop;
+	int sda_pin, scl_pin;
 
-	if (np && of_gpio_count(np) >= 2) {
-		const __be32 *prop;
-		int sda_pin, scl_pin;
+	if (!np || of_gpio_count(np) < 2)
+		goto err;
 
-		sda_pin = of_get_gpio_flags(np, 0, NULL);
-		scl_pin = of_get_gpio_flags(np, 1, NULL);
-		if (sda_pin < 0 || scl_pin < 0) {
-			pr_err("%s: invalid GPIO pins, sda=%d/scl=%d\n",
-			       np->full_name, sda_pin, scl_pin);
-			goto err_gpio_pin;
-		}
-		pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
-		if (!pdata)
-			goto err_alloc_pdata;
-		pdata->sda_pin = sda_pin;
-		pdata->scl_pin = scl_pin;
-		prop = of_get_property(np, "sda-is-open-drain", NULL);
-		if (prop)
-			pdata->sda_is_open_drain = 1;
-		prop = of_get_property(np, "scl-is-open-drain", NULL);
-		if (prop)
-			pdata->scl_is_open_drain = 1;
-		prop = of_get_property(np, "scl-is-output-only", NULL);
-		if (prop)
-			pdata->scl_is_output_only = 1;
-		prop = of_get_property(np, "udelay", NULL);
-		if (prop)
-			pdata->udelay = be32_to_cpup(prop);
-		prop = of_get_property(np, "timeout", NULL);
-		if (prop) {
-			pdata->timeout =
-				msecs_to_jiffies(be32_to_cpup(prop));
-		}
+	sda_pin = of_get_gpio_flags(np, 0, NULL);
+	scl_pin = of_get_gpio_flags(np, 1, NULL);
+	if (sda_pin < 0 || scl_pin < 0) {
+		pr_err("%s: invalid GPIO pins, sda=%d/scl=%d\n",
+		       np->full_name, sda_pin, scl_pin);
+		goto err;
 	}
 
-err_gpio_pin:
-err_alloc_pdata:
+	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		goto err;
+
+	pdata->sda_pin = sda_pin;
+	pdata->scl_pin = scl_pin;
+	prop = of_get_property(np, "sda-is-open-drain", NULL);
+	if (prop)
+		pdata->sda_is_open_drain = 1;
+	prop = of_get_property(np, "scl-is-open-drain", NULL);
+	if (prop)
+		pdata->scl_is_open_drain = 1;
+	prop = of_get_property(np, "scl-is-output-only", NULL);
+	if (prop)
+		pdata->scl_is_output_only = 1;
+	prop = of_get_property(np, "speed-hz", NULL);
+	if (prop)
+		pdata->udelay = DIV_ROUND_UP(1000000, be32_to_cpup(prop) * 2);
+	prop = of_get_property(np, "timeout", NULL);
+	if (prop) {
+		pdata->timeout =
+			msecs_to_jiffies(be32_to_cpup(prop));
+	}
+err:
 	return pdata;
 }
+#else
+static struct i2c_gpio_platform_data *i2c_gpio_of_probe(
+	struct platform_device *pdev)
+{
+	return NULL;
+}
+#endif
 
 static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 {
-	struct i2c_gpio_platform_data *pdata;
+	struct i2c_gpio_platform_data *pdata, *pdata_of = NULL;
 	struct i2c_algo_bit_data *bit_data;
 	struct i2c_adapter *adap;
 	int ret;
 
 	pdata = pdev->dev.platform_data;
 	if (!pdata)
-		pdata = i2c_gpio_of_probe(pdev);
+		pdata = pdata_of = i2c_gpio_of_probe(pdev);
 	if (!pdata)
 		return -ENXIO;
 
@@ -194,7 +202,8 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	adap->algo_data = bit_data;
 	adap->class = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 	adap->dev.parent = &pdev->dev;
-	adap->dev.of_node = pdev->dev.of_node;
+	if (pdata_of)
+		adap->dev.of_node = pdev->dev.of_node;
 
 	/*
 	 * If "dev->id" is negative we consider it as zero.
@@ -227,8 +236,7 @@ err_request_sda:
 err_alloc_bit_data:
 	kfree(adap);
 err_alloc_adap:
-	if (!pdev->dev.platform_data)
-		kfree(pdata);
+	kfree(pdata_of);
 	return ret;
 }
 
@@ -246,9 +254,9 @@ static int __devexit i2c_gpio_remove(struct platform_device *pdev)
 	gpio_free(pdata->scl_pin);
 	gpio_free(pdata->sda_pin);
 	kfree(adap->algo_data);
-	kfree(adap);
-	if (!pdev->dev.platform_data)
+	if (adap->dev.of_node)
 		kfree(pdata);
+	kfree(adap);
 
 	return 0;
 }

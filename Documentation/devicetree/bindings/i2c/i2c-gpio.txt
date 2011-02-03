@@ -8,7 +8,7 @@ Optional properties:
 - scl-is-open-drain : present if SCL gpio is open-drain.
 - scl-is-output-only : present if the output driver for SCL cannot be
 	turned off. this will prevent clock stretching from working.
-- udelay : signal toggle delay. SCL frequency is (500 / udelay) kHz
+- speed-hz : SCL frequency.
 - timeout : clock stretching timeout in milliseconds.
 
 Example:
@@ -31,7 +31,7 @@ i2c-video {
 	sda-is-open-drain;
 	scl-is-open-drain;
 	scl-is-output-only;
-	udelay = <2>;
+	speed-hz = <250000>;
 
 	audio-video-encoder {
 		compatible = "nintendo,wii-ave-rvl";
