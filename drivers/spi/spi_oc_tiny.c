@@ -374,9 +374,7 @@ static struct platform_driver tiny_spidrv = {
 		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = NULL,
-#ifdef CONFIG_OF
 		.of_match_table = tiny_spi_match,
-#endif
 	},
 };
 
