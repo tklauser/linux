@@ -175,7 +175,7 @@ static int __devexit altera_ps2_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id altera_ps2_match[] = {
-	{ .compatible = "altr,ps2-1.0", },
+	{ .compatible = "ALTR,ps2-1.0", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, altera_ps2_match);
@@ -189,9 +189,7 @@ static struct platform_driver altera_ps2_driver = {
 	.driver	= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_OF
 		.of_match_table = altera_ps2_match,
-#endif
 	},
 };
 
