@@ -228,25 +228,23 @@ static int __devinit altera_wdt_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENOENT;
 
-	mem = request_mem_region(res->start, resource_size(res), pdev->name);
+	mem = devm_request_mem_region(&pdev->dev, res->start,
+				      resource_size(res), pdev->name);
 	if (!mem)
 		return -EBUSY;
 
-	altera_wdt_priv.base = ioremap(mem->start, resource_size(mem));
-	if (!altera_wdt_priv.base) {
-		ret = -ENOMEM;
-		goto err_ioremap;
-	}
-
-	ret = -ENODEV;
+	altera_wdt_priv.base = devm_ioremap_nocache(&pdev->dev, mem->start,
+						    resource_size(mem));
+	if (!altera_wdt_priv.base)
+		return -ENOMEM;
 
 	freq_prop = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
 	if (!freq_prop)
-		goto err_misc;
+		return -ENODEV;
 
 	timeout_prop = of_get_property(pdev->dev.of_node, "timeout", NULL);
 	if (!timeout_prop)
-		goto err_misc;
+		return -ENODEV;
 
 	/* Add 1 as the timeout property actually holds the load value */
 	timeout = be32_to_cpup(timeout_prop) + 1;
@@ -259,7 +257,7 @@ static int __devinit altera_wdt_probe(struct platform_device *pdev)
 
 	ret = misc_register(&altera_wdt_miscdev);
 	if (ret)
-		goto err_misc;
+		return ret;
 
 	altera_wdt_setup();
 	altera_wdt_priv.next_heartbeat = jiffies + heartbeat * HZ;
@@ -270,23 +268,11 @@ static int __devinit altera_wdt_probe(struct platform_device *pdev)
 		heartbeat, nowayout);
 
 	return 0;
-
-err_misc:
-	iounmap(altera_wdt_priv.base);
-err_ioremap:
-	release_mem_region(res->start, resource_size(res));
-
-	return ret;
 }
 
 static int __devexit altera_wdt_remove(struct platform_device *pdev)
 {
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
 	misc_deregister(&altera_wdt_miscdev);
-	iounmap(altera_wdt_priv.base);
-	release_mem_region(res->start, resource_size(res));
-
 	return 0;
 }
 
