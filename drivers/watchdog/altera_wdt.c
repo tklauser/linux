@@ -307,5 +307,6 @@ module_exit(altera_wdt_exit);
 
 MODULE_AUTHOR("Walter Goossens, Tobias Klauser <tklauser@distanz.ch>");
 MODULE_DESCRIPTION("Driver for Altera Watchdog Timer");
+MODULE_LICENSE("GPL");
 MODULE_ALIAS_MISCDEV(WATCHDOG_MINOR);
 MODULE_ALIAS("platform:" WATCHDOG_NAME);
