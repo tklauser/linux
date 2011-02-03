@@ -29,6 +29,8 @@ static inline u32 fcpu(struct device_node *cpu, char *n)
 void __init setup_cpuinfo(void)
 {
 	struct device_node *cpu;
+	const char *str;
+	int len;
 
 	cpu = of_find_node_by_type(NULL, "cpu");
 	if (!cpu)
@@ -43,9 +45,11 @@ void __init setup_cpuinfo(void)
 
 	cpuinfo.cpu_clock_freq = fcpu(cpu, "clock-frequency");
 
-	cpuinfo.cpu_impl = of_get_property(cpu, "altr,implementation", NULL);
-	if (!cpuinfo.cpu_impl)
-		cpuinfo.cpu_impl = "<unknown>";
+	str = of_get_property(cpu, "altr,implementation", &len);
+	if (str)
+		strlcpy(cpuinfo.cpu_impl, str, sizeof(cpuinfo.cpu_impl));
+	else
+		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
 	cpuinfo.has_div = fcpu(cpu, "altr,has-div");
 	cpuinfo.has_mul = fcpu(cpu, "altr,has-mul");
