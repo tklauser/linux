@@ -209,7 +209,7 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 }
 
 static struct of_device_id altera_gpio_of_match[] __devinitdata = {
-	{ .compatible = "altr,pio-1.0", },
+	{ .compatible = "ALTR,pio-1.0", },
 	{},
 };
 
