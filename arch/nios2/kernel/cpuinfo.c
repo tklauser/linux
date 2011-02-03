@@ -18,6 +18,8 @@
 
 struct cpuinfo cpuinfo;
 
+#ifdef CONFIG_OF
+
 static inline u32 fcpu(struct device_node *cpu, char *n)
 {
 	u32 *val;
@@ -58,6 +60,8 @@ void __init setup_cpuinfo(void)
 	cpuinfo.tlb_num_ways = fcpu(cpu, "altr,tlb-num-ways");
 	cpuinfo.tlb_num_entries = fcpu(cpu, "altr,tlb-num-entries");
 }
+
+#endif /* CONFIG_OF */
 
 #ifdef CONFIG_PROC_FS
 
