@@ -55,6 +55,7 @@ comment "SPI Master Controller Drivers"
 
 config SPI_ALTERA
 	tristate "Altera SPI Controller"
+	default n
 	select SPI_BITBANG
 	help
 	  This is the driver for the Altera Avalon SPI Controller.

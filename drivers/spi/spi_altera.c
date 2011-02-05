@@ -14,13 +14,8 @@
  */
 
 #include <linux/init.h>
-#include <linux/spinlock.h>
-#include <linux/workqueue.h>
 #include <linux/interrupt.h>
-#include <linux/delay.h>
 #include <linux/errno.h>
-#include <linux/err.h>
-#include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
@@ -225,14 +220,11 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 	struct altera_spi *hw;
 	struct spi_master *master;
 	struct resource *res;
-	int err = 0;
+	int err = -ENODEV;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(struct altera_spi));
-	if (master == NULL) {
-		dev_err(&pdev->dev, "No memory for spi_master\n");
-		err = -ENOMEM;
-		goto err_no_mem;
-	}
+	if (!master)
+		return err;
 
 	/* setup the master state. */
 	master->bus_num = pdev->id;
@@ -245,28 +237,23 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 
 	/* setup the state for the bitbang driver */
 	hw->bitbang.master = spi_master_get(master);
-	if (hw->bitbang.master == NULL) {
-		dev_err(&pdev->dev, "Cannot get device\n");
-		err = -ENODEV;
-		goto err_no_dev;
-	}
+	if (!hw->bitbang.master)
+		return err;
 	hw->bitbang.setup_transfer = altera_spi_setupxfer;
 	hw->bitbang.chipselect = altera_spi_chipsel;
 	hw->bitbang.txrx_bufs = altera_spi_txrx;
 
 	/* find and map our resources */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res == NULL) {
-		dev_err(&pdev->dev, "Cannot get IORESOURCE_MEM\n");
-		err = -ENOENT;
-		goto err_no_iores;
-	}
-	hw->base = ioremap(res->start, (res->end - res->start) + 1);
-	if (hw->base == 0) {
-		dev_err(&pdev->dev, "Cannot map IO\n");
-		err = -ENXIO;
-		goto err_no_iomap;
-	}
+	if (!res)
+		goto exit_busy;
+	if (!devm_request_mem_region(&pdev->dev, res->start, resource_size(res),
+				     pdev->name))
+		goto exit_busy;
+	hw->base = devm_ioremap_nocache(&pdev->dev, res->start,
+					resource_size(res));
+	if (!hw->base)
+		goto exit_busy;
 	/* program defaults into the registers */
 	hw->imr = 0;		/* disable spi interrupts */
 	writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
@@ -277,11 +264,10 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 	hw->irq = platform_get_irq(pdev, 0);
 	if (hw->irq >= 0) {
 		init_completion(&hw->done);
-		err = request_irq(hw->irq, altera_spi_irq, 0, pdev->name, hw);
-		if (err) {
-			dev_err(&pdev->dev, "Cannot claim IRQ\n");
-			goto err_no_irq;
-		}
+		err = devm_request_irq(&pdev->dev, hw->irq, altera_spi_irq, 0,
+				       pdev->name, hw);
+		if (err)
+			goto exit;
 	}
 	/* find platform data */
 	if (!platp)
@@ -289,24 +275,17 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 
 	/* register our spi controller */
 	err = spi_bitbang_start(&hw->bitbang);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to register SPI master\n");
-		goto err_register;
-	}
+	if (err)
+		goto exit;
 	dev_info(&pdev->dev, "base %p, irq %d\n", hw->base, hw->irq);
 
 	return 0;
 
-err_register:
-	if (hw->irq >= 0)
-		free_irq(hw->irq, hw);
-err_no_irq:
-	iounmap(hw->base);
-err_no_iomap:
-err_no_iores:
-err_no_dev:
+exit_busy:
+	err = -EBUSY;
+exit:
+	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
-err_no_mem:
 	return err;
 }
 
@@ -316,11 +295,6 @@ static int __devexit altera_spi_remove(struct platform_device *dev)
 	struct spi_master *master = hw->bitbang.master;
 
 	spi_bitbang_stop(&hw->bitbang);
-
-	if (hw->irq >= 0)
-		free_irq(hw->irq, hw);
-	iounmap(hw->base);
-
 	platform_set_drvdata(dev, NULL);
 	spi_master_put(master);
 	return 0;
@@ -332,7 +306,8 @@ static const struct of_device_id altera_spi_match[] = {
 }
 MODULE_DEVICE_TABLE(of, altera_spi_match);
 
-static struct platform_driver altera_spidrv = {
+static struct platform_driver altera_spi_driver = {
+	.probe = altera_spi_probe,
 	.remove = __devexit_p(altera_spi_remove),
 	.driver = {
 		.name = DRV_NAME,
@@ -344,13 +319,13 @@ static struct platform_driver altera_spidrv = {
 
 static int __init altera_spi_init(void)
 {
-	return platform_driver_probe(&altera_spidrv, altera_spi_probe);
+	return platform_driver_register(&altera_spi_driver);
 }
 module_init(altera_spi_init);
 
 static void __exit altera_spi_exit(void)
 {
-	platform_driver_unregister(&altera_spidrv);
+	platform_driver_unregister(&altera_spi_driver);
 }
 module_exit(altera_spi_exit);
 
