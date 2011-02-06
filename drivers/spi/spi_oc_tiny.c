@@ -16,12 +16,8 @@
  */
 
 #include <linux/init.h>
-#include <linux/spinlock.h>
 #include <linux/interrupt.h>
-#include <linux/delay.h>
 #include <linux/errno.h>
-#include <linux/err.h>
-#include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
@@ -57,6 +53,8 @@ struct tiny_spi {
 	unsigned int txc, rxc;
 	const u8 *txp;
 	u8 *rxp;
+	unsigned int gpio_cs_count;
+	int *gpio_cs;
 };
 
 static inline struct tiny_spi *tiny_spi_to_hw(struct spi_device *sdev)
@@ -73,8 +71,12 @@ static unsigned int tiny_spi_baud(struct spi_device *spi, unsigned int hz)
 
 static void tiny_spi_chipselect(struct spi_device *spi, int is_active)
 {
-	gpio_set_value(spi->chip_select,
-		       (spi->mode & SPI_CS_HIGH) ? is_active : !is_active);
+	struct tiny_spi *hw = tiny_spi_to_hw(spi);
+
+	if (hw->gpio_cs_count) {
+		gpio_set_value(hw->gpio_cs[spi->chip_select],
+			(spi->mode & SPI_CS_HIGH) ? is_active : !is_active);
+	}
 }
 
 static int tiny_spi_setup_transfer(struct spi_device *spi,
@@ -102,6 +104,20 @@ static int tiny_spi_setup(struct spi_device *spi)
 	}
 	hw->mode = spi->mode & (SPI_CPOL | SPI_CPHA);
 	return 0;
+}
+
+static inline void tiny_spi_wait_txr(struct tiny_spi *hw)
+{
+	while (!(readb(hw->base + TINY_SPI_STATUS) &
+		 TINY_SPI_STATUS_TXR))
+		cpu_relax();
+}
+
+static inline void tiny_spi_wait_txe(struct tiny_spi *hw)
+{
+	while (!(readb(hw->base + TINY_SPI_STATUS) &
+		 TINY_SPI_STATUS_TXE))
+		cpu_relax();
 }
 
 static int tiny_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
@@ -143,21 +159,15 @@ static int tiny_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 			writeb(*txp++, hw->base + TINY_SPI_TXDATA);
 			for (i = 2; i < t->len; i++) {
 				u8 rx, tx = *txp++;
-				while (!(readb(hw->base + TINY_SPI_STATUS) &
-					 TINY_SPI_STATUS_TXR))
-					cpu_relax();
+				tiny_spi_wait_txr(hw);
 				rx = readb(hw->base + TINY_SPI_TXDATA);
 				writeb(tx, hw->base + TINY_SPI_TXDATA);
 				*rxp++ = rx;
 			}
-			while (!(readb(hw->base + TINY_SPI_STATUS) &
-				 TINY_SPI_STATUS_TXR))
-				cpu_relax();
+			tiny_spi_wait_txr(hw);
 			*rxp++ = readb(hw->base + TINY_SPI_TXDATA);
 		}
-		while (!(readb(hw->base + TINY_SPI_STATUS) &
-			 TINY_SPI_STATUS_TXE))
-			cpu_relax();
+		tiny_spi_wait_txe(hw);
 		*rxp++ = readb(hw->base + TINY_SPI_RXDATA);
 	} else if (rxp) {
 		writeb(0, hw->base + TINY_SPI_TXDATA);
@@ -166,22 +176,15 @@ static int tiny_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 			       hw->base + TINY_SPI_TXDATA);
 			for (i = 2; i < t->len; i++) {
 				u8 rx;
-				while (!(readb(hw->base + TINY_SPI_STATUS) &
-					 TINY_SPI_STATUS_TXR))
-					cpu_relax();
+				tiny_spi_wait_txr(hw);
 				rx = readb(hw->base + TINY_SPI_TXDATA);
-				writeb(0,
-				       hw->base + TINY_SPI_TXDATA);
+				writeb(0, hw->base + TINY_SPI_TXDATA);
 				*rxp++ = rx;
 			}
-			while (!(readb(hw->base + TINY_SPI_STATUS) &
-				 TINY_SPI_STATUS_TXR))
-				cpu_relax();
+			tiny_spi_wait_txr(hw);
 			*rxp++ = readb(hw->base + TINY_SPI_TXDATA);
 		}
-		while (!(readb(hw->base + TINY_SPI_STATUS) &
-			 TINY_SPI_STATUS_TXE))
-			cpu_relax();
+		tiny_spi_wait_txe(hw);
 		*rxp++ = readb(hw->base + TINY_SPI_RXDATA);
 	} else if (txp) {
 		writeb(*txp++, hw->base + TINY_SPI_TXDATA);
@@ -189,31 +192,21 @@ static int tiny_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 			writeb(*txp++, hw->base + TINY_SPI_TXDATA);
 			for (i = 2; i < t->len; i++) {
 				u8 tx = *txp++;
-				while (!(readb(hw->base + TINY_SPI_STATUS) &
-					 TINY_SPI_STATUS_TXR))
-					cpu_relax();
+				tiny_spi_wait_txr(hw);
 				writeb(tx, hw->base + TINY_SPI_TXDATA);
 			}
 		}
-		while (!(readb(hw->base + TINY_SPI_STATUS) &
-			 TINY_SPI_STATUS_TXE))
-			cpu_relax();
+		tiny_spi_wait_txe(hw);
 	} else {
 		writeb(0, hw->base + TINY_SPI_TXDATA);
 		if (t->len > 1) {
-			writeb(0,
-			       hw->base + TINY_SPI_TXDATA);
+			writeb(0, hw->base + TINY_SPI_TXDATA);
 			for (i = 2; i < t->len; i++) {
-				while (!(readb(hw->base + TINY_SPI_STATUS) &
-					 TINY_SPI_STATUS_TXR))
-					cpu_relax();
-				writeb(0,
-				       hw->base + TINY_SPI_TXDATA);
+				tiny_spi_wait_txr(hw);
+				writeb(0, hw->base + TINY_SPI_TXDATA);
 			}
 		}
-		while (!(readb(hw->base + TINY_SPI_STATUS) &
-			 TINY_SPI_STATUS_TXE))
-			cpu_relax();
+		tiny_spi_wait_txe(hw);
 	}
 	return t->len;
 }
@@ -246,20 +239,60 @@ static irqreturn_t tiny_spi_irq(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+
+static int __devinit tiny_spi_of_probe(struct platform_device *pdev)
+{
+	struct tiny_spi *hw = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
+	unsigned int i;
+	const __be32 *val;
+
+	if (!np)
+		return 0;
+	hw->gpio_cs_count = of_gpio_count(np);
+	if (hw->gpio_cs_count) {
+		hw->gpio_cs = devm_kzalloc(&pdev->dev,
+				hw->gpio_cs_count * sizeof(unsigned int),
+				GFP_KERNEL);
+		if (!hw->gpio_cs)
+			return -ENOMEM;
+	}
+	for (i = 0; i < hw->gpio_cs_count; i++) {
+		hw->gpio_cs[i] = of_get_gpio_flags(np, i, NULL);
+		if (hw->gpio_cs[i] < 0)
+			return -ENODEV;
+	}
+	hw->bitbang.master->dev.of_node = pdev->dev.of_node;
+	val = of_get_property(pdev->dev.of_node,
+			      "clock-frequency", NULL);
+	if (val)
+		hw->freq = be32_to_cpup(val);
+	val = of_get_property(pdev->dev.of_node, "baud-width", NULL);
+	if (val)
+		hw->baudwidth = be32_to_cpup(val);
+	return 0;
+}
+#else /* !CONFIG_OF */
+static int __devinit tiny_spi_of_probe(struct platform_device *pdev)
+{
+	return 0;
+}
+#endif /* CONFIG_OF */
+
 static int __devinit tiny_spi_probe(struct platform_device *pdev)
 {
 	struct tiny_spi_platform_data *platp = pdev->dev.platform_data;
 	struct tiny_spi *hw;
 	struct spi_master *master;
 	struct resource *res;
-	int err = 0;
+	unsigned int i;
+	int err = -ENODEV;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(struct tiny_spi));
-	if (master == NULL) {
-		dev_err(&pdev->dev, "No memory for spi_master\n");
-		err = -ENOMEM;
-		goto err_no_mem;
-	}
+	if (!master)
+		return err;
 
 	/* setup the master state. */
 	master->bus_num = pdev->id;
@@ -272,92 +305,85 @@ static int __devinit tiny_spi_probe(struct platform_device *pdev)
 
 	/* setup the state for the bitbang driver */
 	hw->bitbang.master = spi_master_get(master);
-	if (hw->bitbang.master == NULL) {
-		dev_err(&pdev->dev, "Cannot get device\n");
-		err = -ENODEV;
-		goto err_no_dev;
-	}
+	if (!hw->bitbang.master)
+		return err;
 	hw->bitbang.setup_transfer = tiny_spi_setup_transfer;
 	hw->bitbang.chipselect = tiny_spi_chipselect;
 	hw->bitbang.txrx_bufs = tiny_spi_txrx_bufs;
 
 	/* find and map our resources */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res == NULL) {
-		dev_err(&pdev->dev, "Cannot get IORESOURCE_MEM\n");
-		err = -ENOENT;
-		goto err_no_iores;
-	}
-	hw->base = ioremap(res->start, (res->end - res->start) + 1);
-	if (hw->base == 0) {
-		dev_err(&pdev->dev, "Cannot map IO\n");
-		err = -ENXIO;
-		goto err_no_iomap;
-	}
+	if (!res)
+		goto exit_busy;
+	if (!devm_request_mem_region(&pdev->dev, res->start, resource_size(res),
+				     pdev->name))
+		goto exit_busy;
+	hw->base = devm_ioremap_nocache(&pdev->dev, res->start,
+					resource_size(res));
+	if (!hw->base)
+		goto exit_busy;
 	/* irq is optional */
 	hw->irq = platform_get_irq(pdev, 0);
 	if (hw->irq >= 0) {
 		init_completion(&hw->done);
-		err = request_irq(hw->irq, tiny_spi_irq, 0, pdev->name, hw);
-		if (err) {
-			dev_err(&pdev->dev, "Cannot claim IRQ\n");
-			goto err_no_irq;
-		}
+		err = devm_request_irq(&pdev->dev, hw->irq, tiny_spi_irq, 0,
+				       pdev->name, hw);
+		if (err)
+			goto exit;
 	}
 	/* find platform data */
 	if (platp) {
+		hw->gpio_cs_count = platp->gpio_cs_count;
+		hw->gpio_cs = platp->gpio_cs;
+		if (platp->gpio_cs_count && !platp->gpio_cs)
+			goto exit_busy;
 		hw->freq = platp->freq;
 		hw->baudwidth = platp->baudwidth;
 	} else {
-#ifdef CONFIG_OF
-		const __be32 *val;
-
-		hw->bitbang.master->dev.of_node = pdev->dev.of_node;
-		val = of_get_property(pdev->dev.of_node,
-				      "clock-frequency", NULL);
-		if (val)
-			hw->freq = be32_to_cpup(val);
-		val = of_get_property(pdev->dev.of_node, "baud-width", NULL);
-		if (val)
-			hw->baudwidth = be32_to_cpup(val);
-#endif
+		err = tiny_spi_of_probe(pdev);
+		if (err)
+			goto exit;
 	}
+	for (i = 0; i < hw->gpio_cs_count; i++) {
+		err = gpio_request(hw->gpio_cs[i], dev_name(&pdev->dev));
+		if (err)
+			goto exit_gpio;
+		gpio_direction_output(hw->gpio_cs[i], 1);
+	}
+	if (hw->gpio_cs_count)
+		hw->bitbang.master->num_chipselect = hw->gpio_cs_count;
+	else
+		hw->bitbang.master->num_chipselect = 1; /* no chipselect pin */
 
 	/* register our spi controller */
 	err = spi_bitbang_start(&hw->bitbang);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to register SPI master\n");
-		goto err_register;
-	}
+	if (err)
+		goto exit;
 	dev_info(&pdev->dev, "base %p, irq %d\n", hw->base, hw->irq);
 
 	return 0;
 
-err_register:
-	if (hw->irq >= 0)
-		free_irq(hw->irq, hw);
-err_no_irq:
-	iounmap(hw->base);
-err_no_iomap:
-err_no_iores:
+exit_gpio:
+	while (i-- > 0)
+		gpio_free(hw->gpio_cs[i]);
+exit_busy:
+	err = -EBUSY;
+exit:
+	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
-err_no_mem:
-err_no_dev:
 	return err;
 }
 
-static int __devexit tiny_spi_remove(struct platform_device *dev)
+static int __devexit tiny_spi_remove(struct platform_device *pdev)
 {
-	struct tiny_spi *hw = platform_get_drvdata(dev);
+	struct tiny_spi *hw = platform_get_drvdata(pdev);
 	struct spi_master *master = hw->bitbang.master;
+	unsigned int i;
 
 	spi_bitbang_stop(&hw->bitbang);
-
-	if (hw->irq >= 0)
-		free_irq(hw->irq, hw);
-	iounmap(hw->base);
-
-	platform_set_drvdata(dev, NULL);
+	for (i = 0; i < hw->gpio_cs_count; i++)
+		gpio_free(hw->gpio_cs[i]);
+	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
 	return 0;
 }
@@ -368,7 +394,8 @@ static const struct of_device_id tiny_spi_match[] = {
 }
 MODULE_DEVICE_TABLE(of, tiny_spi_match);
 
-static struct platform_driver tiny_spidrv = {
+static struct platform_driver tiny_spi_driver = {
+	.probe = tiny_spi_probe,
 	.remove = __devexit_p(tiny_spi_remove),
 	.driver = {
 		.name = DRV_NAME,
@@ -380,13 +407,13 @@ static struct platform_driver tiny_spidrv = {
 
 static int __init tiny_spi_init(void)
 {
-	return platform_driver_probe(&tiny_spidrv, tiny_spi_probe);
+	return platform_driver_register(&tiny_spi_driver);
 }
 module_init(tiny_spi_init);
 
 static void __exit tiny_spi_exit(void)
 {
-	platform_driver_unregister(&tiny_spidrv);
+	platform_driver_unregister(&tiny_spi_driver);
 }
 module_exit(tiny_spi_exit);
 

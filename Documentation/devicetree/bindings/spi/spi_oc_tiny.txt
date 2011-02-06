@@ -2,6 +2,7 @@ OpenCores tiny SPI
 
 Required properties:
 - compatible : should be "opencores,tiny-spi-rtlsvn2".
+- gpios : should specify GPIOs used for chipselect.
 Optional properties:
 - clock-frequency : input clock frequency to the core.
 - baud-width: width, in bits, of the programmable divider used to scale
