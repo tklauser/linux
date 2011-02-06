@@ -248,6 +248,7 @@ static int __devinit tiny_spi_of_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	unsigned int i;
 	const __be32 *val;
+	int len;
 
 	if (!np)
 		return 0;
@@ -266,11 +267,11 @@ static int __devinit tiny_spi_of_probe(struct platform_device *pdev)
 	}
 	hw->bitbang.master->dev.of_node = pdev->dev.of_node;
 	val = of_get_property(pdev->dev.of_node,
-			      "clock-frequency", NULL);
-	if (val)
+			      "clock-frequency", &len);
+	if (val && len >= sizeof(__be32))
 		hw->freq = be32_to_cpup(val);
-	val = of_get_property(pdev->dev.of_node, "baud-width", NULL);
-	if (val)
+	val = of_get_property(pdev->dev.of_node, "baud-width", &len);
+	if (val && len >= sizeof(__be32))
 		hw->baudwidth = be32_to_cpup(val);
 	return 0;
 }
