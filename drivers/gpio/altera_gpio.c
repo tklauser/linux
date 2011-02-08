@@ -37,6 +37,12 @@ struct altera_gpio_instance {
 	spinlock_t gpio_lock;	/* Lock used for synchronization */
 };
 
+static inline struct altera_gpio_instance *to_altera_gpio(
+	struct of_mm_gpio_chip *mm_gc)
+{
+	return container_of(mm_gc, struct altera_gpio_instance, mmchip);
+}
+
 /*
  * altera_gpio_get - Read the specified signal of the GPIO device.
  * @gc:     Pointer to gpio_chip device structure.
@@ -65,8 +71,7 @@ static void altera_gpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
 {
 	unsigned long flags;
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
-	struct altera_gpio_instance *chip =
-	    container_of(mm_gc, struct altera_gpio_instance, mmchip);
+	struct altera_gpio_instance *chip = to_altera_gpio(mm_gc);
 
 	spin_lock_irqsave(&chip->gpio_lock, flags);
 
@@ -93,8 +98,7 @@ static int altera_gpio_dir_in(struct gpio_chip *gc, unsigned int gpio)
 {
 	unsigned long flags;
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
-	struct altera_gpio_instance *chip =
-	    container_of(mm_gc, struct altera_gpio_instance, mmchip);
+	struct altera_gpio_instance *chip = to_altera_gpio(mm_gc);
 
 	spin_lock_irqsave(&chip->gpio_lock, flags);
 
@@ -121,8 +125,7 @@ static int altera_gpio_dir_out(struct gpio_chip *gc, unsigned int gpio, int val)
 {
 	unsigned long flags;
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
-	struct altera_gpio_instance *chip =
-	    container_of(mm_gc, struct altera_gpio_instance, mmchip);
+	struct altera_gpio_instance *chip = to_altera_gpio(mm_gc);
 
 	spin_lock_irqsave(&chip->gpio_lock, flags);
 
@@ -148,8 +151,7 @@ static int altera_gpio_dir_out(struct gpio_chip *gc, unsigned int gpio, int val)
  */
 static void altera_gpio_save_regs(struct of_mm_gpio_chip *mm_gc)
 {
-	struct altera_gpio_instance *chip =
-	    container_of(mm_gc, struct altera_gpio_instance, mmchip);
+	struct altera_gpio_instance *chip = to_altera_gpio(mm_gc);
 
 	writel(chip->gpio_state, mm_gc->regs + ALTERA_GPIO_DATA_OFFSET);
 	writel(chip->gpio_dir, mm_gc->regs + ALTERA_GPIO_DIR_OFFSET);
@@ -167,15 +169,16 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 {
 	struct altera_gpio_instance *chip;
 	int status = 0;
-	const u32 *tree_info;
+	int len;
+	const __be32 *tree_info;
 
 	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
 	/* Update GPIO state shadow register with default value */
-	tree_info = of_get_property(np, "resetvalue", NULL);
-	if (tree_info)
+	tree_info = of_get_property(np, "resetvalue", &len);
+	if (tree_info && len >= sizeof(__be32))
 		chip->gpio_state = be32_to_cpup(tree_info);
 
 	/* Update GPIO direction shadow register with default value */
@@ -183,8 +186,8 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 
 	/* Check device node for device width */
 	chip->mmchip.gc.ngpio = 32; /* By default assume full GPIO controller */
-	tree_info = of_get_property(np, "width", NULL);
-	if (tree_info)
+	tree_info = of_get_property(np, "width", &len);
+	if (tree_info && len >= sizeof(__be32))
 		chip->mmchip.gc.ngpio = be32_to_cpup(tree_info);
 
 	spin_lock_init(&chip->gpio_lock);
@@ -213,19 +216,14 @@ static struct of_device_id altera_gpio_of_match[] __devinitdata = {
 	{},
 };
 
-static int __init altera_gpio_init(void)
+/* Make sure we get initialized before anyone else tries to use us */
+void __init altera_gpio_init(void)
 {
 	struct device_node *np;
 
 	for_each_matching_node(np, altera_gpio_of_match)
 		altera_gpio_of_probe(np);
-
-	return 0;
 }
-
-/* Make sure we get initialized before anyone else tries to use us */
-subsys_initcall(altera_gpio_init);
-/* No exit call at the moment as we cannot unregister of GPIO chips */
 
 MODULE_DESCRIPTION("Altera GPIO driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
