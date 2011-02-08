@@ -351,10 +351,7 @@ static int __devinit tiny_spi_probe(struct platform_device *pdev)
 			goto exit_gpio;
 		gpio_direction_output(hw->gpio_cs[i], 1);
 	}
-	if (hw->gpio_cs_count)
-		hw->bitbang.master->num_chipselect = hw->gpio_cs_count;
-	else
-		hw->bitbang.master->num_chipselect = 1; /* no chipselect pin */
+	hw->bitbang.master->num_chipselect = max(1U, hw->gpio_cs_count);
 
 	/* register our spi controller */
 	err = spi_bitbang_start(&hw->bitbang);

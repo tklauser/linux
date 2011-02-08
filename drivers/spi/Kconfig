@@ -240,7 +240,6 @@ config SPI_FSL_ESPI
 
 config SPI_OC_TINY
 	tristate "OpenCores tiny SPI"
-	default n
 	select SPI_BITBANG
 	help
 	  This is the driver for OpenCores tiny SPI master controller.
