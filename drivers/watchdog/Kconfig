@@ -69,6 +69,14 @@ config WM8350_WATCHDOG
 	  Support for the watchdog in the WM8350 AudioPlus PMIC.  When
 	  the watchdog triggers the system will be reset.
 
+config ALTERA_WDT
+	tristate "Altera Watchdog Timer"
+	depends on OF
+	help
+	  Support for the Altera Timer in the Watchdog Timer configuration. This
+	  component is found on SOPC (System on Programmable Chip) for Altera
+	  FPGAs.
+
 # ALPHA Architecture
 
 # ARM Architecture
@@ -971,15 +979,6 @@ config BCM63XX_WDT
 
 	  To compile this driver as a loadable module, choose M here.
 	  The module will be called bcm63xx_wdt.
-
-# NIOS2 Architecture
-
-config ALTERA_WDT
-	tristate "Altera Watchdog Timer"
-	depends on OF
-	help
-	  Watchdog driver for the Altera Watchdog Timer found on Altera
-	  Nios2 SOPC systems.
 
 # PARISC Architecture
 

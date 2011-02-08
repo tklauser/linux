@@ -122,9 +122,6 @@ obj-$(CONFIG_TXX9_WDT) += txx9wdt.o
 obj-$(CONFIG_OCTEON_WDT) += octeon-wdt.o
 octeon-wdt-y := octeon-wdt-main.o octeon-wdt-nmi.o
 
-# NIOS2 Architecture
-obj-$(CONFIG_ALTERA_WDT) += altera_wdt.o
-
 # PARISC Architecture
 
 # POWERPC Architecture
@@ -155,4 +152,5 @@ obj-$(CONFIG_WATCHDOG_CP1XXX)		+= cpwd.o
 obj-$(CONFIG_WM831X_WATCHDOG) += wm831x_wdt.o
 obj-$(CONFIG_WM8350_WATCHDOG) += wm8350_wdt.o
 obj-$(CONFIG_MAX63XX_WATCHDOG) += max63xx_wdt.o
+obj-$(CONFIG_ALTERA_WDT) += altera_wdt.o
 obj-$(CONFIG_SOFT_WATCHDOG) += softdog.o
