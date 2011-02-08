@@ -277,7 +277,7 @@ static int __devexit altera_wdt_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id altera_wdt_match[] = {
-	{ .compatible = "altr,wdt-1.0", },
+	{ .compatible = "ALTR,wdt-1.0", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, altera_wdt_match);
