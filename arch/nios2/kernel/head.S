@@ -139,8 +139,8 @@ fast_handler_end:
 	 * After flushing the instruction cache, we must flush the data
 	 * cache.
 	 */
-	movia	r1,NIOS2_DCACHE_SIZE
-	movui	r2,NIOS2_DCACHE_LINE_SIZE
+	movia	r1,NIOS2_DCACHE_SIZE_ASM
+	movui	r2,NIOS2_DCACHE_LINE_SIZE_ASM
 
 data_flush:
 	flushd	0(r1)

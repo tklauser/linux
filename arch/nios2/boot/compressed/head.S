@@ -20,8 +20,8 @@ _start:
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
 	/* invalidate all data cache */
-	movia	r1, NIOS2_DCACHE_SIZE
-	movui	r2, NIOS2_DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE_ASM
+	movui	r2, NIOS2_DCACHE_LINE_SIZE_ASM
 1:	initd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
@@ -40,8 +40,8 @@ chkadr:
 	addi	r2, r2, 4		/* inc the dest addr */
 	blt	r2, r3, 1b
 	/* flush the data cache after moving */
-	movia	r1, NIOS2_DCACHE_SIZE
-	movui	r2, NIOS2_DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE_ASM
+	movui	r2, NIOS2_DCACHE_LINE_SIZE_ASM
 1:	flushd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b
@@ -76,8 +76,8 @@ finish_move:
 	ldw	r7, 12(sp)
 
 	/* flush all data cache after decompressing */
-	movia	r1, NIOS2_DCACHE_SIZE
-	movui	r2, NIOS2_DCACHE_LINE_SIZE
+	movia	r1, NIOS2_DCACHE_SIZE_ASM
+	movui	r2, NIOS2_DCACHE_LINE_SIZE_ASM
 1:	flushd	0(r1)
 	sub	r1, r1, r2
 	bgt	r1, r0, 1b

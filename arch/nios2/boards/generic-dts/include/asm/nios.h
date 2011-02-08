@@ -1,5 +1,5 @@
-#ifndef _ASM_NIOS2_H__
-#define _ASM_NIOS2_H__
+#ifndef _ASM_NIOS2_NIOS_H
+#define _ASM_NIOS2_NIOS_H
 
 /* Add some defines wich should REALLY be extracted from fdt */
 /* ==> REMOVE */
@@ -8,9 +8,6 @@
 #define ICACHE_LINE_SIZE 32
 #define ICACHE_LINE_SIZE_LOG2 5
 #define ICACHE_SIZE 8192
-#define DCACHE_LINE_SIZE 32
-#define DCACHE_LINE_SIZE_LOG2 5
-#define DCACHE_SIZE 4096
 #define KERNEL_REGION_BASE 0xc0000000
 #define IO_REGION_BASE 0xe0000000
 #define KERNEL_MMU_REGION_BASE 0x80000000
@@ -74,5 +71,16 @@
 #define EXC_W_PROT_FAULT	15	/* TLB permission violation (w) */
 #define EXC_MPU_REGION_VIOLATION 16	/* MPU region violation */
 
-#endif
+/*
+ * Maximum possible data cache size on the Nios II. Only used in head.S where
+ * the information from cpuinfo is not yet available.
+ */
+#define NIOS2_DCACHE_SIZE	65536
 
+/*
+ * Minumum possible data cache line size on the Nios II, only used in head.S
+ * where the information from cpuinfo is not yet available.
+ */
+#define NIOS2_DCACHE_LINE_SIZE	4
+
+#endif /* _ASM_NIOS2_H__ */
