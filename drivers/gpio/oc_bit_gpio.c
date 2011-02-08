@@ -170,19 +170,14 @@ static struct of_device_id oc_bit_gpio_of_match[] __devinitdata = {
 	{},
 };
 
-static int __init oc_bit_gpio_init(void)
+/* Make sure we get initialized before anyone else tries to use us */
+void __init oc_bit_gpio_init(void)
 {
 	struct device_node *np;
 
 	for_each_matching_node(np, oc_bit_gpio_of_match)
 		oc_bit_gpio_of_probe(np);
-
-	return 0;
 }
-
-/* Make sure we get initialized before anyone else tries to use us */
-subsys_initcall(oc_bit_gpio_init);
-/* No exit call at the moment as we cannot unregister of GPIO chips */
 
 MODULE_DESCRIPTION("OpenCores bitwise GPIO driver");
 MODULE_AUTHOR("Thomas Chou <thomas@wytron.com.tw>");
