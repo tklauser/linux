@@ -30,6 +30,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/ads7846.h>
 #include <linux/regulator/consumer.h>
+#include <linux/of.h>
 #include <asm/irq.h>
 
 /*
@@ -109,6 +110,8 @@ struct ads7846 {
 
 	bool			swap_xy;
 
+	int			irq;
+	struct ads7846_platform_data platdata;
 	struct ads7846_packet	*packet;
 
 	struct spi_transfer	xfer[18];
@@ -203,7 +206,7 @@ static void ads7846_stop(struct ads7846 *ts)
 		ts->stopped = true;
 		mb();
 		wake_up(&ts->wait);
-		disable_irq(ts->spi->irq);
+		disable_irq(ts->irq);
 	}
 }
 
@@ -214,7 +217,7 @@ static void ads7846_restart(struct ads7846 *ts)
 		/* Tell IRQ thread that it may poll the device. */
 		ts->stopped = false;
 		mb();
-		enable_irq(ts->spi->irq);
+		enable_irq(ts->irq);
 	}
 }
 
@@ -904,7 +907,7 @@ static int ads7846_suspend(struct spi_device *spi, pm_message_t message)
 			__ads7846_disable(ts);
 
 		if (device_may_wakeup(&ts->spi->dev))
-			enable_irq_wake(ts->spi->irq);
+			enable_irq_wake(ts->irq);
 
 		ts->suspended = true;
 	}
@@ -925,7 +928,7 @@ static int ads7846_resume(struct spi_device *spi)
 		ts->suspended = false;
 
 		if (device_may_wakeup(&ts->spi->dev))
-			disable_irq_wake(ts->spi->irq);
+			disable_irq_wake(ts->irq);
 
 		if (!ts->disabled)
 			__ads7846_enable(ts);
@@ -938,7 +941,7 @@ static int ads7846_resume(struct spi_device *spi)
 
 static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads7846 *ts)
 {
-	struct ads7846_platform_data *pdata = spi->dev.platform_data;
+	const struct ads7846_platform_data *pdata = &ts->platdata;
 	int err;
 
 	/* REVISIT when the irq can be triggered active-low, or if for some
@@ -971,9 +974,9 @@ static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads784
  * Set up the transfers to read touchscreen state; this assumes we
  * use formula #2 for pressure, not #3.
  */
-static void __devinit ads7846_setup_spi_msg(struct ads7846 *ts,
-				const struct ads7846_platform_data *pdata)
+static void __devinit ads7846_setup_spi_msg(struct ads7846 *ts)
 {
+	const struct ads7846_platform_data *pdata = &ts->platdata;
 	struct spi_message *m = &ts->msg[0];
 	struct spi_transfer *x = ts->xfer;
 	struct ads7846_packet *packet = ts->packet;
@@ -1170,24 +1173,45 @@ static void __devinit ads7846_setup_spi_msg(struct ads7846 *ts,
 	spi_message_add_tail(x, m);
 }
 
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+
+static int __devinit ads7846_of_probe(struct spi_device *spi,
+				      struct ads7846 *ts)
+{
+	struct device_node *np = spi->dev.of_node;
+	struct ads7846_platform_data *pdata = &ts->platdata;
+
+	if (!np || !of_gpio_count(np))
+		return -ENODEV;
+	pdata->gpio_pendown = of_get_gpio_flags(np, 0, NULL);
+	if (ts->irq < 0)
+		ts->irq = gpio_to_irq(pdata->gpio_pendown);
+	if (of_device_is_compatible(np, "ti,ads7843"))
+		pdata->model = 7843;
+	else if (of_device_is_compatible(np, "ti,ads7845"))
+		pdata->model = 7845;
+	else if (of_device_is_compatible(np, "ti,ads7846"))
+		pdata->model = 7846;
+
+	return 0;
+}
+#else /* !CONFIG_OF */
+static int __devinit ads7846_of_probe(struct spi_device *spi,
+				      struct ads7846 *ts)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_OF */
+
 static int __devinit ads7846_probe(struct spi_device *spi)
 {
 	struct ads7846 *ts;
 	struct ads7846_packet *packet;
 	struct input_dev *input_dev;
-	struct ads7846_platform_data *pdata = spi->dev.platform_data;
+	struct ads7846_platform_data *pdata;
 	unsigned long irq_flags;
 	int err;
-
-	if (!spi->irq) {
-		dev_dbg(&spi->dev, "no IRQ?\n");
-		return -ENODEV;
-	}
-
-	if (!pdata) {
-		dev_dbg(&spi->dev, "no platform data?\n");
-		return -ENODEV;
-	}
 
 	/* don't exceed max specified sample rate */
 	if (spi->max_speed_hz > (125000 * SAMPLE_BITS)) {
@@ -1206,8 +1230,8 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	if (err < 0)
 		return err;
 
-	ts = kzalloc(sizeof(struct ads7846), GFP_KERNEL);
-	packet = kzalloc(sizeof(struct ads7846_packet), GFP_KERNEL);
+	ts = devm_kzalloc(&spi->dev, sizeof(struct ads7846), GFP_KERNEL);
+	packet = devm_kzalloc(&spi->dev, sizeof(struct ads7846_packet), GFP_KERNEL);
 	input_dev = input_allocate_device();
 	if (!ts || !packet || !input_dev) {
 		err = -ENOMEM;
@@ -1215,6 +1239,23 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	}
 
 	dev_set_drvdata(&spi->dev, ts);
+	ts->irq = spi->irq ? spi->irq : -ENXIO;
+
+	if (spi->dev.platform_data)
+		ts->platdata =
+			*(struct ads7846_platform_data *)spi->dev.platform_data;
+	else {
+		err = ads7846_of_probe(spi, ts);
+		if (err)
+			goto err_free_mem;
+	}
+	pdata = &ts->platdata;
+
+	if (ts->irq < 0) {
+		dev_dbg(&spi->dev, "no IRQ?\n");
+		err = ts->irq;
+		goto err_free_mem;
+	}
 
 	ts->packet = packet;
 	ts->spi = spi;
@@ -1280,7 +1321,7 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	input_set_abs_params(input_dev, ABS_PRESSURE,
 			pdata->pressure_min, pdata->pressure_max, 0, 0);
 
-	ads7846_setup_spi_msg(ts, pdata);
+	ads7846_setup_spi_msg(ts);
 
 	ts->reg = regulator_get(&spi->dev, "vcc");
 	if (IS_ERR(ts->reg)) {
@@ -1298,19 +1339,19 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	irq_flags = pdata->irq_flags ? : IRQF_TRIGGER_FALLING;
 	irq_flags |= IRQF_ONESHOT;
 
-	err = request_threaded_irq(spi->irq, ads7846_hard_irq, ads7846_irq,
+	err = request_threaded_irq(ts->irq, ads7846_hard_irq, ads7846_irq,
 				   irq_flags, spi->dev.driver->name, ts);
 	if (err && !pdata->irq_flags) {
 		dev_info(&spi->dev,
-			"trying pin change workaround on irq %d\n", spi->irq);
+			"trying pin change workaround on irq %d\n", ts->irq);
 		irq_flags |= IRQF_TRIGGER_RISING;
-		err = request_threaded_irq(spi->irq,
+		err = request_threaded_irq(ts->irq,
 				  ads7846_hard_irq, ads7846_irq,
 				  irq_flags, spi->dev.driver->name, ts);
 	}
 
 	if (err) {
-		dev_dbg(&spi->dev, "irq %d busy?\n", spi->irq);
+		dev_dbg(&spi->dev, "irq %d busy?\n", ts->irq);
 		goto err_disable_regulator;
 	}
 
@@ -1318,7 +1359,7 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	if (err)
 		goto err_free_irq;
 
-	dev_info(&spi->dev, "touchscreen, irq %d\n", spi->irq);
+	dev_info(&spi->dev, "touchscreen, irq %d\n", ts->irq);
 
 	/*
 	 * Take a first sample, leaving nPENIRQ active and vREF off; avoid
@@ -1347,7 +1388,7 @@ static int __devinit ads7846_probe(struct spi_device *spi)
  err_remove_hwmon:
 	ads784x_hwmon_unregister(spi, ts);
  err_free_irq:
-	free_irq(spi->irq, ts);
+	free_irq(ts->irq, ts);
  err_disable_regulator:
 	regulator_disable(ts->reg);
  err_put_regulator:
@@ -1360,8 +1401,6 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 		ts->filter_cleanup(ts->filter_data);
  err_free_mem:
 	input_free_device(input_dev);
-	kfree(packet);
-	kfree(ts);
 	return err;
 }
 
@@ -1374,7 +1413,7 @@ static int __devexit ads7846_remove(struct spi_device *spi)
 	sysfs_remove_group(&spi->dev.kobj, &ads784x_attr_group);
 
 	ads7846_disable(ts);
-	free_irq(ts->spi->irq, ts);
+	free_irq(ts->irq, ts);
 
 	input_unregister_device(ts->input);
 
@@ -1389,19 +1428,25 @@ static int __devexit ads7846_remove(struct spi_device *spi)
 	if (ts->filter_cleanup)
 		ts->filter_cleanup(ts->filter_data);
 
-	kfree(ts->packet);
-	kfree(ts);
-
 	dev_dbg(&spi->dev, "unregistered touchscreen\n");
 
 	return 0;
 }
+
+static const struct of_device_id ads7846_match[] = {
+	{ .compatible = "ti,ads7843", },
+	{ .compatible = "ti,ads7845", },
+	{ .compatible = "ti,ads7846", },
+	{},
+}
+MODULE_DEVICE_TABLE(of, ads7846_match);
 
 static struct spi_driver ads7846_driver = {
 	.driver = {
 		.name	= "ads7846",
 		.bus	= &spi_bus_type,
 		.owner	= THIS_MODULE,
+		.of_match_table = ads7846_match,
 	},
 	.probe		= ads7846_probe,
 	.remove		= __devexit_p(ads7846_remove),
