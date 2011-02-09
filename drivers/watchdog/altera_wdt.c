@@ -66,12 +66,11 @@ static struct {
 /*
  * Start the watchdog. Once it has been started, it cannot be stopped anymore.
  */
-static int altera_wdt_setup(void)
+static void altera_wdt_setup(void)
 {
 	u32 control = readl(altera_wdt_priv.base + ALTERA_WDT_CONTROL);
 
 	writel(control | ALTERA_WDT_RUN_BIT, altera_wdt_priv.base + ALTERA_WDT_CONTROL);
-	return 0;
 }
 
 /*
