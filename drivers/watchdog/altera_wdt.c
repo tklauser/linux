@@ -219,7 +219,7 @@ static struct miscdevice altera_wdt_miscdev = {
 static int __devinit altera_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res, *mem;
-	const u32 *freq_prop, *timeout_prop;
+	const __be32 *freq_prop, *timeout_prop;
 	unsigned long timeout;
 	int ret;
 
