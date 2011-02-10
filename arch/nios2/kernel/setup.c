@@ -127,8 +127,6 @@ void __init setup_arch(char **cmdline_p)
 	memcpy(cmd_line, default_command_line, sizeof(default_command_line));
 #endif
 
-	printk("%s/Nios II\n", UTS_SYSNAME);
-
 	init_mm.start_code = (unsigned long) &_stext;
 	init_mm.end_code = (unsigned long) &_etext;
 	init_mm.end_data = (unsigned long) &_edata;
@@ -145,8 +143,8 @@ void __init setup_arch(char **cmdline_p)
 	 * give all the memory to the bootmap allocator,  tell it to put the
 	 * boot mem_map at the start of memory
 	 */
-	printk("init_bootmem_node(?,%#lx, %#x, %#lx)\n",
-	       PFN_UP(memory_start), PFN_DOWN(PHYS_OFFSET), PFN_DOWN(memory_end));
+	pr_debug("init_bootmem_node(?,%#lx, %#x, %#lx)\n",
+	         PFN_UP(memory_start), PFN_DOWN(PHYS_OFFSET), PFN_DOWN(memory_end));
 	bootmap_size = init_bootmem_node(NODE_DATA(0),
 					 PFN_UP(memory_start),
 					 PFN_DOWN(PHYS_OFFSET),
@@ -156,8 +154,8 @@ void __init setup_arch(char **cmdline_p)
 	 * free the usable memory,  we have to make sure we do not free
 	 * the bootmem bitmap so we then reserve it after freeing it :-)
 	 */
-	printk("free_bootmem(%#lx, %#lx)\n",
-	       memory_start, memory_end - memory_start);
+	pr_debug("free_bootmem(%#lx, %#lx)\n",
+	         memory_start, memory_end - memory_start);
 	free_bootmem(memory_start, memory_end - memory_start);
 
         /*
@@ -168,7 +166,7 @@ void __init setup_arch(char **cmdline_p)
 	 *
 	 * Arguments are start, size
          */
-	printk("reserve_bootmem(%#lx, %#x)\n", memory_start, bootmap_size);
+	pr_debug("reserve_bootmem(%#lx, %#x)\n", memory_start, bootmap_size);
         reserve_bootmem(memory_start, bootmap_size, BOOTMEM_DEFAULT);
 
 #ifdef CONFIG_BLK_DEV_INITRD
