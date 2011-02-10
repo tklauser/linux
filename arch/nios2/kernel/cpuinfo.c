@@ -45,24 +45,24 @@ void __init setup_cpuinfo(void)
 
 	cpuinfo.cpu_clock_freq = fcpu(cpu, "clock-frequency");
 
-	str = of_get_property(cpu, "altr,implementation", &len);
+	str = of_get_property(cpu, "ALTR,implementation", &len);
 	if (str)
 		strlcpy(cpuinfo.cpu_impl, str, sizeof(cpuinfo.cpu_impl));
 	else
 		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
-	cpuinfo.has_div = fcpu(cpu, "altr,has-div");
-	cpuinfo.has_mul = fcpu(cpu, "altr,has-mul");
-	cpuinfo.has_mulx = fcpu(cpu, "altr,has-mulx");
+	cpuinfo.has_div = fcpu(cpu, "ALTR,has-div");
+	cpuinfo.has_mul = fcpu(cpu, "ALTR,has-mul");
+	cpuinfo.has_mulx = fcpu(cpu, "ALTR,has-mulx");
 
 	cpuinfo.icache_line_size = fcpu(cpu, "icache-line-size");
 	cpuinfo.icache_size = fcpu(cpu, "icache-size");
 	cpuinfo.dcache_line_size = fcpu(cpu, "dcache-line-size");
 	cpuinfo.dcache_size = fcpu(cpu, "dcache-size");
 
-	cpuinfo.pid_num_bits = fcpu(cpu, "altr,pid-num-bits");
-	cpuinfo.tlb_num_ways = fcpu(cpu, "altr,tlb-num-ways");
-	cpuinfo.tlb_num_entries = fcpu(cpu, "altr,tlb-num-entries");
+	cpuinfo.pid_num_bits = fcpu(cpu, "ALTR,pid-num-bits");
+	cpuinfo.tlb_num_ways = fcpu(cpu, "ALTR,tlb-num-ways");
+	cpuinfo.tlb_num_entries = fcpu(cpu, "ALTR,tlb-num-entries");
 }
 
 #endif /* CONFIG_OF */
