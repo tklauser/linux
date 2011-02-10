@@ -20,6 +20,9 @@ struct cpuinfo cpuinfo;
 
 #ifdef CONFIG_OF
 
+#define err_cpu(x) \
+	pr_err("ERROR: NiosII " x " different for kernel and DTS\n");
+
 static inline u32 fcpu(struct device_node *cpu, char *n)
 {
 	u32 *val;
@@ -52,8 +55,14 @@ void __init setup_cpuinfo(void)
 		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
 	cpuinfo.has_div = fcpu(cpu, "ALTR,has-div");
+	if (cpuinfo.has_div != CONFIG_NIOS2_HW_DIV_SUPPORT)
+		err_cpu("DIV");
 	cpuinfo.has_mul = fcpu(cpu, "ALTR,has-mul");
+	if (cpuinfo.has_mul != CONFIG_NIOS2_HW_MUL_SUPPORT)
+		err_cpu("MUL");
 	cpuinfo.has_mulx = fcpu(cpu, "ALTR,has-mulx");
+	if (cpuinfo.has_mulx != CONFIG_NIOS2_HW_MULX_SUPPORT)
+		err_cpu("MULX");
 
 	cpuinfo.icache_line_size = fcpu(cpu, "icache-line-size");
 	cpuinfo.icache_size = fcpu(cpu, "icache-size");

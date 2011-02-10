@@ -25,40 +25,6 @@
 #include <asm/prom.h>
 #include <asm/cpuinfo.h>
 
-/*
- * Sanity check config options for HW supported mul, mulx, div against
- * the generated header for the specified design.
- */
-#if defined(CONFIG_NIOS2_HW_MUL_SUPPORT)
-# if HARDWARE_MULTIPLY_PRESENT == 0
-#  warning Kernel compiled with MUL support although not enabled in design
-# endif
-#else
-# if HARDWARE_MULTIPLY_PRESENT != 0
-#  warning Kernel compiled without MUL support although enabled in design
-# endif
-#endif
-
-#if defined(CONFIG_NIOS2_HW_MULX_SUPPORT)
-# if HARDWARE_MULX_PRESENT == 0
-#  warning Kernel compiled with MULX support although not enabled in design
-# endif
-#else
-# if HARDWARE_MULX_PRESENT != 0
-#  warning Kernel compiled without MULX support although enabled in design
-# endif
-#endif
-
-#if defined(CONFIG_NIOS2_HW_DIV_SUPPORT)
-# if HARDWARE_DIVIDE_PRESENT == 0
-#  warning Kernel compiled with DIV support although not enabled in design
-# endif
-#else
-# if HARDWARE_DIVIDE_PRESENT != 0
-#  warning Kernel compiled without DIV support although enabled in design
-# endif
-#endif
-
 #ifdef CONFIG_CONSOLE
 extern struct consw *conswitchp;
 #endif

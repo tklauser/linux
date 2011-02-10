@@ -66,21 +66,24 @@ config MMU
 menu "NiosII specific compiler options"
 
 config NIOS2_HW_MUL_SUPPORT
-	bool "Enable MUL instruction"
-	default y
+	int "Enable MUL instruction (0=none, 1=MUL)"
+	default 0
 	help
-	  Enables the -mhw-mul compiler flag.
+	  Set to 1 if you configured the NiosII to include the MUL instruction.
+	  This will enable the -mhw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
-	bool "Enable MULX instruction"
-	default n
+	int "Enable MULX instruction (0=none, 1=MULX)"
+	default 0
 	help
+	  Set to 1 if you configured the NiosII to include the MULX instruction.
 	  Enables the -mhw-mulx compiler flag.
 
 config NIOS2_HW_DIV_SUPPORT
-	bool "Enable DIV instruction"
-	default n
+	int "Enable DIV instruction (0=none, 1=DIV)"
+	default 0
 	help
+	  Set to 1 if you configured the NiosII to include the DIV instruction.
 	  Enables the -mhw-div compiler flag.
 
 config NIOS2_FPU_SUPPORT
