@@ -115,27 +115,48 @@ static int __init early_init_dt_scan_serial(unsigned long node,
 			const char *uname, int depth, void *data)
 {
 	u32 *addr;
-	u64 *addr64 = (u64*)data;
+	u64 *addr64 = (u64 *) data;
+	char *p;
 
-	/* find the first serial node */
+	/* only consider serial nodes */
 	if (strncmp(uname, "serial", 6) != 0)
 		return 0;
-	/* Check for compatible */
-	addr = of_get_flat_dt_prop(node, "reg", NULL);
-	if(!addr)
+
+	p = of_get_flat_dt_prop(node, "compatible", NULL);
+	if (!p)
 		return 0;
 
-	*addr64 = (u64)be32_to_cpup(addr);
-	return early_init_dt_translate_address(node,addr64);
+	/*
+	 * We found an altera_jtaguart but it wasn't configured for console, so
+	 * skip it.
+	 */
+#ifndef CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE
+	if (strncmp(p, "ALTR,juart", 10) == 0)
+		return 0;
+#endif
+
+	/*
+	 * Same for altera_uart.
+	 */
+#ifndef CONFIG_SERIAL_ALTERA_UART_CONSOLE
+	if (strncmp(p, "ALTR,uart", 9) == 0)
+		return 0;
+#endif
+
+	addr = of_get_flat_dt_prop(node, "reg", NULL);
+	if (!addr)
+		return 0;
+
+	*addr64 = (u64) be32_to_cpup(addr);
+	return early_init_dt_translate_address(node, addr64);
 }
 
-
-int __init early_altera_uart_or_juart_console(void)
+unsigned long __init early_altera_uart_or_juart_console(void)
 {
 	u64 base = 0;
 
-	if(of_scan_flat_dt(early_init_dt_scan_serial, &base))
-		return (int)(base) + IO_REGION_BASE;
+	if (of_scan_flat_dt(early_init_dt_scan_serial, &base))
+		return (unsigned long)(base + IO_REGION_BASE);
 	else
 		return 0;
 }
