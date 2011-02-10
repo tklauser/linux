@@ -489,9 +489,11 @@ static struct uart_driver altera_uart_driver = {
 static int altera_uart_get_uartclk(struct platform_device *pdev,
 				   struct uart_port *port)
 {
-	const __be32 *clk = of_get_property(pdev->dev.of_node, "clock-frequency", NULL);
+	int len;
+	const __be32 *clk;
 
-	if (!clk)
+	clk = of_get_property(pdev->dev.of_node, "clock-frequency", &len);
+	if (!clk || len < sizeof(__be32))
 		return -ENODEV;
 
 	port->uartclk = be32_to_cpup(clk);
