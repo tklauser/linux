@@ -409,60 +409,59 @@ static int __devinit altera_jtaguart_probe(struct platform_device *pdev)
 {
 	struct altera_jtaguart_platform_uart *platp = pdev->dev.platform_data;
 	struct uart_port *port;
-	int i;
-	int res = 0;
+	struct resource *res_irq, *res_mem;
+	int i = pdev->id;
 
-	for (i = 0; i < ALTERA_JTAGUART_MAXPORTS; i++) {
-		port = &altera_jtaguart_ports[i].port;
+	/* -1 emphasizes that the platform must have one port, no .N suffix */
+	if (i == -1)
+		i = 0;
 
-		if(platp)
-		{
-			if(!platp[i].mapbase) {
-				res = -ENODEV;
-				break;
-			}
-			port->mapbase = platp[i].mapbase;
-			port->irq = platp[i].irq;
-		} else {
-#ifdef CONFIG_OF
-			struct resource *res_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-			struct resource *res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-			if((!res_mem) || (!res_irq))
-			{
-				res = -ENODEV;
-				break;
-			}
+	if (i >= ALTERA_JTAGUART_MAXPORTS)
+		return -EINVAL;
 
-			port->mapbase = res_mem->start;
-			port->irq = res_irq->start;
-#else
-			res = -ENODEV;
-			break;
-#endif
-		}
-		port->line = i;
-		port->type = PORT_ALTERA_JTAGUART;
-		port->membase = ioremap(port->mapbase, ALTERA_JTAGUART_SIZE);
-		port->iotype = SERIAL_IO_MEM;
-		port->ops = &altera_jtaguart_ops;
-		port->flags = ASYNC_BOOT_AUTOCONF;
+	port = &altera_jtaguart_ports[i].port;
 
-		uart_add_one_port(&altera_jtaguart_driver, port);
-	}
+	res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (res_mem)
+		port->mapbase = res_mem->start;
+	else if (platp)
+		port->mapbase = platp->mapbase;
+	else
+		return -ENODEV;
 
-	return res;
+	res_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (res_irq)
+		port->irq = res_irq->start;
+	else if (platp)
+		port->irq = platp->irq;
+	else
+		return -ENODEV;
+
+	port->membase = ioremap(port->mapbase, ALTERA_JTAGUART_SIZE);
+	if (!port->membase)
+		return -ENOMEM;
+
+	port->line = i;
+	port->type = PORT_ALTERA_JTAGUART;
+	port->iotype = SERIAL_IO_MEM;
+	port->ops = &altera_jtaguart_ops;
+	port->flags = ASYNC_BOOT_AUTOCONF;
+
+	uart_add_one_port(&altera_jtaguart_driver, port);
+
+	return 0;
 }
 
 static int __devexit altera_jtaguart_remove(struct platform_device *pdev)
 {
 	struct uart_port *port;
-	int i;
+	int i = pdev->id;
 
-	for (i = 0; i < ALTERA_JTAGUART_MAXPORTS; i++) {
-		port = &altera_jtaguart_ports[i].port;
-		if (port)
-			uart_remove_one_port(&altera_jtaguart_driver, port);
-	}
+	if (i == -1)
+		i = 0;
+
+	port = &altera_jtaguart_ports[i].port;
+	uart_remove_one_port(&altera_jtaguart_driver, port);
 
 	return 0;
 }
