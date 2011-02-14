@@ -51,8 +51,8 @@
 #define ALT_TSE_TX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for TX */
 #define ALT_TSE_RX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for RX*/
 #define ALT_TSE_TOTAL_SGDMA_DESC_SIZE   (ALT_TSE_TOTAL_SGDMA_DESC_COUNT*0x20)
-#define ALT_TX_RING_MOD_MASK		ALT_TSE_TX_SGDMA_DESC_COUNT - 1
-#define ALT_RX_RING_MOD_MASK		ALT_TSE_RX_SGDMA_DESC_COUNT - 1
+#define ALT_TX_RING_MOD_MASK		(ALT_TSE_TX_SGDMA_DESC_COUNT - 1)
+#define ALT_RX_RING_MOD_MASK		(ALT_TSE_RX_SGDMA_DESC_COUNT - 1)
 
 /************************************************************************/
 /*                                                                      */

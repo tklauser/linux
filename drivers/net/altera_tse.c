@@ -294,7 +294,7 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 	int next_head;
 	struct sk_buff *skb;
 
-	next_head = ((tse_priv->rx_sgdma_descriptor_head +1) & (ALT_RX_RING_MOD_MASK));
+	next_head = (tse_priv->rx_sgdma_descriptor_head + 1) & ALT_RX_RING_MOD_MASK;
 
 	if (next_head == tse_priv->rx_sgdma_descriptor_tail)
 		return -EBUSY;
@@ -411,7 +411,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 
 		//next descriptor
 		tse_priv->rx_sgdma_descriptor_tail =
-			((tse_priv->rx_sgdma_descriptor_tail + 1) & (ALT_RX_RING_MOD_MASK));
+			(tse_priv->rx_sgdma_descriptor_tail + 1) & ALT_RX_RING_MOD_MASK;
 
 		//add new desc
 		if ((tse_sgdma_add_buffer(dev)) && (netif_msg_rx_err(tse_priv)))
@@ -464,7 +464,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 				tse_priv->tx_skb[tx_tail] = NULL;
 
 				tx_loop++;
-				tx_tail = ((tx_tail + 1) & (ALT_TX_RING_MOD_MASK));
+				tx_tail = (tx_tail + 1) & ALT_TX_RING_MOD_MASK;
 				temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];
 				desc_control = temp_desc_pointer->descriptor_control;
 
@@ -631,8 +631,8 @@ static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	//get the heads
 	head = tse_priv->tx_sgdma_descriptor_head;
 	tail = tse_priv->tx_sgdma_descriptor_tail;
-	next_head = (head + 1) & (ALT_TX_RING_MOD_MASK);
-	next_head_check = (head + 2) & (ALT_TX_RING_MOD_MASK);
+	next_head = (head + 1) & ALT_TX_RING_MOD_MASK;
+	next_head_check = (head + 2) & ALT_TX_RING_MOD_MASK;
 
 	pr_debug("%s: head = %d, next_head = %d, tail = %d\n", dev->name, head,
 	         next_head, tse_priv->tx_sgdma_descriptor_tail);
