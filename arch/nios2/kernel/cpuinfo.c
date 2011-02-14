@@ -23,10 +23,15 @@ struct cpuinfo cpuinfo;
 #define err_cpu(x) \
 	pr_err("ERROR: NiosII " x " different for kernel and DTS\n");
 
-static inline u32 fcpu(struct device_node *cpu, char *n)
+static inline u32 fcpu(struct device_node *cpu, const char *n)
 {
 	u32 *val;
 	return (val = (u32 *) of_get_property(cpu, n, NULL)) ? be32_to_cpup(val) : 0;
+}
+
+static inline u32 fcpu_has(struct device_node *cpu, const char *n)
+{
+	return of_get_property(cpu, n, NULL) ? 1 : 0;
 }
 
 void __init setup_cpuinfo(void)
@@ -54,13 +59,13 @@ void __init setup_cpuinfo(void)
 	else
 		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
-	cpuinfo.has_div = fcpu(cpu, "ALTR,has-div");
+	cpuinfo.has_div = fcpu_has(cpu, "ALTR,has-div");
 	if (cpuinfo.has_div != CONFIG_NIOS2_HW_DIV_SUPPORT)
 		err_cpu("DIV");
-	cpuinfo.has_mul = fcpu(cpu, "ALTR,has-mul");
+	cpuinfo.has_mul = fcpu_has(cpu, "ALTR,has-mul");
 	if (cpuinfo.has_mul != CONFIG_NIOS2_HW_MUL_SUPPORT)
 		err_cpu("MUL");
-	cpuinfo.has_mulx = fcpu(cpu, "ALTR,has-mulx");
+	cpuinfo.has_mulx = fcpu_has(cpu, "ALTR,has-mulx");
 	if (cpuinfo.has_mulx != CONFIG_NIOS2_HW_MULX_SUPPORT)
 		err_cpu("MULX");
 
