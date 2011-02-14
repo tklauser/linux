@@ -71,7 +71,10 @@ void __init setup_cpuinfo(void)
 
 	cpuinfo.pid_num_bits = fcpu(cpu, "ALTR,pid-num-bits");
 	cpuinfo.tlb_num_ways = fcpu(cpu, "ALTR,tlb-num-ways");
+	cpuinfo.tlb_num_ways_log2 = ilog2(cpuinfo.tlb_num_ways);
 	cpuinfo.tlb_num_entries = fcpu(cpu, "ALTR,tlb-num-entries");
+	cpuinfo.tlb_num_lines = cpuinfo.tlb_num_entries / cpuinfo.tlb_num_ways;
+	cpuinfo.tlb_ptr_sz = fcpu(cpu, "ALTR,tlb-ptr-sz");
 }
 
 #endif /* CONFIG_OF */

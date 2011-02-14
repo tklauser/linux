@@ -32,7 +32,10 @@ struct cpuinfo {
 	/* TLB */
 	u32 pid_num_bits;	/* number of bits used for the PID in TLBMISC */
 	u32 tlb_num_ways;
+	u32 tlb_num_ways_log2;
 	u32 tlb_num_entries;
+	u32 tlb_num_lines;
+	u32 tlb_ptr_sz;
 };
 
 extern struct cpuinfo cpuinfo;
