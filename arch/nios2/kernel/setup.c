@@ -46,8 +46,6 @@ char cmd_line[COMMAND_LINE_SIZE] = { 0, };
 static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 				    0,  0,  0,  0,  0, (unsigned long)cpu_idle,  0,  0,  0, 0, 0};
 
-extern void __init mmu_init(void);
-
 /* save args passed from u-boot, called from head.S */
 asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 				       unsigned r7)
@@ -82,7 +80,6 @@ void __init setup_arch(char **cmdline_p)
 	extern int _edata, _end;
 
 #ifdef CONFIG_EARLY_PRINTK
-	extern void setup_early_printk(void);
 	setup_early_printk();
 #endif
 
@@ -148,8 +145,8 @@ void __init setup_arch(char **cmdline_p)
 
 #ifdef CONFIG_MMU
 	/*
-	 * Initialize MMU context handling here because data from cpuinfo needed
-	 * for this
+	 * Initialize MMU context handling here because data from cpuinfo is
+	 * needed for this.
 	 */
 	mmu_context_init();
 #endif

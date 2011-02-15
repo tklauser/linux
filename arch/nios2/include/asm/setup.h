@@ -6,6 +6,8 @@
 #ifndef __ASSEMBLY__
 # ifdef __KERNEL__
 extern char cmd_line[COMMAND_LINE_SIZE];
+
+extern void setup_early_printk(void);
 # endif/* __KERNEL__ */
 #endif /* __ASSEMBLY__ */
 

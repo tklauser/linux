@@ -221,6 +221,7 @@ struct page * pte_page(pte_t pte);
 
 int kern_addr_valid(unsigned long addr);
 
+extern void __init mmu_init(void);
 
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
