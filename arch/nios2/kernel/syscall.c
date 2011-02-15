@@ -27,7 +27,6 @@
 #include <linux/compiler.h>
 #include <linux/module.h>
 
-#include <asm/cachectl.h>
 #include <asm/cacheflush.h>
 #include <asm/asm-offsets.h>
 #include <asm/signal.h>
