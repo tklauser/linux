@@ -57,8 +57,6 @@ static unsigned long empty_bad_page;
 
 unsigned long empty_zero_page;
 
-extern unsigned long rom_length;
-
 #ifdef CONFIG_MMU
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 #endif
@@ -158,11 +156,9 @@ void __init mem_init(void)
 	initk = (&__init_begin - &__init_end) >> 10;
 
 	tmp = nr_free_pages() << PAGE_SHIFT;
-	printk(KERN_INFO "Memory available: %luk/%luk RAM, %luk/%luk ROM (%dk kernel code, %dk data)\n",
+	printk(KERN_INFO "Memory available: %luk/%luk RAM (%dk kernel code, %dk data)\n",
 	       tmp >> 10,
 	       (&_end - &_stext) >> 10,
-	       (rom_length > 0) ? ((rom_length >> 10) - codek) : 0,
-	       rom_length >> 10,
 	       codek,
 	       datak
 	       );

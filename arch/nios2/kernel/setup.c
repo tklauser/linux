@@ -29,7 +29,6 @@
 extern struct consw *conswitchp;
 #endif
 
-unsigned long rom_length;
 unsigned long memory_start;
 unsigned long memory_end;
 
