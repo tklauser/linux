@@ -486,8 +486,8 @@ static struct uart_driver altera_uart_driver = {
 };
 
 #ifdef CONFIG_OF
-static int altera_uart_get_uartclk(struct platform_device *pdev,
-				   struct uart_port *port)
+static int altera_uart_get_of_uartclk(struct platform_device *pdev,
+				      struct uart_port *port)
 {
 	int len;
 	const __be32 *clk;
@@ -501,17 +501,10 @@ static int altera_uart_get_uartclk(struct platform_device *pdev,
 	return 0;
 }
 #else
-static int altera_uart_get_uartclk(struct platform_device *pdev,
-				   struct uart_port *port)
+static int altera_uart_get_of_uartclk(struct platform_device *pdev,
+				      struct uart_port *port)
 {
-	struct altera_uart_platform_uart *platp = pdev->dev.platform_data;
-
-	if (!platp)
-		return -ENODEV;
-
-	port->uartclk = platp->uartclk;
-
-	return 0;
+	return -ENODEV;
 }
 #endif /* CONFIG_OF */
 
@@ -547,8 +540,12 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	else if (platp->irq)
 		port->irq = platp->irq;
 
-	ret = altera_uart_get_uartclk(pdev, port);
-	if (ret)
+	/* Try to get the uartclk from devicetree, fall back to platform data
+	 * otherwise */
+	ret = altera_uart_get_of_uartclk(pdev, port);
+	if (ret && platp)
+		port->uartclk = platp->uartclk;
+	else if (ret)
 		return ret;
 
 	port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);
