@@ -1,4 +1,6 @@
 /*
+ * Device tree support
+ *
  * Based on MIPS support for CONFIG_OF device tree support
  *
  * Copyright (C) 2010 Cisco Systems Inc. <dediao@cisco.com>
@@ -19,6 +21,7 @@
 #include <linux/of_fdt.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
+#include <linux/io.h>
 
 #include <asm/page.h>
 #include <asm/prom.h>
