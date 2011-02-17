@@ -1,10 +1,17 @@
 /*
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
+ *
+ * MMU support based on asm/page.h from mips which is:
  *
  * Copyright (C) 1994 - 1999, 2000, 03 Ralf Baechle
  * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
+ *
+ * NOMMU support based on asm/page.h from m68knommu.
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
 
 #ifndef _ASM_NIOS2_PAGE_H
@@ -13,10 +20,20 @@
 #include <asm/nios.h>
 
 /*
- * This handles the memory map.
- * We handle pages at KSEG0 for kernels with 32 bit address space.
+ * PAGE_SHIFT determines the page size
  */
-#define PAGE_OFFSET		(KERNEL_REGION_BASE + DDR2_TOP_BASE)
+#define PAGE_SHIFT	12
+#define PAGE_SIZE	4096
+#define PAGE_MASK	(~(PAGE_SIZE - 1))
+
+/*
+ * PAGE_OFFSET -- the first address of the first page of memory.
+ */
+#ifdef CONFIG_MMU
+# define PAGE_OFFSET		(KERNEL_REGION_BASE + DDR2_TOP_BASE)
+#else
+# define PAGE_OFFSET		DDR2_TOP_BASE
+#endif /* CONFIG_MMU */
 
 /*
  * Memory above this physical address will be considered highmem.
@@ -24,13 +41,6 @@
 #ifndef HIGHMEM_START
 # define HIGHMEM_START		0x20000000UL
 #endif
-
-/*
- * PAGE_SHIFT determines the page size
- */
-#define PAGE_SHIFT	12
-#define PAGE_SIZE	4096
-#define PAGE_MASK	(~(PAGE_SIZE - 1))
 
 #ifndef __ASSEMBLY__
 
@@ -46,91 +56,95 @@
  */
 #define ARCH_PFN_OFFSET		PFN_UP(PHYS_OFFSET)
 
-#include <linux/pfn.h>
-#include <asm/io.h>
+#ifndef CONFIG_MMU
+# define get_user_page(vaddr)		__get_free_page(GFP_KERNEL)
+# define free_user_page(page, addr)	free_page(addr)
+#endif /* CONFIG_MMU */
 
 #define clear_page(page)	memset((page), 0, PAGE_SIZE)
 #define copy_page(to, from)	memcpy((to), (from), PAGE_SIZE)
 
-extern unsigned long shm_align_mask;
-
+#ifdef CONFIG_MMU
 struct page;
 
 extern void clear_user_page(void *addr, unsigned long vaddr, struct page *page);
-
 extern void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 			   struct page *to);
+#else
+# define clear_user_page(page, vaddr, pg)	clear_page(page)
+# define copy_user_page(to, from, vaddr, pg)	copy_page(to, from)
+#endif /* CONFIG_MMU */
+
+extern unsigned long shm_align_mask;
 
 /*
- * These are used to make use of C type-checking..
+ * These are used to make use of C type-checking.
  */
+typedef struct page *pgtable_t;
 typedef struct { unsigned long pte; } pte_t;
-#define pte_val(x)	((x).pte)
-#define __pte(x)	((pte_t) { (x) } )
-
-
-/*
- * Finall the top of the hierarchy, the pgd
- */
 typedef struct { unsigned long pgd; } pgd_t;
-#define pgd_val(x)	((x).pgd)
-#define __pgd(x)	((pgd_t) { (x) } )
-
-/*
- * Manipulate page protection bits
- */
 typedef struct { unsigned long pgprot; } pgprot_t;
+
+#define pte_val(x)	((x).pte)
+#define pgd_val(x)	((x).pgd)
 #define pgprot_val(x)	((x).pgprot)
+
+#define __pte(x)	((pte_t) { (x) } )
+#define __pgd(x)	((pgd_t) { (x) } )
 #define __pgprot(x)	((pgprot_t) { (x) } )
 
-typedef struct page *pgtable_t;
+#ifndef CONFIG_MMU
+typedef struct { unsigned long pmd[16]; } pmd_t;
 
-/*
- * On R4000-style MMUs where a TLB entry is mapping a adjacent even / odd
- * pair of pages we only have a single global bit per pair of pages.  When
- * writing to the TLB make sure we always have the bit set for both pages
- * or none.  This macro is used to access the `buddy' of the pte we're just
- * working on.
- */
-#define ptep_buddy(x)	((pte_t *)((unsigned long)(x) ^ sizeof(pte_t)))
+# define pmd_val(x)	((&x)->pmd[0])
+# define __pmd(x)	((pmd_t) { (x) } )
+#endif /* CONFIG_MMU */
+
+extern unsigned long memory_start;
+extern unsigned long memory_end;
 
 #endif /* !__ASSEMBLY__ */
-
-/*
- * __pa()/__va() should be used only during mem init.
- */
-#define __pa_page_offset(x)	PAGE_OFFSET
-#define __pa_symbol(x)	__pa(RELOC_HIDE((unsigned long)(x),0))
 
 #ifdef CONFIG_MMU
 # define __pa(x)		((unsigned long)(x) - PAGE_OFFSET + PHYS_OFFSET)
 # define __va(x)		((void *)((unsigned long)(x) + PAGE_OFFSET - PHYS_OFFSET))
 #else
-# define __pa(x)		((unsigned long) (x))
-# define __va(x)		((void *) (x))
-#endif
+# define __pa(x)		((unsigned long)(x))
+# define __va(x)		((void *)(x))
+#endif /* CONFIG_MMU */
 
-#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
+#ifdef CONFIG_MMU
+# define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
+# define pfn_valid(pfn)		((pfn) >= ARCH_PFN_OFFSET && \
+				 (pfn) < (max_mapnr + ARCH_PFN_OFFSET))
 
-#define pfn_valid(pfn)		((pfn) >= ARCH_PFN_OFFSET && (pfn) < (max_mapnr + ARCH_PFN_OFFSET))
+# define virt_to_page(vaddr)	pfn_to_page(PFN_DOWN(virt_to_phys(vaddr)))
+# define virt_addr_valid(vaddr)	pfn_valid(PFN_DOWN(virt_to_phys(vaddr)))
 
-#define virt_to_page(kaddr)	pfn_to_page(PFN_DOWN(virt_to_phys(kaddr)))
-#define virt_addr_valid(kaddr)	pfn_valid(PFN_DOWN(virt_to_phys(kaddr)))
+# define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
+#else /* CONFIG_MMU */
+# define pfn_valid(pfn)	        ((pfn) < max_mapnr)
 
-#define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
+# define virt_to_page(vaddr)	((void *) vaddr < (void *) memory_end ? mem_map + \
+				 (((unsigned long)(vaddr) - PAGE_OFFSET) >> PAGE_SHIFT) : 0UL)
+
+# define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
+# define pfn_to_virt(pfn)	__va((pfn) << PAGE_SHIFT)
+
+# define pfn_to_page(pfn)	virt_to_page(pfn_to_virt(pfn))
+# define page_to_pfn(page)	virt_to_pfn(page_to_virt(page))
+
+# define virt_addr_valid(kaddr)	(((void *)(kaddr) >= (void *)PAGE_OFFSET) && \
+				 ((void *)(kaddr) < (void *)memory_end))
+#endif /* CONFIG_MMU */
+
+#ifdef CONFIG_MMU
+# define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
 				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
-#define UNCAC_ADDR(addr) ((void *)((unsigned)(addr) | IO_REGION_BASE))
-#define CAC_ADDR(addr) ((void *)(((unsigned)(addr) & ~IO_REGION_BASE) | KERNEL_REGION_BASE))
-
-#define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
-
-#if 0
-#ifdef CONFIG_LIMITED_DMA
-#define WANT_PAGE_VIRTUAL
-#endif
-#define WANT_PAGE_VIRTUAL
-#endif
+# define UNCAC_ADDR(addr)	((void *)((unsigned)(addr) | IO_REGION_BASE))
+# define CAC_ADDR(addr)		((void *)(((unsigned)(addr) & ~IO_REGION_BASE) | KERNEL_REGION_BASE))
+#endif /* CONFIG_MMU */
 
 #include <asm-generic/memory_model.h>
 #include <asm-generic/getorder.h>

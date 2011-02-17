@@ -61,9 +61,6 @@ unsigned long empty_zero_page;
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 #endif
 
-extern unsigned long memory_start;
-extern unsigned long memory_end;
-
 /*
  * paging_init() continues the virtual memory environment setup which
  * was begun by the code in arch/head.S.
@@ -143,7 +140,7 @@ void __init mem_init(void)
 #ifdef CONFIG_MMU
 	max_mapnr = ((unsigned long)end_mem) >> PAGE_SHIFT;
 #else
-	max_mapnr = MAP_NR(high_memory);
+	max_mapnr = (((unsigned long)high_memory) - PAGE_OFFSET) >> PAGE_SHIFT;
 #endif /* CONFIG_MMU */
 	num_physpages = max_mapnr;
 	pr_debug("We have %ld pages of RAM\n", num_physpages);
