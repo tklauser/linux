@@ -466,11 +466,15 @@ static int __devexit altera_jtaguart_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
 static struct of_device_id altera_jtaguart_match[] = {
 	{ .compatible = "ALTR,juart-1.0", },
 	{},
 }
 MODULE_DEVICE_TABLE(of, altera_jtaguart_match);
+#else
+#define altera_jtaguart_match NULL
+#endif /* CONFIG_OF */
 
 static struct platform_driver altera_jtaguart_platform_driver = {
 	.probe	= altera_jtaguart_probe,
