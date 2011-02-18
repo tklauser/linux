@@ -540,13 +540,14 @@ static int __devinit altera_uart_probe(struct platform_device *pdev)
 	else if (platp->irq)
 		port->irq = platp->irq;
 
-	/* Try to get the uartclk from devicetree, fall back to platform data
-	 * otherwise */
-	ret = altera_uart_get_of_uartclk(pdev, port);
-	if (ret && platp)
+	/* Check platform data first so we can override device node data */
+	if (platp)
 		port->uartclk = platp->uartclk;
-	else if (ret)
-		return ret;
+	else {
+		ret = altera_uart_get_of_uartclk(pdev, port);
+		if (ret)
+			return ret;
+	}
 
 	port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);
 	if (!port->membase)
