@@ -14,29 +14,29 @@
 #include <asm/pgtable-bits.h>
 
 #define readb(addr) \
-    ({ unsigned char __v = (*(volatile unsigned char *) (addr)); __v; })
+	({ unsigned char __v = (*(volatile unsigned char *)(addr)); __v; })
 #define readw(addr) \
-    ({ unsigned short __v = (*(volatile unsigned short *) (addr)); __v; })
+	({ unsigned short __v = (*(volatile unsigned short *)(addr)); __v; })
 #define readl(addr) \
-    ({ unsigned int __v = (*(volatile unsigned int *) (addr)); __v; })
+	({ unsigned int __v = (*(volatile unsigned int *)(addr)); __v; })
 
-#define readb_relaxed(addr) readb(addr)
-#define readw_relaxed(addr) readw(addr)
-#define readl_relaxed(addr) readl(addr)
+#define readb_relaxed(addr)	readb(addr)
+#define readw_relaxed(addr)	readw(addr)
+#define readl_relaxed(addr)	readl(addr)
 
-#define writeb(b, addr) (void)((*(volatile unsigned char *) (addr)) = (b))
-#define writew(b, addr) (void)((*(volatile unsigned short *) (addr)) = (b))
-#define writel(b, addr) (void)((*(volatile unsigned int *) (addr)) = (b))
+#define writeb(b, addr)		(void)((*(volatile unsigned char *)(addr)) = (b))
+#define writew(b, addr)		(void)((*(volatile unsigned short *)(addr)) = (b))
+#define writel(b, addr)		(void)((*(volatile unsigned int *)(addr)) = (b))
 
-#define __raw_readb readb
-#define __raw_readw readw
-#define __raw_readl readl
-#define __raw_writeb writeb
-#define __raw_writew writew
-#define __raw_writel writel
+#define __raw_readb		readb
+#define __raw_readw		readw
+#define __raw_readl		readl
+#define __raw_writeb		writeb
+#define __raw_writew		writew
+#define __raw_writel		writel
 
 #ifndef CONFIG_CC_OPTIMIZE_FOR_SIZE
-#define __IO_USE_DUFFS
+# define __IO_USE_DUFFS
 #endif
 
 #ifdef __IO_USE_DUFFS
@@ -78,12 +78,12 @@
 		}					\
 	} while (0)
 
-#else
+#else /* __IO_USE_DUFFS */
 
 /* Use simple loops. */
 #define __IO_OUT_LOOP(a, b, l)				\
 	do {						\
-		while (l--) 				\
+		while (l--)				\
 			*a = *b++;			\
 	} while (0)
 
@@ -93,8 +93,7 @@
 			*b++ = *a;			\
 	} while (0)
 
-#endif
-
+#endif /* __IO_USE_DUFFS */
 
 static inline void io_outsb(void __iomem *addr, void *buf, int len)
 {
@@ -153,27 +152,27 @@ static inline void io_insl(void __iomem *addr, void *buf, int len)
 #define memcpy_fromio(a, b, c)	memcpy((a), (void *)(b), (c))
 #define memcpy_toio(a, b, c)	memcpy((void *)(a), (b), (c))
 
-#define inb(addr)    readb(addr)
-#define inw(addr)    readw(addr)
-#define inl(addr)    readl(addr)
-#define outb(x, addr) ((void) writeb(x, addr))
-#define outw(x, addr) ((void) writew(x, addr))
-#define outl(x, addr) ((void) writel(x, addr))
+#define inb(addr)		readb(addr)
+#define inw(addr)		readw(addr)
+#define inl(addr)		readl(addr)
+#define outb(x, addr)		((void) writeb(x, addr))
+#define outw(x, addr)		((void) writew(x, addr))
+#define outl(x, addr)		((void) writel(x, addr))
 
-#define inb_p(addr)    inb(addr)
-#define inw_p(addr)    inw(addr)
-#define inl_p(addr)    inl(addr)
-#define outb_p(x, addr) outb(x, addr)
-#define outw_p(x, addr) outw(x, addr)
-#define outl_p(x, addr) outl(x, addr)
+#define inb_p(addr)		inb(addr)
+#define inw_p(addr)		inw(addr)
+#define inl_p(addr)		inl(addr)
+#define outb_p(x, addr)		outb(x, addr)
+#define outw_p(x, addr)		outw(x, addr)
+#define outl_p(x, addr)		outl(x, addr)
 
-#define outsb(a, b, l) io_outsb(a, b, l)
-#define outsw(a, b, l) io_outsw(a, b, l)
-#define outsl(a, b, l) io_outsl(a, b, l)
+#define outsb(a, b, l)		io_outsb(a, b, l)
+#define outsw(a, b, l)		io_outsw(a, b, l)
+#define outsl(a, b, l)		io_outsl(a, b, l)
 
-#define insb(a, b, l) io_insb(a, b, l)
-#define insw(a, b, l) io_insw(a, b, l)
-#define insl(a, b, l) io_insl(a, b, l)
+#define insb(a, b, l)		io_insb(a, b, l)
+#define insw(a, b, l)		io_insw(a, b, l)
+#define insl(a, b, l)		io_insl(a, b, l)
 
 #define ioread8_rep(a,d,c)	insb(a,d,c)
 #define ioread16_rep(a,d,c)	insw(a,d,c)
@@ -182,23 +181,23 @@ static inline void io_insl(void __iomem *addr, void *buf, int len)
 #define iowrite16_rep(a,s,c)	outsw(a,s,c)
 #define iowrite32_rep(a,s,c)	outsl(a,s,c)
 
-#define ioread8(X)			readb(X)
-#define ioread16(X)			readw(X)
-#define ioread32(X)			readl(X)
-#define iowrite8(val,X)			writeb(val,X)
-#define iowrite16(val,X)		writew(val,X)
-#define iowrite32(val,X)		writel(val,X)
+#define ioread8(X)		readb(X)
+#define ioread16(X)		readw(X)
+#define ioread32(X)		readl(X)
+#define iowrite8(val,X)		writeb(val,X)
+#define iowrite16(val,X)	writew(val,X)
+#define iowrite32(val,X)	writel(val,X)
 
 #ifdef CONFIG_MMU
 
 extern void __iomem *__ioremap(unsigned long physaddr, unsigned long size,
-                               int cacheflag);
+                               unsigned long cacheflag);
 extern void __iounmap(void __iomem *addr);
 
 #else
 
 static inline void __iomem *__ioremap(unsigned long physaddr, unsigned long size,
-                                       unsigned long cacheflag)
+                                      unsigned long cacheflag)
 {
 	if (cacheflag & _PAGE_CACHED) {
 		return (void __iomem *)(physaddr & ~0x80000000);
@@ -243,11 +242,22 @@ static inline void iounmap(void __iomem *addr)
 #define IO_SPACE_LIMIT 0xffffffff
 
 /* Pages to physical address... */
-#define page_to_phys(page)      virt_to_phys(page_to_virt(page))
-#define page_to_bus(page)       page_to_virt(page)
+#ifdef CONFIG_MMU
+# define page_to_phys(page)	virt_to_phys(page_to_virt(page))
+# define page_to_bus(page)	page_to_virt(page)
+#else
+# define page_to_phys(page)	((page - mem_map) << PAGE_SHIFT)
+# define page_to_bus(page)	((page - mem_map) << PAGE_SHIFT)
+#endif /* CONFIG_MMU */
 
-#define phys_to_virt(vaddr)	((void *) ((unsigned long)vaddr + PAGE_OFFSET - PHYS_OFFSET))
-#define virt_to_phys(vaddr)	((unsigned long) ((unsigned long)vaddr - PAGE_OFFSET + PHYS_OFFSET))
+/* Macros used for converting between virtual and physical mappings. */
+#ifdef CONFIG_MMU
+# define phys_to_virt(vaddr)	((void *)((unsigned long)vaddr + PAGE_OFFSET - PHYS_OFFSET))
+# define virt_to_phys(vaddr)	((unsigned long)((unsigned long)vaddr - PAGE_OFFSET + PHYS_OFFSET))
+#else
+# define phys_to_virt(vaddr)	((void *)(vaddr))
+# define virt_to_phys(vaddr)	((unsigned long)(vaddr))
+#endif /* CONFIG_MMU */
 
 #define virt_to_bus virt_to_phys
 #define bus_to_virt phys_to_virt

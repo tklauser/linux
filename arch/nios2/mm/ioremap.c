@@ -116,7 +116,7 @@ static int remap_area_pages(unsigned long address,
  * Map some physical address range into the kernel address space.
  */
 void __iomem *__ioremap(unsigned long phys_addr, unsigned long size,
-                        int cacheflag)
+                        unsigned long cacheflag)
 {
 	struct vm_struct *area;
 	unsigned long offset;
