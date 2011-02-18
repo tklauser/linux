@@ -12,7 +12,6 @@ obj-y += exceptions.o init_task.o insnemu.o irq.o nios2_ksyms.o process.o \
 
 obj-$(CONFIG_MODULES)		+= module.o
 obj-$(CONFIG_CONSOLE)		+= console.o
-obj-$(CONFIG_AVALON_DMA)	+= dma.o
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o
 obj-$(CONFIG_ALIGNMENT_TRAP)	+= misaligned.o
 obj-$(CONFIG_OF)		+= prom.o
