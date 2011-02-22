@@ -92,44 +92,6 @@ void dma_free_coherent(struct device *dev, size_t size, void *vaddr,
 
 EXPORT_SYMBOL(dma_free_coherent);
 
-static inline void __dma_sync(unsigned long addr, size_t size,
-	enum dma_data_direction direction)
-{
-	switch (direction) {
-	case DMA_TO_DEVICE:
-	case DMA_FROM_DEVICE:
-	case DMA_BIDIRECTIONAL:
-		flush_dcache_range((unsigned long) addr, (unsigned long) addr + size);
-		break;
-
-	default:
-		BUG();
-	}
-}
-
-dma_addr_t dma_map_single(struct device *dev, void *ptr, size_t size,
-	enum dma_data_direction direction)
-{
-	unsigned long addr = (unsigned long) ptr;
-
-	__dma_sync(addr, size, direction);
-
-	return virt_to_phys(ptr);
-}
-
-EXPORT_SYMBOL(dma_map_single);
-
-void dma_unmap_single(struct device *dev, dma_addr_t dma_addr, size_t size,
-	enum dma_data_direction direction)
-{
-	unsigned long addr;
-	addr = dma_addr + PAGE_OFFSET;
-
-	//__dma_sync(addr, size, direction);
-}
-
-EXPORT_SYMBOL(dma_unmap_single);
-
 int dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 	enum dma_data_direction direction)
 {
@@ -285,38 +247,6 @@ void dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg, int nele
 }
 
 EXPORT_SYMBOL(dma_sync_sg_for_device);
-
-int dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
-{
-	return 0;
-}
-
-EXPORT_SYMBOL(dma_mapping_error);
-
-int dma_supported(struct device *dev, u64 mask)
-{
-	/*
-	 * we fall back to GFP_DMA when the mask isn't all 1s,
-	 * so we can't guarantee allocations that must be
-	 * within a tighter range than GFP_DMA..
-	 */
-	if (mask < 0x00ffffff)
-		return 0;
-
-	return 1;
-}
-
-EXPORT_SYMBOL(dma_supported);
-
-void dma_cache_sync(void *vaddr, size_t size, enum dma_data_direction direction)
-{
-	if (direction == DMA_NONE)
-		return;
-
-	__dma_sync((unsigned long)vaddr, size, direction);
-}
-
-EXPORT_SYMBOL(dma_cache_sync);
 
 /* The DAC routines are a PCIism.. */
 
