@@ -69,16 +69,21 @@ DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
  */
 void __init paging_init(void)
 {
+	unsigned long zones_size[MAX_NR_ZONES];
+	unsigned long start_mem, end_mem;
+
+	memset(zones_size, 0, sizeof(zones_size));
+
 	/*
 	 * Make sure start_mem is page aligned, otherwise bootmem and
 	 * page_alloc get different views of the world.
 	 */
 #ifdef CONFIG_MMU
-	unsigned long start_mem = PHYS_OFFSET;
-	unsigned long end_mem   = memory_end;
+	start_mem = PHYS_OFFSET;
+	end_mem   = memory_end;
 #else
-	unsigned long start_mem = PAGE_ALIGN(memory_start);
-	unsigned long end_mem   = memory_end & PAGE_MASK;
+	start_mem = PAGE_ALIGN(memory_start);
+	end_mem   = memory_end & PAGE_MASK;
 #endif /* CONFIG_MMU */
 
 #ifdef CONFIG_MMU
@@ -107,20 +112,14 @@ void __init paging_init(void)
 	set_fs (USER_DS);
 #endif
 
-	{
-		unsigned long zones_size[MAX_NR_ZONES] = {0, };
-
 #ifdef CONFIG_MMU
-		zones_size[ZONE_DMA] = ((end_mem - start_mem) >> PAGE_SHIFT);
+	zones_size[ZONE_DMA] = ((end_mem - start_mem) >> PAGE_SHIFT);
 #else
-		zones_size[ZONE_DMA] = (end_mem - PAGE_OFFSET) >> PAGE_SHIFT;
+	zones_size[ZONE_DMA] = (end_mem - PAGE_OFFSET) >> PAGE_SHIFT;
 #endif /* CONFIG_MMU */
-		zones_size[ZONE_NORMAL] = 0;
-#ifdef CONFIG_HIGHMEM
-		zones_size[ZONE_HIGHMEM] = 0;
-#endif
-		free_area_init(zones_size);
-	}
+
+	/* pass the memory from the bootmem allocator to the main allocator */
+	free_area_init(zones_size);
 }
 
 void __init mem_init(void)
@@ -203,44 +202,8 @@ void free_initmem(void)
 }
 
 #ifdef CONFIG_MMU
-void __init fixrange_init(unsigned long start, unsigned long end,
-                          pgd_t *pgd_base)
-{
-#if defined(CONFIG_HIGHMEM)
-	pgd_t *pgd;
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *pte;
-	int i, j, k;
-	unsigned long vaddr;
 
-	vaddr = start;
-	i = __pgd_offset(vaddr);
-	j = __pud_offset(vaddr);
-	k = __pmd_offset(vaddr);
-	pgd = pgd_base + i;
-
-	for ( ; (i < PTRS_PER_PGD) && (vaddr != end); pgd++, i++) {
-		pud = (pud_t *)pgd;
-		for ( ; (j < PTRS_PER_PUD) && (vaddr != end); pud++, j++) {
-			pmd = (pmd_t *)pud;
-			for (; (k < PTRS_PER_PMD) && (vaddr != end); pmd++, k++) {
-				if (pmd_none(*pmd)) {
-					pte = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
-					set_pmd(pmd, __pmd((unsigned long)pte));
-					if (pte != pte_offset_kernel(pmd, 0))
-						BUG();
-				}
-				vaddr += PMD_SIZE;
-			}
-			k = 0;
-		}
-		j = 0;
-	}
-#endif /* CONFIG_HIGHMEM */
-}
-
-#define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE<<order)))
+#define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE << (order))))
 unsigned long pgd_current;
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned(PGD_ORDER);
 pte_t invalid_pte_table[PTRS_PER_PTE] __page_aligned(PTE_ORDER);
