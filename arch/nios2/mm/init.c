@@ -125,9 +125,8 @@ void __init paging_init(void)
 
 void __init mem_init(void)
 {
-	int codek = 0, datak = 0, initk = 0;
-	unsigned long tmp;
-	extern char _etext, _stext, __init_begin, __init_end, _end;
+	int codek = 0, datak = 0;
+	extern char _etext, _stext, _end;
 	unsigned long start_mem = memory_start; /* DAVIDM - these must start at end of kernel */
 	unsigned long end_mem   = memory_end; /* DAVIDM - this must not include kernel stack at top */
 
@@ -150,15 +149,11 @@ void __init mem_init(void)
 
 	codek = (&_etext - &_stext) >> 10;
 	datak = (&_end - &_etext) >> 10;
-	initk = (&__init_begin - &__init_end) >> 10;
 
-	tmp = nr_free_pages() << PAGE_SHIFT;
 	printk(KERN_INFO "Memory available: %luk/%luk RAM (%dk kernel code, %dk data)\n",
-	       tmp >> 10,
+	       nr_free_pages() << (PAGE_SHIFT - 10),
 	       (&_end - &_stext) >> 10,
-	       codek,
-	       datak
-	       );
+	       codek, datak);
 }
 
 #ifdef CONFIG_MMU
