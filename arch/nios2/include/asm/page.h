@@ -35,13 +35,6 @@
 # define PAGE_OFFSET		DDR2_TOP_BASE
 #endif /* CONFIG_MMU */
 
-/*
- * Memory above this physical address will be considered highmem.
- */
-#ifndef HIGHMEM_START
-# define HIGHMEM_START		0x20000000UL
-#endif
-
 #ifndef __ASSEMBLY__
 
 /*
