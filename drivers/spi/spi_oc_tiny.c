@@ -390,7 +390,7 @@ static int __devexit tiny_spi_remove(struct platform_device *pdev)
 static const struct of_device_id tiny_spi_match[] = {
 	{ .compatible = "opencores,tiny-spi-rtlsvn2", },
 	{},
-}
+};
 MODULE_DEVICE_TABLE(of, tiny_spi_match);
 #else /* CONFIG_OF */
 #define tiny_spi_match NULL
