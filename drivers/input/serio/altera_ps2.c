@@ -178,7 +178,7 @@ static int __devexit altera_ps2_remove(struct platform_device *pdev)
 static const struct of_device_id altera_ps2_match[] = {
 	{ .compatible = "ALTR,ps2-1.0", },
 	{},
-}
+};
 MODULE_DEVICE_TABLE(of, altera_ps2_match);
 #else /* CONFIG_OF */
 #define altera_ps2_match NULL
