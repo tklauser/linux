@@ -163,13 +163,13 @@ long strnlen_user(const char __user *s, long n)
 	return n + 1;
 }
 
-__kernel_size_t __clear_user(void __user *addr, __kernel_size_t size)
+unsigned long __clear_user(void __user *to, unsigned long n)
 {
-	while (size > 0) {
-		if (__put_user(0, (char *)addr) == -EFAULT)
+	while (n > 0) {
+		if (__put_user(0, (char *)to) == -EFAULT)
 			break;
-		addr++;
-		size--;
+		to++;
+		n--;
 	}
-	return size;
+	return n;
 }
