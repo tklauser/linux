@@ -304,7 +304,7 @@ static int __devexit altera_spi_remove(struct platform_device *dev)
 static const struct of_device_id altera_spi_match[] = {
 	{ .compatible = "ALTR,spi-1.0", },
 	{},
-}
+};
 MODULE_DEVICE_TABLE(of, altera_spi_match);
 #else /* CONFIG_OF */
 #define altera_spi_match NULL
