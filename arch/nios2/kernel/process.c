@@ -1,20 +1,19 @@
 /*
+ * Architecture-dependent parts of process handling.
+ *
  * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2009 Wind River Systems Inc
  *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  * Copyright (C) 2004 Microtronix Datacom Ltd
- * Copyright (C) 2000-2002 David McCullough <davidm@snapgear.com>
- * Copyright (C) 1995  Hamish Macdonald
  *
- * based on m68k arch/m68k/kernel/process.c
+ * based on arch/m68knommu/kernel/process.c which is:
+ *
+ * Copyright (C) 2000-2002 David McCullough <davidm@snapgear.com>
+ * Copyright (C) 1995 Hamish Macdonald
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- */
-
-/*
- * This file handles the architecture-dependent parts of process handling..
  */
 
 #include <linux/module.h>
@@ -103,15 +102,11 @@ void machine_restart(char * __unused)
 	: "r4");
 }
 
-EXPORT_SYMBOL(machine_restart);
-
 void machine_halt(void)
 {
 	local_irq_disable();
 	for (;;);
 }
-
-EXPORT_SYMBOL(machine_halt);
 
 /*
  * There is no way to power off the development
@@ -124,7 +119,6 @@ void machine_power_off(void)
 	local_irq_disable();
 	for (;;);
 }
-EXPORT_SYMBOL(machine_power_off);
 
 void show_regs(struct pt_regs *regs)
 {
