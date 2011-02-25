@@ -1,23 +1,14 @@
-/*  Kernel module help for Nios2.
-    Copyright (C) 2004 Microtronix Datacom Ltd.
-    Copyright (C) 2001,03  Rusty Russell
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-    
-    Written by Wentao Xu <xuwentao@microtronix.com>
-*/
+/*
+ * Kernel module support for Nios II.
+ *
+ * Copyright (C) 2004 Microtronix Datacom Ltd.
+ *   Written by Wentao Xu <xuwentao@microtronix.com>
+ * Copyright (C) 2001, 2003 Rusty Russell
+ *
+ * This file is subject to the terms and conditions of the GNU General
+ * Public License.  See the file COPYING in the main directory of this
+ * archive for more details.
+ */
 
 #include <linux/moduleloader.h>
 #include <linux/elf.h>
@@ -30,14 +21,6 @@
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
 
-/* FIXME:  modules should NOT be allocated with kmalloc
- * for (obvious) reasons. But we do it for now to avoid
- * relocation issues. CALL26/PCREL26 cannot reach 
- * from 0x80000000 (vmalloc area) to 0xc00000000 (kernel)
- * (kmalloc returns addresses in 0xc0000000)
- *
- * We should really have some trampolines for this instead.
- */
 #ifndef CONFIG_MMU
 void *module_alloc(unsigned long size)
 {
@@ -49,12 +32,23 @@ void *module_alloc(unsigned long size)
 /* Free memory returned from module_alloc */
 void module_free(struct module *mod, void *module_region)
 {
- 	vfree(module_region);
-	/* FIXME: If module_region == mod->init_region, trim exception
-           table entries. */
+	vfree(module_region);
+	/*
+	 * FIXME: If module_region == mod->init_region, trim exception
+	 * table entries.
+	 */
 }
 
 #else /* CONFIG_MMU */
+
+/*
+ * FIXME:  modules should NOT be allocated with kmalloc for (obvious) reasons.
+ * But we do it for now to avoid relocation issues. CALL26/PCREL26 cannot reach
+ * from 0x80000000 (vmalloc area) to 0xc00000000 (kernel) (kmalloc returns
+ * addresses in 0xc0000000)
+ *
+ * We should really have some trampolines for this instead.
+ */
 
 void *module_alloc(unsigned long size)
 {
@@ -66,9 +60,11 @@ void *module_alloc(unsigned long size)
 /* Free memory returned from module_alloc */
 void module_free(struct module *mod, void *module_region)
 {
-         kfree(module_region);
-	/* FIXME: If module_region == mod->init_region, trim exception
-           table entries. */
+	kfree(module_region);
+	/*
+	 * FIXME: If module_region == mod->init_region, trim exception
+	 * table entries.
+	 */
 }
 
 #endif /* CONFIG_MMU */
@@ -88,8 +84,7 @@ int apply_relocate(Elf32_Shdr *sechdrs,
 		   unsigned int relsec,
 		   struct module *me)
 {
-	printk(KERN_ERR "module %s: NO-ADD RELOCATION unsupported\n",
-	       me->name);
+	pr_err("module %s: RELOCATION unsupported\n", me->name);
 	return -ENOEXEC;
 }
 
