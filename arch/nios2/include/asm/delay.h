@@ -1,29 +1,13 @@
+/*
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
 #ifndef _ASM_NIOS2_DELAY_H
 #define _ASM_NIOS2_DELAY_H
-
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/delay.h
- *
- * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004      dgt     NiosII
- *
- ---------------------------------------------------------------------*/
-
 
 #include <asm/param.h>
 
@@ -34,14 +18,11 @@ extern __inline__ void __delay(unsigned long loops)
 	__asm__ __volatile__(
         "1:  \n\t"
         "    beq    %0,zero,2f\n\t"
-        "    addi   %0, %0, -1\n\t" 
-        "    br     1b\n\t" 
-        "2:  \n\t" 
-
-        :  "=r" (dummy)                     /* Need output for optimizer */
-
-        :  "0" (loops)                      /* %0  Input                */
-        );
+        "    addi   %0, %0, -1\n\t"
+        "    br     1b\n\t"
+        "2:  \n\t"
+        :  "=r" (dummy)		/* Need output for optimizer */
+        :  "0" (loops));	/* %0  Input                */
 }
 
 /*
@@ -65,21 +46,33 @@ extern unsigned long loops_per_jiffy;
 extern __inline__ void __udelay(unsigned int x)
 {
 	unsigned int loops;
-	/* Note, if this is compiled with -mhw-mulx it will produce a "mulxuu"
+
+	/*
+	 * Note, if this is compiled with -mhw-mulx it will produce a "mulxuu"
 	 * (at least in toolchain 145) so there is no need for inline
 	 * assembly here anymore, which might in turn be emulated if unsupported
 	 * by the design.
 	 */
 	loops = (unsigned int)((((unsigned long long)(x) * (unsigned long long)(loops_per_jiffy * 226))) >> 32);
+
+/*
+	__asm__("mulxuu %0,%1,%2" : "=r" (loops) :
+		"r" (x), "r" (loops_per_jiffy * 226));
+*/
 	__delay(loops);
 }
 
 extern __inline__ void __ndelay(unsigned int x)
 {
 	unsigned int loops;
-	/* see comment above
-	 */
+
+	/* see comment in __udelay */
 	loops = (unsigned int)((((unsigned long long)(x) * (unsigned long long)(loops_per_jiffy * 5))) >> 32);
+
+/*
+	__asm__("mulxuu %0,%1,%2" : "=r" (loops) :
+		"r" (x), "r" (loops_per_jiffy * 5));
+*/
 	__delay(loops);
 }
 
