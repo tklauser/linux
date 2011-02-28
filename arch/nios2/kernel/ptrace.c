@@ -105,7 +105,7 @@ long arch_ptrace(struct task_struct *child, long request,
 	case PTRACE_PEEKUSR:
 		pr_debug("PEEKUSR: addr=0x%08lx\n", addr);
 		ret = -EIO;
-		if ((addr & 3) || addr > sizeof(struct user) - 3)
+		if (addr & 3)
 			break;
 
 		addr = addr >> 2; /* temporary hack. */
@@ -127,7 +127,7 @@ long arch_ptrace(struct task_struct *child, long request,
 	case PTRACE_POKEUSR:
 		pr_debug("POKEUSR: addr=0x%08lx, data=0x%08lx\n", addr, data);
 		ret = -EIO;
-		if ((addr & 3) || addr > sizeof(struct user) - 3)
+		if (addr & 3)
 			break;
 
 		addr = addr >> 2; /* temporary hack. */
