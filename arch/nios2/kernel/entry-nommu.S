@@ -24,6 +24,15 @@
 #include <asm/traps.h>
 #include <asm/processor.h>
 
+.macro GET_THREAD_INFO reg
+.if THREAD_SIZE & 0xffff0000
+	andhi	\reg, sp, %hi(~(THREAD_SIZE-1))
+.else
+	addi	\reg, r0, %lo(~(THREAD_SIZE-1))
+	and	\reg, \reg, sp
+.endif
+.endm
+
 .text
 .set noat
 .set nobreak

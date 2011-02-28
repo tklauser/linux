@@ -43,7 +43,7 @@
 #include <asm/unistd.h>
 #include <asm/processor.h>
 
-.macro GET_THREAD_INFO reg 
+.macro GET_THREAD_INFO reg
 .if THREAD_SIZE & 0xffff0000
 	andhi	\reg, sp, %hi(~(THREAD_SIZE-1))
 .else
