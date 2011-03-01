@@ -298,9 +298,9 @@ ENTRY(sys_call_table)
 	.long sys_mq_getsetattr
 	.long sys_waitid
 	.long sys_ni_syscall	/* old sys_setaltroot */
-	.long sys_ni_syscall	/* old sys_add_key */
-	.long sys_ni_syscall	/* 280: old sys_request_key */
-	.long sys_ni_syscall	/* old sys_keyctl */
+	.long sys_add_key
+	.long sys_request_key	/* 280 */
+	.long sys_keyctl
 	.long sys_ioprio_set
 	.long sys_ioprio_get
 	.long sys_inotify_init

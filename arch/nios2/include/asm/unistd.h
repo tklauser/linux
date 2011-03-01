@@ -295,9 +295,9 @@
 #define __NR_mq_getsetattr	276
 #define __NR_waitid		277
 				/* 278 __NR_sys_setaltroot obsolete */
-				/* 279 __NR_add_key obsolete */
-				/* 280 __NR_request_key obsolete*/
-				/* 281 __NR_keyctl obsolete */
+#define __NR_add_key		279
+#define __NR_request_key	280
+#define __NR_keyctl		281
 #define __NR_ioprio_set		282
 #define __NR_ioprio_get		283
 #define __NR_inotify_init	284
