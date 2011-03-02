@@ -3,9 +3,10 @@
  * Copyright (C) 2004 Microtronix Datacom Ltd
  * Copyright (C) 2001 Ken Hill (khill@microtronix.com)
  *                    Vic Phillips (vic@microtronix.com)
- * Copyright (C) 1994 David S. Miller
  *
- * based on SPARC asm/processor.h
+ * based on SPARC asm/processor_32.h which is:
+ *
+ * Copyright (C) 1994 David S. Miller
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -18,7 +19,6 @@
 #include <asm/ptrace.h>
 
 #define NIOS2_FLAG_KTHREAD	0x00000001	/* task is a kernel thread */
-#define NIOS2_FLAG_COPROC	0x00000002	/* Thread used coprocess */
 #define NIOS2_FLAG_DEBUG	0x00000004	/* task is being debugged */
 
 #define NIOS2_OP_NOP		0x1883a
@@ -41,26 +41,21 @@
  */
 #define current_text_addr() ({ __label__ _l; _l: &&_l;})
 
-/* Whee, this is STACK_TOP and the lowest kernel address too... */
 #ifdef CONFIG_MMU
-
-/* First address the kernel will eventually be */
-# define KERNBASE		0xc0000000UL
-# define TASK_SIZE		0x7fff0000UL
-# define MAX_USER_ADDR		0xc0000000UL
-# define MMAP_SEARCH_START	0x40000000UL
+# define TASK_SIZE		0x7FFF0000UL
 # define TASK_UNMAPPED_BASE	(PAGE_ALIGN(TASK_SIZE / 3))
-
 #else
-
-# define TASK_SIZE		((unsigned int) nasys_program_mem_end)
-
+/*
+ * User space process size: 1st byte beyond user address space.
+ * Fairly meaningless on nommu.  Parts of user programs can be scattered
+ * in a lot of places, so just disable this by setting it to 0xFFFFFFFF.
+ */
+# define TASK_SIZE		0xFFFFFFFFUL
 /*
  * This decides where the kernel will search for a free chunk of vm
- * space during mmap's. We won't be using it
+ * space during mmap's. We won't be using it.
  */
 # define TASK_UNMAPPED_BASE	0
-
 #endif /* CONFIG_MMU */
 
 /* The Nios processor specific thread struct. */
