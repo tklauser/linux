@@ -15,6 +15,7 @@
  */
 
 #include <linux/init.h>
+#include <linux/linkage.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
@@ -53,29 +54,9 @@ _current_thread:
 #ifdef CONFIG_MMU
 	__HEAD
 #else
-	.text
+	.text	/* FIXME: should probably be __HEAD on NOMMU too */
 #endif
-	.global _start
-_start:
-	/* Disable intruction trace */
-#ifdef COMPILE_FOR_ISS
-	rdctl	r2,ctl6
-	movi	r1,-9
-	and	r2,r2,r1
-	movi	r1,-17
-	and	r2,r2,r1
-	wrctl	ctl6,r2
-
-	/* Initialize all memory */
-	movi	r1,(KERNEL_REGION_BASE_ASM|LINUX_SDRAM_END)
-	movia	r2,_end
-	sub	r1,r1,r2
-1:	stw	r0,0(r2)
-	addi	r2,r2,4
-	subi	r1,r1,4
-	bne	r1,r0,1b
-#endif
-
+ENTRY(_start)
 	wrctl	status,r0		/* Disable interrupts */
 
 	/* Flush all cache lines within the instruction cache */
