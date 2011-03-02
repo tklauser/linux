@@ -5,13 +5,13 @@
  *  as long as output does not overlap it.
  */
 
+#include <linux/linkage.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
 	.text
 	.set noat
-	.global _start
-_start:
+ENTRY(_start)
 	wrctl	status, r0		/* disable interrupt */
 	/* invalidate all instruction cache */
 	movia	r1, NIOS2_ICACHE_SIZE
