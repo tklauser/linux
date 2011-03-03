@@ -73,7 +73,7 @@ extern int fixup_exception(struct pt_regs *regs);
 #else
 static inline int __access_ok(unsigned long addr, unsigned long size)
 {
-	addr &= ~0x80000000;	/* ignore 'uncached' bit */
+	addr &= ~CONFIG_IO_REGION_BASE;	/* ignore 'uncached' bit */
 	return (addr >= memory_start) && (addr + size <= memory_end);
 }
 #endif /* CONFIG_MMU */

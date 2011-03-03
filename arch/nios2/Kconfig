@@ -161,6 +161,56 @@ source "arch/nios2/drivers/Kconfig"
 
 endmenu
 
+menu "Advanced setup"
+
+config ADVANCED_OPTIONS
+	bool "Prompt for advanced kernel configuration options"
+	help
+
+comment "Default settings for advanced configuration options are used"
+	depends on !ADVANCED_OPTIONS
+
+config KERNEL_MMU_REGION_BASE_BOOL
+	bool "Set custom kernel MMU region base address"
+	depends on ADVANCED_OPTIONS
+	help
+	  This option allows you to set the virtual address of the kernel MMU region.
+
+	  Say N here unless you know what you are doing.
+
+config KERNEL_MMU_REGION_BASE
+	hex "Virtual base address of the kernel MMU region " if KERNEL_MMU_REGION_BASE_BOOL
+	default "0x80000000" if MMU
+	default "0x00000000" if !MMU
+
+config KERNEL_REGION_BASE_BOOL
+	bool "Set custom kernel region base address"
+	depends on ADVANCED_OPTIONS
+	help
+	  This option allows you to set the virtual address of the kernel region.
+
+	  Say N here unless you know what you are doing.
+
+config KERNEL_REGION_BASE
+	hex "Virtual base address of the kernel region " if KERNEL_REGION_BASE_BOOL
+	default "0xc0000000" if MMU
+	default "0x00000000" if !MMU
+
+config IO_REGION_BASE_BOOL
+	bool "Set custom I/O region base address"
+	depends on ADVANCED_OPTIONS
+	help
+	  This option allows you to set the virtual address of the I/O region.
+
+	  Say N here unless you know what you are doing.
+
+config IO_REGION_BASE
+	hex "Virtual base address of the I/O region " if IO_REGION_BASE_BOOL
+	default "0xe0000000" if MMU
+	default "0x80000000" if !MMU
+
+endmenu
+
 menu "Executable file formats"
 
 source "fs/Kconfig.binfmt"

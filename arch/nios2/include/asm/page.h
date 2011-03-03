@@ -29,11 +29,7 @@
 /*
  * PAGE_OFFSET -- the first address of the first page of memory.
  */
-#ifdef CONFIG_MMU
-# define PAGE_OFFSET		(KERNEL_REGION_BASE + DDR2_TOP_BASE)
-#else
-# define PAGE_OFFSET		DDR2_TOP_BASE
-#endif /* CONFIG_MMU */
+#define PAGE_OFFSET	(DDR2_TOP_BASE + CONFIG_KERNEL_REGION_BASE)
 
 #ifndef __ASSEMBLY__
 
@@ -135,8 +131,8 @@ extern unsigned long memory_end;
 # define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
 				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
-# define UNCAC_ADDR(addr)	((void *)((unsigned)(addr) | IO_REGION_BASE))
-# define CAC_ADDR(addr)		((void *)(((unsigned)(addr) & ~IO_REGION_BASE) | KERNEL_REGION_BASE))
+# define UNCAC_ADDR(addr)	((void *)((unsigned)(addr) | CONFIG_IO_REGION_BASE))
+# define CAC_ADDR(addr)		((void *)(((unsigned)(addr) & ~CONFIG_IO_REGION_BASE) | CONFIG_KERNEL_REGION_BASE))
 #endif /* CONFIG_MMU */
 
 #include <asm-generic/memory_model.h>

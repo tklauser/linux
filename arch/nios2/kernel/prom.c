@@ -159,7 +159,7 @@ unsigned long __init early_altera_uart_or_juart_console(void)
 	u64 base = 0;
 
 	if (of_scan_flat_dt(early_init_dt_scan_serial, &base))
-		return (unsigned long)(base + IO_REGION_BASE);
+		return (unsigned long)(base + CONFIG_IO_REGION_BASE);
 	else
 		return 0;
 }

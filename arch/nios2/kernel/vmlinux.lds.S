@@ -1,3 +1,4 @@
+#include <asm/page.h>
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
@@ -12,7 +13,7 @@ jiffies = jiffies_64;
 
 SECTIONS
 {
-	. = DDR2_TOP_BASE | KERNEL_REGION_BASE;
+	. = DDR2_TOP_BASE | CONFIG_KERNEL_REGION_BASE;
 
 	_text = .;
 	_stext = .;

@@ -131,8 +131,6 @@ int main(void)
 	/* TLB statistics */
 	DEFINE(STAT_TLB_FAST_HANDLER, offsetof(struct tlb_stat, tlb_fast_handler));
 
-	/* Exception addresses (virtual 0xc0000000 addresses) */
-	DEFINE(KERNEL_REGION_BASE_ASM, KERNEL_REGION_BASE);
 	DEFINE(CPU_EXCEPT_VIRT_ADDRESS_ASM, EXCEPTION_ADDR);
 	DEFINE(CPU_FAST_TLB_MISS_EXCEPTION_VIRT_ADDR_ASM,  FAST_TLB_MISS_EXCEPTION_ADDR);
 #else

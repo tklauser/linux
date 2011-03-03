@@ -11,11 +11,7 @@
 
 static void *my_ioremap(unsigned long physaddr)
 {
-#ifdef CONFIG_MMU
-	return (void *)(physaddr | IO_REGION_BASE);
-#else
-	return (void *)(physaddr | 0x80000000);
-#endif /* CONFIG_MMU */
+	return (void *)(physaddr | CONFIG_IO_REGION_BASE);
 }
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE) && defined(JTAG_UART_BASE)

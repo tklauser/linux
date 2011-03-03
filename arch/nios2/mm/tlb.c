@@ -164,7 +164,7 @@ void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
 		pid = (tlbmisc >> PID_SHIFT) & PID_MASK;
 		if (((((pteaddr >> 2) & 0xfffff)) == (addr >> PAGE_SHIFT)) &&
 				pid == mmu_pid) {
-			unsigned long vaddr = IO_REGION_BASE + (PAGE_SIZE * cpuinfo.tlb_num_lines) * way + (addr & TLB_INDEX_MASK);
+			unsigned long vaddr = CONFIG_IO_REGION_BASE + (PAGE_SIZE * cpuinfo.tlb_num_lines) * way + (addr & TLB_INDEX_MASK);
 			pr_debug("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
 
 			WRCTL(CTL_PTEADDR, (vaddr >> 12) << 2);
@@ -233,7 +233,7 @@ void local_flush_tlb_one(unsigned long addr)
 		tlbmisc = RDCTL(CTL_TLBMISC);
 
 		if ((((pteaddr >> 2) & 0xfffff)) == (addr >> PAGE_SHIFT)) {
-			unsigned long vaddr = IO_REGION_BASE + (PAGE_SIZE * cpuinfo.tlb_num_lines) * way + (addr & TLB_INDEX_MASK);
+			unsigned long vaddr = CONFIG_IO_REGION_BASE + (PAGE_SIZE * cpuinfo.tlb_num_lines) * way + (addr & TLB_INDEX_MASK);
 
 			pid = (tlbmisc >> PID_SHIFT) & PID_MASK;
 			pr_debug("Flush entry by writing %#lx way=%dl pid=%ld\n", vaddr, way, pid);
@@ -331,7 +331,7 @@ void flush_tlb_pid(unsigned long pid)
 void local_flush_tlb_all(void)
 {
 	int i;
-	unsigned long vaddr = IO_REGION_BASE;
+	unsigned long vaddr = CONFIG_IO_REGION_BASE;
 	unsigned int way;
 	unsigned long org_misc;
 

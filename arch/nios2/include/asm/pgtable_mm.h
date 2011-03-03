@@ -21,8 +21,9 @@
 #include <asm-generic/pgtable-nopmd.h>
 
 #define FIRST_USER_ADDRESS	0
-#define VMALLOC_START	KERNEL_MMU_REGION_BASE
-#define VMALLOC_END	   (KERNEL_REGION_BASE-1)
+
+#define VMALLOC_START		CONFIG_KERNEL_MMU_REGION_BASE
+#define VMALLOC_END		(CONFIG_KERNEL_REGION_BASE - 1)
 
 struct mm_struct;
 
@@ -75,7 +76,7 @@ struct mm_struct;
 #define PTRS_PER_PGD	((PAGE_SIZE << PGD_ORDER) / sizeof(pgd_t))
 #define PTRS_PER_PTE	((PAGE_SIZE << PTE_ORDER) / sizeof(pte_t))
 
-#define USER_PTRS_PER_PGD	(KERNEL_MMU_REGION_BASE/PGDIR_SIZE)
+#define USER_PTRS_PER_PGD	(CONFIG_KERNEL_MMU_REGION_BASE / PGDIR_SIZE)
 
 #define PGDIR_SHIFT	22
 #define PGDIR_SIZE	(1UL << PGDIR_SHIFT)
