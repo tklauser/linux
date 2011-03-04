@@ -26,7 +26,7 @@ ENTRY(sys_call_table)
 	.long sys_write
 	.long sys_open		/* 5 */
 	.long sys_close
-	.long sys_ni_syscall	/* old sys_waitpid */
+	.long sys_waitpid
 	.long sys_creat
 	.long sys_link
 	.long sys_unlink	/* 10 */
