@@ -20,6 +20,7 @@
 #define NIOS2_STATUS_U_MSK    0x2
 #define NIOS2_STATUS_U_OFST   1
 
+#define ESTATUS_EU	0x00000002
 
 #define RDCTL(r) __builtin_rdctl(r)
 #define WRCTL(r,v) __builtin_wrctl(r,v)
@@ -41,7 +42,6 @@
 #define CTL_MPUBASE   14
 #define CTL_MPUACC    15
 #define CTL_SIM	   6
-
 
 #define EXC_RESET		0	/* System reset		*/
 #define EXC_CPU_RESET		1	/* CPU reset		*/
@@ -73,4 +73,4 @@
  */
 #define NIOS2_DCACHE_LINE_SIZE	4
 
-#endif /* _ASM_NIOS2_H__ */
+#endif /* _ASM_NIOS2_NIOS_H */

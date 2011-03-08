@@ -16,6 +16,8 @@
 
 #include <linux/init.h>
 #include <linux/linkage.h>
+#include <asm/thread_info.h>
+#include <asm/nios.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
@@ -120,8 +122,8 @@ fast_handler_end:
 	 * After flushing the instruction cache, we must flush the data
 	 * cache.
 	 */
-	movia	r1,NIOS2_DCACHE_SIZE_ASM
-	movui	r2,NIOS2_DCACHE_LINE_SIZE_ASM
+	movia	r1,NIOS2_DCACHE_SIZE
+	movui	r2,NIOS2_DCACHE_LINE_SIZE
 
 data_flush:
 	flushd	0(r1)
@@ -154,7 +156,7 @@ finish_move:
 
 	/* Copy an instruction sequence to put at the exception address */
         movia	r2,exc_hook
-        movia	r3,CPU_EXCEPT_VIRT_ADDRESS_ASM
+        movia	r3,EXCEPTION_ADDR
         ldw     r1,0(r2)
         stw     r1,0(r3)
         ldw     r1,4(r2)
@@ -177,7 +179,7 @@ finish_move:
 	 */
 	movia   r2,fast_handler_start
 	movia   r8,fast_handler_end
-	movia	r3,CPU_FAST_TLB_MISS_EXCEPTION_VIRT_ADDR_ASM
+	movia	r3,FAST_TLB_MISS_EXCEPTION_ADDR
 1:
 	ldw	r1,0(r2)
 	stw	r1,0(r3)
@@ -208,12 +210,12 @@ finish_move:
 	/* Call main() with interrupts disabled */
 #ifndef CONFIG_MMU
 	movia	r1,status_extension	/* get the STATUS extension address */
-	movi	r2,PS_S_ASM		/* set initial mode = supervisor */
+	movi	r2,PS_S			/* set initial mode = supervisor */
 	stw	r2,0(r1)
 #endif /* CONFIG_MMU */
 
 	movia	r1,init_thread_union	/* set stack at top of the task union */
-	addi	sp,r1,THREAD_SIZE_ASM
+	addi	sp,r1,THREAD_SIZE
 	movia	r2,_current_thread	/* Remember current thread */
 	stw	r1,0(r2)
 

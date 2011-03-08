@@ -58,7 +58,7 @@ ENTRY(system_call)
 	movi	r11,%lo(0xffffe000)	/* Get thread info pointer */
 	and	r11,sp,r11
 	ldw	r11,TI_FLAGS(r11)
-	BTBNZ	r11,r11,TIF_SYSCALL_TRACE_ASM,1f
+	BTBNZ	r11,r11,TIF_SYSCALL_TRACE,1f
 
 	callr	r1
 	stw	r2,PT_R2(sp)		/* save the return value */
@@ -82,7 +82,7 @@ ENTRY(system_call)
 
 ret_from_exception:
 	ldw	r1,PT_STATUS_EXTENSION(sp)	/* check if returning to kernel */
-	TSTBZ	r1,r1,PS_S_ASM,Luser_return	/* if so, skip resched, signals */
+	TSTBZ	r1,r1,PS_S,Luser_return		/* if so, skip resched, signals */
 
 restore_all:
 	rdctl	r10,status			/* disable intrs */
@@ -94,16 +94,16 @@ restore_all:
 Luser_return:
 	GET_THREAD_INFO	r24			/* get thread_info pointer */
 	ldw	r10,TI_FLAGS(r24)		/* get thread_info->flags */
-	ANDI32	r11,r10,_TIF_WORK_MASK_ASM
+	ANDI32	r11,r10,_TIF_WORK_MASK
 	beq	r11,r0,restore_all		/* Nothing to do */
-	BTBZ	r1,r10,TIF_NEED_RESCHED_ASM,Lsignal_return
+	BTBZ	r1,r10,TIF_NEED_RESCHED,Lsignal_return
 
 Lwork_resched:
 	call	schedule
 	br	ret_from_exception
 
 Lsignal_return:
-	BTBZ	r1,r10,TIF_SIGPENDING_ASM,restore_all
+	BTBZ	r1,r10,TIF_SIGPENDING,restore_all
 	mov	r5,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
 	mov	r4,r0			/* oldset = 0 */
@@ -189,7 +189,7 @@ ENTRY(inthandler)
 
 ENTRY(ret_from_interrupt)
 	ldw	r4,PT_STATUS_EXTENSION(sp)
-	TSTBZ	r4,r4,PS_S_ASM,Luser_return	// Returning to user
+	TSTBZ	r4,r4,PS_S,Luser_return	/* Returning to user */
 
 #ifdef CONFIG_PREEMPT
 	GET_THREAD_INFO	r1
@@ -198,10 +198,10 @@ ENTRY(ret_from_interrupt)
 
 need_resched:
 	ldw	r4,TI_FLAGS(r1)		// ? Need resched set
-	BTBZ	r10,r4,TIF_NEED_RESCHED_ASM,restore_all
+	BTBZ	r10,r4,TIF_NEED_RESCHED,restore_all
 	ldw	r4,PT_ESTATUS(sp)	// ? Interrupts off
-	BTBZ	r10,r4,NIOS2_STATUS_PIE_OFST_ASM,restore_all
-	movia	r4,PREEMPT_ACTIVE_ASM
+	BTBZ	r10,r4,NIOS2_STATUS_PIE_OFST,restore_all
+	movia	r4,PREEMPT_ACTIVE
 	stw	r4,TI_PREEMPT_COUNT(r1)
 	rdctl	r10,status		/* enable intrs again */
 	ori	r10,r10,0x0001

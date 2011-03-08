@@ -134,11 +134,7 @@ struct switch_stack {
  */
 
 #ifdef CONFIG_MMU
-
-# define ESTATUS_EU		0x00000002
-
 # define user_mode(regs)	(((regs)->estatus & ESTATUS_EU))
-
 #else
 
 # define PS_S			0x00000001

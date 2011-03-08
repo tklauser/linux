@@ -30,6 +30,7 @@ int main(void)
 	DEFINE(TASK_THREAD_INFO, offsetof(struct task_struct, stack));
 	DEFINE(TASK_MM, offsetof(struct task_struct, mm));
 	DEFINE(TASK_ACTIVE_MM, offsetof(struct task_struct, active_mm));
+	BLANK();
 
 	/* offsets into the irq_cpustat_t struct */
 	DEFINE(CPUSTAT_SOFTIRQ_PENDING, offsetof(irq_cpustat_t, __softirq_pending));
@@ -41,6 +42,7 @@ int main(void)
 	DEFINE(THREAD_KESR, offsetof(struct thread_struct, kesr));
 #endif
 	DEFINE(THREAD_FLAGS, offsetof(struct thread_struct, flags));
+	BLANK();
 
 	/* offsets into the pt_regs */
 	DEFINE(PT_ORIG_R2, offsetof(struct pt_regs, orig_r2));
@@ -72,6 +74,7 @@ int main(void)
 	DEFINE(PT_STATUS_EXTENSION, offsetof(struct pt_regs, status_extension));
 #endif
 	DEFINE(PT_REGS_SIZE, sizeof(struct pt_regs));
+	BLANK();
 
 	/* offsets into the switch_stack */
 	DEFINE(SW_R16, offsetof(struct switch_stack, r16));
@@ -86,11 +89,7 @@ int main(void)
 	DEFINE(SW_GP, offsetof(struct switch_stack, gp));
 	DEFINE(SW_RA, offsetof(struct switch_stack, ra));
 	DEFINE(SWITCH_STACK_SIZE, sizeof(struct switch_stack));
-
-	DEFINE(NIOS2_STATUS_PIE_MSK_ASM, NIOS2_STATUS_PIE_MSK);
-	DEFINE(NIOS2_STATUS_PIE_OFST_ASM, NIOS2_STATUS_PIE_OFST);
-	DEFINE(NIOS2_STATUS_U_MSK_ASM, NIOS2_STATUS_U_MSK);
-	DEFINE(NIOS2_STATUS_U_OFST_ASM, NIOS2_STATUS_U_OFST);
+	BLANK();
 
 	/* Offsets in thread_info structure, used in assembly code */
 	DEFINE(TI_TASK, offsetof(struct thread_info, task));
@@ -98,43 +97,11 @@ int main(void)
 	DEFINE(TI_FLAGS, offsetof(struct thread_info, flags));
 	DEFINE(TI_CPU, offsetof(struct thread_info, cpu));
 	DEFINE(TI_PREEMPT_COUNT, offsetof(struct thread_info, preempt_count));
-
-	DEFINE(PREEMPT_ACTIVE_ASM, PREEMPT_ACTIVE);
-
-	DEFINE(THREAD_SIZE_ASM, THREAD_SIZE);
-
-	DEFINE(TIF_SYSCALL_TRACE_ASM, TIF_SYSCALL_TRACE);
-	DEFINE(TIF_SIGPENDING_ASM, TIF_SIGPENDING);
-	DEFINE(TIF_NEED_RESCHED_ASM, TIF_NEED_RESCHED);
-	DEFINE(TIF_POLLING_NRFLAG_ASM, TIF_POLLING_NRFLAG);
-
-	DEFINE(_TIF_SYSCALL_TRACE_ASM, _TIF_SYSCALL_TRACE);
-	DEFINE(_TIF_SIGPENDING_ASM, _TIF_SIGPENDING);
-	DEFINE(_TIF_NEED_RESCHED_ASM, _TIF_NEED_RESCHED);
-	DEFINE(_TIF_POLLING_NRFLAG_ASM, _TIF_POLLING_NRFLAG);
-
-	DEFINE(_TIF_WORK_MASK_ASM, _TIF_WORK_MASK);
-
-	/* Currently not used by assembly... */
-	DEFINE(LINUX_SDRAM_START, DDR2_TOP_BASE);
-	DEFINE(LINUX_SDRAM_END, DDR2_TOP_BASE+DDR2_TOP_SPAN);
-
-	/* Cache defines */
-	DEFINE(NIOS2_ICACHE_SIZE, ICACHE_SIZE);
-	DEFINE(NIOS2_ICACHE_LINE_SIZE, ICACHE_LINE_SIZE);
-	DEFINE(NIOS2_DCACHE_SIZE_ASM, NIOS2_DCACHE_SIZE);
-	DEFINE(NIOS2_DCACHE_LINE_SIZE_ASM, NIOS2_DCACHE_LINE_SIZE);
+	BLANK();
 
 #ifdef CONFIG_MMU
-	DEFINE(ESTATUS_EU_ASM, ESTATUS_EU);
-
 	/* TLB statistics */
 	DEFINE(STAT_TLB_FAST_HANDLER, offsetof(struct tlb_stat, tlb_fast_handler));
-
-	DEFINE(CPU_EXCEPT_VIRT_ADDRESS_ASM, EXCEPTION_ADDR);
-	DEFINE(CPU_FAST_TLB_MISS_EXCEPTION_VIRT_ADDR_ASM,  FAST_TLB_MISS_EXCEPTION_ADDR);
-#else
-	DEFINE(PS_S_ASM, PS_S);
 #endif
 
 	return 0;

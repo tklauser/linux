@@ -67,18 +67,18 @@ PF_DTRACE_BIT = 5
 .macro SAVE_ALL
 #ifdef CONFIG_MMU
 	rdctl	r24,estatus
-	andi	r24,r24,NIOS2_STATUS_U_MSK_ASM
+	andi	r24,r24,NIOS2_STATUS_U_MSK
 	beq	r24,r0,1f		// In supervisor mode, already on kernel stack
 #else
 	movia	r24,status_extension	// Read status extension
 	ldw	r24,0(r24)
-	andi	r24,r24,PS_S_ASM
+	andi	r24,r24,PS_S
 	bne	r24,r0,1f		// In supervisor mode, already on kernel stack
 #endif /* CONFIG_MMU */
 
 	movia	r24,_current_thread	// Switch to current kernel stack
 	ldw	r24,0(r24)		//  using the thread_info
-	addi	r24,r24,THREAD_SIZE_ASM-PT_REGS_SIZE
+	addi	r24,r24,THREAD_SIZE-PT_REGS_SIZE
 	stw	sp,PT_SP(r24)		// Save user stack before changing
 	mov	sp,r24
 	br	2f
@@ -114,7 +114,7 @@ PF_DTRACE_BIT = 5
 	movia	r24,status_extension		// Read status extension
 	ldw	r1,0(r24)
 	stw	r1,PT_STATUS_EXTENSION(sp)	// Store user/supervisor status
-	ORI32	r1,r1,PS_S_ASM			// Set supervisor mode
+	ORI32	r1,r1,PS_S			// Set supervisor mode
 	stw	r1,0(r24)
 #endif /* CONFIG_MMU */
 	stw	ea,PT_EA(sp)

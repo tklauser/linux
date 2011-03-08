@@ -42,6 +42,7 @@
 #include <asm/entry.h>
 #include <asm/unistd.h>
 #include <asm/processor.h>
+#include <asm/nios.h>
 
 .macro GET_THREAD_INFO reg
 .if THREAD_SIZE & 0xffff0000
@@ -188,7 +189,7 @@ ENTRY(handle_system_call)
 
 	/* If someone is ptrace:ing us, take the long way.
 	 */
-	BTBNZ	r11,r11,TIF_SYSCALL_TRACE_ASM,traced_system_call
+	BTBNZ	r11,r11,TIF_SYSCALL_TRACE,traced_system_call
 #if 0
 	SAVE_SWITCH_STACK
 	mov	r9,r8
@@ -242,7 +243,7 @@ end_translate_rc_and_ret:
 	
 ret_from_exception:
 	ldw	r1,PT_ESTATUS(sp)
-	TSTBNZ	r1,r1,ESTATUS_EU_ASM,Luser_return	/* if so, skip resched, signals */
+	TSTBNZ	r1,r1,ESTATUS_EU,Luser_return	/* if so, skip resched, signals */
 
 restore_all:
 	rdctl	r10,status			/* disable intrs */
@@ -315,16 +316,16 @@ end_translate_rc_and_ret2:
 Luser_return:
 	GET_THREAD_INFO	r11			/* get thread_info pointer */
 	ldw	r10,TI_FLAGS(r11)		/* get thread_info->flags */
-	ANDI32	r11,r10,_TIF_WORK_MASK_ASM
+	ANDI32	r11,r10,_TIF_WORK_MASK
 	beq	r11,r0,restore_all		/* Nothing to do */
-	BTBZ	r1,r10,TIF_NEED_RESCHED_ASM,Lsignal_return
+	BTBZ	r1,r10,TIF_NEED_RESCHED,Lsignal_return
 
 Lwork_resched:
 	call	schedule
 	br	ret_from_exception
 
 Lsignal_return:
-	BTBZ	r1,r10,TIF_SIGPENDING_ASM,restore_all
+	BTBZ	r1,r10,TIF_SIGPENDING,restore_all
 	mov	r5,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
 	mov	r4,r0			/* oldset = 0 */
@@ -376,7 +377,7 @@ external_interrupt:
 
 ENTRY(ret_from_interrupt)
 	ldw	r1,PT_ESTATUS(sp)	/* check if returning to kernel */
-	TSTBNZ	r1,r1,ESTATUS_EU_ASM,Luser_return
+	TSTBNZ	r1,r1,ESTATUS_EU,Luser_return
 
 #ifdef CONFIG_PREEMPT
 	GET_THREAD_INFO	r1
@@ -385,10 +386,10 @@ ENTRY(ret_from_interrupt)
 
 need_resched:
 	ldw	r4,TI_FLAGS(r1)		// ? Need resched set
-	BTBZ	r10,r4,TIF_NEED_RESCHED_ASM,restore_all
+	BTBZ	r10,r4,TIF_NEED_RESCHED,restore_all
 	ldw	r4,PT_ESTATUS(sp)	// ? Interrupts off
-	BTBZ	r10,r4,NIOS2_STATUS_PIE_OFST_ASM,restore_all
-	movia	r4,PREEMPT_ACTIVE_ASM
+	BTBZ	r10,r4,NIOS2_STATUS_PIE_OFST,restore_all
+	movia	r4,PREEMPT_ACTIVE
 	stw	r4,TI_PREEMPT_COUNT(r1)
 	rdctl	r10,status		/* enable intrs again */
 	ori	r10,r10,0x0001
