@@ -5,9 +5,6 @@
 /* ==> REMOVE */
 #define DDR2_TOP_BASE	0x0
 #define DDR2_TOP_SPAN	33554432
-#define ICACHE_LINE_SIZE 32
-#define ICACHE_LINE_SIZE_LOG2 5
-#define ICACHE_SIZE 8192
 #define FAST_TLB_MISS_EXCEPTION_ADDR 0xc9000000
 #define EXCEPTION_ADDR 0xc0000020
 #define RESET_ADDR 0xc4000000
@@ -62,15 +59,20 @@
 #define EXC_MPU_REGION_VIOLATION 16	/* MPU region violation */
 
 /*
- * Maximum possible data cache size on the Nios II. Only used in head.S where
+ * Maximum possible cache sizes on the Nios II. Only used in head.S where
  * the information from cpuinfo is not yet available.
  */
 #define NIOS2_DCACHE_SIZE	65536
+#define NIOS2_ICACHE_SIZE	65536
 
 /*
- * Minumum possible data cache line size on the Nios II, only used in head.S
+ * Minumum possible cache line sizes on the Nios II. Only used in head.S
  * where the information from cpuinfo is not yet available.
  */
 #define NIOS2_DCACHE_LINE_SIZE	4
+
+/* Nios II instruction cache line size is always 32 bytes */
+#define NIOS2_ICACHE_LINE_SIZE	32
+#define NIOS2_ICACHE_LINE_SHIFT	5
 
 #endif /* _ASM_NIOS2_NIOS_H */
