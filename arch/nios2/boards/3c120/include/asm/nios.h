@@ -42,35 +42,6 @@
 # define CPU_FREQ	0
 #endif
 
-/* Nios II Constants */
-#define NIOS2_STATUS_PIE_MSK  0x1
-#define NIOS2_STATUS_PIE_OFST 0
-#define NIOS2_STATUS_U_MSK    0x2
-#define NIOS2_STATUS_U_OFST   1
-
-
-#define RDCTL(r) __builtin_rdctl(r)
-#define WRCTL(r,v) __builtin_wrctl(r,v)
-
-#define CTL_STATUS    0
-#define CTL_ESTATUS   1
-#define CTL_BSTATUS   2
-#define CTL_IENABLE   3
-#define CTL_IPENDING  4
-#define CTL_CPUID     5
-#define CTL_RSV1      6
-#define CTL_EXCEPTION 7
-#define CTL_PTEADDR   8
-#define CTL_TLBACC    9
-#define CTL_TLBMISC   10
-#define CTL_RSV2      11
-#define CTL_BADADDR   12
-#define CTL_CONFIG    13
-#define CTL_MPUBASE   14
-#define CTL_MPUACC    15
-#define CTL_SIM	   6
-
-
 #define EXC_RESET		0	/* System reset		*/
 #define EXC_CPU_RESET		1	/* CPU reset		*/
 #define EXC_EXTERNAL_INTERRUPT	2	/* Interrupt		*/

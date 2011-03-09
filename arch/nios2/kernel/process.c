@@ -163,7 +163,7 @@ int kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 	regs.r4 = (unsigned long) arg;
 	regs.r5 = (unsigned long) fn;
 	regs.ea = (unsigned long) kernel_thread_helper;
-	regs.estatus = NIOS2_STATUS_PIE_MSK;
+	regs.estatus = STATUS_PIE;
 
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, 0, &regs, 0, NULL, NULL);
 #else /* !CONFIG_MMU */
@@ -321,7 +321,7 @@ int copy_thread(unsigned long clone_flags,
 	childstack->ra = (unsigned long) ret_from_fork;
 
 #ifdef CONFIG_MMU
-	if (childregs->estatus & NIOS2_STATUS_U_MSK)
+	if (childregs->estatus & ESTATUS_EU)
 		childregs->sp = usp;
 	else
 		childregs->sp = (unsigned long) childstack;
@@ -455,16 +455,16 @@ unsigned long get_wchan(struct task_struct *p)
 
 /*
  * Do necessary setup to start up a newly executed thread.
- * Will statup in user mode (status_extension = 0).
+ * Will startup in user mode (status_extension = 0).
  */
 void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 {
 	memset((void *) regs, 0, sizeof(struct pt_regs));
 #ifdef CONFIG_MMU
-	regs->estatus = NIOS2_STATUS_PIE_MSK | NIOS2_STATUS_U_MSK;
+	regs->estatus = ESTATUS_EPIE | ESTATUS_EU;
 #else
 	/* No user mode setting on NOMMU, at least for now */
-	regs->estatus = NIOS2_STATUS_PIE_MSK;
+	regs->estatus = ESTATUS_EPIE;
 #endif /* CONFIG_MMU */
 	regs->ea = pc;
 	regs->sp = sp;

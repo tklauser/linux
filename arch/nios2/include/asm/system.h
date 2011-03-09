@@ -12,9 +12,10 @@
 #define _ASM_NIOS2_SYSTEM_H
 
 #include <linux/linkage.h>
-#include <asm/entry.h>
 #include <linux/string.h>
 #include <linux/irqflags.h>
+
+#include <asm/registers.h>
 #include <asm/setup.h>
 
 asmlinkage void resume(void);

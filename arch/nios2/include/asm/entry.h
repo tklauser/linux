@@ -15,6 +15,7 @@
 #ifdef __ASSEMBLY__
 
 #include <asm/setup.h>
+#include <asm/registers.h>
 #include <asm/page.h>
 #include <asm/asm-offsets.h>
 
@@ -67,7 +68,7 @@ PF_DTRACE_BIT = 5
 .macro SAVE_ALL
 #ifdef CONFIG_MMU
 	rdctl	r24,estatus
-	andi	r24,r24,NIOS2_STATUS_U_MSK
+	andi	r24,r24,ESTATUS_EU
 	beq	r24,r0,1f		// In supervisor mode, already on kernel stack
 #else
 	movia	r24,status_extension	// Read status extension

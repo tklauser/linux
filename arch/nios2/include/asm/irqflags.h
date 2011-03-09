@@ -1,7 +1,7 @@
 #ifndef _ASM_IRQFLAGS_H
 #define _ASM_IRQFLAGS_H
 
-#include <asm/nios.h>
+#include <asm/registers.h>
 
 static inline unsigned long arch_local_save_flags(void)
 {
@@ -21,19 +21,19 @@ static inline void arch_local_irq_disable(void)
 {
 	unsigned long flags;
 	flags = arch_local_save_flags();
-	arch_local_irq_restore(flags & ~NIOS2_STATUS_PIE_MSK);
+	arch_local_irq_restore(flags & ~STATUS_PIE);
 }
 
 static inline void arch_local_irq_enable(void)
 {
 	unsigned long flags;
 	flags = arch_local_save_flags();
-	arch_local_irq_restore(flags | NIOS2_STATUS_PIE_MSK);
+	arch_local_irq_restore(flags | STATUS_PIE);
 }
 
 static inline int arch_irqs_disabled_flags(unsigned long flags)
 {
-	return (flags & NIOS2_STATUS_PIE_MSK) == 0;
+	return (flags & STATUS_PIE) == 0;
 }
 
 static inline int arch_irqs_disabled(void)
@@ -45,7 +45,7 @@ static inline unsigned long arch_local_irq_save(void)
 {
 	unsigned long flags;
 	flags = arch_local_save_flags();
-	arch_local_irq_restore(flags & ~NIOS2_STATUS_PIE_MSK);
+	arch_local_irq_restore(flags & ~STATUS_PIE);
 	return flags;
 }
 
