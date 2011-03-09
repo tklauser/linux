@@ -1,14 +1,15 @@
 /*
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *
+ * Based on asm/pgtable-32.h from mips which is:
+ *
+ * Copyright (C) 1994, 95, 96, 97, 98, 99, 2000, 2003 Ralf Baechle
+ * Copyright (C) 1999, 2000, 2001 Silicon Graphics, Inc.
+ *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * pgd = Page Global Directory
- * pud = Page Upped Directory
- * pmd = Page Middle Directory
- * pte = Page Table Entry
- *
- * Copyright (C) 2003 Ralf Baechle
  */
 
 #ifndef _ASM_NIOS2_PGTABLE_H
@@ -33,26 +34,24 @@ struct mm_struct;
 			    ((r) ? _PAGE_READ : 0) |		\
 			    ((w) ? _PAGE_WRITE : 0))
 /*
- * These are the macros that generic kernel code needs 
+ * These are the macros that generic kernel code needs
  * (to populate protection_map[])
  */
 
-/* Remove W bit on private pages for COW support
- */	    
+/* Remove W bit on private pages for COW support */
 #define __P000	MKP(0,0,0)
 #define __P001	MKP(0,0,1)
-#define __P010	MKP(0,0,0) /*COW*/
-#define __P011	MKP(0,0,1) /*COW*/
-#define __P100	MKP(1,0,0) 
+#define __P010	MKP(0,0,0)	/* COW */
+#define __P011	MKP(0,0,1)	/* COW */
+#define __P100	MKP(1,0,0)
 #define __P101	MKP(1,0,1)
-#define __P110	MKP(1,0,0) /*COW*/
-#define __P111	MKP(1,0,1) /*COW*/
+#define __P110	MKP(1,0,0)	/* COW */
+#define __P111	MKP(1,0,1)	/* COW */
 
-/* Shared pages can have exact HW mapping
- */ 
+/* Shared pages can have exact HW mapping */
 #define __S000	MKP(0,0,0)
 #define __S001	MKP(0,0,1)
-#define __S010	MKP(0,1,0) 
+#define __S010	MKP(0,1,0)
 #define __S011	MKP(0,1,1)
 #define __S100	MKP(1,0,0)
 #define __S101	MKP(1,0,1)
@@ -63,14 +62,9 @@ struct mm_struct;
 #define PAGE_KERNEL __pgprot(_PAGE_PRESENT | _PAGE_CACHED | _PAGE_READ | \
 			     _PAGE_WRITE | _PAGE_EXEC | _PAGE_GLOBAL)
 
-/* ivho:PAGE_COPY only used by read_zero_pagealigned() in mem.c
- */
 #define PAGE_COPY MKP(0,0,1)
 
-
 #define PGD_ORDER	0
-#define PUD_ORDER	aieeee_attempt_to_allocate_pud
-#define PMD_ORDER	1
 #define PTE_ORDER	0
 
 #define PTRS_PER_PGD	((PAGE_SIZE << PGD_ORDER) / sizeof(pgd_t))
@@ -82,12 +76,10 @@ struct mm_struct;
 #define PGDIR_SIZE	(1UL << PGDIR_SHIFT)
 #define PGDIR_MASK	(~(PGDIR_SIZE-1))
 
-/* ivho: ?
- */ 
+/* ivho: ? */
 #define PTE_FILE_MAX_BITS       28
 
-/* ivho: is vaddr always "unsigned long"? 
- */
+/* ivho: is vaddr always "unsigned long"? */
 struct page * ZERO_PAGE(unsigned long vaddr);
 
 
@@ -106,14 +98,12 @@ extern void paging_init(void);
 				 & (PTRS_PER_PGD - 1))
 
 /* to find an entry in a pagetable-directory */
-//#define pgd_offset(mm,addr)	((mm)->pgd + pgd_index(addr))
 //ivho: checkme type of addr
 pgd_t *pgd_offset(struct mm_struct *, unsigned long addr);
 
 void pgtable_cache_init(void);
 
-/* ivho: set back to "static inline" when correct in pgtable.c
- */
+/* ivho: set back to "static inline" when correct in pgtable.c */
 int pte_write(pte_t pte);
 int pte_dirty(pte_t pte);
 int pte_young(pte_t pte);
@@ -141,7 +131,6 @@ swp_entry_t   __swp_entry(unsigned long, pgoff_t offset);
 int pte_none(pte_t pte);
 int pte_present(pte_t pte);
 
-
 /*
  * The following only work if pte_present() is true.
  * Undefined behaviour if not..
@@ -167,7 +156,6 @@ void  pmd_clear(pmd_t *pmdp);
 void set_pte(pte_t *ptep, pte_t pteval);
 void set_pte_at(struct mm_struct *mm, unsigned long addr,pte_t *ptep, pte_t pteval);
 
-//int pmd_none2 (pmd_t *pmd);
 int pmd_none(pmd_t pmd);
 int pmd_bad(pmd_t pmd);
 
@@ -195,17 +183,13 @@ pte_t pgoff_to_pte(pgoff_t off);
 #define pmd_page(pmd)		(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
 #define pmd_page_vaddr(pmd)	pmd_val(pmd)
 
-//#define pud_none(pud) 0
-//#define pmd_offset(pmd,off) 0
-
 unsigned long pte_pfn(pte_t pte);
 pte_t * pte_offset_map(pmd_t *dir, unsigned long address);
 
 /* to find an entry in a kernel page-table-directory */
 pgd_t * pgd_offset_k(unsigned long address);
 
-/* Get the address to the PTE for a vaddr in specfic directory 
- */
+/* Get the address to the PTE for a vaddr in specfic directory */
 pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address);
 
 #define pte_ERROR(e) \
