@@ -16,9 +16,8 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/seq_file.h>
-#include <asm/system.h>
 
-#define IENABLE 3
+#include <asm/system.h>
 
 asmlinkage void do_IRQ(int irq, struct pt_regs *regs)
 {
@@ -34,17 +33,17 @@ asmlinkage void do_IRQ(int irq, struct pt_regs *regs)
 static void chip_unmask(unsigned int irq)
 {
 	unsigned ien;
-	ien = __builtin_rdctl(IENABLE);
+	ien = RDCTL(CTL_IENABLE);
 	ien |= (1 << irq);
-	__builtin_wrctl(IENABLE, ien);
+	WRCTL(CTL_IENABLE, ien);
 }
 
 static void chip_mask(unsigned int irq)
 {
 	unsigned ien;
-	ien = __builtin_rdctl(IENABLE);
+	ien = RDCTL(CTL_IENABLE);
 	ien &= ~(1 << irq);
-	__builtin_wrctl(IENABLE, ien);
+	WRCTL(CTL_IENABLE, ien);
 }
 
 static struct irq_chip m_irq_chip = {
