@@ -21,6 +21,7 @@
 #include <linux/blkdev.h>
 
 #include <asm/mmu_context.h>
+#include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/prom.h>
 #include <asm/cpuinfo.h>
@@ -75,24 +76,22 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 void __init setup_arch(char **cmdline_p)
 {
 	int bootmap_size;
-	extern int _stext, _etext;
-	extern int _edata, _end;
 
 #ifdef CONFIG_EARLY_PRINTK
 	setup_early_printk();
 #endif
 
-	memory_start = PAGE_ALIGN((unsigned long)__pa(&_end));
+	memory_start = PAGE_ALIGN((unsigned long)__pa(_end));
 	memory_end = (unsigned long) DDR2_TOP_BASE + DDR2_TOP_SPAN;
 
 #ifndef CONFIG_PASS_CMDLINE
 	memcpy(cmd_line, default_command_line, sizeof(default_command_line));
 #endif
 
-	init_mm.start_code = (unsigned long) &_stext;
-	init_mm.end_code = (unsigned long) &_etext;
-	init_mm.end_data = (unsigned long) &_edata;
-	init_mm.brk = (unsigned long) &_end;
+	init_mm.start_code = (unsigned long) _stext;
+	init_mm.end_code = (unsigned long) _etext;
+	init_mm.end_data = (unsigned long) _edata;
+	init_mm.brk = (unsigned long) _end;
 	init_task.thread.kregs = &fake_regs;
 
 	/* Keep a copy of command line */

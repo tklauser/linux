@@ -30,6 +30,7 @@
 #include <asm/pgtable.h>
 #include <asm/system.h>
 #include <asm/percpu.h>
+#include <asm/sections.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 #include <asm/cpuinfo.h>
@@ -124,8 +125,7 @@ void __init paging_init(void)
 
 void __init mem_init(void)
 {
-	int codek = 0, datak = 0;
-	extern char _etext, _stext, _end;
+	unsigned int codek = 0, datak = 0;
 	unsigned long start_mem = memory_start; /* DAVIDM - these must start at end of kernel */
 	unsigned long end_mem   = memory_end; /* DAVIDM - this must not include kernel stack at top */
 
@@ -146,12 +146,12 @@ void __init mem_init(void)
 	/* this will put all memory onto the freelists */
 	totalram_pages = free_all_bootmem();
 
-	codek = (&_etext - &_stext) >> 10;
-	datak = (&_end - &_etext) >> 10;
+	codek = (_etext - _stext) >> 10;
+	datak = (_end - _etext) >> 10;
 
 	printk(KERN_INFO "Memory available: %luk/%luk RAM (%dk kernel code, %dk data)\n",
 	       nr_free_pages() << (PAGE_SHIFT - 10),
-	       (&_end - &_stext) >> 10,
+	       (_end - _stext) >> 10,
 	       codek, datak);
 }
 
@@ -187,8 +187,6 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 
 void __init_refok free_initmem(void)
 {
-	extern char __init_begin, __init_end;
-
 	free_init_pages("unused kernel memory",
 			(unsigned long)(&__init_begin),
 			(unsigned long)(&__init_end));
