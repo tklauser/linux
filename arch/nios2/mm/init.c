@@ -162,41 +162,36 @@ void __init mmu_init(void)
 }
 #endif
 
-#ifdef CONFIG_BLK_DEV_INITRD
-void __init free_initrd_mem(unsigned long start, unsigned long end)
-{
-	int pages = 0;
-	for (; start < end; start += PAGE_SIZE) {
-		ClearPageReserved(virt_to_page(start));
-		init_page_count(virt_to_page(start));
-		free_page(start);
-		totalram_pages++;
-		pages++;
-	}
-	printk (KERN_NOTICE "Freeing initrd memory: %dk freed\n", pages);
-}
-#endif
-
-void free_initmem(void)
+static void __init free_init_pages(const char *what, unsigned long start, unsigned long end)
 {
 	unsigned long addr;
-	extern char __init_begin, __init_end;
-	/*
-	 * The following code should be cool even if these sections
-	 * are not page aligned.
-	 */
-	addr = PAGE_ALIGN((unsigned long)(&__init_begin));
+
 	/* next to check that the page we free is not a partial page */
-	for (; addr + PAGE_SIZE < (unsigned long)(&__init_end); addr +=PAGE_SIZE) {
+	for (addr = start; addr + PAGE_SIZE <= end; addr += PAGE_SIZE) {
 		ClearPageReserved(virt_to_page(addr));
 		init_page_count(virt_to_page(addr));
 		free_page(addr);
 		totalram_pages++;
 	}
-	printk(KERN_NOTICE "Freeing unused kernel memory: %ldk freed (0x%x - 0x%x)\n",
-			(addr - PAGE_ALIGN((long) &__init_begin)) >> 10,
-			(int)(PAGE_ALIGN((unsigned long)(&__init_begin))),
-			(int)(addr - PAGE_SIZE));
+
+	printk(KERN_NOTICE "Freeing %s: %ldk freed (0x%lx - 0x%lx)\n",
+	       what, (end - start) >> 10, start, end);
+}
+
+#ifdef CONFIG_BLK_DEV_INITRD
+void __init free_initrd_mem(unsigned long start, unsigned long end)
+{
+	free_init_pages("initrd memory", start, end);
+}
+#endif
+
+void __init_refok free_initmem(void)
+{
+	extern char __init_begin, __init_end;
+
+	free_init_pages("unused kernel memory",
+			(unsigned long)(&__init_begin),
+			(unsigned long)(&__init_end));
 }
 
 #ifdef CONFIG_MMU
