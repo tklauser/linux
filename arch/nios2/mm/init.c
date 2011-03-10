@@ -179,7 +179,6 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 
 void free_initmem(void)
 {
-#ifdef CONFIG_RAMKERNEL
 	unsigned long addr;
 	extern char __init_begin, __init_end;
 	/*
@@ -198,7 +197,6 @@ void free_initmem(void)
 			(addr - PAGE_ALIGN((long) &__init_begin)) >> 10,
 			(int)(PAGE_ALIGN((unsigned long)(&__init_begin))),
 			(int)(addr - PAGE_SIZE));
-#endif
 }
 
 #ifdef CONFIG_MMU

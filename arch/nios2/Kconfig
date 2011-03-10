@@ -43,9 +43,6 @@ config NOT_COHERENT_CACHE
 config TRACE_IRQFLAGS_SUPPORT
 	def_bool n
 
-config RAMKERNEL
-	def_bool y
-
 source "init/Kconfig"
 
 source "kernel/Kconfig.preempt"
