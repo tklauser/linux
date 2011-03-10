@@ -77,6 +77,8 @@ void __init setup_arch(char **cmdline_p)
 {
 	int bootmap_size;
 
+	console_verbose();
+
 #ifdef CONFIG_EARLY_PRINTK
 	setup_early_printk();
 #endif
