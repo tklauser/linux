@@ -23,7 +23,6 @@
  ---------------------------------------------------------------------*/
 
 #include <linux/types.h>
-#include <asm/nios.h>
 #include <asm/string.h>
 
 #ifdef __HAVE_ARCH_MEMSET

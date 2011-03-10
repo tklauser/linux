@@ -21,7 +21,6 @@
 
 #include <asm/tlbstats.h>
 #include <asm/cpuinfo.h>
-#include <asm/nios.h>
 
 #define TLB_INDEX_MASK ((((1UL << (cpuinfo.tlb_ptr_sz - cpuinfo.tlb_num_ways_log2))) - 1) << PAGE_SHIFT)
 

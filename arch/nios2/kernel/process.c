@@ -17,25 +17,12 @@
  */
 
 #include <linux/module.h>
-#include <linux/errno.h>
 #include <linux/sched.h>
-#include <linux/kernel.h>
-#include <linux/mm.h>
-#include <linux/stddef.h>
-#include <linux/unistd.h>
-#include <linux/ptrace.h>
 #include <linux/slab.h>
-#include <linux/user.h>
-#include <linux/interrupt.h>
-#include <linux/reboot.h>
 #include <linux/uaccess.h>
 #include <linux/tick.h>
 #include <linux/fs.h>
-#include <linux/err.h>
 
-#include <asm/system.h>
-#include <asm/setup.h>
-#include <asm/pgtable.h>
 #include <asm/cacheflush.h>
 
 asmlinkage void ret_from_fork(void);

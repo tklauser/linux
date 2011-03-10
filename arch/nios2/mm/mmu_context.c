@@ -10,7 +10,6 @@
  * for more details.
  */
 
-#include <asm/nios.h>
 #include <asm/cpuinfo.h>
 #include <asm/mmu_context.h>
 

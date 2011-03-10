@@ -15,16 +15,8 @@
 #include <linux/mm.h>
 
 #include <asm/exceptions.h>
-#include <asm/delay.h>
-#include <asm/system.h>
 #include <asm/sections.h>
 #include <asm/ptrace.h>
-#include <asm/page.h>
-#include <asm/pgtable.h>
-#include <asm/unistd.h>
-#include <linux/uaccess.h>
-
-#include <asm/nios.h>
 
 /*
  * The architecture-independent backtrace generator
@@ -35,7 +27,6 @@ void dump_stack(void)
 
 	show_stack(current, &stack);
 }
-
 EXPORT_SYMBOL(dump_stack);
 
 /*

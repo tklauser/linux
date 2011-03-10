@@ -11,15 +11,12 @@
  * for more details.
  */
 
-#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/sched.h>
-#include <linux/init.h>
 #include <linux/init_task.h>
 #include <linux/fs.h>
 #include <linux/mqueue.h>
 
-#include <asm/uaccess.h>
 #include <asm/pgtable.h>
 
 static struct signal_struct init_signals = INIT_SIGNALS(init_signals);
