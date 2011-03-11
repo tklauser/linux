@@ -30,6 +30,12 @@
 
 #include <asm/tlbstats.h>
 
+#define EXC_SUPERV_INSN_ACCESS	9	/* Supervisor only instruction address */
+#define EXC_SUPERV_DATA_ACCESS	11	/* Supervisor only data address	*/
+#define EXC_X_PROTECTION_FAULT	13	/* TLB permission violation (x) */
+#define EXC_R_PROTECTION_FAULT	14	/* TLB permission violation (r) */
+#define EXC_W_PROTECTION_FAULT	15	/* TLB permission violation (w) */
+
 extern struct tlb_stat statistics;
 
 /*
@@ -108,7 +114,7 @@ good_area:
 		if (!(vma->vm_flags & VM_READ))
 			goto bad_area;
 		break;
-	case EXC_W_PROT_FAULT:
+	case EXC_W_PROTECTION_FAULT:
 		flags = FAULT_FLAG_WRITE;
 		if (!(vma->vm_flags & VM_WRITE))
 			goto bad_area;

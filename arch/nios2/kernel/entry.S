@@ -53,33 +53,31 @@
 .endif
 .endm
 
-/* FIXME: Lots of these exceptions needs to be handled
- */ 
+/* FIXME: Lots of these exceptions need to be handled */
 .data
 exception_table:
-        .word   unhandled_exception	// 0 - Reset
-        .word   unhandled_exception	// 1 - Processor only reset
-        .word   external_interrupt	// 2 - Interrupt
-        .word   handle_trap		// 3 - trap instruction
+	.word unhandled_exception	/* 0 - Reset */
+	.word unhandled_exception	/* 1 - Processor-only Reset */
+	.word external_interrupt	/* 2 - Interrupt */
+	.word handle_trap		/* 3 - Trap Instruction */
 
-        .word   instruction_trap	// 4 - Unimplemented instruction
-        .word   handle_illegal		// 5 - Illegal instruction
-        .word   handle_unaligned	// 6 - Misaligned data access
-        .word   handle_unaligned	// 7 - Misaligned destination address
+	.word instruction_trap		/* 4 - Unimplemented instruction */
+	.word handle_illegal		/* 5 - Illegal instruction */
+	.word handle_unaligned		/* 6 - Misaligned data access */
+	.word handle_unaligned		/* 7 - Misaligned destination address */
 
-        .word   handle_diverror		// 8 - Division error
-        .word   protection_exception_ba	// 9 - Supervisor only instr. access
-        .word   protection_exception_instr // 10 - Supervisor only instr.
-        .word   protection_exception_ba	// 11 - Supervisor only data address
+	.word handle_diverror		/* 8 - Division error */
+	.word protection_exception_ba	/* 9 - Supervisor-only instr. address */
+	.word protection_exception_instr /* 10 - Supervisor only instruction */
+	.word protection_exception_ba	/* 11 - Supervisor only data address */
 
-        .word   unhandled_exception	// 12 - tlb double fault.
-        .word   protection_exception_pte// 13 - tlb permission violation (x)
-        .word   protection_exception_pte// 14 - tlb permission violation (r)
-        .word   protection_exception_pte// 15 - tlb permission violation (w)
-	
-        .word   unhandled_exception	// 16 - MPU region violation
+	.word unhandled_exception	/* 12 - Double TLB miss (data) */
+	.word protection_exception_pte	/* 13 - TLB permission violation (x) */
+	.word protection_exception_pte	/* 14 - TLB permission violation (r) */
+	.word protection_exception_pte	/* 15 - TLB permission violation (w) */
 
-	
+	.word unhandled_exception	/* 16 - MPU region violation */
+
 trap_table:
 	.word	handle_system_call	// 0 
 	.word	instruction_trap	// 1
