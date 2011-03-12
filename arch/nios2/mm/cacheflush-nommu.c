@@ -1,7 +1,11 @@
 /*
  * Copyright (C) 2004 Microtronix Datacom Ltd.
  *
- * based on arch/m68k/mm/memory.c
+ * based on arch/m68k/mm/memory.c which is:
+ *
+ * Copyright (C) 1999-2002 Greg Ungerer <gerg@snapgear.com>
+ * Copyright (C) 1998 Kenneth Albanowski <kjahds@kjahds.com>
+ * Copyright (C) 1995 Hamish Macdonald
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License. See the file "COPYING" in the main directory of this archive
@@ -21,6 +25,7 @@
 #include <asm/system.h>
 #include <asm/traps.h>
 #include <asm/io.h>
+#include <asm/cpuinfo.h>
 
 /*
  *	Define cache invalidate functions. The instruction and data cache
@@ -30,59 +35,65 @@
  */
 static __inline__ void cache_invalidate_inst(unsigned long paddr, int len)
 {
-	if (len >= nasys_icache_size) {
+	if (len >= cpuinfo.icache_size) {
 		__asm__ __volatile__("1:\n\t"
 				     "flushi	%0\n\t"
 				     "sub	%0,%0,%1\n\t"
 				     "bgt	%0,r0,1b\n\t"
-				     "flushp\n\t"::"r"
-				     (nasys_icache_size),
-				     "r"(nasys_icache_line_size));
+				     "flushp\n\t"
+				     :
+				     : "r" (cpuinfo.icache_size),
+				       "r" (cpuinfo.icache_line_size));
 	} else {
 		unsigned long sset, eset;
 
 		sset =
-		    (paddr & (nasys_icache_size - 1)) &
-		    (~(nasys_icache_line_size - 1));
+		    (paddr & (cpuinfo.icache_size - 1)) &
+		    (~(cpuinfo.icache_line_size - 1));
 		eset =
-		    (((paddr & (nasys_icache_size - 1)) + len) &
-		     (~(nasys_icache_line_size - 1))) + nasys_icache_line_size;
+		    (((paddr & (cpuinfo.icache_size - 1)) + len) &
+		     (~(cpuinfo.icache_line_size - 1))) + cpuinfo.icache_line_size;
 
 		__asm__ __volatile__("1:\n\t"
 				     "flushi	%0\n\t"
 				     "add	%0,%0,%2\n\t"
 				     "blt	%0,%1,1b\n\t"
-				     "flushp\n\t"::"r"(sset),
-				     "r"(eset), "r"(nasys_icache_line_size));
+				     "flushp\n\t"
+				     :
+				     : "r" (sset),
+				       "r" (eset),
+				       "r" (cpuinfo.icache_line_size));
 	}
-
 }
 
 static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 {
-	if (len >= nasys_dcache_size * 2) {
+	if (len >= cpuinfo.dcache_size * 2) {
 		__asm__ __volatile__("1:\n\t"
 				     "flushd	0(%0)\n\t"
 				     "sub	%0,%0,%1\n\t"
-				     "bgt	%0,r0,1b\n\t"::"r"
-				     (nasys_dcache_size),
-				     "r"(nasys_dcache_line_size));
+				     "bgt	%0,r0,1b\n\t"
+				     :
+				     : "r" (cpuinfo.dcache_size),
+				       "r" (cpuinfo.dcache_line_size));
 
 	} else {
 		unsigned long sset, eset;
 
-		sset = paddr & (~(nasys_dcache_line_size - 1));
+		sset = paddr & (~(cpuinfo.dcache_line_size - 1));
 		eset =
-		    (paddr + len + nasys_dcache_line_size - 1) &
-		    (~(nasys_dcache_line_size - 1));
+		    (paddr + len + cpuinfo.dcache_line_size - 1) &
+		    (~(cpuinfo.dcache_line_size - 1));
 
 		__asm__ __volatile__("1:\n\t"
 				     "flushda	0(%0)\n\t"
 				     "add	%0,%0,%2\n\t"
-				     "blt	%0,%1,1b\n\t"::"r"(sset),
-				     "r"(eset), "r"(nasys_dcache_line_size));
+				     "blt	%0,%1,1b\n\t"
+				     :
+				     : "r" (sset),
+				       "r" (eset),
+				       "r"(cpuinfo.dcache_line_size));
 	}
-
 }
 
 /*
@@ -120,16 +131,19 @@ void cache_push_all(void)
 	__asm__ __volatile__("1:\n\t"
 			     "flushd	0(%0)\n\t"
 			     "sub	%0,%0,%1\n\t"
-			     "bgt	%0,r0,1b\n\t"::"r"(nasys_dcache_size),
-			     "r"(nasys_dcache_line_size));
+			     "bgt	%0,r0,1b\n\t"
+			     :
+			     : "r" (cpuinfo.dcache_size),
+			       "r" (cpuinfo.dcache_line_size));
 
 	__asm__ __volatile__("1:\n\t"
 			     "flushi	%0\n\t"
 			     "sub	%0,%0,%1\n\t"
 			     "bgt	%0,r0,1b\n\t"
-			     "flushp\n\t"::"r"(nasys_icache_size),
-			     "r"(nasys_icache_line_size));
-
+			     "flushp\n\t"
+			     :
+			     : "r" (cpuinfo.icache_size),
+			       "r" (cpuinfo.icache_line_size));
 }
 
 /*
