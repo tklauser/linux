@@ -79,7 +79,7 @@ static inline int __access_ok(unsigned long addr, unsigned long size)
 #endif /* CONFIG_MMU */
 
 #define access_ok(type, addr, len)		\
-	likely(__access_ok((addr), (len)))
+	likely(__access_ok((unsigned long)(addr), (unsigned long)(len)))
 
 #ifdef CONFIG_MMU
 extern long __copy_from_user(void* to, const void __user *from, unsigned long n);
