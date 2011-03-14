@@ -12,6 +12,7 @@
  * for more details.
  */
 
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/console.h>
@@ -50,7 +51,9 @@ static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 				       unsigned r7)
 {
+#ifdef CONFIG_MMU
 	mmu_init();
+#endif
 
 #if defined(CONFIG_PASS_CMDLINE)
 	if (r4 == 0x534f494e) { /* r4 is magic NIOS */
