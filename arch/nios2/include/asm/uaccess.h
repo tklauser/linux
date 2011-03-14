@@ -19,6 +19,8 @@
 #include <linux/errno.h>
 #include <linux/thread_info.h>
 
+#include <asm/page.h>
+
 #define VERIFY_READ    0
 #define VERIFY_WRITE   1
 
@@ -109,18 +111,40 @@ static inline long copy_to_user(void __user *to, const void *from, unsigned long
 #define __copy_from_user_inatomic	__copy_from_user
 #define __copy_to_user_inatomic		__copy_to_user
 
+#ifdef CONFIG_MMU
 extern long strncpy_from_user(char *__to, const char __user *__from,
 				long __len);
 extern long strnlen_user(const char __user *s, long n);
 
-#ifdef CONFIG_MMU
 unsigned long __clear_user(void __user *to, unsigned long n);
-#else
+
+#else /* CONFIG_MMU */
+
+static inline long strncpy_from_user(char *dst, const char *src, long count)
+{
+	char *tmp;
+	strncpy(dst, src, count);
+	for (tmp = dst; *tmp && count > 0; tmp++, count--)
+		;
+	return(tmp - dst); /* DAVIDM should we count a NUL ?  check getname */
+}
+
+/*
+ * Return the size of a string (including the ending 0)
+ *
+ * Return 0 on exception, a value greater than N if too long
+ */
+static inline long strnlen_user(const char *src, long n)
+{
+	return strlen(src) + 1; /* DAVIDM make safer */
+}
+
 static inline unsigned long __clear_user(void *to, unsigned long n)
 {
 	memset(to, 0, n);
 	return 0;
 }
+
 #endif /* CONFIG_MMU */
 
 static inline unsigned long clear_user(void __user *addr, unsigned long size)
