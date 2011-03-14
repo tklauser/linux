@@ -116,6 +116,7 @@ config DTB_SOURCE
 config ALIGNMENT_TRAP
 	bool "Catch alignment trap"
 	default y
+	depends on MMU
 	help
 	  NIOS II cpus cannot fetch/store data which is not bus aligned,
 	  i.e., a 2 or 4 byte fetch must start at an address divisible by
