@@ -110,19 +110,6 @@ void cache_push(unsigned long paddr, int len)
 }
 
 /*
- * cache_push_v() semantics: Write back any dirty cache data in the given
- * area, and invalidate those entries at least in the instruction cache. This
- * is intended to be used after data has been written that can be executed as
- * code later. The range is defined by a _user_mode_ _virtual_ address.
- */
-
-void cache_push_v(unsigned long vaddr, int len)
-{
-	cache_invalidate_data(vaddr, len);
-	cache_invalidate_inst(vaddr, len);
-}
-
-/*
  * cache_push_all() semantics: Invalidate instruction cache and write back
  * dirty data cache & invalidate.
  */
