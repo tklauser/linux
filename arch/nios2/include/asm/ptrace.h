@@ -12,6 +12,10 @@
 #ifndef _ASM_NIOS2_PTRACE_H
 #define _ASM_NIOS2_PTRACE_H
 
+#ifndef CONFIG_MMU
+# define PS_S		0x00000001
+#endif
+
 #ifndef __ASSEMBLY__
 
 /*
@@ -136,12 +140,7 @@ struct switch_stack {
 #ifdef CONFIG_MMU
 # define user_mode(regs)	(((regs)->estatus & ESTATUS_EU))
 #else
-
-# define PS_S			0x00000001
-# define PS_T			0x00000002
-
 # define user_mode(regs)	(!((regs)->status_extension & PS_S))
-
 #endif /* CONFIG_MMU */
 
 #define instruction_pointer(regs)	((regs)->ra)
