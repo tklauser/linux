@@ -102,6 +102,8 @@ extern unsigned long memory_end;
 # define __va(x)		((void *)(x))
 #endif /* CONFIG_MMU */
 
+#define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
+
 #ifdef CONFIG_MMU
 # define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
 # define pfn_valid(pfn)		((pfn) >= ARCH_PFN_OFFSET && \
@@ -109,8 +111,6 @@ extern unsigned long memory_end;
 
 # define virt_to_page(vaddr)	pfn_to_page(PFN_DOWN(virt_to_phys(vaddr)))
 # define virt_addr_valid(vaddr)	pfn_valid(PFN_DOWN(virt_to_phys(vaddr)))
-
-# define page_to_virt(page)	((((page) - mem_map) << PAGE_SHIFT) + PAGE_OFFSET)
 #else /* CONFIG_MMU */
 # define pfn_valid(pfn)	        ((pfn) < max_mapnr)
 
@@ -133,9 +133,11 @@ extern unsigned long memory_end;
 
 # define UNCAC_ADDR(addr)	((void *)((unsigned)(addr) | CONFIG_IO_REGION_BASE))
 # define CAC_ADDR(addr)		((void *)(((unsigned)(addr) & ~CONFIG_IO_REGION_BASE) | CONFIG_KERNEL_REGION_BASE))
-#endif /* CONFIG_MMU */
 
 #include <asm-generic/memory_model.h>
+
+#endif /* CONFIG_MMU */
+
 #include <asm-generic/getorder.h>
 
 #endif /* _ASM_NIOS2_PAGE_H */
