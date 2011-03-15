@@ -202,7 +202,7 @@ static inline void __iomem *__ioremap(unsigned long physaddr, unsigned long size
 	if (cacheflag & _PAGE_CACHED) {
 		return (void __iomem *)(physaddr & ~0x80000000);
 	} else {
-		flush_dcache_range(physaddr, physaddr + size);
+/*		flush_dcache_range(physaddr, physaddr + size); */
 		return (void __iomem *)(physaddr | 0x80000000);
 	}
 }
