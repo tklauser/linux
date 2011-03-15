@@ -23,6 +23,7 @@
 #include <linux/fs.h>
 
 #include <asm/cacheflush.h>
+#include <asm/traps.h>
 
 asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 			 unsigned long prot, unsigned long flags,
