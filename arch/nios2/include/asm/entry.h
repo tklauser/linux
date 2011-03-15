@@ -15,6 +15,7 @@
 #ifdef __ASSEMBLY__
 
 #include <asm/setup.h>
+#include <asm/processor.h>
 #include <asm/registers.h>
 #include <asm/page.h>
 #include <asm/asm-offsets.h>
