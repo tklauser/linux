@@ -133,10 +133,12 @@ void show_regs(struct pt_regs *regs)
 #endif
 }
 
+#ifdef CONFIG_MMU
 static void kernel_thread_helper(void *arg, int (*fn)(void *))
 {
 	do_exit(fn(arg));
 }
+#endif
 
 /*
  * Create a kernel thread
