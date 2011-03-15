@@ -115,6 +115,7 @@ static inline struct thread_info *current_thread_info(void)
 # define TIF_POLLING_NRFLAG	3	/* true if poll_idle() is polling
 					   TIF_NEED_RESCHED */
 # define TIF_MEMDIE		4
+# define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
 # define TIF_FREEZE		16	/* is freezing for suspend */
 #endif /* CONFIG_MMU */
 
@@ -124,9 +125,9 @@ static inline struct thread_info *current_thread_info(void)
 #ifdef CONFIG_MMU
 # define _TIF_SYSCALL_AUDIT	(1<<TIF_SYSCALL_AUDIT)
 # define _TIF_SECCOMP		(1<<TIF_SECCOMP)
-# define _TIF_RESTORE_SIGMASK	(1<<TIF_RESTORE_SIGMASK)
 # define _TIF_USEDFPU		(1<<TIF_USEDFPU)
 #endif /* CONFIG_MMU */
+#define _TIF_RESTORE_SIGMASK	(1<<TIF_RESTORE_SIGMASK)
 #define _TIF_POLLING_NRFLAG	(1<<TIF_POLLING_NRFLAG)
 #define _TIF_FREEZE		(1<<TIF_FREEZE)
 
