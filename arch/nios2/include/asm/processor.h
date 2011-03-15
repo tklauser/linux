@@ -79,13 +79,18 @@ struct thread_struct {
 
 #ifdef CONFIG_MMU
 # define INIT_THREAD {			\
-	.kregs	= 0,			\
+	.kregs	= NULL,			\
 	.ksp	= 0,			\
 	.kpsr	= 0,			\
 	.flags	= NIOS2_FLAG_KTHREAD,	\
 }
 #else
-# define INIT_THREAD { sizeof(init_stack) + (unsigned long) init_stack }
+# define INIT_THREAD {			\
+	.kregs	= NULL,			\
+	.ksp	= sizeof(init_stack) + (unsigned long) init_stack, \
+	.kpsr	= 0,			\
+	.flags	= 0,			\
+}
 #endif /* CONFIG_MMU */
 
 extern void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp);
