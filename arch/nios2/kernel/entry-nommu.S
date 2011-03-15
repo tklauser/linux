@@ -107,6 +107,8 @@ Lsignal_return:
 	mov	r5,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
 	mov	r4,r0			/* oldset = 0 */
+	movi	r6,1			/* in_syscall, will be overriden in
+					   do_signal for NOMMU */
 	call	do_signal
 	RESTORE_SWITCH_STACK
 	br	restore_all

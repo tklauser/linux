@@ -1,31 +1,13 @@
 /*
- * linux/arch/nios2nommu/kernel/signal.c
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ * Copyright (C) 1991, 1992 Linus Torvalds
  *
- *  Copyright (C) 1991, 1992  Linus Torvalds
- * Copyright (C) 2004   Microtronix Datacom Ltd
+ * This file is based on kernel/signal.c from m68knommu.
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file COPYING in the main directory of this archive
  * for more details.
- *
- * Linux/m68k support by Hamish Macdnald
- *
- * 68060 fixes by Jesper Skov
- *
- * 1997-12-01  Modified for POSIX.1b signals by Andreas Schwab
- *
- * mathemu support by Roman Zippel
- *  (Note: fpstate in the signal context is completely ignored for the emulator
- *         and the internal floating point format is put on stack)
- *
- * ++roman (07/09/96): implemented signal stacks (specially for tosemu on
- * Atari :-) Current limitation: Only one sigstack can be active at one time.
- * If a second signal with SA_ONSTACK set arrives while working on a sigstack,
- * SA_ONSTACK is ignored. This behaviour avoids lots of trouble with nested
- * signal handlers!
- *
- * Jan/20/2004		dgt	    NiosII
- *
  */
 
 #include <linux/signal.h>
@@ -40,7 +22,7 @@
 
 #define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
 
-asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall);
+asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall);
 
 /*
  * Atomically swap in the new signal mask, and wait for a signal.
@@ -57,8 +39,12 @@ asmlinkage int do_sigsuspend(struct pt_regs *regs)
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 
+#ifdef CONFIG_MMU
 	regs->r2 = EINTR;
-   regs->r7 = 1;
+	regs->r7 = 1;
+#else
+	regs->r2 = -EINTR;
+#endif
 	while (1) {
 		current->state = TASK_INTERRUPTIBLE;
 		schedule();
@@ -88,8 +74,12 @@ do_rt_sigsuspend(struct pt_regs *regs)
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 
+#ifdef CONFIG_MMU
 	regs->r2 = EINTR;
-   regs->r7 = 1;
+	regs->r7 = 1;
+#else
+	regs->r2 = -EINTR;
+#endif
 	while (1) {
 		current->state = TASK_INTERRUPTIBLE;
 		schedule();
@@ -208,8 +198,6 @@ rt_restore_ucontext(struct pt_regs *regs, struct switch_stack *sw,
 	err |= __get_user(regs->r13, &gregs[12]);
 	err |= __get_user(regs->r14, &gregs[13]);
 	err |= __get_user(regs->r15, &gregs[14]);
-	err |= __get_user(regs->ea, &gregs[27]);
-	err |= __get_user(regs->sp, &gregs[28]);
 	err |= __get_user(sw->r16, &gregs[15]);
 	err |= __get_user(sw->r17, &gregs[16]);
 	err |= __get_user(sw->r18, &gregs[17]);
@@ -218,11 +206,23 @@ rt_restore_ucontext(struct pt_regs *regs, struct switch_stack *sw,
 	err |= __get_user(sw->r21, &gregs[20]);
 	err |= __get_user(sw->r22, &gregs[21]);
 	err |= __get_user(sw->r23, &gregs[22]);
-	err |= __get_user(regs->ra, &gregs[23]);
+	/* gregs[23] is handled below */
 	err |= __get_user(sw->fp, &gregs[24]);  // Verify, should this be settable
 	err |= __get_user(sw->gp, &gregs[25]);  // Verify, should this be settable
 
 	err |= __get_user(temp, &gregs[26]);  // Not really necessary no user settable bits
+	err |= __get_user(regs->ea, &gregs[27]);
+
+#ifdef CONFIG_MMU
+	err |= __get_user(regs->ra, &gregs[23]);
+	err |= __get_user(regs->sp, &gregs[28]);
+#else
+
+	err |= __get_user(regs->ra, &gregs[23]);
+	err |= __get_user(regs->status_extension,
+			  &uc->uc_mcontext.status_extension);
+#endif
+
 	regs->estatus = (regs->estatus & 0xffffffff);
 	regs->orig_r2 = -1;		/* disable syscall checks */
 
@@ -242,29 +242,23 @@ asmlinkage int do_sigreturn(struct pt_regs *regs)
 	sigset_t set;
 	int rval;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof(*frame))) {
-	        printk("Failed test 1 frame at %p size %ld\n", 
-           frame, sizeof(*frame));
+	if (!access_ok(VERIFY_READ, frame, sizeof(*frame)))
 		goto badframe;
-	}
+
 	if (__get_user(set.sig[0], &frame->sc.sc_mask) ||
 	    (_NSIG_WORDS > 1 &&
 	     __copy_from_user(&set.sig[1], &frame->extramask,
-			      sizeof(frame->extramask)))) {
-	        printk("Failed test 2\n");
+			      sizeof(frame->extramask))))
 		goto badframe;
-	}
 
 	sigdelsetmask(&set, ~_BLOCKABLE);
 	spin_lock_irq(&current->sighand->siglock);
 	current->blocked = set;
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
-	
-	if (restore_sigcontext(regs, &frame->sc, frame + 1, &rval)) {
- 	        printk("Failed to restore sigcontext\n");
+
+	if (restore_sigcontext(regs, &frame->sc, frame + 1, &rval))
 		goto badframe;
-	}
 	return rval;
 
 badframe:
@@ -274,15 +268,17 @@ badframe:
 
 asmlinkage int do_rt_sigreturn(struct switch_stack *sw)
 {
-	struct pt_regs *regs = (struct pt_regs *) (sw + 1);
+	struct pt_regs *regs = (struct pt_regs *)(sw + 1);
 	struct rt_sigframe *frame = (struct rt_sigframe *) regs->sp;  // Verify, can we follow the stack back
 	sigset_t set;
 	int rval;
 
 	if (!access_ok(VERIFY_READ, frame, sizeof(*frame)))
 		goto badframe;
+
 	if (__copy_from_user(&set, &frame->uc.uc_sigmask, sizeof(set)))
 		goto badframe;
+
 	sigdelsetmask(&set, ~_BLOCKABLE);
 	spin_lock_irq(&current->sighand->siglock);
 	current->blocked = set;
@@ -330,8 +326,6 @@ static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 	err |= __put_user(regs->r13, &gregs[12]);
 	err |= __put_user(regs->r14, &gregs[13]);
 	err |= __put_user(regs->r15, &gregs[14]);
-	err |= __put_user(regs->ea, &gregs[27]);
-	err |= __put_user(regs->sp, &gregs[28]);
 	err |= __put_user(sw->r16, &gregs[15]);
 	err |= __put_user(sw->r17, &gregs[16]);
 	err |= __put_user(sw->r18, &gregs[17]);
@@ -340,9 +334,20 @@ static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 	err |= __put_user(sw->r21, &gregs[20]);
 	err |= __put_user(sw->r22, &gregs[21]);
 	err |= __put_user(sw->r23, &gregs[22]);
+#ifdef CONFIG_MMU
 	err |= __put_user(regs->ra, &gregs[23]);
+#else
+	err |= __put_user(regs->sp, &gregs[23]);
+#endif
 	err |= __put_user(sw->fp, &gregs[24]);
 	err |= __put_user(sw->gp, &gregs[25]);
+	err |= __put_user(regs->ea, &gregs[27]);
+#ifdef CONFIG_MMU
+	err |= __put_user(regs->sp, &gregs[28]);
+#else
+	err |= __put_user(regs->status_extension,
+			  &uc->uc_mcontext.status_extension);
+#endif
 	return err;
 }
 
@@ -361,7 +366,11 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size)
 	usp = regs->sp;
 
 	/* This is the X/Open sanctioned signal stack switching.  */
+#ifdef CONFIG_MMU
 	if ((ka->sa.sa_flags & SA_ONSTACK) && (current->sas_ss_sp != 0)) {
+#else
+	if (ka->sa.sa_flags & SA_ONSTACK) {
+#endif
 		if (!on_sig_stack(usp))
 			usp = current->sas_ss_sp + current->sas_ss_size;
 	}
@@ -385,10 +394,19 @@ static void setup_frame (int sig, struct k_sigaction *ka,
 	/* Set up to return from userspace.  */
 	regs->ra = (unsigned long) &frame->retcode[0];
 
+#ifdef CONFIG_MMU
 	/* movi r2,__NR_sigreturn */
 	err |= __put_user(0x00800004 + (__NR_sigreturn << 6), (long *)(frame->retcode));
 	/* trap */
 	err |= __put_user(0x003b683a, (long *)(frame->retcode + 4));
+#else
+	/* movi r3,__NR_sigreturn */
+	err |= __put_user(0x00c00004 + (__NR_sigreturn << 6), (long *)(frame->retcode));
+	/* mov r2,r0 */
+	err |= __put_user(0x0005883a, (long *)(frame->retcode + 4));
+	/* trap */
+	err |= __put_user(0x003b683a, (long *)(frame->retcode + 8));
+#endif /* CONFIG_MMU */
 
 	if (err)
 		goto give_sigsegv;
@@ -435,10 +453,19 @@ static void setup_rt_frame (int sig, struct k_sigaction *ka, siginfo_t *info,
 	/* Set up to return from userspace.  */
 	regs->ra = (unsigned long) &frame->retcode[0];
 
+#ifdef CONFIG_MMU
 	/* movi r2,__NR_rt_sigreturn */
 	err |= __put_user(0x00800004 + (__NR_rt_sigreturn << 6), (long *)(frame->retcode));
 	/* trap */
 	err |= __put_user(0x003b683a, (long *)(frame->retcode + 4));
+#else
+	/* movi r3,__NR_rt_sigreturn */
+	err |= __put_user(0x00c00004 + (__NR_rt_sigreturn << 6), (long *)(frame->retcode));
+	/* mov r2,r0 */
+	err |= __put_user(0x0005883a, (long *)(frame->retcode + 4));
+	/* trap */
+	err |= __put_user(0x003b683a, (long *)(frame->retcode + 8));
+#endif /* CONFIG_MMU */
 
 	if (err)
 		goto give_sigsegv;
@@ -466,17 +493,17 @@ give_sigsegv:
 static inline void
 handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
 {
+#ifdef CONFIG_MMU
 	switch (regs->r2) {
-   case ERESTART_RESTARTBLOCK:
+	case ERESTART_RESTARTBLOCK:
 	case ERESTARTNOHAND:
 		regs->r2 = EINTR;
-      regs->r7 = 1;
+		regs->r7 = 1;
 		break;
-
 	case ERESTARTSYS:
 		if (has_handler && !(ka->sa.sa_flags & SA_RESTART)) {
 			regs->r2 = EINTR;
-         regs->r7 = 1;
+			regs->r7 = 1;
 			break;
 		}
 	/* fallthrough */
@@ -486,20 +513,35 @@ handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
 		regs->ea -= 4;
 		break;
 	}
+#else /* CONFIG_MMU */
+	switch (regs->r2) {
+	case -ERESTARTNOHAND:
+		if (!has_handler)
+			goto do_restart;
+		regs->r2 = -EINTR;
+		break;
+
+	case -ERESTARTSYS:
+		if (has_handler && !(ka->sa.sa_flags & SA_RESTART)) {
+			regs->r2 = -EINTR;
+			break;
+		}
+	/* fallthrough */
+	case -ERESTARTNOINTR:
+	do_restart:
+		regs->r2 = regs->orig_r2;
+		regs->ea -= 4;
+		break;
+	}
+#endif /* CONFIG_MMU */
 }
 
 /*
  * OK, we're invoking a handler
  */
-static void
-handle_signal(int sig, struct k_sigaction *ka, siginfo_t *info,
-              sigset_t *oldset, struct pt_regs *regs, int syscall)
+static void handle_signal(int sig, struct k_sigaction *ka, siginfo_t *info,
+			  sigset_t *oldset, struct pt_regs *regs)
 {
-	/* are we from a system call? */
-	if (syscall)
-		/* If so, check system call restarting.. */
-		handle_restart(regs, ka, 1);
-
 	/* set up the stack frame */
 	if (ka->sa.sa_flags & SA_SIGINFO)
 		setup_rt_frame(sig, ka, info, oldset, regs);
@@ -523,7 +565,7 @@ handle_signal(int sig, struct k_sigaction *ka, siginfo_t *info,
  * want to handle. Thus you cannot kill init even with a SIGKILL even by
  * mistake.
  */
-asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
+asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall)
 {
 	struct k_sigaction ka;
 	siginfo_t info;
@@ -538,6 +580,17 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 	if (!user_mode(regs))
 		return 1;
 
+#ifndef CONFIG_MMU
+	/*
+	 * On NOMMU we always get in_syscall as 1 and instead need to look at
+	 * orig_r2 whether we are in a syscall.
+	 */
+	if (regs->orig_r2 >= 0)
+		in_syscall = 1;
+	else
+		in_syscall = 0;
+#endif
+
 	/* FIXME - Do we still need to do this ? */
 	current->thread.kregs = regs;
 
@@ -546,29 +599,51 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int syscall)
 
 	signr = get_signal_to_deliver(&info, &ka, regs, NULL);
 	if (signr > 0) {
+		/*
+		 * Are we from a system call? If so, check system call
+		 * restarting.
+		 */
+		if (in_syscall)
+			handle_restart(regs, &ka, 1);
 		/* Whee!  Actually deliver the signal.  */
-		handle_signal(signr, &ka, &info, oldset, regs, syscall);
+		handle_signal(signr, &ka, &info, oldset, regs);
 		return 1;
 	}
 
+#ifdef CONFIG_MMU
 	/*
 	 * No signal to deliver to the process - restart the syscall.
 	 */
-	if (syscall){
-      /* Did the syscall return an error code */
-      if(regs->r7 == 1) {
-         if (regs->r2 == ERESTARTNOHAND ||
-             regs->r2 == ERESTARTSYS ||
-             regs->r2 == ERESTARTNOINTR) 
-         {
-            regs->r2 = regs->orig_r2;
-            regs->r7 = regs->orig_r7;
-            regs->ea -= 4;
-         } else if (regs->r2 == ERESTART_RESTARTBLOCK) {
-            regs->r2 = __NR_restart_syscall;
-            regs->ea -= 4;
-         }
-      }
+	if (in_syscall) {
+		/* Did the syscall return an error code */
+		if (regs->r7 == 1) {
+			if (regs->r2 == ERESTARTNOHAND ||
+			    regs->r2 == ERESTARTSYS ||
+			    regs->r2 == ERESTARTNOINTR) {
+				regs->r2 = regs->orig_r2;
+				regs->r7 = regs->orig_r7;
+				regs->ea -= 4;
+			} else if (regs->r2 == ERESTART_RESTARTBLOCK) {
+				regs->r2 = __NR_restart_syscall;
+				regs->ea -= 4;
+			}
+		}
 	}
+#else
+	/* Did we come from a system call? */
+	if (in_syscall) {
+		/* Restart the system call - no handlers present */
+		if (regs->r2 == -ERESTARTNOHAND ||
+		    regs->r2 == -ERESTARTSYS ||
+		    regs->r2 == -ERESTARTNOINTR) {
+			regs->r2 = regs->orig_r2;
+			regs->ea -= 4;
+		} else if (regs->r2 == -ERESTART_RESTARTBLOCK) {
+			regs->r2 = __NR_restart_syscall;
+			regs->ea -= 4;
+		}
+	}
+#endif /* CONFIG_MMU */
+
 	return 0;
 }
