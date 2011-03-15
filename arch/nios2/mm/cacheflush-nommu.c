@@ -109,11 +109,7 @@ void cache_push(unsigned long paddr, int len)
 	cache_invalidate_inst(paddr, len);
 }
 
-/*
- * cache_push_all() semantics: Invalidate instruction cache and write back
- * dirty data cache & invalidate.
- */
-void cache_push_all(void)
+void dcache_push_all(void)
 {
 	__asm__ __volatile__("1:\n\t"
 			     "flushd	0(%0)\n\t"
@@ -122,7 +118,10 @@ void cache_push_all(void)
 			     :
 			     : "r" (cpuinfo.dcache_size),
 			       "r" (cpuinfo.dcache_line_size));
+}
 
+void icache_push_all(void)
+{
 	__asm__ __volatile__("1:\n\t"
 			     "flushi	%0\n\t"
 			     "sub	%0,%0,%1\n\t"

@@ -44,15 +44,24 @@ extern void copy_to_user_page(struct vm_area_struct *vma, struct page *page,
 extern void cache_push(unsigned long vaddr, int len);
 extern void dcache_push(unsigned long vaddr, int len);
 extern void icache_push(unsigned long vaddr, int len);
-extern void cache_push_all(void);
+extern void dcache_push_all(void);
+extern void icache_push_all(void);
 extern void cache_clear(unsigned long paddr, int len);
+
+static inline void __flush_cache_all(void)
+{
+	dcache_push_all();
+	icache_push_all();
+}
 
 #define flush_cache_all()			__flush_cache_all()
 #define flush_cache_mm(mm)			do { } while (0)
 #define flush_cache_range(vma, start, end)	cache_push((start), (end) - (start))
 #define flush_cache_page(vma, vmaddr)		do { } while (0)
+#define flush_dcache_all()			dcache_push_all()
 #define flush_dcache_range(start,end)		dcache_push((start), (end) - (start))
 #define flush_dcache_page(page)			do { } while (0)
+#define flush_icache_all()			icache_push_all()
 #define flush_icache_range(start,end)		icache_push((start), (end) - (start))
 #define flush_icache_page(vma,pg)		do { } while (0)
 #define flush_icache_user_range(vma,pg,adr,len)	do { } while (0)
@@ -61,11 +70,6 @@ extern void cache_clear(unsigned long paddr, int len);
 	memcpy(dst, src, len)
 #define copy_from_user_page(vma, page, vaddr, dst, src, len) \
 	memcpy(dst, src, len)
-
-static inline void __flush_cache_all(void)
-{
-	cache_push_all();
-}
 
 #endif /* CONFIG_MMU */
 
