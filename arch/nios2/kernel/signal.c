@@ -53,8 +53,7 @@ asmlinkage int do_sigsuspend(struct pt_regs *regs)
 	}
 }
 
-asmlinkage int
-do_rt_sigsuspend(struct pt_regs *regs)
+asmlinkage int do_rt_sigsuspend(struct pt_regs *regs)
 {
 	sigset_t *unewset = (sigset_t *)regs->r4;
 	size_t sigsetsize = (size_t)regs->r5;
@@ -88,9 +87,8 @@ do_rt_sigsuspend(struct pt_regs *regs)
 	}
 }
 
-asmlinkage int 
-sys_sigaction(int sig, const struct old_sigaction *act,
-	      struct old_sigaction *oact)
+asmlinkage int sys_sigaction(int sig, const struct old_sigaction *act,
+			     struct old_sigaction *oact)
 {
 	struct k_sigaction new_ka, old_ka;
 	int ret;
@@ -127,24 +125,20 @@ sys_sigaction(int sig, const struct old_sigaction *act,
  * That makes the cache flush below easier.
  */
 
-
-struct sigframe
-{
+struct sigframe {
 	char retcode[12];
 	unsigned long extramask[_NSIG_WORDS-1];
 	struct sigcontext sc;
 };
 
-struct rt_sigframe
-{
+struct rt_sigframe {
 	char retcode[12];
 	struct siginfo info;
 	struct ucontext uc;
 };
 
-static inline int
-restore_sigcontext(struct pt_regs *regs, struct sigcontext *usc, void *fp,
-		   int *pr2)
+static inline int restore_sigcontext(struct pt_regs *regs,
+				     struct sigcontext *usc, void *fp, int *pr2)
 {
 	int err = 0;
 	int estatus;
@@ -169,9 +163,9 @@ badframe:
 	return 1;
 }
 
-static inline int
-rt_restore_ucontext(struct pt_regs *regs, struct switch_stack *sw,
-		    struct ucontext *uc, int *pr2)
+static inline int rt_restore_ucontext(struct pt_regs *regs,
+				      struct switch_stack *sw,
+				      struct ucontext *uc, int *pr2)
 {
 	int temp;
 	greg_t *gregs = uc->uc_mcontext.gregs;
@@ -269,7 +263,7 @@ badframe:
 asmlinkage int do_rt_sigreturn(struct switch_stack *sw)
 {
 	struct pt_regs *regs = (struct pt_regs *)(sw + 1);
-	struct rt_sigframe *frame = (struct rt_sigframe *) regs->sp;  // Verify, can we follow the stack back
+	struct rt_sigframe *frame = (struct rt_sigframe *) regs->sp;  /* Verify, can we follow the stack back */
 	sigset_t set;
 	int rval;
 
@@ -284,9 +278,10 @@ asmlinkage int do_rt_sigreturn(struct switch_stack *sw)
 	current->blocked = set;
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
-	
+
 	if (rt_restore_ucontext(regs, sw, &frame->uc, &rval))
 		goto badframe;
+
 	return rval;
 
 badframe:
@@ -295,7 +290,7 @@ badframe:
 }
 
 static int setup_sigcontext(struct sigcontext *sc, struct pt_regs *regs,
-			     unsigned long mask)
+			    unsigned long mask)
 {
 	int err = 0;
 
@@ -351,14 +346,14 @@ static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 	return err;
 }
 
-static inline void push_cache (unsigned long vaddr)
+static inline void push_cache(unsigned long vaddr)
 {
-   flush_dcache_range(vaddr, vaddr+12);
-   flush_icache_range(vaddr, vaddr+12);
+	flush_dcache_range(vaddr, vaddr + 12);
+	flush_icache_range(vaddr, vaddr + 12);
 }
 
-static inline void *
-get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size)
+static inline void *get_sigframe(struct k_sigaction *ka, struct pt_regs *regs,
+				 size_t frame_size)
 {
 	unsigned long usp;
 
@@ -374,11 +369,13 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size)
 		if (!on_sig_stack(usp))
 			usp = current->sas_ss_sp + current->sas_ss_size;
 	}
-	return (void *)((usp - frame_size) & -8UL);  // Verify, is it 32 or 64 bit aligned
+
+	/* Verify, is it 32 or 64 bit aligned */
+	return (void *)((usp - frame_size) & -8UL);
 }
 
-static void setup_frame (int sig, struct k_sigaction *ka,
-			 sigset_t *set, struct pt_regs *regs)
+static void setup_frame(int sig, struct k_sigaction *ka,
+			sigset_t *set, struct pt_regs *regs)
 {
 	struct sigframe *frame;
 	int err = 0;
@@ -411,7 +408,7 @@ static void setup_frame (int sig, struct k_sigaction *ka,
 	if (err)
 		goto give_sigsegv;
 
-	push_cache ((unsigned long) &frame->retcode);
+	push_cache((unsigned long) &frame->retcode);
 
 	/* Set up registers for signal handler */
 	regs->sp = (unsigned long) frame;
@@ -429,8 +426,8 @@ give_sigsegv:
 	force_sig(SIGSEGV, current);
 }
 
-static void setup_rt_frame (int sig, struct k_sigaction *ka, siginfo_t *info,
-			    sigset_t *set, struct pt_regs *regs)
+static void setup_rt_frame(int sig, struct k_sigaction *ka, siginfo_t *info,
+			   sigset_t *set, struct pt_regs *regs)
 {
 	struct rt_sigframe *frame;
 	int err = 0;
@@ -490,8 +487,8 @@ give_sigsegv:
 	force_sig(SIGSEGV, current);
 }
 
-static inline void
-handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
+static inline void handle_restart(struct pt_regs *regs, struct k_sigaction *ka,
+				  int has_handler)
 {
 #ifdef CONFIG_MMU
 	switch (regs->r2) {
@@ -520,7 +517,6 @@ handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
 			goto do_restart;
 		regs->r2 = -EINTR;
 		break;
-
 	case -ERESTARTSYS:
 		if (has_handler && !(ka->sa.sa_flags & SA_RESTART)) {
 			regs->r2 = -EINTR;
@@ -572,9 +568,8 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall)
 	int signr;
 
 	/*
-	 * We want the common case to go fast, which
-	 * is why we may in certain cases get here from
-	 * kernel mode. Just return without doing anything
+	 * We want the common case to go fast, which is why we may in certain
+	 * cases get here from kernel mode. Just return without doing anything
 	 * if so.
 	 */
 	if (!user_mode(regs))
