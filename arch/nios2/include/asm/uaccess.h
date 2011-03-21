@@ -84,6 +84,43 @@ static inline int __access_ok(unsigned long addr, unsigned long size)
 	likely(__access_ok((unsigned long)(addr), (unsigned long)(len)))
 
 #ifdef CONFIG_MMU
+# define __EX_TABLE_SECTION	".section __ex_table,\"a\"\n"
+#else
+# define __EX_TABLE_SECTION	".section .discard,\"a\"\n"
+#endif
+
+/*
+ * Zero Userspace
+ */
+
+static inline unsigned long __must_check __clear_user(void __user *to,
+						      unsigned long n)
+{
+	__asm__ __volatile__ (
+			"1:     stb     zero, 0(%1)\n"
+			"       addi    %0, %0, -1\n"
+			"       addi    %1, %1, 1\n"
+			"       bne     %0, zero, 1b\n"
+			"2:\n"
+			__EX_TABLE_SECTION
+			".word  1b, 2b\n"
+			".previous\n"
+			: "=r" (n), "=r" (to)
+			: "0" (n), "1" (to)
+	);
+
+	return n;
+}
+
+static inline unsigned long __must_check clear_user(void __user *to,
+						    unsigned long n)
+{
+	if (!access_ok(VERIFY_WRITE, to, n))
+		return n;
+	return __clear_user(to, n);
+}
+
+#ifdef CONFIG_MMU
 extern long __copy_from_user(void* to, const void __user *from, unsigned long n);
 extern long __copy_to_user(void __user *to, const void *from, unsigned long n);
 
@@ -100,25 +137,17 @@ static inline long copy_to_user(void __user *to, const void *from, unsigned long
 		return n;
 	return __copy_to_user(to, from, n);
 }
-#else
+
+extern long strncpy_from_user(char *__to, const char __user *__from,
+				long __len);
+extern long strnlen_user(const char __user *s, long n);
+
+#else /* CONFIG_MMU */
 # define copy_from_user(to, from, n)	(memcpy(to, from, n), 0)
 # define copy_to_user(to, from, n)	(memcpy(to, from, n), 0)
 
 # define __copy_from_user(to, from, n)	copy_from_user(to, from, n)
 # define __copy_to_user(to, from, n)	copy_to_user(to, from, n)
-#endif /* CONFIG_MMU */
-
-#define __copy_from_user_inatomic	__copy_from_user
-#define __copy_to_user_inatomic		__copy_to_user
-
-#ifdef CONFIG_MMU
-extern long strncpy_from_user(char *__to, const char __user *__from,
-				long __len);
-extern long strnlen_user(const char __user *s, long n);
-
-unsigned long __clear_user(void __user *to, unsigned long n);
-
-#else /* CONFIG_MMU */
 
 static inline long strncpy_from_user(char *dst, const char *src, long count)
 {
@@ -139,20 +168,10 @@ static inline long strnlen_user(const char *src, long n)
 	return strlen(src) + 1; /* DAVIDM make safer */
 }
 
-static inline unsigned long __clear_user(void *to, unsigned long n)
-{
-	memset(to, 0, n);
-	return 0;
-}
-
 #endif /* CONFIG_MMU */
 
-static inline unsigned long clear_user(void __user *addr, unsigned long size)
-{
-	if (!access_ok(VERIFY_WRITE, addr, size))
-		return size;
-	return __clear_user(addr, size);
-}
+#define __copy_from_user_inatomic	__copy_from_user
+#define __copy_to_user_inatomic		__copy_to_user
 
 /*
  * TODO: get_user/put_user stuff below can probably be the same for MMU and
