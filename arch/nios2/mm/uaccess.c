@@ -162,14 +162,3 @@ long strnlen_user(const char __user *s, long n)
 	}
 	return n + 1;
 }
-
-unsigned long __clear_user(void __user *to, unsigned long n)
-{
-	while (n > 0) {
-		if (__put_user(0, (char *)to) == -EFAULT)
-			break;
-		to++;
-		n--;
-	}
-	return n;
-}
