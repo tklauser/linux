@@ -54,11 +54,7 @@ _current_thread:
  * if the code resides in flash (looks for "Nios" at offset 0x0c from
  * the potential executable image).
  */
-#ifdef CONFIG_MMU
 	__HEAD
-#else
-	.text	/* FIXME: should probably be __HEAD on NOMMU too */
-#endif
 ENTRY(_start)
 	wrctl	status,r0		/* Disable interrupts */
 
