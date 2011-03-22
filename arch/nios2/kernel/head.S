@@ -82,13 +82,6 @@ fast_handler_start:
 helper:
 	stw     r3,r3save-helper(et)
 
-#if 1
-	/* Fast handler statistics */
-	movia	et,statistics
-	ldw	r3,STAT_TLB_FAST_HANDLER(et)
-	addi	r3,r3,1
-	stw	r3,STAT_TLB_FAST_HANDLER(et)
-#endif
 	rdctl   r3,pteaddr
 	srli    r3,r3,12
 	slli	r3,r3,2

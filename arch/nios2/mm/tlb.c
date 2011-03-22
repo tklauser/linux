@@ -18,13 +18,9 @@
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
-
-#include <asm/tlbstats.h>
 #include <asm/cpuinfo.h>
 
 #define TLB_INDEX_MASK ((((1UL << (cpuinfo.tlb_ptr_sz - cpuinfo.tlb_num_ways_log2))) - 1) << PAGE_SHIFT)
-
-struct tlb_stat statistics;
 
 /* Used as illegal PHYS_ADDR for TLB mappings
  */
@@ -39,90 +35,12 @@ struct tlb_stat statistics;
 #define WAY_SHIFT 20
 #define WAY_MASK  0xf
 
-/* Allow access from user space to special virtual address
- * for debugging purposes. TODO: This should probably go away.
- */
-#define NIOS_DEBUG_REG 1
-
-#if NIOS_DEBUG_REG
-#define DEBUG_ADDR	0xdffff000
-#define KD_CURRENT	0
-#define KD_PGD		1
-#define KD_MMU		2
-#define KD_TRACEON	3
-#define KD_TRACEOFF	4
-#define KD_DEBUG	5
-#define KD_PT_ESTATUS   6
-#define KD_START_STAT	7
-
-#define nios_iss_set_trace(d)
-
-static void start_new_stats(struct tlb_stat *stat)
-{
-	printk("tlb.c: stats->local_flush_tlb_mm = %d\r\n",
-			stat->local_flush_tlb_mm);
-	printk("tlb.c: stats->local_flush_tlb_one_pid = %d\r\n",
-			stat->local_flush_tlb_one_pid);
-	printk("tlb.c: stats->local_flush_tlb_range = %d\r\n",
-			stat->local_flush_tlb_range);
-	printk("tlb.c: stats->local_flush_tlb_page = %d\r\n",
-			stat->local_flush_tlb_page);
-	printk("tlb.c: stats->local_flush_tlb_kernel_range = %d\r\n",
-			stat->local_flush_tlb_kernel_range);
-	printk("tlb.c: stats->local_flush_tlb_one = %d\r\n",
-			stat->local_flush_tlb_one);
-	printk("tlb.c: stats->flush_tlb_pid = %d\r\n",
-			stat->flush_tlb_pid);
-	printk("tlb.c: stats->local_flush_tlb_all = %d\r\n",
-			stat->local_flush_tlb_all);
-	printk("tlb.c: stats->tlb_c_handler = %d\r\n",
-			stat->tlb_c_handler);
-	printk("tlb.c: stats->tlb_fast_handler = %d\r\n",
-			stat->tlb_fast_handler);
-	printk("tlb.c: stats->do_page_fault_prot = %d\r\n",
-			stat->do_page_fault_prot);
-	printk("tlb.c: stats->do_page_fault = %d\r\n",
-			stat->do_page_fault);
-	memset(stat, 0, sizeof(*stat));
-}
-
-static void nios_debug(struct pt_regs *pt,  unsigned long addr)
-{
-	int reg = addr & ~PAGE_MASK;
-
-	printk("debug detected %#lx (reg=%d)\n", addr, reg);
-
-	switch (reg) {
-	case KD_CURRENT:
-		printk("current->comm <%s>\n",current->comm);
-		break;
-	case KD_TRACEON:
-		nios_iss_set_trace(1);
-		break;
-	case KD_TRACEOFF:
-		nios_iss_set_trace(0);
-		break;
-	case KD_PT_ESTATUS:
-		printk("estatus=%#lx\n", pt->estatus);
-		break;
-	case KD_START_STAT:
-		start_new_stats(&statistics);
-		break;
-	default:
-		printk("unknown reg\n");
-		break;
-	}
-}
-#endif /* NIOS_DEBUG_REG */
-
 /*
  * All entries common to a mm share an asid.  To effectively flush these
  * entries, we just bump the asid.
  */
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
-	statistics.local_flush_tlb_mm++;
-
 	if (current->mm == mm)
 		local_flush_tlb_all();
 	else
@@ -141,8 +59,6 @@ void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
 {
 	unsigned int way;
 	unsigned long org_misc;
-
-	statistics.local_flush_tlb_one_pid++;
 
 	pr_debug("Flush tlb-entry for vaddr=%#lx\n", addr);
 
@@ -182,8 +98,6 @@ void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 	extern unsigned long get_pid_from_context(mm_context_t* ctx);
 	unsigned long mmu_pid = get_pid_from_context(&vma->vm_mm->context);
 
-	statistics.local_flush_tlb_range++;
-
 	while (start < end) {
 		local_flush_tlb_one_pid(start, mmu_pid);
 		start += PAGE_SIZE;
@@ -192,13 +106,11 @@ void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 
 void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long address)
 {
-	statistics.local_flush_tlb_page++;
 	local_flush_tlb_one(address);
 }
 
 void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 {
-	statistics.local_flush_tlb_kernel_range++;
 	while (start < end) {
 		local_flush_tlb_one(start);
 		start += PAGE_SIZE;
@@ -214,7 +126,6 @@ void local_flush_tlb_one(unsigned long addr)
 	unsigned int way;
 	unsigned long pid, org_misc;
 
-	statistics.local_flush_tlb_one++;
 	pr_debug("Flush tlb-entry for vaddr=%#lx\n", addr);
 
 	/* remember pid/way until we return.
@@ -298,8 +209,6 @@ void flush_tlb_pid(unsigned long pid)
 	unsigned int way;
 	unsigned long org_misc;
 
-	statistics.flush_tlb_pid++;
-
 	/* remember pid/way until we return */
 	org_misc = (RDCTL(CTL_TLBMISC) & ((PID_MASK << PID_SHIFT) | (WAY_MASK << WAY_SHIFT)));
 
@@ -334,8 +243,6 @@ void local_flush_tlb_all(void)
 	unsigned int way;
 	unsigned long org_misc;
 
-	statistics.local_flush_tlb_all++;
-
 	/* remember pid/way */
 	org_misc = (RDCTL(CTL_TLBMISC) & ((PID_MASK << PID_SHIFT) | (WAY_MASK << WAY_SHIFT)));
 
@@ -353,15 +260,6 @@ void local_flush_tlb_all(void)
 	WRCTL(CTL_TLBMISC, org_misc);
 }
 
-static int maybe_debug_register_access(struct pt_regs* regs, unsigned long addr)
-{
-	if (DEBUG_ADDR == (addr & PAGE_MASK)) {
-		nios_debug(regs, addr);
-		return 1;
-	}
-	return 0;
-}
-
 extern asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long write,
                                      unsigned long address);
 
@@ -376,13 +274,7 @@ void protection_exception_c(struct pt_regs *regs, int cause,
 	/* Restart the instruction */
 	regs->ea -= 4;
 
-	/* Handle debug addresses */
-	if (maybe_debug_register_access(regs, addr)) {
-		/* Don't restart the instruction. */
-		regs->ea += 4;
-	} else {
-		do_page_fault(regs, cause, addr);
-	}
+	do_page_fault(regs, cause, addr);
 }
 
 void set_mmu_pid(unsigned long pid)

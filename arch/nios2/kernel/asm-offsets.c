@@ -17,7 +17,6 @@
 #include <linux/kbuild.h>
 #include <asm/irq.h>
 #include <asm/nios.h>
-#include <asm/tlbstats.h>
 
 int main(void)
 {
@@ -98,11 +97,6 @@ int main(void)
 	DEFINE(TI_CPU, offsetof(struct thread_info, cpu));
 	DEFINE(TI_PREEMPT_COUNT, offsetof(struct thread_info, preempt_count));
 	BLANK();
-
-#ifdef CONFIG_MMU
-	/* TLB statistics */
-	DEFINE(STAT_TLB_FAST_HANDLER, offsetof(struct tlb_stat, tlb_fast_handler));
-#endif
 
 	return 0;
 }

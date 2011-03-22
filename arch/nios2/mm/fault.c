@@ -28,15 +28,11 @@
 #include <asm/ptrace.h>
 #include <asm/exceptions.h>
 
-#include <asm/tlbstats.h>
-
 #define EXC_SUPERV_INSN_ACCESS	9	/* Supervisor only instruction address */
 #define EXC_SUPERV_DATA_ACCESS	11	/* Supervisor only data address	*/
 #define EXC_X_PROTECTION_FAULT	13	/* TLB permission violation (x) */
 #define EXC_R_PROTECTION_FAULT	14	/* TLB permission violation (r) */
 #define EXC_W_PROTECTION_FAULT	15	/* TLB permission violation (w) */
-
-extern struct tlb_stat statistics;
 
 /*
  * This routine handles page faults.  It determines the address,
@@ -52,8 +48,6 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
 	int code = SEGV_MAPERR;
 	int fault;
 	unsigned int flags = 0;
-
-	statistics.do_page_fault++;
 
 	/*
 	 * We fault-in kernel-space virtual memory on-demand. The
