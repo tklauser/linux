@@ -36,6 +36,9 @@ struct cpuinfo {
 	u32 tlb_num_entries;
 	u32 tlb_num_lines;
 	u32 tlb_ptr_sz;
+
+	/* Addresses */
+	u32 reset_addr;
 };
 
 extern struct cpuinfo cpuinfo;

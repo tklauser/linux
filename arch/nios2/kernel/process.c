@@ -26,6 +26,7 @@
 #include <asm/unistd.h>
 #include <asm/traps.h>
 #include <asm/cacheflush.h>
+#include <asm/cpuinfo.h>
 
 asmlinkage void ret_from_fork(void);
 
@@ -76,35 +77,29 @@ void cpu_idle(void)
  */
 void machine_restart(char * __unused)
 {
+	printk(KERN_NOTICE "Machine restart (%08x)...\n", cpuinfo.reset_addr);
 	local_irq_disable();
-#ifdef CONFIG_MMU
-	if (__builtin_ldwio((void *)RESET_ADDR) == 0xffffffffUL) {
-		printk("boot loader not installed, refusing to jump to "
-		       "reset addr 0x%lx\n", (unsigned long) RESET_ADDR);
-		for (;;);
-	}
-#endif
 	__asm__ __volatile__ (
 	"jmp	%0\n\t"
 	:
-	: "r" (RESET_ADDR)	/* this was CPU_RESET_ADDRESS for nommu */
+	: "r" (cpuinfo.reset_addr)
 	: "r4");
 }
 
 void machine_halt(void)
 {
+	printk(KERN_NOTICE "Machine halt...\n");
 	local_irq_disable();
 	for (;;);
 }
 
 /*
- * There is no way to power off the development
- * boards. So just spin lock for now. If you have
- * your own board with power down circuits add you
- * specific code here.
+ * There is no way to power off the development boards. So just spin for now. If
+ * we ever have a way of resetting a board using a GPIO we should add that here.
  */
 void machine_power_off(void)
 {
+	printk(KERN_NOTICE "Machine power off...\n");
 	local_irq_disable();
 	for (;;);
 }

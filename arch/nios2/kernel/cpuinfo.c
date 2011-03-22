@@ -80,6 +80,8 @@ void __init setup_cpuinfo(void)
 	cpuinfo.tlb_num_entries = fcpu(cpu, "ALTR,tlb-num-entries");
 	cpuinfo.tlb_num_lines = cpuinfo.tlb_num_entries / cpuinfo.tlb_num_ways;
 	cpuinfo.tlb_ptr_sz = fcpu(cpu, "ALTR,tlb-ptr-sz");
+
+	cpuinfo.reset_addr = fcpu(cpu, "ALTR,reset_addr");
 }
 
 #endif /* CONFIG_OF */
