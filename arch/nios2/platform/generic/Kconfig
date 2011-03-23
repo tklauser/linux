@@ -1,0 +1,65 @@
+comment "Device tree"
+
+config NIOS2_DTB_AT_PHYS_ADDR
+	bool "DTB at physical address"
+	default n
+	help
+	  When enabled you can select a physical address to load the dtb from.
+	  Normally this address is passed by a bootloader such as u-boot but
+	  using this you can use a devicetree without a bootloader.
+	  This way you can store a devicetree in NOR flash or an onchip rom.
+	  Please not that this addres is used directly so you have to manually
+	  do address translation if it's connected to a bridge. Also take into
+	  account that when using an MMU you'd have to ad 0xC0000000 to your
+	  address
+
+config NIOS2_DTB_PHYS_ADDR
+	hex "DTB Address"
+	depends on NIOS2_DTB_AT_PHYS_ADDR
+	default "0xC0000000"
+	help
+	  Physical address of a dtb blob.
+
+config DTB_SOURCE_BOOL
+	bool "Compile and link device tree into kernel image"
+	default n
+	help
+	  This allows you to specify a dts (device tree source) file
+	  which will be compiled and linked into the kernel image.
+
+config DTB_SOURCE
+	string "Device tree source file"
+	depends on DTB_SOURCE_BOOL
+	default ""
+	help
+	  Absolute path to the device tree source (dts) file describing your
+	  system.
+
+comment "Nios II instructions"
+
+config NIOS2_HW_MUL_SUPPORT
+	int "Enable MUL instruction (0=none, 1=MUL)"
+	default 0
+	help
+	  Set to 1 if you configured the NiosII to include the MUL instruction.
+	  This will enable the -mhw-mul compiler flag.
+
+config NIOS2_HW_MULX_SUPPORT
+	int "Enable MULX instruction (0=none, 1=MULX)"
+	default 0
+	help
+	  Set to 1 if you configured the NiosII to include the MULX instruction.
+	  Enables the -mhw-mulx compiler flag.
+
+config NIOS2_HW_DIV_SUPPORT
+	int "Enable DIV instruction (0=none, 1=DIV)"
+	default 0
+	help
+	  Set to 1 if you configured the NiosII to include the DIV instruction.
+	  Enables the -mhw-div compiler flag.
+
+config NIOS2_FPU_SUPPORT
+	bool "Custom floating point instr support"
+	default n
+	help
+	  Enables the -mcustom-fpu-cfg=60-1 compiler flag.

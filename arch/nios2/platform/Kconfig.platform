@@ -1,0 +1,18 @@
+menu "Platform options"
+choice
+	prompt "Platform"
+	help
+	  Choose which board/platform you are targetting.
+
+config PLATFORM_GENERIC
+	bool "Generic"
+	help
+	  Choose this option for the Generic platform (using device tree).
+
+endchoice
+
+if PLATFORM_GENERIC=y
+	source "arch/nios2/platform/generic/Kconfig"
+endif
+
+endmenu
