@@ -43,7 +43,7 @@ $(obj)/system.dtb: $(DTB_SRC)
 $(obj)/linked_dtb.o: $(obj)/system.dtb
 
 #ifneq ($(CONFIG_DTB_SOURCE),"")
-obj-y += linked_dtb.o
+obj-$(CONFIG_DTB_SOURCE_BOOL) += linked_dtb.o
 #endif
 
 install:
