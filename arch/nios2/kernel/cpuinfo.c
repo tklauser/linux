@@ -81,7 +81,9 @@ void __init setup_cpuinfo(void)
 	cpuinfo.tlb_num_lines = cpuinfo.tlb_num_entries / cpuinfo.tlb_num_ways;
 	cpuinfo.tlb_ptr_sz = fcpu(cpu, "ALTR,tlb-ptr-sz");
 
-	cpuinfo.reset_addr = fcpu(cpu, "ALTR,reset_addr");
+	cpuinfo.reset_addr = fcpu(cpu, "ALTR,reset-addr");
+	cpuinfo.exception_addr = fcpu(cpu, "ALTR,exception-addr");
+	cpuinfo.fast_tlb_miss_exc_addr = fcpu(cpu, "ALTR,fast-tlb-miss-addr");
 }
 
 #endif /* CONFIG_OF */

@@ -39,6 +39,8 @@ struct cpuinfo {
 
 	/* Addresses */
 	u32 reset_addr;
+	u32 exception_addr;
+	u32 fast_tlb_miss_exc_addr;
 };
 
 extern struct cpuinfo cpuinfo;
