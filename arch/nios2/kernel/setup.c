@@ -47,6 +47,59 @@ char cmd_line[COMMAND_LINE_SIZE] = { 0, };
 static struct pt_regs fake_regs = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 				    0,  0,  0,  0,  0, (unsigned long)cpu_idle,  0,  0,  0, 0, 0};
 
+/* Copy a short hook instruction sequence to the exception address */
+static inline void copy_exception_handler(unsigned int addr)
+{
+	unsigned int start = (unsigned int) exception_handler_hook;
+	volatile unsigned int tmp;
+
+	/* FIXME: check overlap of source and destination address here? */
+
+	__asm__ __volatile__ (
+			"ldw	%2,0(%0)\n"
+			"stw	%2,0(%1)\n"
+			"ldw	%2,4(%0)\n"
+			"stw	%2,4(%1)\n"
+			"ldw	%2,8(%0)\n"
+			"stw	%2,8(%1)\n"
+			"flushd	0(%1)\n"
+			"flushd	4(%1)\n"
+			"flushd	8(%1)\n"
+			"flushi %1\n"
+			"addi	%1,%1,4\n"
+			"flushi %1\n"
+			"addi	%1,%1,4\n"
+			"flushi %1\n"
+			: /* no output registers */
+			: "r" (start), "r" (addr), "r" (tmp)
+			: "memory"
+	);
+}
+
+/* Copy the fast TLB miss handler */
+static inline void copy_fast_tlb_miss_handler(unsigned int addr)
+{
+	unsigned int start = (unsigned int) fast_handler;
+	unsigned int end = (unsigned int) fast_handler_end;
+	volatile unsigned int tmp;
+
+	/* FIXME: check overlap of source and destination address here? */
+
+	__asm__ __volatile__ (
+			"1:\n"
+			"	ldw	%3,0(%0)\n"
+			"	stw	%3,0(%1)\n"
+			"	flushd	0(%1)\n"
+			"	flushi	%1\n"
+			"	addi	%0,%0,4\n"
+			"	addi	%1,%1,4\n"
+			"	bne	%0,%2,1b\n"
+			: /* no output registers */
+			: "r" (start), "r" (addr), "r" (end), "r" (tmp)
+			: "memory"
+	);
+}
+
 /* save args passed from u-boot, called from head.S */
 asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 				       unsigned r7)
@@ -147,6 +200,9 @@ void __init setup_arch(char **cmdline_p)
 	setup_cpuinfo();
 
 #ifdef CONFIG_MMU
+	copy_exception_handler(cpuinfo.exception_addr);
+	copy_fast_tlb_miss_handler(cpuinfo.fast_tlb_miss_exc_addr);
+
 	/*
 	 * Initialize MMU context handling here because data from cpuinfo is
 	 * needed for this.

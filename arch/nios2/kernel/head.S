@@ -68,16 +68,17 @@ text_flush:
 	bgt	r1,r0,text_flush
 	br	1f
 
-	/* This is the default location for the exception handler. Code in jump
+	/*
+	 * This is the default location for the exception handler. Code in jump
 	 * to our handler
 	 */
-exc_hook:
+ENTRY(exception_handler_hook)
 	movia	r24,inthandler
 	jmp	r24
 
 #ifdef CONFIG_MMU
 
-fast_handler_start:
+ENTRY(fast_handler)
 	nextpc et
 helper:
 	stw     r3,r3save-helper(et)
@@ -103,7 +104,7 @@ helper2:
 	eret
 r3save:
 	.word 0x0
-fast_handler_end:
+ENTRY(fast_handler_end)
 
 #endif /* CONFIG_MMU */
 
@@ -141,43 +142,6 @@ loop_move:				/* r1: src, r2: dest, r3: last dest */
 	jmp	r1			/* jmp to _start */
 
 finish_move:
-	/* FIXME: What about overlap of src and dst address? */
-#endif /* CONFIG_MMU */
-
-	/* Copy an instruction sequence to put at the exception address */
-        movia	r2,exc_hook
-        movia	r3,EXCEPTION_ADDR
-        ldw     r1,0(r2)
-        stw     r1,0(r3)
-        ldw     r1,4(r2)
-        stw     r1,4(r3)
-        ldw     r1,8(r2)
-        stw     r1,8(r3)
-        flushd  0(r3)
-        flushd  4(r3)
-        flushd  8(r3)
-        flushi  r3
-        addi    r3,r3,4
-        flushi  r3
-        addi    r3,r3,4
-        flushi  r3
-
-	/* FIXME: What about overlap of src and dst address? */
-#ifdef CONFIG_MMU
-	/* Copy the fast tlb-handler
-	 * FIXME: What if it's already on the right address?
-	 */
-	movia   r2,fast_handler_start
-	movia   r8,fast_handler_end
-	movia	r3,FAST_TLB_MISS_EXCEPTION_ADDR
-1:
-	ldw	r1,0(r2)
-	stw	r1,0(r3)
-	flushd  0(r3)
-	flushi  r3
-	addi	r2,r2,4
-	addi	r3,r3,4
-	bne	r2,r8,1b
 #endif /* CONFIG_MMU */
 
 	/* Mask off all possible interrupts */
