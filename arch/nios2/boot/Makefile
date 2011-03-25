@@ -36,6 +36,9 @@ $(obj)/compressed/vmlinux: $(obj)/vmlinux.gz FORCE
 # Rule to build device tree blobs
 DTB_SRC := $(subst ",,$(CONFIG_DTB_SOURCE))
 
+# Make sure the generated dtb gets removed during clean
+extra-y += system.dtb
+
 $(obj)/system.dtb: $(DTB_SRC)
 	$(call cmd,dtc)
 
