@@ -97,16 +97,16 @@ static inline unsigned long __must_check __clear_user(void __user *to,
 						      unsigned long n)
 {
 	__asm__ __volatile__ (
-			"1:     stb     zero, 0(%1)\n"
-			"       addi    %0, %0, -1\n"
-			"       addi    %1, %1, 1\n"
-			"       bne     %0, zero, 1b\n"
-			"2:\n"
-			__EX_TABLE_SECTION
-			".word  1b, 2b\n"
-			".previous\n"
-			: "=r" (n), "=r" (to)
-			: "0" (n), "1" (to)
+		"1:     stb     zero, 0(%1)\n"
+		"       addi    %0, %0, -1\n"
+		"       addi    %1, %1, 1\n"
+		"       bne     %0, zero, 1b\n"
+		"2:\n"
+		__EX_TABLE_SECTION
+		".word  1b, 2b\n"
+		".previous\n"
+		: "=r" (n), "=r" (to)
+		: "0" (n), "1" (to)
 	);
 
 	return n;
