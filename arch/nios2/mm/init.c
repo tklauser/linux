@@ -35,10 +35,6 @@
 #include <asm/mmu_context.h>
 #include <asm/cpuinfo.h>
 
-#define DEBUG
-
-extern void free_initmem(void);
-
 /*
  * BAD_PAGE is the page that is used for page faults when linux
  * is out-of-memory. Older versions of linux just did a
