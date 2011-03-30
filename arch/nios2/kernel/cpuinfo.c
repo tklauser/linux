@@ -18,8 +18,6 @@
 
 struct cpuinfo cpuinfo;
 
-#ifdef CONFIG_OF
-
 #define err_cpu(x) \
 	pr_err("ERROR: NiosII " x " different for kernel and DTS\n");
 
@@ -85,8 +83,6 @@ void __init setup_cpuinfo(void)
 	cpuinfo.exception_addr = fcpu(cpu, "ALTR,exception-addr");
 	cpuinfo.fast_tlb_miss_exc_addr = fcpu(cpu, "ALTR,fast-tlb-miss-addr");
 }
-
-#endif /* CONFIG_OF */
 
 #ifdef CONFIG_PROC_FS
 

@@ -91,12 +91,8 @@ static struct console early_console = {
 
 void __init setup_early_printk(void)
 {
-#if defined(CONFIG_OF) && (defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE) || defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE))
+#if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE) || defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
 	base_addr = early_altera_uart_or_juart_console();
-#elif defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
-	base_addr = JTAG_UART_BASE + CONFIG_IO_REGION_BASE;
-#elif defined(CONFIG_SERIAL_ALTERA_UART_CONSOLE)
-	base_addr = UART_BASE + CONFIG_IO_REGION_BASE;
 #else
 	base_addr = 0;
 #endif

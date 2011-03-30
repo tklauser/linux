@@ -126,9 +126,7 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 	if (!cmd_line[0])
 		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 
-#if defined(CONFIG_OF)
 	early_init_devtree((void *)r6);
-#endif
 }
 
 void __init setup_arch(char **cmdline_p)

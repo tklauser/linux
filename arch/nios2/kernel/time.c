@@ -110,9 +110,8 @@ static struct irqaction nios2_timer_irq = {
 
 void __init nios2_late_time_init(void)
 {
-	unsigned ctrl;
-#if defined(CONFIG_OF)
-	int i = 0;
+	unsigned int ctrl;
+	unsigned int i;
 	struct device_node *timer = NULL;
 	const char * const timer_list[] = {
 		"altera,timer",	/* Will be removed later on */
@@ -127,22 +126,17 @@ void __init nios2_late_time_init(void)
 			break;
 	}
 	BUG_ON(!timer);
+
 	timer_membase = of_translate_address(timer, of_get_address(timer, 0, NULL, NULL));
 	timer_membase = (unsigned long) ioremap(timer_membase, PAGE_SIZE);
 	timer_freq = be32_to_cpup(of_get_property(timer, "clock-frequency", NULL));
 	setup_irq(be32_to_cpup(of_get_property(timer, "interrupts", NULL)),
 				&nios2_timer_irq);
-#else
 
-	timer_membase = (unsigned long) ioremap(TIMER_1MS_BASE, TIMER_1MS_SPAN);
-	timer_freq = TIMER_1MS_FREQ;
-	setup_irq(TIMER_1MS_IRQ, &nios2_timer_irq);
-#endif
 	write_timerperiod(NIOS2_TIMER_PERIOD - 1);
 
 	/* clocksource initialize */
-	nios2_timer.mult =
-		clocksource_hz2mult(timer_freq, nios2_timer.shift);
+	nios2_timer.mult = clocksource_hz2mult(timer_freq, nios2_timer.shift);
 	clocksource_register(&nios2_timer);
 
 	/* interrupt enable + continuous + start */

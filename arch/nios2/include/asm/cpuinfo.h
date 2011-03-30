@@ -45,14 +45,6 @@ struct cpuinfo {
 
 extern struct cpuinfo cpuinfo;
 
-#ifdef CONFIG_OF
-
 extern void setup_cpuinfo(void);
-
-#else
-
-static inline void setup_cpuinfo(void) {};
-
-#endif
 
 #endif /* _ASM_NIOS2_CPUINFO_H */
