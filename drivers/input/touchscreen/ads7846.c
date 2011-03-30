@@ -26,6 +26,7 @@
 #include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
+#include <linux/pm.h>
 #include <linux/gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/ads7846.h>
@@ -895,9 +896,10 @@ static irqreturn_t ads7846_irq(int irq, void *handle)
 	return IRQ_HANDLED;
 }
 
-static int ads7846_suspend(struct spi_device *spi, pm_message_t message)
+#ifdef CONFIG_PM_SLEEP
+static int ads7846_suspend(struct device *dev)
 {
-	struct ads7846 *ts = dev_get_drvdata(&spi->dev);
+	struct ads7846 *ts = dev_get_drvdata(dev);
 
 	mutex_lock(&ts->lock);
 
@@ -917,9 +919,9 @@ static int ads7846_suspend(struct spi_device *spi, pm_message_t message)
 	return 0;
 }
 
-static int ads7846_resume(struct spi_device *spi)
+static int ads7846_resume(struct device *dev)
 {
-	struct ads7846 *ts = dev_get_drvdata(&spi->dev);
+	struct ads7846 *ts = dev_get_drvdata(dev);
 
 	mutex_lock(&ts->lock);
 
@@ -938,6 +940,9 @@ static int ads7846_resume(struct spi_device *spi)
 
 	return 0;
 }
+#endif
+
+static SIMPLE_DEV_PM_OPS(ads7846_pm, ads7846_suspend, ads7846_resume);
 
 static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads7846 *ts)
 {
@@ -1452,12 +1457,11 @@ static struct spi_driver ads7846_driver = {
 		.name	= "ads7846",
 		.bus	= &spi_bus_type,
 		.owner	= THIS_MODULE,
+		.pm	= &ads7846_pm,
 		.of_match_table = ads7846_match,
 	},
 	.probe		= ads7846_probe,
 	.remove		= __devexit_p(ads7846_remove),
-	.suspend	= ads7846_suspend,
-	.resume		= ads7846_resume,
 };
 
 static int __init ads7846_init(void)

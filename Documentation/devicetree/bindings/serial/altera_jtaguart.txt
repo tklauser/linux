@@ -2,4 +2,3 @@ Altera JTAG UART
 
 Required properties:
 - compatible : should be "ALTR,juart-1.0"
-
