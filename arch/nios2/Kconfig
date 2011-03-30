@@ -42,10 +42,6 @@ config SWAP
 config RWSEM_GENERIC_SPINLOCK
 	def_bool y
 
-# FIXME: really !
-config NOT_COHERENT_CACHE
-	def_bool n
-
 config TRACE_IRQFLAGS_SUPPORT
 	def_bool n
 
