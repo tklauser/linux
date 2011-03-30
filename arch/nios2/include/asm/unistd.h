@@ -355,8 +355,12 @@
 #define __NR_fanotify_init	336
 #define __NR_fanotify_mark	337
 #define __NR_prlimit64		338
+#define __NR_name_to_handle_at	339
+#define __NR_open_by_handle_at	340
+#define __NR_clock_adjtime	341
+#define __NR_syncfs		342
 
-#define NR_syscalls		339
+#define NR_syscalls		343
 
 #ifdef __KERNEL__
 
