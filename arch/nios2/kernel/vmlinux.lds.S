@@ -33,7 +33,7 @@ SECTIONS
 	__init_begin = .;
 	INIT_TEXT_SECTION(PAGE_SIZE)
 	INIT_DATA_SECTION(PAGE_SIZE)
-	PERCPU(PAGE_SIZE)
+	PERCPU(L1_CACHE_BYTES, PAGE_SIZE)
 	__init_end = .;
 
         _sdata = .;
