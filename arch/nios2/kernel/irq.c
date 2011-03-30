@@ -1,8 +1,10 @@
 /*
- *	irq.c
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2008 Thomas Chou <thomas@wytron.com.tw>
  *
- *	(C) Copyright 2007, Greg Ungerer <gerg@snapgear.com>
- *	(C) Copyright 2008, Thomas Chou <thomas@wytron.com.tw>
+ * based on irq.c from m68k which is:
+ *
+ * Copyright (C) 2007 Greg Ungerer <gerg@snapgear.com>
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file COPYING in the main directory of this archive
@@ -30,57 +32,32 @@ asmlinkage void do_IRQ(int irq, struct pt_regs *regs)
 	set_irq_regs(oldregs);
 }
 
-static void chip_unmask(unsigned int irq)
+static void chip_unmask(struct irq_data *d)
 {
 	unsigned ien;
 	ien = RDCTL(CTL_IENABLE);
-	ien |= (1 << irq);
+	ien |= (1 << d->irq);
 	WRCTL(CTL_IENABLE, ien);
 }
 
-static void chip_mask(unsigned int irq)
+static void chip_mask(struct irq_data *d)
 {
 	unsigned ien;
 	ien = RDCTL(CTL_IENABLE);
-	ien &= ~(1 << irq);
+	ien &= ~(1 << d->irq);
 	WRCTL(CTL_IENABLE, ien);
 }
 
 static struct irq_chip m_irq_chip = {
-	.name = "NIOS2-INTC",
-	.unmask = chip_unmask,
-	.mask = chip_mask,
+	.name		= "NIOS2-INTC",
+	.irq_unmask	= chip_unmask,
+	.irq_mask	= chip_mask,
 };
 
 void __init init_IRQ(void)
 {
 	int irq;
 
-	for (irq = 0; (irq < NR_IRQS); irq++)
-		set_irq_chip_and_handler(irq, &m_irq_chip, handle_level_irq);
-}
-
-int show_interrupts(struct seq_file *p, void *v)
-{
-	struct irqaction *ap;
-	int irq = *((loff_t *) v);
-
-	if (irq == 0)
-		seq_puts(p, "           CPU0\n");
-
-	if (irq < NR_IRQS) {
-		ap = irq_desc[irq].action;
-		if (ap) {
-			seq_printf(p, "%3d: ", irq);
-			seq_printf(p, "%10u ", kstat_irqs(irq));
-			seq_printf(p, "%14s  ", irq_desc[irq].chip->name);
-
-			seq_printf(p, "%s", ap->name);
-			for (ap = ap->next; ap; ap = ap->next)
-				seq_printf(p, ", %s", ap->name);
-			seq_putc(p, '\n');
-		}
-	}
-
-	return 0;
+	for (irq = 0; irq < NR_IRQS; irq++)
+		irq_set_chip_and_handler(irq, &m_irq_chip, handle_level_irq);
 }

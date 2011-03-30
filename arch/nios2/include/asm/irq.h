@@ -1,8 +1,15 @@
+/*
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License. See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
+
 #ifndef _ASM_NIOS2_IRQ_H
 #define _ASM_NIOS2_IRQ_H
 
-#define SYS_IRQS	32
-#define NR_IRQS		SYS_IRQS
+#define NR_IRQ 32
 
 static inline void irq_dispose_mapping(unsigned int virq)
 {
