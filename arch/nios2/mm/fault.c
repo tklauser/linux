@@ -163,7 +163,7 @@ no_context:
 	bust_spinlocks(1);
 
 	printk(KERN_ALERT "Unable to handle kernel paging request at "
-	       "virtual address %lx, epc == %lx, ra == %lx\n",
+	       "virtual address %lx, ea = %lx, ra = %lx\n",
 	       address, regs->ea, regs->ra);
 	panic("Oops");
 
