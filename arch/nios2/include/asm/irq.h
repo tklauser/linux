@@ -9,7 +9,7 @@
 #ifndef _ASM_NIOS2_IRQ_H
 #define _ASM_NIOS2_IRQ_H
 
-#define NR_IRQ 32
+#define NR_IRQS 32
 
 static inline void irq_dispose_mapping(unsigned int virq)
 {
