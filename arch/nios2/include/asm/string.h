@@ -1,45 +1,24 @@
-#ifndef _ASM_NIOS2_STRING_H__
-#define _ASM_NIOS2_STRING_H__
+/*
+ * Copyright (C) 2004 Microtronix Datacom Ltd
+ *
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ */
 
-/*--------------------------------------------------------------------
- *
- * include/asm-nios2/string.h
- *
- * Derived from various works, Alpha, ix86, M68K, Sparc, ...et al
- *
- * Copyright (C) 1995 David S. Miller (davem@caip.rutgers.edu)
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
+#ifndef _ASM_NIOS2_STRING_H
+#define _ASM_NIOS2_STRING_H
 
+#ifdef __KERNEL__
 
-#ifdef __KERNEL__ /* only set these up for kernel code */
-
-#define __HAVE_ARCH_MEMMOVE
-void * memmove(void * d, const void * s, size_t count);
-#define __HAVE_ARCH_MEMCPY
-extern void * memcpy(void *d, const void *s, size_t count);
 #define __HAVE_ARCH_MEMSET
-extern void * memset(void * s,int c,size_t count);
+#define __HAVE_ARCH_MEMCPY
+#define __HAVE_ARCH_MEMMOVE
 
-#if 0
-#define __HAVE_ARCH_BCOPY
-#define __HAVE_ARCH_STRLEN
-#endif
+extern void *memset(void *s, int c, size_t count);
+extern void *memcpy(void *d, const void *s, size_t count);
+extern void *memmove(void *d, const void * s, size_t count);
 
-#endif /* KERNEL */
+#endif /* __KERNEL__ */
 
-#endif /* !(_ASM_NIOS2_STRING_H__) */
+#endif /* _ASM_NIOS2_STRING_H */
