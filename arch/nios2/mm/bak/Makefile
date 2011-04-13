@@ -1,1 +1,0 @@
-obj-y := init.o dma-noncoherent.o
