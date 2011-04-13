@@ -184,7 +184,7 @@ void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 {
 	flush_dcache_range(vaddr, vaddr + PAGE_SIZE);
 	flush_icache_range(vaddr, vaddr + PAGE_SIZE);
-	memcpy(vto, vfrom, PAGE_SIZE);
+	copy_page(vto, vfrom);
 	flush_dcache_range((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
 }
 
@@ -192,7 +192,7 @@ void clear_user_page(void *addr, unsigned long vaddr, struct page *page)
 {
 	flush_dcache_range(vaddr, vaddr + PAGE_SIZE);
 	flush_icache_range(vaddr, vaddr + PAGE_SIZE);
-	memset(addr, 0, PAGE_SIZE);
+	clear_page(addr);
 	flush_dcache_range((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
 }
 
