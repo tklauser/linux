@@ -1,9 +1,10 @@
 /*
  * Copyright (C) 2009 Wind River Systems Inc
  *   Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
- * Copyright (C) 1995 - 2000 by Ralf Baechle
  *
- * based on arch/mips/mm/fault.c
+ * based on arch/mips/mm/fault.c which is:
+ *
+ * Copyright (C) 1995-2000 Ralf Baechle
  *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -64,10 +65,7 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
 		else
 			goto vmalloc_fault;
 	}
-#ifdef MODULE_START
-	if (unlikely(address >= MODULE_START && address < MODULE_END))
-               goto vmalloc_fault;
-#endif
+
 	if (unlikely(address >= TASK_SIZE))
 		goto bad_area_nosemaphore;
 
