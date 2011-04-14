@@ -160,10 +160,12 @@ no_context:
 	 */
 	bust_spinlocks(1);
 
-	printk(KERN_ALERT "Unable to handle kernel paging request at "
-	       "virtual address %lx, ea = %lx, ra = %lx\n",
-	       address, regs->ea, regs->ra);
+	printk(KERN_ALERT "Unable to handle kernel %s at virtual address %08lx",
+	       address < PAGE_SIZE ? "NULL pointer dereference" : "paging request",
+	       address);
+	printk(KERN_ALERT "ea = %08lx, ra = %08lx, cause = %ld\n", regs->ea, regs->ra, cause);
 	panic("Oops");
+	return;
 
 /*
  * We ran out of memory, or some other thing happened to us that made
