@@ -71,9 +71,10 @@ void gdb_regs_to_pt_regs(unsigned long *gdb_regs, struct pt_regs *regs)
 	regs->ea = gdb_regs[GDB_PC];
 }
 
-/* untested */
 void sleeping_thread_to_gdb_regs(unsigned long *gdb_regs, struct task_struct *p)
 {
+	gdb_regs[GDB_SP] = p->thread.kregs->sp;
+	gdb_regs[GDB_PC] = p->thread.kregs->ea;
 }
 
 void kgdb_arch_set_pc(struct pt_regs *regs, unsigned long pc)
