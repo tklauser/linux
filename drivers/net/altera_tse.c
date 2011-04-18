@@ -1591,7 +1591,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 			tse_priv->tx_fifo_interrupt);
 
 	pr_info("%s: Reporting available PHYs:\n", dev->name);
-	for (i = PHY_MAX_ADDR; i >= 0; i--) {
+	for (i = PHY_MAX_ADDR - 1; i >= 0; i--) {
 		u32 phy_id;
 		u32 phy_id_bottom;
 		u32 phy_id_top;
