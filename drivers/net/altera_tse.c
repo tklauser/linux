@@ -525,9 +525,8 @@ static int tse_poll(struct napi_struct *napi, int budget)
 /* SG-DMA TX & RX FIFO interrupt routing
 * arg1     :irq number
 * arg2     :user data passed to isr
-* arg3     :pt_resgs structure passed from kernel
 */
-static irqreturn_t alt_sgdma_isr(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t alt_sgdma_isr(int irq, void *dev_id)
 {
 	struct net_device *dev = dev_id;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
@@ -572,7 +571,7 @@ static void tse_net_poll_controller(struct net_device *dev)
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	disable_irq(tse_priv->rx_fifo_interrupt);
 	disable_irq(tse_priv->tx_fifo_interrupt);
-	alt_sgdma_isr(tse_priv->rx_fifo_interrupt, dev, NULL);
+	alt_sgdma_isr(tse_priv->rx_fifo_interrupt, dev);
 	enable_irq(tse_priv->rx_fifo_interrupt);
 	enable_irq(tse_priv->tx_fifo_interrupt);
 }
@@ -1215,7 +1214,7 @@ static int tse_open(struct net_device *dev)
 
 	/* Register RX SGDMA interrupt */
 	retval =
-	    request_irq(tse_priv->rx_fifo_interrupt, (void *)alt_sgdma_isr,
+	    request_irq(tse_priv->rx_fifo_interrupt, alt_sgdma_isr,
 			0, "SGDMA_RX", dev);
 	if (retval) {
 		printk
@@ -1226,7 +1225,7 @@ static int tse_open(struct net_device *dev)
 	}
 	/* Register TX SGDMA interrupt */
 	retval =
-	    request_irq(tse_priv->tx_fifo_interrupt, (void *)alt_sgdma_isr,
+	    request_irq(tse_priv->tx_fifo_interrupt, alt_sgdma_isr,
 			0, "SGDMA_TX", dev);
 	if (retval) {
 		printk
