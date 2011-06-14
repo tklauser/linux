@@ -44,7 +44,7 @@ void default_idle(void)
 	local_irq_disable();
 	if (!need_resched()) {
 		local_irq_enable();
-		__asm__("nop");   // was asm sleep
+		__asm__("nop");
 	} else
 		local_irq_enable();
 }
