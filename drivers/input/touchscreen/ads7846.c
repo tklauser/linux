@@ -110,6 +110,7 @@ struct ads7846 {
 	u16			pressure_max;
 
 	bool			swap_xy;
+	bool			use_internal;
 
 	int			irq;
 	struct ads7846_platform_data platdata;
@@ -310,7 +311,6 @@ static int ads7846_read12_ser(struct device *dev, unsigned command)
 	struct ads7846 *ts = dev_get_drvdata(dev);
 	struct ser_req *req;
 	int status;
-	int use_internal;
 
 	req = kzalloc(sizeof *req, GFP_KERNEL);
 	if (!req)
@@ -318,11 +318,8 @@ static int ads7846_read12_ser(struct device *dev, unsigned command)
 
 	spi_message_init(&req->msg);
 
-	/* FIXME boards with ads7846 might use external vref instead ... */
-	use_internal = (ts->model == 7846);
-
 	/* maybe turn on internal vREF, and let it settle */
-	if (use_internal) {
+	if (ts->use_internal) {
 		req->ref_on = REF_ON;
 		req->xfer[0].tx_buf = &req->ref_on;
 		req->xfer[0].len = 1;
@@ -334,7 +331,13 @@ static int ads7846_read12_ser(struct device *dev, unsigned command)
 		/* for 1uF, settle for 800 usec; no cap, 100 usec.  */
 		req->xfer[1].delay_usecs = ts->vref_delay_usecs;
 		spi_message_add_tail(&req->xfer[1], &req->msg);
+
+		/* Enable reference voltage */
+		command |= ADS_PD10_REF_ON;
 	}
+
+	/* Enable ADC in every case */
+	command |= ADS_PD10_ADC_ON;
 
 	/* take sample */
 	req->command = (u8) command;
@@ -419,7 +422,7 @@ name ## _show(struct device *dev, struct device_attribute *attr, char *buf) \
 { \
 	struct ads7846 *ts = dev_get_drvdata(dev); \
 	ssize_t v = ads7846_read12_ser(dev, \
-			READ_12BIT_SER(var) | ADS_PD10_ALL_ON); \
+			READ_12BIT_SER(var)); \
 	if (v < 0) \
 		return v; \
 	return sprintf(buf, "%u\n", adjust(ts, v)); \
@@ -512,6 +515,7 @@ static int ads784x_hwmon_register(struct spi_device *spi, struct ads7846 *ts)
 		if (!ts->vref_mv) {
 			dev_dbg(&spi->dev, "assuming 2.5V internal vREF\n");
 			ts->vref_mv = 2500;
+			ts->use_internal = true;
 		}
 		break;
 	case 7845:
@@ -972,6 +976,13 @@ static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads784
 				pdata->gpio_pendown);
 			return err;
 		}
+		err = gpio_direction_input(pdata->gpio_pendown);
+		if (err) {
+			dev_err(&spi->dev, "failed to setup pendown GPIO%d\n",
+				pdata->gpio_pendown);
+			gpio_free(pdata->gpio_pendown);
+			return err;
+		}
 
 		ts->gpio_pendown = pdata->gpio_pendown;
 
@@ -1381,8 +1392,7 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	if (ts->model == 7845)
 		ads7845_read12_ser(&spi->dev, PWRDOWN);
 	else
-		(void) ads7846_read12_ser(&spi->dev,
-				READ_12BIT_SER(vaux) | ADS_PD10_ALL_ON);
+		(void) ads7846_read12_ser(&spi->dev, READ_12BIT_SER(vaux));
 
 	err = sysfs_create_group(&spi->dev.kobj, &ads784x_attr_group);
 	if (err)
