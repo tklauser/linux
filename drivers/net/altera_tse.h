@@ -332,17 +332,20 @@ struct alt_tse_private {
 	volatile struct alt_sgdma_registers *rx_sgdma_dev;
 	volatile struct alt_sgdma_registers *tx_sgdma_dev;
 
-	unsigned int tx_fifo_interrupt;
-	unsigned int rx_fifo_interrupt;
+	void __iomem *desc_mem_base;	/* Descriptor memory base address */
+
+	/* Interrupts */
+	unsigned int tx_irq;
+	unsigned int rx_irq;
+
 	unsigned char tx_shift_16_ok;
 	unsigned char rx_shift_16_ok;
 	unsigned char last_tx_shift_16;
 	unsigned char last_rx_shift_16;
 
-	void __iomem *desc_mem_base;	/* Base address of Descriptor Memory if ext_desc_mem = 1 */
-
-	unsigned int tse_tx_depth;	/* TX Receive FIFO depth                                 */
-	unsigned int tse_rx_depth;	/* RX Receive FIFO depth                                 */
+	/* RX/TX FIFO depths */
+	unsigned int tse_tx_depth;
+	unsigned int tse_rx_depth;
 
 // Location for the SGDMA Descriptors
 	volatile struct alt_sgdma_descriptor *desc;

@@ -553,9 +553,9 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id)
 	}
 
 	/* reset IRQ */
-	if (irq == tse_priv->rx_fifo_interrupt)
+	if (irq == tse_priv->rx_irq)
 		tse_priv->rx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
-	else if (irq == tse_priv->tx_fifo_interrupt)
+	else if (irq == tse_priv->tx_irq)
 		tse_priv->tx_sgdma_dev->control |= ALT_SGDMA_CONTROL_CLEAR_INTERRUPT_MSK;
 
 	return IRQ_HANDLED;
@@ -569,11 +569,11 @@ static irqreturn_t alt_sgdma_isr(int irq, void *dev_id)
 static void tse_net_poll_controller(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	disable_irq(tse_priv->rx_fifo_interrupt);
-	disable_irq(tse_priv->tx_fifo_interrupt);
-	alt_sgdma_isr(tse_priv->rx_fifo_interrupt, dev);
-	enable_irq(tse_priv->rx_fifo_interrupt);
-	enable_irq(tse_priv->tx_fifo_interrupt);
+	disable_irq(tse_priv->rx_irq);
+	disable_irq(tse_priv->tx_irq);
+	alt_sgdma_isr(tse_priv->rx_irq, dev);
+	enable_irq(tse_priv->rx_irq);
+	enable_irq(tse_priv->tx_irq);
 }
 #endif
 
@@ -1181,7 +1181,7 @@ static int tse_set_hw_address(struct net_device *dev, void *port)
 static int tse_open(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	int retval = 0;
+	int ret = 0;
 
 	/* start NAPI */
 	napi_enable(&tse_priv->napi);
@@ -1206,34 +1206,29 @@ static int tse_open(struct net_device *dev)
 	sgdma_config(tse_priv);
 
 	/* Prepare RX SGDMA to receive packets */
-	retval = sgdma_read_init(dev);
-	if (retval) {
+	ret = sgdma_read_init(dev);
+	if (ret) {
 		napi_disable(&tse_priv->napi);
-		return retval;
+		return ret;
 	}
 
 	/* Register RX SGDMA interrupt */
-	retval =
-	    request_irq(tse_priv->rx_fifo_interrupt, alt_sgdma_isr,
-			0, "SGDMA_RX", dev);
-	if (retval) {
-		printk
-		    ("%s:Unable to register Rx SGDMA interrupt %d (retval=%d).\n",
-		     dev->name, tse_priv->rx_fifo_interrupt, retval);
+	ret = request_irq(tse_priv->rx_irq, alt_sgdma_isr, 0, "SGDMA_RX", dev);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to register RX SGDMA interrupt %d\n",
+			tse_priv->rx_irq);
 		napi_disable(&tse_priv->napi);
-		return -EAGAIN;
+		return ret;
 	}
+
 	/* Register TX SGDMA interrupt */
-	retval =
-	    request_irq(tse_priv->tx_fifo_interrupt, alt_sgdma_isr,
-			0, "SGDMA_TX", dev);
-	if (retval) {
-		printk
-		    ("%s:Unable to register TX SGDMA interrupt %d (retval=%d).\n",
-		     dev->name, tse_priv->tx_fifo_interrupt, retval);
-		free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
+	ret = request_irq(tse_priv->tx_irq, alt_sgdma_isr, 0, "SGDMA_TX", dev);
+	if (ret) {
+		dev_err(&dev->dev, "Unable to register TX SGDMA interrupt %d\n",
+			tse_priv->tx_irq);
+		free_irq(tse_priv->rx_irq, dev);
 		napi_disable(&tse_priv->napi);
-		return -EAGAIN;
+		return ret;
 	}
 
 	phy_start(tse_priv->phydev);
@@ -1258,8 +1253,8 @@ static int tse_shutdown(struct net_device *dev)
 	napi_disable(&tse_priv->napi);
 
 	/* Free interrupt handler */
-	free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
-	free_irq(tse_priv->tx_fifo_interrupt, (void *)dev);
+	free_irq(tse_priv->rx_irq, dev);
+	free_irq(tse_priv->tx_irq, dev);
 
 	// disable and reset the MAC, empties fifo
 	tse_priv->mac_dev->command_config.bits.software_reset = 1;
@@ -1486,7 +1481,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 		goto out_free;
 	}
 
-	tse_priv->rx_fifo_interrupt = res->start;
+	tse_priv->rx_irq = res->start;
 
 	/* TX SGDMA IRQ  */
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
@@ -1496,7 +1491,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 		goto out_free;
 	}
 
-	tse_priv->tx_fifo_interrupt = res->start;
+	tse_priv->tx_irq = res->start;
 
 	tse_priv->dev = dev;
 	tse_priv->tse_config = tse_config;
@@ -1563,8 +1558,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	}
 
 	pr_info("%s: Altera TSE MAC at 0x%08lx irq %d/%d\n", dev->name,
-			dev->base_addr, tse_priv->rx_fifo_interrupt,
-			tse_priv->tx_fifo_interrupt);
+			dev->base_addr, tse_priv->rx_irq, tse_priv->tx_irq);
 
 	pr_info("%s: Reporting available PHYs:\n", dev->name);
 	for (i = PHY_MAX_ADDR - 1; i >= 0; i--) {
