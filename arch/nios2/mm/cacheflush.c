@@ -112,6 +112,7 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 	/* FIXME: Maybe we should remove __flush_icache ? */
 	__flush_icache(start, end);
 }
+EXPORT_SYMBOL(flush_dcache_range);
 
 void flush_cache_range(struct vm_area_struct *vma, unsigned long start, unsigned long end)
 {
