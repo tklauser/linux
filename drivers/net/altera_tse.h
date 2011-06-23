@@ -50,8 +50,6 @@
 
 #define ENABLE_PHY_LOOPBACK                  0       /* set 1 for enable loopback*/
 
-#define ALT_TSE_MAX_FRAME_LENGTH             1518    /* maximum length for RX and TX packets */
-
 /* Assume TSE_MAC_FIFO_WIDTH == 32 from SOPC builder */
 #define ALT_TSE_MAC_FIFO_WIDTH               4        /* TX/RX FIFO width in bytes */
 
@@ -300,23 +298,6 @@ typedef volatile struct {
   unsigned int            reservedx320[56];
 } alt_tse_mac;
 
-/* TSE Setup info mainly for phy, but need to also report supported TSE modes */
-struct alt_tse_config {
-	unsigned int mii_id;			//id for mii bus, pdev->id
-	int phy_addr;				/* PHY's MDIO address, -1 for autodetection */
-	unsigned int tse_supported_modes;	//supported modes for the TSE as defined in phy.h
-	phy_interface_t interface;		//Physical insterface MII/RMII/RGMII/SGMII
-	u32 phy_flags;				//flags to pass to the phy config functions
-	int autoneg;
-	int speed;
-	int duplex;
-	/* RX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
-	int rx_fifo_depth;
-	/* TX FIFO depth in words (assuming ALT_TSE_MAC_FIFO_WIDTH == 4) */
-	int tx_fifo_depth;
-	char ethaddr[6];
-};
-
 /*
 * This structure is private to each device. It is used to pass
 * packets in and out, so there is place for a packet
@@ -369,20 +350,17 @@ struct alt_tse_private {
 	spinlock_t rx_lock;
 	spinlock_t tx_lock;
 
-/* system info */
+	/* PHY */
+	unsigned int mii_id;
+	int phy_addr;			/* PHY's MDIO address, -1 for autodetection */
 	struct mii_bus *mdio;
 	struct phy_device *phydev;
 	int oldspeed;
 	int oldduplex;
 	int oldlink;
 
-	struct alt_tse_config *tse_config;
-
 	u32 msg_enable;
 };
-
-/*----------------------------------------------------------------------*/
-
 
 /************************************************************************/
 /*                                                                      */

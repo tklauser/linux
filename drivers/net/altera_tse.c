@@ -34,7 +34,8 @@
 #include <linux/platform_device.h>
 #include <linux/phy.h>
 #include <linux/io.h>
-
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <asm/cacheflush.h>
 
 #include "altera_tse.h"
@@ -782,47 +783,47 @@ static void adjust_link(struct net_device *dev)
 static int init_phy(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
-	struct alt_tse_config * tse_config = tse_priv->tse_config;
 	struct phy_device *phydev;
-	char phy_id[MII_BUS_ID_SIZE];
-	char mii_id[MII_BUS_ID_SIZE];
-	phy_interface_t interface;
-	u32 phy_flags;
+	phy_interface_t iface;
 
-	/* hard code for now */
-	interface = tse_config->interface;
-	phy_flags = tse_config->phy_flags;
+	/* XXX: hard code for now */
+	iface = PHY_INTERFACE_MODE_RGMII;
 
 	tse_priv->oldlink = 0;
 	tse_priv->oldspeed = 0;
 	tse_priv->oldduplex = -1;
 
-	if (tse_config->phy_addr != -1) {
-		snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_config->mii_id);
-		snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_config->phy_addr);
+	if (tse_priv->phy_addr != -1) {
+		char phy_id[MII_BUS_ID_SIZE];
+		char mii_id[MII_BUS_ID_SIZE];
 
-		phydev = phy_connect(dev, phy_id, &adjust_link, phy_flags, interface);
+		snprintf(mii_id, MII_BUS_ID_SIZE, "%x", tse_priv->mii_id);
+		snprintf(phy_id, MII_BUS_ID_SIZE, PHY_ID_FMT, mii_id, tse_priv->phy_addr);
 
+		phydev = phy_connect(dev, phy_id, &altera_tse_adjust_link, 0, iface);
 		if (IS_ERR(phydev)) {
-			printk(KERN_ERR "%s: Could not attach to PHY\n", dev->name);
+			dev_err(&dev->dev, "could not attach to PHY\n");
 			return PTR_ERR(phydev);
 		}
 	} else {
+		int ret;
+
 		phydev = phy_find_first(tse_priv->mdio);
 		if (!phydev) {
 			dev_err(&dev->dev, "No PHY found\n");
 			return -ENXIO;
 		}
+
+		ret = phy_connect_direct(dev, phydev, &altera_tse_adjust_link, 0, iface);
+		if (ret) {
+			dev_err(&dev->dev, "could not attach to PHY\n");
+			return ret;
+		}
 	}
 
-	phydev->supported &= tse_config->tse_supported_modes;
-	phydev->advertising = phydev->supported;
-
-	if (tse_config->autoneg == AUTONEG_DISABLE) {
-		phydev->autoneg = tse_config->autoneg;
-		phydev->speed = tse_config->speed;
-		phydev->duplex = tse_config->duplex;
-	}
+	/* XXX: hard code for now */
+	phydev->supported &= PHY_GBIT_FEATURES;
+	phydev->advertising &= phydev->supported;
 
 	tse_priv->phydev = phydev;
 
@@ -871,7 +872,7 @@ static int init_mac(struct net_device *dev)
 	}
 
 	/* Initialize MAC registers */
-	tse_priv->mac_dev->max_frame_length = tse_priv->current_mtu;	//ALT_TSE_MAX_FRAME_LENGTH;
+	tse_priv->mac_dev->max_frame_length = tse_priv->current_mtu;
 	tse_priv->mac_dev->rx_almost_empty_threshold = 8;
 	tse_priv->mac_dev->rx_almost_full_threshold = 8;
 	tse_priv->mac_dev->tx_almost_empty_threshold = 8;
@@ -1348,6 +1349,20 @@ static void __devinit altera_tse_sgdma_setup(struct alt_tse_private *tse_priv)
 #endif
 }
 
+static int altera_tse_get_of_prop(struct platform_device *pdev,
+				  const char *name, unsigned int *val)
+{
+	const __be32 *tmp;
+	int len;
+
+	tmp = of_get_property(pdev->dev.of_node, name, &len);
+	if (!tmp || len < sizeof(__be32))
+		return -ENODEV;
+
+	*val = be32_to_cpup(tmp);
+	return 0;
+}
+
 /**
  * altera_tse_probe() - probe Altera TSE MAC device
  * pdev:	platform device
@@ -1358,9 +1373,9 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	int ret = -ENODEV;
 	struct resource *res, *regs, *sgdma_rx, *sgdma_tx, *desc_mem;
 	struct alt_tse_private *tse_priv;
-	struct alt_tse_config *tse_config = pdev->dev.platform_data;
 	struct mii_bus *mdio;
-	int i;
+	int i, len;
+	const unsigned char *macaddr;
 
 	dev = alloc_etherdev(sizeof(struct alt_tse_private));
 	if (!dev) {
@@ -1370,6 +1385,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 
 	netdev_boot_setup_check(dev);
 	tse_priv = netdev_priv(dev);
+	tse_priv->dev = dev;
 
 	SET_NETDEV_DEV(dev, &pdev->dev);
 	platform_set_drvdata(pdev, dev);
@@ -1493,15 +1509,42 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 
 	tse_priv->tx_irq = res->start;
 
-	tse_priv->dev = dev;
-	tse_priv->tse_config = tse_config;
+	/* get RX FIFO depth from device tree (assuming FIFO width = 4) */
+	ret = altera_tse_get_of_prop(pdev, "ALTR,rx-fifo-depth", &tse_priv->tse_rx_depth);
+	if (ret)
+		goto out_free;
 
-	/* get TSE MAC RX and TX FIFO depths from platform data */
-	tse_priv->tse_rx_depth = tse_config->rx_fifo_depth;
-	tse_priv->tse_tx_depth = tse_config->tx_fifo_depth;
+	/* get TX FIFO depth from device tree (assuming FIFO width = 4) */
+	ret = altera_tse_get_of_prop(pdev, "ALTR,tx-fifo-depth", &tse_priv->tse_tx_depth);
+	if (ret)
+		goto out_free;
 
-	/* set MTU to max frame size */
-	tse_priv->current_mtu = ALT_TSE_MAX_FRAME_LENGTH;
+	/* get max frame size from device tree */
+	ret = altera_tse_get_of_prop(pdev, "max-frame-size", &tse_priv->current_mtu);
+	if (ret)
+		goto out_free;
+
+	/* get default MAC address from device tree */
+	macaddr = of_get_property(pdev->dev.of_node, "local-mac-address", &len);
+	if (!macaddr || len != ETH_ALEN) {
+		dev_err(&pdev->dev, "cannot obtain MAC address\n");
+		ret = -ENODEV;
+		goto out_free;
+	}
+	memcpy(dev->dev_addr, macaddr, ETH_ALEN);
+
+	/* get MII ID from device tree */
+	ret = altera_tse_get_of_prop(pdev, "ALTR,mii-id", &tse_priv->mii_id);
+	if (ret)
+		goto out_free;
+
+	/*
+	 * try to get PHY address from device tree, use PHY autodetection if
+	 * no valid address is given
+	 */
+	ret = altera_tse_get_of_prop(pdev, "ALTR,phy-addr", &tse_priv->phy_addr);
+	if (ret)
+		tse_priv->phy_addr = -1;
 
 	mdio = mdiobus_alloc();
 	if (!mdio) {
@@ -1512,7 +1555,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	mdio->name = "altera_tse-mdio";
 	mdio->read = &altera_tse_mdio_read;
 	mdio->write = &altera_tse_mdio_write;
-	snprintf(mdio->id, MII_BUS_ID_SIZE, "%u", tse_config->mii_id);
+	snprintf(mdio->id, MII_BUS_ID_SIZE, "%u", tse_priv->mii_id);
 
 	mdio->irq = kcalloc(PHY_MAX_ADDR, sizeof(int), GFP_KERNEL);
 	if (!mdio->irq) {
@@ -1541,9 +1584,6 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	dev->base_addr = (unsigned long ) tse_priv->mac_dev;
 	dev->netdev_ops = &altera_tse_netdev_ops;
 	tse_set_ethtool_ops(dev);
-
-	/* set default MAC address */
-	memcpy(dev->dev_addr, tse_config->ethaddr, ETH_ALEN);
 
 	/* setup NAPI interface */
 	netif_napi_add(dev, &tse_priv->napi, tse_poll, ALT_TSE_RX_SGDMA_DESC_COUNT);
@@ -1613,6 +1653,12 @@ static int __devexit altera_tse_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static struct of_device_id altera_tse_of_match[] = {
+	{ .compatible = "ALTR,tse-1.0", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, altera_tse_of_match);
+
 static struct platform_driver altera_tse_driver = {
 	.probe		= altera_tse_probe,
 	.remove		= __devexit_p(altera_tse_remove),
@@ -1621,6 +1667,7 @@ static struct platform_driver altera_tse_driver = {
 	.driver		= {
 		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
+		.of_match_table = altera_tse_of_match,
 	},
 };
 
