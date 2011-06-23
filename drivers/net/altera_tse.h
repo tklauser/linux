@@ -33,20 +33,8 @@
 
 #define __packed_1_    __attribute__ ((packed,aligned(1)))
 
-#define ALT_TSE_NAME               "altera_tse"
-#define TSE_RESOURCE_MAC_DEV       "Altera_tse_resource_mac_dev"
-#define TSE_RESOURCE_SGDMA_RX_DEV  "Altera_tse_resource_sgdma_rx_dev"
-#define TSE_RESOURCE_SGDMA_TX_DEV  "Altera_tse_resource_sgdma_tx_dev"
-#define TSE_RESOURCE_SGDMA_RX_IRQ  "Altera_tse_resource_sgdma_rx_irq"
-#define TSE_RESOURCE_SGDMA_TX_IRQ  "Altera_tse_resource_sgdma_tx_irq"
-#define TSE_RESOURCE_FIFO_DEV      "Altera_tse_resource_fifo_dev"
-#define TSE_RESOURCE_SGDMA_DES_DEV "Altera_tse_resource_descriptor_dev"
-#define TSE_RESOURCE_SGDMA_PHY_DEV "Altera_tse_resource_sgdma_phy_dev"
-#define TSE_RESOURCE_SGDMA_PHY_IRQ "Altera_tse_resource_sgdma_phy_irq"
-
 /*** Define architecture specific parameters ***/
 
-#define MAC_UNITS                       8
 #define ALT_TSE_TOTAL_SGDMA_DESC_COUNT  128        /* Maximum number of descriptors for TX and RX*/
 #define ALT_TSE_TX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for TX */
 #define ALT_TSE_RX_SGDMA_DESC_COUNT     64       /* Maximum number of descriptors for RX*/

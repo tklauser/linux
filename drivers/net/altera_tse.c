@@ -39,7 +39,7 @@
 
 #include "altera_tse.h"
 
-#define DRV_NAME ALT_TSE_NAME
+#define DRV_NAME "altera_tse"
 
 /* 1 -> print contents of all tx packets on printk */
 #define TX_DEEP_DEBUG 0
