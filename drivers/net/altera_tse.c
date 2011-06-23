@@ -1235,27 +1235,7 @@ static int tse_open(struct net_device *dev)
 		napi_disable(&tse_priv->napi);
 		return -EAGAIN;
 	}
-//#ifdef CONFIG_PHY_IRQ_PRESENCE
-//#error "ToDo"
-//#error "Left due to unavailability of Marvell PHY IRQ connection to NEEK/(3c120)"
-///* Register IRQ interrupt */
-//	retval =
-//	    request_irq(tse_priv->alarm_irq, (void *)alt_tse_link_isr, 0,
-//			"TSE_ALARM_LINK", dev);
-//	if (retval) {
-//		PRINTK3
-//		    ("%s:Unable to register timer interrupt %d (retval=%d).\n",
-//		     "TSE_ALARM_LINK", tse_priv->alarm_irq, retval);
-//		free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
-//		free_irq(tse_priv->tx_fifo_interrupt, (void *)dev);
-//		napi_disable(&tse_priv->napi);
-//		return -EAGAIN;
-//	}
-//#else
-//	phy_timer.expires = jiffies + msecs_to_jiffies(PHY_TIMER_MSEC);
-//	add_timer(&phy_timer);
-//#endif
-	//start phy
+
 	phy_start(tse_priv->phydev);
 
 	/* Start network queue */
@@ -1280,10 +1260,6 @@ static int tse_shutdown(struct net_device *dev)
 	/* Free interrupt handler */
 	free_irq(tse_priv->rx_fifo_interrupt, (void *)dev);
 	free_irq(tse_priv->tx_fifo_interrupt, (void *)dev);
-
-#ifdef CONFIG_PHY_IRQ_PRESENCE
-	free_irq(tse_priv->alarm_irq, (void *)dev);
-#endif
 
 	// disable and reset the MAC, empties fifo
 	tse_priv->mac_dev->command_config.bits.software_reset = 1;

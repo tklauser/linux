@@ -387,11 +387,6 @@ struct alt_tse_private {
 
 	struct alt_tse_config *tse_config;
 
-#ifdef CONFIG_PHY_IRQ_PRESENCE
-	unsigned int alarm_irq;
-//	struct timer_reg *alarm_link_check;
-#endif
-
 	u32 msg_enable;
 };
 

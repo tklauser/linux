@@ -918,20 +918,6 @@ config MTIP1000_ETH
 	  This is support for the MoreThanIP 10_100_1000 emac driver implemented
 	  in an FPGA.
 
-#config PHY_IRQ_PRESENCE
-#	tristate "Board phy irq connection"
-#	depends on ALT_TSE
-#	help
-#	 Select if Board have a phy irq connection.Don't select if you are using on
-#	 board ethernet of 3C120 board as it hasn't phy irq line.	
-#
-#config PHY_IRQ_NO
-#	hex "Give phy interrupt No"
-#	depends on PHY_IRQ_PRESENCE
-#	default "10"
-#	help
-#	  Give PHY irq number as per system.
-	  
 config SMC91X
 	tristate "SMC 91C9x/91C1xxx support"
 	select CRC32
