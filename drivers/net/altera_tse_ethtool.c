@@ -68,8 +68,14 @@ static char stat_gstrings[][ETH_GSTRING_LEN] = {
 static void tse_get_drvinfo(struct net_device *dev,
 			    struct ethtool_drvinfo *info)
 {
+	struct alt_tse_private *tse_priv = netdev_priv(dev);
+	u32 megacore_rev = tse_priv->mac_dev->megacore_revision;
+
 	strcpy(info->driver, "Altera TSE MAC IP Driver");
-	strcpy(info->version, "v 8.0");
+	strcpy(info->version, "v8.0");
+	snprintf(info->fw_version, ETHTOOL_FWVERS_LEN, "v%d.%d",
+			megacore_rev & 0xFFFF,
+			(megacore_rev & 0xFFFF0000) >> 16);
 	sprintf(info->bus_info, "AVALON");
 }
 
