@@ -1,33 +1,25 @@
-                   
-/*******************************************************************************
-*  linux/drivers/net/altera_tse_ethtool.c
-*
-* Copyright (C) 2008 Altera Corporation.
-*
-* History:
-*    o  SLS  - Linux 2.6.27
-*
-*  All rights reserved.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful, but
-* WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, GOOD TITLE or
-* NON INFRINGEMENT.  See the GNU General Public License for more
-* details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*                                                                       
-*******************************************************************************/       
+/*
+ * Ethtool support for Altera Triple-Speed Ethernet MAC driver
+ *
+ * Copyright (C) 2008 Altera Corporation
+ *
+ * Contributors:
+ *   Dalon Westergreen
+ *   Thomas Chou
+ *   Ian Abbott
+ *   Yuriy Kozlov
+ *   Tobias Klauser
+ *
+ * Original driver contributed by SLS.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
-#include <linux/kernel.h>	/* printk(), and other useful stuff */
-#include <linux/netdevice.h>	/* struct net_device, and other headers */
+#include <linux/kernel.h>
+#include <linux/netdevice.h>
 #include <linux/ethtool.h>
 #include <linux/phy.h>
 
