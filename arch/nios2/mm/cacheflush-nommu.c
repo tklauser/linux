@@ -70,6 +70,36 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 {
 	if (len >= cpuinfo.dcache_size * 2) {
 		__asm__ __volatile__("1:\n\t"
+				     "initd	0(%0)\n\t"
+				     "sub	%0,%0,%1\n\t"
+				     "bgt	%0,r0,1b\n\t"
+				     :
+				     : "r" (cpuinfo.dcache_size),
+				       "r" (cpuinfo.dcache_line_size));
+
+	} else {
+		unsigned long sset, eset;
+
+		sset = paddr & (~(cpuinfo.dcache_line_size - 1));
+		eset =
+		    (paddr + len + cpuinfo.dcache_line_size - 1) &
+		    (~(cpuinfo.dcache_line_size - 1));
+
+		__asm__ __volatile__("1:\n\t"
+				     "initda	0(%0)\n\t"
+				     "add	%0,%0,%2\n\t"
+				     "blt	%0,%1,1b\n\t"
+				     :
+				     : "r" (sset),
+				       "r" (eset),
+				       "r"(cpuinfo.dcache_line_size));
+	}
+}
+
+static __inline__ void cache_push_invalidate_data(unsigned long paddr, int len)
+{
+	if (len >= cpuinfo.dcache_size * 2) {
+		__asm__ __volatile__("1:\n\t"
 				     "flushd	0(%0)\n\t"
 				     "sub	%0,%0,%1\n\t"
 				     "bgt	%0,r0,1b\n\t"
@@ -105,7 +135,7 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 
 void cache_push(unsigned long paddr, int len)
 {
-	cache_invalidate_data(paddr, len);
+	cache_push_invalidate_data(paddr, len);
 	cache_invalidate_inst(paddr, len);
 }
 
@@ -149,7 +179,7 @@ void cache_clear(unsigned long paddr, int len)
  */
 void dcache_push(unsigned long vaddr, int len)
 {
-	cache_invalidate_data(vaddr, len);
+	cache_push_invalidate_data(vaddr, len);
 }
 EXPORT_SYMBOL(dcache_push);
 
@@ -160,6 +190,6 @@ EXPORT_SYMBOL(dcache_push);
  */
 void icache_push(unsigned long vaddr, int len)
 {
-	cache_invalidate_data(vaddr, len);
+	cache_push_invalidate_data(vaddr, len);
 	cache_invalidate_inst(vaddr, len);
 }
