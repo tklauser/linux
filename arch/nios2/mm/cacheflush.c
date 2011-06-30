@@ -103,6 +103,7 @@ void flush_cache_dup_mm(struct mm_struct *mm)
 
 void flush_icache_range(unsigned long start, unsigned long end)
 {
+	__flush_dcache(start, end);
 	__flush_icache(start, end);
 }
 
@@ -126,6 +127,7 @@ void flush_icache_page(struct vm_area_struct *vma, struct page* page)
 	unsigned long start = (unsigned long) page_address(page);
 	unsigned long end = start + PAGE_SIZE;
 
+	__flush_dcache(start, end);
 	__flush_icache(start, end);
 }
 
