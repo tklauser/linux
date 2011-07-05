@@ -2570,8 +2570,7 @@ config ALT_TSE
 	depends on NIOS2
 	select PHYLIB
 	help
-	  This is support for Altera Triple Speed Ethernet MAC driver
-	  implemented for uClinux.
+	  This drivers supports the Altera Triple-Speed Ethernet MAC.
 
 source "drivers/net/stmmac/Kconfig"
 
