@@ -185,18 +185,22 @@ void update_mmu_cache(struct vm_area_struct *vma,
 void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 		    struct page *to)
 {
-	flush_dcache_range(vaddr, vaddr + PAGE_SIZE);
-	flush_icache_range(vaddr, vaddr + PAGE_SIZE);
+	__flush_dcache(vaddr, vaddr + PAGE_SIZE);
+	__flush_icache(vaddr, vaddr + PAGE_SIZE);
 	copy_page(vto, vfrom);
-	flush_dcache_range((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
+	__flush_dcache((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
+	/* FIXME: really necessary? */
+	__flush_icache((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
 }
 
 void clear_user_page(void *addr, unsigned long vaddr, struct page *page)
 {
-	flush_dcache_range(vaddr, vaddr + PAGE_SIZE);
-	flush_icache_range(vaddr, vaddr + PAGE_SIZE);
+	__flush_dcache(vaddr, vaddr + PAGE_SIZE);
+	__flush_icache(vaddr, vaddr + PAGE_SIZE);
 	clear_page(addr);
-	flush_dcache_range((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
+	__flush_dcache((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
+	/* FIXME: really necessary? */
+	__flush_icache((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
 }
 
 void copy_from_user_page(struct vm_area_struct *vma, struct page *page,
@@ -205,9 +209,9 @@ void copy_from_user_page(struct vm_area_struct *vma, struct page *page,
 {
 	flush_cache_page(vma, user_vaddr, page_to_pfn(page));
 	memcpy(dst, src, len);
-	flush_dcache_range((unsigned long)src, (unsigned long)src+len);
+	__flush_dcache((unsigned long)src, (unsigned long)src + len);
 	if (vma->vm_flags & VM_EXEC)
-		flush_icache_range((unsigned long)src, (unsigned long)src+len);
+		__flush_icache((unsigned long)src, (unsigned long)src + len);
 }
 
 void copy_to_user_page(struct vm_area_struct *vma, struct page *page,
@@ -216,7 +220,7 @@ void copy_to_user_page(struct vm_area_struct *vma, struct page *page,
 {
 	flush_cache_page(vma, user_vaddr, page_to_pfn(page));
 	memcpy(dst, src, len);
-	flush_dcache_range((unsigned long)dst, (unsigned long)dst+len);
+	__flush_dcache((unsigned long)dst, (unsigned long)dst + len);
 	if (vma->vm_flags & VM_EXEC)
-		flush_icache_range((unsigned long)dst, (unsigned long)dst+len);
+		__flush_icache((unsigned long)dst, (unsigned long)dst + len);
 }
