@@ -75,20 +75,10 @@ static void flush_aliases(struct address_space *mapping, struct page *page)
 	flush_dcache_mmap_unlock(mapping);
 }
 
-void flush_dcache_all(void)
-{
-	__flush_dcache(0, cpuinfo.dcache_size);
-}
-
-void flush_icache_all(void)
-{
-	__flush_icache(0, cpuinfo.icache_size);
-}
-
 void flush_cache_all(void)
 {
-	flush_dcache_all();
-	flush_icache_all();
+	__flush_dcache(0, cpuinfo.dcache_size);
+	__flush_icache(0, cpuinfo.icache_size);
 }
 
 void flush_cache_mm(struct mm_struct *mm)
