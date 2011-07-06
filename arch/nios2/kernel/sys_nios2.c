@@ -39,12 +39,30 @@ asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 asmlinkage int sys_cacheflush(unsigned long addr, int scope, int cache,
 			      unsigned long len)
 {
-#ifdef CONFIG_MMU
-	flush_dcache_range(addr, addr+len);
-	flush_icache_range(addr, addr+len);
-#else
+#ifndef CONFIG_MMU
 	flush_cache_all();
+#else
+	struct vm_area_struct *vma;
+
+	if (len == 0)
+		return 0;
+
+	/* Check for overflow */
+	if (addr + len < addr)
+		return -EFAULT;
+
+	/*
+	 * Verify that the specified address region actually belongs
+	 * to this process.
+	 */
+	vma = find_vma(current->mm, addr);
+	if (vma == NULL || addr < vma->vm_start || addr + len > vma->vm_end)
+		return -EFAULT;
+
+	/* Ignore the scope and cache arguments. */
+	flush_cache_range(vma, addr, addr + len);
 #endif /* CONFIG_MMU */
+
 	return 0;
 }
 
