@@ -37,9 +37,7 @@ extern void copy_from_user_page(struct vm_area_struct *vma, struct page *page,
                                void *dst, void *src, int len);
 
 /* FIXME: Remove: Linux does not define these interfaces, they're arch specific. */
-extern void flush_dcache_all(void);
 extern void flush_dcache_range(unsigned long start, unsigned long end);
-extern void flush_icache_all(void);
 
 #else /* CONFIG_MMU */
 
@@ -60,10 +58,8 @@ static inline void __flush_cache_all(void)
 #define flush_cache_mm(mm)			do { } while (0)
 #define flush_cache_range(vma, start, end)	cache_push((start), (end) - (start))
 #define flush_cache_page(vma, vmaddr)		do { } while (0)
-#define flush_dcache_all()			dcache_push_all()
 #define flush_dcache_range(start,end)		dcache_push((start), (end) - (start))
 #define flush_dcache_page(page)			do { } while (0)
-#define flush_icache_all()			icache_push_all()
 #define flush_icache_range(start,end)		icache_push((start), (end) - (start))
 #define flush_icache_page(vma,pg)		do { } while (0)
 #define flush_icache_user_range(vma,pg,adr,len)	do { } while (0)

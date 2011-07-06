@@ -182,7 +182,7 @@ int module_finalize(const Elf_Ehdr *hdr,
 		    const Elf_Shdr *sechdrs,
 		    struct module *me)
 {
-	flush_dcache_all();
+	flush_cache_all();
 	return 0;
 }
 
