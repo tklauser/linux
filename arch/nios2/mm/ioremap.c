@@ -142,12 +142,13 @@ void __iomem *__ioremap(unsigned long phys_addr, unsigned long size,
 	}
 
 	/*
-	 * Map uncached objects in the low part of address space to 0xe0000000UL
+	 * Map uncached objects in the low part of address space to
+	 * CONFIG_IO_REGION_BASE
 	 */
 	if (IS_MAPPABLE_UNCACHEABLE(phys_addr) &&
 	    IS_MAPPABLE_UNCACHEABLE(last_addr) &&
 	    !(cacheflag & _PAGE_CACHED))
-		return (void __iomem *)(0xe0000000UL + phys_addr);
+		return (void __iomem *)(CONFIG_IO_REGION_BASE + phys_addr);
 
 	/* Mappings have to be page-aligned */
 	offset = phys_addr & ~PAGE_MASK;
@@ -176,7 +177,7 @@ void __iounmap(void __iomem *addr)
 {
 	struct vm_struct *p;
 
-	if ((unsigned long) addr > 0xe0000000UL)     /* FIXME */
+	if ((unsigned long) addr > CONFIG_IO_REGION_BASE)     /* FIXME */
 		return;
 
 	p = remove_vm_area((void *) (PAGE_MASK & (unsigned long __force) addr));
