@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/console.h>
 #include <linux/bootmem.h>
 #include <linux/initrd.h>
