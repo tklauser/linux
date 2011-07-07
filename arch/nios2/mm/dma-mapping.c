@@ -1,23 +1,15 @@
-/* This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
- *
- *  linux/arch/nios2/mm/dma-noncoherent.c 
- * 
- *  Copyright (C) 2009, Wind River Systems Inc
+/*
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
  *  Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  *
- * Based on:
+ * Based on DMA code from MIPS.
  *
- *  linux/arch/nios2nommu/mm/dma-noncoherent.c 
- *
- *
- * Copyright (C) 2000  Ani Joshi <ajoshi@unixbox.com>
- * Copyright (C) 2000, 2001  Ralf Baechle <ralf@gnu.org>
- * 
- * Swiped from MIPS and cloned for nios2 by fredrik.markstrom@gmail.com 
- * and  ivarholmqvist@gmail.com
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
  */
+
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -28,12 +20,6 @@
 #include <asm/cache.h>
 #include <asm/cacheflush.h>
 #include <asm/io.h>
-
-/*
- * Warning on the terminology - Linux calls an uncached area coherent;
- * MIPS terminology calls memory areas with hardware maintained coherency
- * coherent.
- */
 
 void *dma_alloc_noncoherent(struct device *dev, size_t size,
 			    dma_addr_t *dma_handle, gfp_t gfp)
@@ -58,7 +44,7 @@ void *dma_alloc_noncoherent(struct device *dev, size_t size,
 EXPORT_SYMBOL(dma_alloc_noncoherent);
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
-	dma_addr_t * dma_handle, gfp_t gfp)
+			 dma_addr_t *dma_handle, gfp_t gfp)
 {
 	void *ret;
 
@@ -70,30 +56,27 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 
 	return ret;
 }
-
 EXPORT_SYMBOL(dma_alloc_coherent);
 
 void dma_free_noncoherent(struct device *dev, size_t size, void *vaddr,
-	dma_addr_t dma_handle)
+			  dma_addr_t dma_handle)
 {
 	free_pages((unsigned long) vaddr, get_order(size));
 }
-
 EXPORT_SYMBOL(dma_free_noncoherent);
 
 void dma_free_coherent(struct device *dev, size_t size, void *vaddr,
-	dma_addr_t dma_handle)
+		       dma_addr_t dma_handle)
 {
 	unsigned long addr = (unsigned long) vaddr;
 
 	addr = (unsigned long) CAC_ADDR(addr);
 	free_pages(addr, get_order(size));
 }
-
 EXPORT_SYMBOL(dma_free_coherent);
 
 int dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
-	enum dma_data_direction direction)
+	       enum dma_data_direction direction)
 {
 	int i;
 
@@ -111,11 +94,11 @@ int dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 
 	return nents;
 }
-
 EXPORT_SYMBOL(dma_map_sg);
 
 dma_addr_t dma_map_page(struct device *dev, struct page *page,
-	unsigned long offset, size_t size, enum dma_data_direction direction)
+			unsigned long offset, size_t size,
+			enum dma_data_direction direction)
 {
 	unsigned long addr;
 
@@ -126,11 +109,10 @@ dma_addr_t dma_map_page(struct device *dev, struct page *page,
 
 	return page_to_phys(page) + offset;
 }
-
 EXPORT_SYMBOL(dma_map_page);
 
 void dma_unmap_page(struct device *dev, dma_addr_t dma_address, size_t size,
-	enum dma_data_direction direction)
+		    enum dma_data_direction direction)
 {
 	BUG_ON(direction == DMA_NONE);
 
@@ -141,11 +123,10 @@ void dma_unmap_page(struct device *dev, dma_addr_t dma_address, size_t size,
 		__dma_sync(addr, size, direction);
 	}
 }
-
 EXPORT_SYMBOL(dma_unmap_page);
 
 void dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nhwentries,
-	enum dma_data_direction direction)
+		  enum dma_data_direction direction)
 {
 	unsigned long addr;
 	int i;
@@ -161,11 +142,10 @@ void dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nhwentries,
 			__dma_sync(addr, sg->length, direction);
 	}
 }
-
 EXPORT_SYMBOL(dma_unmap_sg);
 
 void dma_sync_single_for_cpu(struct device *dev, dma_addr_t dma_handle,
-	size_t size, enum dma_data_direction direction)
+			     size_t size, enum dma_data_direction direction)
 {
 	unsigned long addr;
 
@@ -174,11 +154,10 @@ void dma_sync_single_for_cpu(struct device *dev, dma_addr_t dma_handle,
 	addr = dma_handle + PAGE_OFFSET;
 	__dma_sync(addr, size, direction);
 }
-
 EXPORT_SYMBOL(dma_sync_single_for_cpu);
 
 void dma_sync_single_for_device(struct device *dev, dma_addr_t dma_handle,
-	size_t size, enum dma_data_direction direction)
+				size_t size, enum dma_data_direction direction)
 {
 	unsigned long addr;
 
@@ -187,11 +166,11 @@ void dma_sync_single_for_device(struct device *dev, dma_addr_t dma_handle,
 	addr = dma_handle + PAGE_OFFSET;
 	__dma_sync(addr, size, direction);
 }
-
 EXPORT_SYMBOL(dma_sync_single_for_device);
 
 void dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t dma_handle,
-	unsigned long offset, size_t size, enum dma_data_direction direction)
+				   unsigned long offset, size_t size,
+				   enum dma_data_direction direction)
 {
 	unsigned long addr;
 
@@ -200,11 +179,11 @@ void dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t dma_handle,
 	addr = dma_handle + offset + PAGE_OFFSET;
 	__dma_sync(addr, size, direction);
 }
-
 EXPORT_SYMBOL(dma_sync_single_range_for_cpu);
 
 void dma_sync_single_range_for_device(struct device *dev, dma_addr_t dma_handle,
-	unsigned long offset, size_t size, enum dma_data_direction direction)
+				      unsigned long offset, size_t size,
+				      enum dma_data_direction direction)
 {
 	unsigned long addr;
 
@@ -213,11 +192,10 @@ void dma_sync_single_range_for_device(struct device *dev, dma_addr_t dma_handle,
 	addr = dma_handle + offset + PAGE_OFFSET;
 	__dma_sync(addr, size, direction);
 }
-
 EXPORT_SYMBOL(dma_sync_single_range_for_device);
 
 void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg, int nelems,
-	enum dma_data_direction direction)
+			 enum dma_data_direction direction)
 {
 	int i;
 
@@ -229,11 +207,10 @@ void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg, int nelems,
 		           sg->length, direction);
 	}
 }
-
 EXPORT_SYMBOL(dma_sync_sg_for_cpu);
 
 void dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg, int nelems,
-	enum dma_data_direction direction)
+			    enum dma_data_direction direction)
 {
 	int i;
 
@@ -245,5 +222,4 @@ void dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg, int nele
 		           sg->length, direction);
 	}
 }
-
 EXPORT_SYMBOL(dma_sync_sg_for_device);
