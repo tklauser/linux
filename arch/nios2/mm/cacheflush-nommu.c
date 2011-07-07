@@ -163,17 +163,6 @@ void icache_push_all(void)
 }
 
 /*
- * cache_clear() semantics: Clear any cache entries for the area in question,
- * without writing back dirty entries first. This is useful if the data will
- * be overwritten anyway, e.g. by DMA to memory. The range is defined by a
- * _physical_ address.
- */
-void cache_clear(unsigned long paddr, int len)
-{
-	cache_invalidate_data(paddr, len);
-}
-
-/*
  * dcache_push() semantics: Write back and dirty data cache and invalidate
  * the range.
  */

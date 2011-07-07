@@ -36,7 +36,7 @@ extern void copy_from_user_page(struct vm_area_struct *vma, struct page *page,
                                unsigned long user_vaddr,
                                void *dst, void *src, int len);
 
-/* FIXME: Remove: Linux does not define these interfaces, they're arch specific. */
+/* FIXME: Remove: Linux does not define this interfaces, it's arch specific. */
 extern void flush_dcache_range(unsigned long start, unsigned long end);
 
 #else /* CONFIG_MMU */
@@ -46,7 +46,6 @@ extern void dcache_push(unsigned long vaddr, int len);
 extern void icache_push(unsigned long vaddr, int len);
 extern void dcache_push_all(void);
 extern void icache_push_all(void);
-extern void cache_clear(unsigned long paddr, int len);
 
 static inline void __flush_cache_all(void)
 {
@@ -56,18 +55,25 @@ static inline void __flush_cache_all(void)
 
 #define flush_cache_all()			__flush_cache_all()
 #define flush_cache_mm(mm)			do { } while (0)
+#define flush_cache_dup_mm(mm)			do { } while (0)
 #define flush_cache_range(vma, start, end)	cache_push((start), (end) - (start))
 #define flush_cache_page(vma, vmaddr)		do { } while (0)
-#define flush_dcache_range(start,end)		dcache_push((start), (end) - (start))
+#define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 0
 #define flush_dcache_page(page)			do { } while (0)
+
 #define flush_icache_range(start,end)		icache_push((start), (end) - (start))
 #define flush_icache_page(vma,pg)		do { } while (0)
 #define flush_icache_user_range(vma,pg,adr,len)	do { } while (0)
+#define flush_cache_vmap(start, end)		do { } while (0)
+#define flush_cache_vunmap(start, end)		do { } while (0)
 
 #define copy_to_user_page(vma, page, vaddr, dst, src, len) \
 	memcpy(dst, src, len)
 #define copy_from_user_page(vma, page, vaddr, dst, src, len) \
 	memcpy(dst, src, len)
+
+/* FIXME: Remove: Linux does not define this interfaces, it's arch specific. */
+#define flush_dcache_range(start,end)		dcache_push((start), (end) - (start))
 
 #endif /* CONFIG_MMU */
 
