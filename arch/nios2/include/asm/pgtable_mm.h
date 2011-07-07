@@ -211,13 +211,6 @@ extern void __init mmu_init(void);
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
 
-/*
- * We provide our own get_unmapped area to cope with the virtual aliasing
- * constraints placed on us by the cache architecture.
- */
-
-#define HAVE_ARCH_UNMAPPED_AREA
-
 #include <asm-generic/pgtable.h>
 
 #endif /* _ASM_NIOS2_PGTABLE_H */
