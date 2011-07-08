@@ -22,7 +22,7 @@
 #include <linux/sched.h>
 #include <linux/uaccess.h>
 
-#include <asm/exceptions.h>
+#include <asm/traps.h>
 #include <asm/unaligned.h>
 
 /* instructions we emulate */

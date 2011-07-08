@@ -27,7 +27,7 @@
 #include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/ptrace.h>
-#include <asm/exceptions.h>
+#include <asm/traps.h>
 
 #define EXC_SUPERV_INSN_ACCESS	9	/* Supervisor only instruction address */
 #define EXC_SUPERV_DATA_ACCESS	11	/* Supervisor only data address	*/

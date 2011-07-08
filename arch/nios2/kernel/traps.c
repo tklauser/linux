@@ -1,4 +1,6 @@
 /*
+ * Hardware exception handling
+ *
  * Copyright (C) 2010 Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2004 Microtronix Datacom Ltd.
  * Copyright (C) 2001 Vic Phillips
@@ -14,9 +16,39 @@
 #include <linux/module.h>
 #include <linux/mm.h>
 
-#include <asm/exceptions.h>
+#include <asm/traps.h>
 #include <asm/sections.h>
 #include <asm/ptrace.h>
+
+static DEFINE_SPINLOCK(die_lock);
+
+void die(const char *str, struct pt_regs *regs, long err)
+{
+	console_verbose();
+	spin_lock_irq(&die_lock);
+	printk(KERN_WARNING "Oops: %s, sig: %ld\n", str, err);
+	show_regs(regs);
+	spin_unlock_irq(&die_lock);
+	/*
+	 * do_exit() should take care of panic'ing from an interrupt
+	 * context so we don't handle it here
+	 */
+	do_exit(err);
+}
+
+void _exception(int signo, struct pt_regs *regs, int code, unsigned long addr)
+{
+	siginfo_t info;
+
+	if (!user_mode(regs))
+		die("Exception in kernel mode", regs, signo);
+
+	info.si_signo = signo;
+	info.si_errno = 0;
+	info.si_code = code;
+	info.si_addr = (void __user *) addr;
+	force_sig_info(signo, &info, current);
+}
 
 /*
  * The architecture-independent backtrace generator
@@ -144,4 +176,19 @@ asmlinkage void handle_diverror_c(struct pt_regs *fp)
 {
 	fp->ea -= 4;
 	_exception(SIGFPE, fp, FPE_INTDIV, fp->ea);
+}
+
+/* Unhandled exception handler */
+asmlinkage void unhandled_exception(struct pt_regs *regs, int cause)
+{
+	cause /= 4;
+
+	pr_warn("Unhandled exception #%d in %s mode\n",
+			cause, user_mode(regs) ? "user" : "kernel");
+
+	regs->ea -= 4;
+	show_regs(regs);
+
+	/* TODO: What should we do here? WRS code was halting the ISS with
+	 * WRCTL(6,1) and spinning forever afterwards. */
 }
