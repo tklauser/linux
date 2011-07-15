@@ -113,14 +113,13 @@ void pgtable_cache_init(void)
 /* ivho: set back to "static inline" when correct in pgtable.c
  */
 int pte_write(pte_t pte){
-  return (pte_val(pte) & (_PAGE_WRITE << 20)) != 0;
+  return pte_val(pte) & _PAGE_WRITE;
 }
 int pte_dirty(pte_t pte){
-  return (pte_val(pte) & (_PAGE_MODIFIED << 20)) != 0;
-
+  return pte_val(pte) & _PAGE_MODIFIED;
 }
 int pte_young(pte_t pte){
-  return (pte_val(pte) & (_PAGE_ACCESSED << 20)) != 0;
+  return pte_val(pte) & _PAGE_ACCESSED;
 }
 int pte_file(pte_t pte){BUG();}
 
@@ -138,14 +137,14 @@ swp_entry_t   __swp_entry(unsigned long type, pgoff_t offset){BUG();}
  */
 int pte_none(pte_t pte){
 #if 0
-   return (!((pte_val(pte) >> 20) & ~_PAGE_GLOBAL));
+   return !(pte_val(pte) & ~_PAGE_GLOBAL);
 #else
-   return (!((pte_val(pte) >> 20) & ~(_PAGE_GLOBAL|0xf)));
+   return !(pte_val(pte) & ~(_PAGE_GLOBAL|0xf));
 #endif
 }
 
 int pte_present(pte_t pte){
-  return ((pte_val(pte) >> 20) & _PAGE_PRESENT) != 0;
+  return pte_val(pte) & _PAGE_PRESENT;
 }
 
 /*
@@ -155,7 +154,7 @@ int pte_present(pte_t pte){
 pte_t pte_wrprotect(pte_t pte)
 {
   pte_t p;
-  pte_val(p) = pte_val(pte) & ~(_PAGE_WRITE<<20);
+  pte_val(p) = pte_val(pte) & ~_PAGE_WRITE;
   return p;
 }
 pte_t pte_mkclean(pte_t pte){
@@ -164,28 +163,29 @@ pte_t pte_mkclean(pte_t pte){
 
 pte_t pte_mkold(pte_t pte)
 {
-  pte_val(pte) |= (_PAGE_OLD << 20);
+  /* FIXME: &= ~_PAGE_ACCESSED ??? */
+  pte_val(pte) |= _PAGE_OLD;
   return pte;
 }
 
-pte_t pte_mkwrite(pte_t pte){ 
-  pte_val(pte) |= (_PAGE_WRITE << 20);
+pte_t pte_mkwrite(pte_t pte){
+  pte_val(pte) |= _PAGE_WRITE;
   return pte;
 }
 
 pte_t pte_mkdirty(pte_t pte){
-   pte_val(pte) |= (_PAGE_MODIFIED << 20);
+   pte_val(pte) |= _PAGE_MODIFIED;
   return pte;
 }
 
-pte_t pte_mkyoung(pte_t pte){ 
-   pte_val(pte) |= (_PAGE_ACCESSED << 20);
+pte_t pte_mkyoung(pte_t pte){
+   pte_val(pte) |= _PAGE_ACCESSED;
    return pte;
 }
 
 pte_t pte_modify(pte_t pte, pgprot_t newprot){
-	const unsigned long mask = (_PAGE_READ | _PAGE_WRITE | _PAGE_EXEC) << 20;
-	pte_val(pte) = (pte_val(pte) & ~mask) | ((pgprot_val(newprot) << 20) & mask);
+	const unsigned long mask = _PAGE_READ | _PAGE_WRITE | _PAGE_EXEC;
+	pte_val(pte) = (pte_val(pte) & ~mask) | (pgprot_val(newprot) & mask);
 	return pte;
 }
 
@@ -250,7 +250,7 @@ void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep){
 pte_t mk_pte(struct page *page, pgprot_t pgprot){
   pte_t rv;
 
-  pte_val(rv) = (pgprot_val(pgprot) << 20) | page_to_pfn(page);
+  pte_val(rv) = pgprot_val(pgprot) | page_to_pfn(page);
 
   return rv;
 }
@@ -298,7 +298,7 @@ pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address){
 pte_t pfn_pte(unsigned long  pfn, pgprot_t prot)
 {
    pte_t pte;
-   pte_val(pte) = pfn | (pgprot_val(prot) << 20);
+   pte_val(pte) = pfn | pgprot_val(prot);
    return pte;
 }
 

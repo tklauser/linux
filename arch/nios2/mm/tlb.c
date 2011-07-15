@@ -185,11 +185,11 @@ void dump_tlb_line(unsigned long line)
 					(pteaddr<<(PAGE_SHIFT-2)),
 					(tlbacc<<PAGE_SHIFT),
 					(tlbmisc>>PID_SHIFT)&PID_MASK,
-					((tlbacc>>20)&_PAGE_READ?'r':'-'),
-					((tlbacc>>20)&_PAGE_WRITE?'w':'-'),
-					((tlbacc>>20)&_PAGE_EXEC?'x':'-'),
-					((tlbacc>>20)&_PAGE_GLOBAL?'g':'-'),
-					((tlbacc>>20)&_PAGE_CACHED?'c':'-'));
+					(tlbacc&_PAGE_READ?'r':'-'),
+					(tlbacc&_PAGE_WRITE?'w':'-'),
+					(tlbacc&_PAGE_EXEC?'x':'-'),
+					(tlbacc&_PAGE_GLOBAL?'g':'-'),
+					(tlbacc&_PAGE_CACHED?'c':'-'));
 		}
 	}
 

@@ -1,30 +1,37 @@
 /*
+ * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2009 Wind River Systems Inc
+ *
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
- *
- * Copyright (C) 1994 - 2002 by Ralf Baechle
- * Copyright (C) 1999, 2000, 2001 Silicon Graphics, Inc.
- * Copyright (C) 2002  Maciej W. Rozycki
  */
+
 #ifndef _ASM_NIOS2_PGTABLE_BITS_H
 #define _ASM_NIOS2_PGTABLE_BITS_H
 
-/* These are actual HW defined protection bits (unshifted) in TLBACC
+/*
+ * These are actual hardware defined protection bits in the tlbacc register
+ * which looks like this:
+ *
+ * 31 30 ... 26 25 24 23 22 21 20 19 18 ...  1  0
+ * ignored........  C  R  W  X  G PFN............
  */
-#define _PAGE_GLOBAL                (1<<0)
-#define _PAGE_EXEC                  (1<<1)
-#define _PAGE_WRITE                 (1<<2)
-#define _PAGE_READ                  (1<<3)
-#define _PAGE_CACHED                (1<<4)
+#define _PAGE_GLOBAL                (1<<20)
+#define _PAGE_EXEC                  (1<<21)
+#define _PAGE_WRITE                 (1<<22)
+#define _PAGE_READ                  (1<<23)
+#define _PAGE_CACHED                (1<<24)
 
-/* TLBACC also has 7 IGNORE bits to use for SW defined attributes
+/*
+ * Software defined bits. They are ignored by the hardware and always read back
+ * as zero, but can be written as non-zero.
  */
-#define _PAGE_PRESENT               (1<<5)
-#define _PAGE_ACCESSED              (1<<6)  
-#define _PAGE_MODIFIED              (1<<7)  
-#define _PAGE_FILE                  (1<<8)  
-#define _PAGE_VALID                 (1<<9)
-#define _PAGE_OLD                   (1<<10)
+#define _PAGE_PRESENT               (1<<25)
+#define _PAGE_ACCESSED              (1<<26)
+#define _PAGE_MODIFIED              (1<<27)
+#define _PAGE_FILE                  (1<<28)
+#define _PAGE_VALID                 (1<<29)
+#define _PAGE_OLD                   (1<<30)
 
 #endif /* _ASM_NIOS2_PGTABLE_BITS_H */
