@@ -689,7 +689,7 @@ static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
  * function converts those variables into the appropriate
  * register values, and can bring down the device if needed.
  */
-static void adjust_link(struct net_device *dev)
+static void altera_tse_adjust_link(struct net_device *dev)
 {
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 	unsigned long flags;
