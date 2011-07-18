@@ -12,9 +12,10 @@
 #ifndef _ASM_NIOS2_CACHEFLUSH_H
 #define _ASM_NIOS2_CACHEFLUSH_H
 
-#include <linux/mm.h>
-
 #ifdef CONFIG_MMU
+
+struct mm_struct;
+
 extern void flush_cache_all(void);
 extern void flush_cache_mm(struct mm_struct *mm);
 extern void flush_cache_dup_mm(struct mm_struct *mm);

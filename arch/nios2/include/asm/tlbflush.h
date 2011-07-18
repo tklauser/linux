@@ -13,7 +13,7 @@
 # include <asm-generic/tlbflush.h>
 #else
 
-#include <linux/mm.h>
+struct mm_struct;
 
 /*
  * TLB flushing:
