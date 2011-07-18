@@ -106,10 +106,6 @@ pgd_t *pgd_offset(struct mm_struct *mm, unsigned long addr)
   return mm->pgd + pgd_index(addr);
 }
 
-void pgtable_cache_init(void)
-{
-}
-
 /* ivho: set back to "static inline" when correct in pgtable.c
  */
 int pte_write(pte_t pte){

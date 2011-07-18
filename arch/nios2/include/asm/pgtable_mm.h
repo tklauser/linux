@@ -92,16 +92,12 @@ extern pte_t invalid_pte_table[PAGE_SIZE/sizeof(pte_t)];
  */
 void set_pmd(pmd_t *pmdptr, pmd_t pmdval);
 
-extern void paging_init(void);
-
 #define pgd_index(address)	(((address) >> PGDIR_SHIFT) \
 				 & (PTRS_PER_PGD - 1))
 
 /* to find an entry in a pagetable-directory */
 //ivho: checkme type of addr
 pgd_t *pgd_offset(struct mm_struct *, unsigned long addr);
-
-void pgtable_cache_init(void);
 
 /* ivho: set back to "static inline" when correct in pgtable.c */
 int pte_write(pte_t pte);
@@ -168,9 +164,6 @@ void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
  */
 pte_t mk_pte(struct page *page, pgprot_t pgprot);
 
-void update_mmu_cache(struct vm_area_struct *vma,
-				    unsigned long address, pte_t *pte);
-
 void pte_unmap(pte_t *pte);
 
 pte_t pgoff_to_pte(pgoff_t off);
@@ -206,11 +199,17 @@ struct page * pte_page(pte_t pte);
 
 int kern_addr_valid(unsigned long addr);
 
-extern void __init mmu_init(void);
-
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
 
 #include <asm-generic/pgtable.h>
+
+#define pgtable_cache_init()		do { }  while (0)
+
+extern void __init paging_init(void);
+extern void __init mmu_init(void);
+
+extern void update_mmu_cache(struct vm_area_struct *vma,
+			     unsigned long address, pte_t *pte);
 
 #endif /* _ASM_NIOS2_PGTABLE_H */
