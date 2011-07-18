@@ -17,6 +17,9 @@
 
 #include <asm/io.h>
 #include <asm/page.h>
+#include <asm/bug.h>
+#include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
 
 #include <asm/pgtable-bits.h>
 #include <asm-generic/pgtable-nopmd.h>
@@ -76,12 +79,10 @@ struct mm_struct;
 #define PGDIR_SIZE	(1UL << PGDIR_SHIFT)
 #define PGDIR_MASK	(~(PGDIR_SIZE-1))
 
-/* ivho: ? */
-#define PTE_FILE_MAX_BITS       28
+#define PTE_FILE_MAX_BITS	28
 
 /* ivho: is vaddr always "unsigned long"? */
 struct page * ZERO_PAGE(unsigned long vaddr);
-
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pte_t invalid_pte_table[PAGE_SIZE/sizeof(pte_t)];
@@ -90,20 +91,21 @@ extern pte_t invalid_pte_table[PAGE_SIZE/sizeof(pte_t)];
  * (pmds are folded into puds so this doesn't get actually called,
  * but the define is needed for a generic inline function.)
  */
-void set_pmd(pmd_t *pmdptr, pmd_t pmdval);
+static inline void set_pmd(pmd_t *pmdptr, pmd_t pmdval)
+{
+	pmdptr->pud.pgd.pgd = pmdval.pud.pgd.pgd;
+}
 
 #define pgd_index(address)	(((address) >> PGDIR_SHIFT) \
 				 & (PTRS_PER_PGD - 1))
 
-/* to find an entry in a pagetable-directory */
-//ivho: checkme type of addr
-pgd_t *pgd_offset(struct mm_struct *, unsigned long addr);
+/* to find an entry in a page-table-directory */
+#define pgd_offset(mm, addr)	((mm)->pgd + pgd_index(addr))
 
-/* ivho: set back to "static inline" when correct in pgtable.c */
-int pte_write(pte_t pte);
-int pte_dirty(pte_t pte);
-int pte_young(pte_t pte);
-int pte_file(pte_t pte);
+static inline int pte_write(pte_t pte)		{ return pte_val(pte) & _PAGE_WRITE; }
+static inline int pte_dirty(pte_t pte)		{ return pte_val(pte) & _PAGE_MODIFIED; }
+static inline int pte_young(pte_t pte)		{ return pte_val(pte) & _PAGE_ACCESSED; }
+static inline int pte_file(pte_t pte)		{ BUG(); /* FIXME */ }
 static inline int pte_special(pte_t pte)	{ return 0; }
 
 #define pgprot_noncached pgprot_noncached
@@ -124,49 +126,134 @@ unsigned long __swp_type(swp_entry_t);
 pgoff_t       __swp_offset(swp_entry_t);
 swp_entry_t   __swp_entry(unsigned long, pgoff_t offset);
 
-int pte_none(pte_t pte);
-int pte_present(pte_t pte);
+/*
+ * FIXME: Today unmapped pages are mapped to the low physical addresses
+ * and not 0 (to avoid to trigger the false alias detection in the iss)
+ * Also check pte_clear.
+ */
+static inline int pte_none(pte_t pte)
+{
+#if 0
+	return !(pte_val(pte) & ~_PAGE_GLOBAL);
+#else
+	return !(pte_val(pte) & ~(_PAGE_GLOBAL|0xf));
+#endif
+}
+
+static inline int pte_present(pte_t pte)	{ return pte_val(pte) & _PAGE_PRESENT; }
 
 /*
  * The following only work if pte_present() is true.
  * Undefined behaviour if not..
  */
-pte_t pte_wrprotect(pte_t pte);
-pte_t pte_mkclean(pte_t pte);
-pte_t pte_mkold(pte_t pte);
-pte_t pte_mkwrite(pte_t pte);
-pte_t pte_mkdirty(pte_t pte);
+static inline pte_t pte_wrprotect(pte_t pte)
+{
+	pte_val(pte) &= ~_PAGE_WRITE;
+	return pte;
+}
+
+static inline pte_t pte_mkclean(pte_t pte)
+{
+	return pte;
+}
+
+static inline pte_t pte_mkold(pte_t pte)
+{
+	/* FIXME: &= ~_PAGE_ACCESSED ??? */
+	pte_val(pte) |= _PAGE_OLD;
+	return pte;
+}
+
+static inline pte_t pte_mkwrite(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_WRITE;
+	return pte;
+}
+
+static inline pte_t pte_mkdirty(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_MODIFIED;
+	return pte;
+}
+
 static inline pte_t pte_mkspecial(pte_t pte)	{ return pte; }
 
-pte_t pte_mkyoung(pte_t pte);
-pte_t pte_modify(pte_t pte, pgprot_t newprot);
+static inline pte_t pte_mkyoung(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_ACCESSED;
+	return pte;
+}
 
-int   pmd_present(pmd_t pmd);
-void  pmd_clear(pmd_t *pmdp);
+static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
+{
+	const unsigned long mask = _PAGE_READ | _PAGE_WRITE | _PAGE_EXEC;
+	pte_val(pte) = (pte_val(pte) & ~mask) | (pgprot_val(newprot) & mask);
+	return pte;
+}
+
+static inline int pmd_present(pmd_t pmd)
+{
+	return (pmd_val(pmd) != (unsigned long) invalid_pte_table)
+			&& (pmd_val(pmd) != 0UL);
+}
+
+static inline void pmd_clear(pmd_t *pmdp)
+{
+	pmd_val(*pmdp) = (unsigned long) invalid_pte_table;
+}
 
 /*
- * Certain architectures need to do special things when pte's
- * within a page table are directly modified.  Thus, the following
- * hook is made available.
+ * Store a linux PTE into the linux page table.
  */
-void set_pte(pte_t *ptep, pte_t pteval);
-void set_pte_at(struct mm_struct *mm, unsigned long addr,pte_t *ptep, pte_t pteval);
+static inline void set_pte(pte_t *ptep, pte_t pteval)
+{
+	*ptep = pteval;
+}
 
-int pmd_none(pmd_t pmd);
-int pmd_bad(pmd_t pmd);
+static inline unsigned long pte_pfn(pte_t pte)
+{
+	return pte_val(pte) & 0xfffff;
+}
 
+#define pte_page(pte)		(pfn_to_page(pte_pfn(pte)))
 
-void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep);
+static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
+			      pte_t *ptep, pte_t pteval)
+{
+	unsigned long paddr = page_to_virt(pte_page(pteval));
+	flush_dcache_range(paddr, paddr + PAGE_SIZE);
+	set_pte(ptep, pteval);
+}
+
+static inline int pmd_none(pmd_t pmd)
+{
+	return (pmd_val(pmd) == (unsigned long) invalid_pte_table) || (pmd_val(pmd) == 0UL);
+}
+
+#define pmd_bad(pmd)	(pmd_val(pmd) & ~PAGE_MASK)
+
+static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep)
+{
+	pte_t null;
+	/* FIXME: check FIXME at pte_none */
+#if 0
+	pte_val(null) = 0;
+#else
+	pte_val(null) = (addr >> PAGE_SHIFT) & 0xf;
+#endif
+	set_pte_at(mm, addr, ptep, null);
+	flush_tlb_one(addr);
+}
 
 /*
  * Conversion functions: convert a page and protection to a page entry,
  * and a page entry and page directory to the page they refer to.
  */
-pte_t mk_pte(struct page *page, pgprot_t pgprot);
+#define mk_pte(page, prot)	(pfn_pte(page_to_pfn(page), prot))
 
-void pte_unmap(pte_t *pte);
+#define pte_unmap(pte)	do { } while (0)
 
-pte_t pgoff_to_pte(pgoff_t off);
+static inline pte_t pgoff_to_pte(pgoff_t off)	{ BUG(); /* FIXME */ }
 
 /*
  * Conversion functions: convert a page and protection to a page entry,
@@ -176,14 +263,17 @@ pte_t pgoff_to_pte(pgoff_t off);
 #define pmd_page(pmd)		(pfn_to_page(pmd_phys(pmd) >> PAGE_SHIFT))
 #define pmd_page_vaddr(pmd)	pmd_val(pmd)
 
-unsigned long pte_pfn(pte_t pte);
-pte_t * pte_offset_map(pmd_t *dir, unsigned long address);
+#define pte_offset_map(dir, addr)			\
+	((pte_t *) page_address(pmd_page(*dir)) +	\
+	 (((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1)))
 
 /* to find an entry in a kernel page-table-directory */
-pgd_t * pgd_offset_k(unsigned long address);
+#define pgd_offset_k(addr)	pgd_offset(&init_mm, addr)
 
 /* Get the address to the PTE for a vaddr in specfic directory */
-pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address);
+#define pte_offset_kernel(dir, addr)			\
+	((pte_t *) pmd_page_vaddr(*(dir)) +		\
+	 (((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1)))
 
 #define pte_ERROR(e) \
 	printk(KERN_ERR "%s:%d: bad pte %08lx.\n", \
@@ -192,19 +282,23 @@ pte_t * pte_offset_kernel(pmd_t * dir, unsigned long address);
 	printk(KERN_ERR "%s:%d: bad pgd %08lx.\n", \
 		__FILE__, __LINE__, pgd_val(e))
 
-pte_t pfn_pte(unsigned long  pfn, pgprot_t prot);
+static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
+{
+	pte_t pte;
+	pte_val(pte) = pfn | pgprot_val(prot);
+	return pte;
+}
 
-pgoff_t pte_to_pgoff(pte_t pte);
-struct page * pte_page(pte_t pte);
+static inline pgoff_t pte_to_pgoff(pte_t pte)	{ BUG(); /* FIXME */ }
 
-int kern_addr_valid(unsigned long addr);
+#define kern_addr_valid(addr)	BUG()
 
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
 
 #include <asm-generic/pgtable.h>
 
-#define pgtable_cache_init()		do { }  while (0)
+#define pgtable_cache_init()		do { } while (0)
 
 extern void __init paging_init(void);
 extern void __init mmu_init(void);
