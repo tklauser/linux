@@ -34,6 +34,5 @@
 
 /* XXX: These should go away */
 #define _PAGE_VALID                 (1<<29)
-#define _PAGE_OLD                   (1<<30)
 
 #endif /* _ASM_NIOS2_PGTABLE_BITS_H */

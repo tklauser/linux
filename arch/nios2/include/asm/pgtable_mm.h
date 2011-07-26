@@ -159,8 +159,7 @@ static inline pte_t pte_mkclean(pte_t pte)
 
 static inline pte_t pte_mkold(pte_t pte)
 {
-	/* FIXME: &= ~_PAGE_ACCESSED ??? */
-	pte_val(pte) |= _PAGE_OLD;
+	pte_val(pte) &= ~_PAGE_ACCESSED;
 	return pte;
 }
 
