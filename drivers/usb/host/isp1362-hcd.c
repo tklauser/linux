@@ -78,6 +78,7 @@
 #include <linux/usb/isp1362.h>
 #include <linux/usb/hcd.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/pm.h>
 #include <linux/io.h>
 #include <linux/bitmap.h>
@@ -2678,13 +2679,48 @@ static int __devexit isp1362_remove(struct platform_device *pdev)
 	usb_put_hcd(hcd);
 	DBG(0, "%s: Done\n", __func__);
 
+	if (!pdev->dev.platform_data)
+		kfree(isp1362_hcd->board);
+
 	return 0;
 }
+
+#ifdef CONFIG_OF
+/*
+ * Translate device tree nodes to platform data.
+ */
+static int isp1362_get_devtree_pdata(struct platform_device *pdev,
+				     struct isp1362_platform_data *pdata)
+{
+	struct device_node *node = pdev->dev.of_node;
+
+	if (!node)
+		return -ENODEV;
+
+	pdata->sel15Kres = !!of_get_property(node, "nxp,sel15Kres", NULL);
+	pdata->clknotstop = !!of_get_property(node, "nxp,clknotstop", NULL);
+	pdata->oc_enable = !!of_get_property(node, "nxp,oc_enable", NULL);
+	pdata->int_act_high = !!of_get_property(node, "nxp,int_act_high", NULL);
+	pdata->int_edge_triggered = !!of_get_property(node, "nxp,int_edge_triggered", NULL);
+	pdata->remote_wakeup_connected = !!of_get_property(node, "nxp,remote_wakeup_connected", NULL);
+	pdata->no_power_switching = !!of_get_property(node, "nxp,no_power_switching", NULL);
+	pdata->power_switching_mode = !!of_get_property(node, "nxp,power_switching_mode", NULL);
+
+	return 0;
+}
+#else
+static int isp1362_get_devtree_pdata(struct platform_device *pdev,
+				     struct isp1362_platform_data *pdata)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_OF */
 
 static int __devinit isp1362_probe(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd;
 	struct isp1362_hcd *isp1362_hcd;
+	struct isp1362_platform_data *pdata;
 	struct resource *addr, *data;
 	void __iomem *addr_reg;
 	void __iomem *data_reg;
@@ -2755,7 +2791,26 @@ static int __devinit isp1362_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&isp1362_hcd->periodic);
 	INIT_LIST_HEAD(&isp1362_hcd->isoc);
 	INIT_LIST_HEAD(&isp1362_hcd->remove_list);
-	isp1362_hcd->board = pdev->dev.platform_data;
+
+	pdata = pdev->dev.platform_data;
+
+	/* If no platform data is available, try to get it from device tree */
+	if (!pdata) {
+		pdata = kzalloc(sizeof(struct isp1362_platform_data), GFP_KERNEL);
+		if (!pdata) {
+			retval = -ENOMEM;
+			goto err6;
+		}
+
+		retval = isp1362_get_devtree_pdata(pdev, pdata);
+		if (retval) {
+			kfree(pdata);
+			goto err6;
+		}
+	}
+
+	isp1362_hcd->board = pdata;
+
 #if USE_PLATFORM_DELAY
 	if (!isp1362_hcd->board->delay) {
 		dev_err(hcd->self.controller, "No platform delay function given\n");
@@ -2852,6 +2907,16 @@ static int isp1362_resume(struct platform_device *pdev)
 #define	isp1362_resume	NULL
 #endif
 
+#ifdef CONFIG_OF
+static struct of_device_id isp1362_match[] = {
+	{ .compatible = "nxp,usb-isp1362", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, isp1362_match);
+#else
+#define isp1362_match NULL
+#endif /* CONFIG_OF */
+
 static struct platform_driver isp1362_driver = {
 	.probe = isp1362_probe,
 	.remove = __devexit_p(isp1362_remove),
@@ -2861,6 +2926,7 @@ static struct platform_driver isp1362_driver = {
 	.driver = {
 		.name = (char *)hcd_name,
 		.owner = THIS_MODULE,
+		.of_match_table = isp1362_match,
 	},
 };
 
