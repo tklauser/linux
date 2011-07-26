@@ -29,7 +29,7 @@
  */
 #define _PAGE_PRESENT               (1<<25)
 #define _PAGE_ACCESSED              (1<<26)
-#define _PAGE_MODIFIED              (1<<27)
+#define _PAGE_DIRTY	(1<<27)	/* dirty page */
 #define _PAGE_FILE                  (1<<28)
 #define _PAGE_VALID                 (1<<29)
 #define _PAGE_OLD                   (1<<30)
