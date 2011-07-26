@@ -17,20 +17,22 @@
  * 31 30 ... 26 25 24 23 22 21 20 19 18 ...  1  0
  * ignored........  C  R  W  X  G PFN............
  */
-#define _PAGE_GLOBAL                (1<<20)
-#define _PAGE_EXEC                  (1<<21)
-#define _PAGE_WRITE                 (1<<22)
-#define _PAGE_READ                  (1<<23)
-#define _PAGE_CACHED                (1<<24)
+#define _PAGE_GLOBAL	(1<<20)
+#define _PAGE_EXEC	(1<<21)
+#define _PAGE_WRITE	(1<<22)
+#define _PAGE_READ	(1<<23)
+#define _PAGE_CACHED	(1<<24)	/* C: data access cacheable */
 
 /*
  * Software defined bits. They are ignored by the hardware and always read back
  * as zero, but can be written as non-zero.
  */
-#define _PAGE_PRESENT               (1<<25)
-#define _PAGE_ACCESSED              (1<<26)
+#define _PAGE_PRESENT	(1<<25)	/* PTE contains a translation */
+#define _PAGE_ACCESSED	(1<<26)	/* page referenced */
 #define _PAGE_DIRTY	(1<<27)	/* dirty page */
-#define _PAGE_FILE                  (1<<28)
+#define _PAGE_FILE	(1<<28)	/* PTE used for file mapping or swap */
+
+/* XXX: These should go away */
 #define _PAGE_VALID                 (1<<29)
 #define _PAGE_OLD                   (1<<30)
 
