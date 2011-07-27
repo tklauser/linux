@@ -29,15 +29,10 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/system.h>
-#include <asm/percpu.h>
 #include <asm/sections.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 #include <asm/cpuinfo.h>
-
-#ifdef CONFIG_MMU
-DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
-#endif
 
 /*
  * paging_init() continues the virtual memory environment setup which
