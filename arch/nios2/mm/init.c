@@ -36,22 +36,9 @@
 #include <asm/cpuinfo.h>
 
 /*
- * BAD_PAGE is the page that is used for page faults when linux
- * is out-of-memory. Older versions of linux just did a
- * do_exit(), but using this instead means there is less risk
- * for a process dying in kernel mode, possibly leaving a inode
- * unused etc..
- *
- * BAD_PAGETABLE is the accompanying page-table: it is initialized
- * to point to BAD_PAGE entries.
- *
  * ZERO_PAGE is a special page that is used for zero-initialized
  * data and COW.
  */
-static unsigned long empty_bad_page_table;
-
-static unsigned long empty_bad_page;
-
 unsigned long empty_zero_page;
 
 #ifdef CONFIG_MMU
@@ -88,12 +75,6 @@ void __init paging_init(void)
 	pgd_current = (unsigned long)swapper_pg_dir;
 #endif
 
-	/*
-	 * Initialize the bad page table and bad page to point
-	 * to a couple of allocated pages.
-	 */
-	empty_bad_page_table = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
-	empty_bad_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
 #ifdef CONFIG_MMU
 	empty_zero_page = (unsigned long) alloc_bootmem_pages(cpuinfo.dcache_size);
 	memset((void *) empty_zero_page, 0, cpuinfo.dcache_size);
