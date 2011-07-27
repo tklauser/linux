@@ -32,7 +32,4 @@
 #define _PAGE_DIRTY	(1<<27)	/* dirty page */
 #define _PAGE_FILE	(1<<28)	/* PTE used for file mapping or swap */
 
-/* XXX: These should go away */
-#define _PAGE_VALID                 (1<<29)
-
 #endif /* _ASM_NIOS2_PGTABLE_BITS_H */
