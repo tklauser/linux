@@ -18,9 +18,20 @@
 #include <linux/linkage.h>
 #include <asm/thread_info.h>
 #include <asm/processor.h>
+#include <asm/page.h>
 #include <asm/nios.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
+
+/*
+ * ZERO_PAGE is a special page that is used for zero-initialized
+ * data and COW.
+ */
+.data
+.global empty_zero_page
+.align 12
+empty_zero_page:
+	.space	PAGE_SIZE
 
 /*
  * This global variable is used as an extension to the nios'

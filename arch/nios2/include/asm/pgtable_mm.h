@@ -81,8 +81,12 @@ struct mm_struct;
 
 #define PTE_FILE_MAX_BITS	28
 
-/* ivho: is vaddr always "unsigned long"? */
-struct page * ZERO_PAGE(unsigned long vaddr);
+/*
+ * ZERO_PAGE is a global shared page that is always zero: used
+ * for zero-mapped memory areas etc..
+ */
+extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)];
+#define ZERO_PAGE(vaddr)	(virt_to_page(empty_zero_page))
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pte_t invalid_pte_table[PAGE_SIZE/sizeof(pte_t)];

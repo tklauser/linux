@@ -35,12 +35,6 @@
 #include <asm/mmu_context.h>
 #include <asm/cpuinfo.h>
 
-/*
- * ZERO_PAGE is a special page that is used for zero-initialized
- * data and COW.
- */
-unsigned long empty_zero_page;
-
 #ifdef CONFIG_MMU
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 #endif
@@ -75,14 +69,6 @@ void __init paging_init(void)
 	pgd_current = (unsigned long)swapper_pg_dir;
 #endif
 
-#ifdef CONFIG_MMU
-	empty_zero_page = (unsigned long) alloc_bootmem_pages(cpuinfo.dcache_size);
-	memset((void *) empty_zero_page, 0, cpuinfo.dcache_size);
-	flush_dcache_range(empty_zero_page, empty_zero_page + cpuinfo.dcache_size);
-#else
-	empty_zero_page = (unsigned long)alloc_bootmem_pages(PAGE_SIZE);
-	memset((void *)empty_zero_page, 0, PAGE_SIZE);
-#endif /* CONFIG_MMU */
 	/*
 	 * Set up SFC/DFC registers (user data space).
 	 */

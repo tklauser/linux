@@ -72,22 +72,6 @@ void __init pagetable_init(void)
 		 + sizeof(pgd_t) * USER_PTRS_PER_PGD);
 }
 
-/* FIXME: Avoiding cache alias for the zero-page is kind of stupid
- *        but we need to do it to avoid alias-warnings in the iss.
- */
-extern unsigned long empty_zero_page;
-struct page * ZERO_PAGE(unsigned long vaddr)
-{
-  struct page* page;
-  unsigned long poffset;
-
-  poffset = vaddr & ((cpuinfo.dcache_size - 1) & ~(PAGE_SIZE - 1));
-
-  page = virt_to_page(empty_zero_page + poffset);
-
-  return page;
-}
-
 /* FIXME: Swap not implemented */
 swp_entry_t   __pte_to_swp_entry(pte_t pte){BUG();}
 pte_t         __swp_entry_to_pte(swp_entry_t swp){BUG();}
