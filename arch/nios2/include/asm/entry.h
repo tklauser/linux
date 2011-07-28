@@ -48,18 +48,6 @@
  *	58(sp) - ea
  */
 
-/* process bits for task_struct.flags */
-PF_TRACESYS_OFF = 3
-PF_TRACESYS_BIT = 5
-PF_PTRACED_OFF = 3
-PF_PTRACED_BIT = 4
-PF_DTRACE_OFF = 1
-PF_DTRACE_BIT = 5
-
-/*
- * This defines the normal kernel pt-regs layout.
- */
-
 /*
  * Standard Nios2 interrupt entry and exit macros.
  * Must be called with interrupts disabled.
