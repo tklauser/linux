@@ -11,14 +11,9 @@
 #ifndef _ASM_NIOS2_SYSTEM_H
 #define _ASM_NIOS2_SYSTEM_H
 
-#include <linux/linkage.h>
-#include <linux/string.h>
 #include <linux/irqflags.h>
 
-#include <asm/registers.h>
 #include <asm/setup.h>
-
-asmlinkage void resume(void);
 
 /*
  * switch_to(n) should switch tasks to task ptr, first checking that

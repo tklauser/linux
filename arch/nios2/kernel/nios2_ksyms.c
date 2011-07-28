@@ -23,22 +23,6 @@
  ---------------------------------------------------------------------*/
 
 #include <linux/module.h>
-#include <linux/linkage.h>
-#include <linux/sched.h>
-#include <linux/string.h>
-#include <linux/mm.h>
-#include <linux/user.h>
-#include <linux/elfcore.h>
-#include <linux/in6.h>
-#include <linux/interrupt.h>
-
-#include <asm/setup.h>
-#include <asm/pgalloc.h>
-#include <asm/irq.h>
-#include <asm/io.h>
-#include <asm/checksum.h>
-#include <asm/hardirq.h>
-#include <asm/current.h>
 
 /* string functions */
 

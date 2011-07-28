@@ -10,20 +10,13 @@
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
-#include <linux/sem.h>
-#include <linux/msg.h>
-#include <linux/shm.h>
 #include <linux/stat.h>
 #include <linux/syscalls.h>
 #include <linux/mman.h>
 #include <linux/file.h>
-#include <linux/utsname.h>
 #include <linux/uaccess.h>
-#include <linux/unistd.h>
-#include <linux/fs.h>
 
 #include <asm/cacheflush.h>
-#include <asm/traps.h>
 
 asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 			 unsigned long prot, unsigned long flags,

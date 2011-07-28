@@ -20,7 +20,6 @@
 #include <linux/bootmem.h>
 #include <linux/initrd.h>
 #include <linux/of_fdt.h>
-#include <linux/blkdev.h>
 
 #include <asm/mmu_context.h>
 #include <asm/sections.h>

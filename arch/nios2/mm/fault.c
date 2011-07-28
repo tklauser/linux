@@ -21,7 +21,6 @@
 #include <linux/ptrace.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
-#include <linux/module.h>
 
 #include <asm/mmu_context.h>
 #include <asm/system.h>

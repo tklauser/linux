@@ -11,13 +11,9 @@
  * for more details.
  */
 
-#include <linux/types.h>
 #include <linux/init.h>
-#include <linux/kernel.h>
-#include <linux/kernel_stat.h>
+#include <linux/linkage.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/seq_file.h>
 
 #include <asm/system.h>
 

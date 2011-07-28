@@ -14,7 +14,6 @@
  * this archive for more details.
  */
 
-#include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/string.h>
 #include <linux/proc_fs.h>

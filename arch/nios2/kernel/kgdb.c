@@ -13,7 +13,6 @@
 
 #include <linux/kgdb.h>
 #include <linux/kdebug.h>
-#include <linux/irq.h>
 #include <linux/io.h>
 
 static int wait_for_remote_debugger;
