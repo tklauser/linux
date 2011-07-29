@@ -23,6 +23,8 @@
 #include <linux/tick.h>
 #include <linux/fs.h>
 
+#include <asm/unistd.h>
+#include <asm/traps.h>
 #include <asm/cacheflush.h>
 #include <asm/cpuinfo.h>
 
