@@ -50,22 +50,13 @@ extern int fixup_exception(struct pt_regs *regs);
  * Segment stuff
  */
 #define MAKE_MM_SEG(s)		((mm_segment_t) { (s) } )
-#ifdef CONFIG_MMU
 # define USER_DS		MAKE_MM_SEG(0x80000000UL)
 # define KERNEL_DS		MAKE_MM_SEG(0)
-#else
-# define USER_DS		MAKE_MM_SEG(0x1)
-# define KERNEL_DS		MAKE_MM_SEG(0x5)
-#endif
 
 #define get_ds()		(KERNEL_DS)
-#ifdef CONFIG_MMU
-# define get_fs()		(current_thread_info()->addr_limit)
-# define set_fs(seg)		(current_thread_info()->addr_limit = (seg))
-#else
-# define get_fs()		(USER_DS)
-# define set_fs(seg)		do { } while(0)
-#endif /* CONFIG_MMU */
+
+#define get_fs()		(current_thread_info()->addr_limit)
+#define set_fs(seg)		(current_thread_info()->addr_limit = (seg))
 
 #define segment_eq(a, b)	((a).seg == (b).seg)
 

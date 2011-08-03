@@ -68,7 +68,7 @@ void __init paging_init(void)
 	 * Set up SFC/DFC registers (user data space).
 	 */
 #ifndef CONFIG_MMU
-	set_fs (USER_DS);
+	set_fs(KERNEL_DS);
 #endif
 
 #ifdef CONFIG_MMU
