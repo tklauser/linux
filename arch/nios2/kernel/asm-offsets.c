@@ -26,7 +26,6 @@ int main(void)
 #ifndef CONFIG_MMU
 	OFFSET(THREAD_KESR, thread_struct, kesr);
 #endif
-	OFFSET(THREAD_FLAGS, thread_struct, flags);
 	BLANK();
 
 	/* struct pt_regs */

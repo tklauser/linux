@@ -68,9 +68,6 @@ struct thread_struct {
 #ifndef CONFIG_MMU
 	unsigned long kesr;
 #endif
-
-	/* Flags are defined below */
-	unsigned long flags;
 };
 
 #define INIT_MMAP \
@@ -81,14 +78,12 @@ struct thread_struct {
 	.kregs	= NULL,			\
 	.ksp	= 0,			\
 	.kpsr	= 0,			\
-	.flags	= NIOS2_FLAG_KTHREAD,	\
 }
 #else
 # define INIT_THREAD {			\
 	.kregs	= NULL,			\
 	.ksp	= sizeof(init_stack) + (unsigned long) init_stack, \
 	.kpsr	= 0,			\
-	.flags	= 0,			\
 }
 #endif /* CONFIG_MMU */
 

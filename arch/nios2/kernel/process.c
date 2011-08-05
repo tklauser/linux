@@ -209,9 +209,6 @@ EXPORT_SYMBOL(kernel_thread);
 
 void flush_thread(void)
 {
-	/* Now, this task is no longer a kernel thread. */
-	current->thread.flags &= ~NIOS2_FLAG_KTHREAD;
-
 	set_fs(USER_DS);
 }
 
