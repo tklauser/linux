@@ -127,19 +127,9 @@ software_exception:
 	bne	r24,r0,instruction_trap	/* N - check for instruction trap */
 	cmpeqi	r11,r2,TRAP_ID_SYSCALL	/* ? Is this a syscall */
 	bne	r11,r0,system_call	/* Y - handle syscall */
-	cmpeqi	r11,r2,TRAP_ID_APPDEBUG	/* ? Is this an application debug */
-	bne	r11,r0,app_debug	/* Y - handle app_debug */
 	cmpeqi	r11,r2,63		/* ? Is this the old syscall number */
 	bne	r11,r0,system_call	/* Y - handle syscall to catch older apps*/
 	br	restore_all		/* N - everything else is ignored for now */
-
-app_debug:
-	GET_THREAD_INFO	r24			/* get thread_info */
-	ldw	r1,TI_TASK(r24)		/* get thread_info->task */
-	ldw r24,(TASK_THREAD + THREAD_FLAGS)(r1)	/* get thread_info->task->thread.flags */
-	ORI32 r24, r24, NIOS2_FLAG_DEBUG  /* set the debug flag */
-	stw	r24,(TASK_THREAD + THREAD_FLAGS)(r1)	/* save thread_info->task->thread.flags */
-	br	restore_all
 
 breakpoint:
 	mov  r4,sp

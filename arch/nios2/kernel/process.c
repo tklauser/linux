@@ -454,15 +454,6 @@ void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 #endif /* CONFIG_MMU */
 	regs->ea = pc;
 	regs->sp = sp;
-
-	/* check if debug flag is set */
-	if (current->thread.flags & NIOS2_FLAG_DEBUG ) {
-		if ( *(u32*)pc == NIOS2_OP_NOP ) {
-			*(u32*)pc = NIOS2_OP_BREAK;
-			flush_dcache_range(pc, pc + 4);
-			flush_icache_range(pc, pc + 4);
-		}
-	}
 }
 
 #ifdef CONFIG_MMU

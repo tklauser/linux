@@ -20,7 +20,6 @@
 #include <asm/registers.h>
 
 #define NIOS2_FLAG_KTHREAD	0x00000001	/* task is a kernel thread */
-#define NIOS2_FLAG_DEBUG	0x00000004	/* task is being debugged */
 
 #define NIOS2_OP_NOP		0x1883a
 #define NIOS2_OP_BREAK		0x3da03a
