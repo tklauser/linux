@@ -216,7 +216,6 @@ static void altcf_detect_cf(struct altcf_private *altcf)
 	ap = host->ports[0];
 	ap->ops = &altcf_port_ops;
 	ap->pio_mask = 0x1f;	/* PIO4 */
-	ap->flags = ATA_FLAG_NO_LEGACY | ATA_FLAG_MMIO;
 
 	/* Use polling mode if there's no IRQ. */
 	if (!altcf->ide_irq) {
