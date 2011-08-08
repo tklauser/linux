@@ -50,8 +50,8 @@ extern int fixup_exception(struct pt_regs *regs);
  * Segment stuff
  */
 #define MAKE_MM_SEG(s)		((mm_segment_t) { (s) } )
-# define USER_DS		MAKE_MM_SEG(0x80000000UL)
-# define KERNEL_DS		MAKE_MM_SEG(0)
+#define USER_DS			MAKE_MM_SEG(0x80000000UL)
+#define KERNEL_DS		MAKE_MM_SEG(0)
 
 #define get_ds()		(KERNEL_DS)
 
