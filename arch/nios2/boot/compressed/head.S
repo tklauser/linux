@@ -7,8 +7,6 @@
 
 #include <linux/linkage.h>
 #include <asm/nios.h>
-#include <asm/asm-offsets.h>
-#include <asm/asm-macros.h>
 
 	.text
 	.set noat
