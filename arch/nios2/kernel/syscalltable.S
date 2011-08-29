@@ -192,7 +192,7 @@ ENTRY(sys_call_table)
 	.long sys_getpagesize
 	.long sys_ni_syscall	/* old sys_query_module */
 	.long sys_poll
-	.long sys_nfsservctl
+	.long sys_ni_syscall	/* old sys_nfsservctl */
 	.long sys_setresgid	/* 170 */
 	.long sys_getresgid
 	.long sys_prctl
