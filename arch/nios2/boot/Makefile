@@ -37,7 +37,7 @@ $(obj)/compressed/vmlinux: $(obj)/vmlinux.gz FORCE
 DTB_SRC := $(subst ",,$(CONFIG_DTB_SOURCE))
 
 # Make sure the generated dtb gets removed during clean
-extra-y += system.dtb
+extra-$(CONFIG_DTB_SOURCE_BOOL) += system.dtb
 
 $(obj)/system.dtb: $(DTB_SRC)
 	$(call cmd,dtc)
