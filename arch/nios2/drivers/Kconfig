@@ -39,19 +39,4 @@ config ALTERA_REMOTE_UPDATE_FLASH_WIDTH_16
 	bool "16 bits (shift address by 3)"
 endchoice
 
-config NIOS2_GPIO
-	bool "GPIO driver"
-	default n
-	help
-	  The custom gpio core, openip/gpio, uses fewer LEs and runs faster
-	  than the Altera PIO. The spinlock is no longer needed.
-
-config ALTERA_PIO_GPIO
-	bool "Altera PIO to GPIO driver"
-	default n
-	help
-	  This driver provides GPIO support for Altera PIO. Each PIO port is
-	  expanded to 32 gpio pins. And multiple PIO ports can be accessed by
-	  the array. Interrupt is not supported.
-
 endmenu
