@@ -100,7 +100,7 @@ static struct clocksource nios2_timer = {
 
 static struct irqaction nios2_timer_irq = {
 	.name		= "timer",
-	.flags		= IRQF_DISABLED | IRQF_TIMER,
+	.flags		= IRQF_TIMER,
 	.handler	= timer_interrupt,
 };
 
