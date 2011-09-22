@@ -2,7 +2,6 @@
 #include <asm-generic/vmlinux.lds.h>
 #include <asm/cache.h>
 #include <asm/thread_info.h>
-#include <asm/nios.h>
 
 OUTPUT_FORMAT("elf32-littlenios2", "elf32-littlenios2", "elf32-littlenios2")
 
@@ -13,7 +12,7 @@ jiffies = jiffies_64;
 
 SECTIONS
 {
-	. = DDR2_TOP_BASE | CONFIG_KERNEL_REGION_BASE;
+	. = CONFIG_MEM_BASE | CONFIG_KERNEL_REGION_BASE;
 
 	_text = .;
 	_stext = .;

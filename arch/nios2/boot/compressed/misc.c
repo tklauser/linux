@@ -158,7 +158,7 @@ static void error(char *x)
 
 void decompress_kernel(void)
 {
-	output_data = (void *) (DDR2_TOP_BASE | CONFIG_KERNEL_REGION_BASE);
+	output_data = (void *) (CONFIG_MEM_BASE | CONFIG_KERNEL_REGION_BASE);
 	output_ptr = 0;
 	free_mem_ptr = (unsigned long)&_end;
 	free_mem_end_ptr = free_mem_ptr + HEAP_SIZE;

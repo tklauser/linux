@@ -6,7 +6,7 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/nios.h>
+#include <asm/cache.h>
 
 	.text
 	.set noat
@@ -88,7 +88,7 @@ finish_move:
 	bgt	r1, r0, 1b
 	flushp
 	/* jump to start real kernel */
-	movia	r1, (DDR2_TOP_BASE | CONFIG_KERNEL_REGION_BASE)
+	movia	r1, (CONFIG_MEM_BASE | CONFIG_KERNEL_REGION_BASE)
 	jmp	r1
 
 	.balign 512

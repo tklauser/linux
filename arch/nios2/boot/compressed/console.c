@@ -6,7 +6,6 @@
  * for more details.
  */
 
-#include <asm/nios.h>
 #include <asm/io.h>
 
 static void *my_ioremap(unsigned long physaddr)

@@ -18,8 +18,8 @@
 #include <linux/linkage.h>
 #include <asm/thread_info.h>
 #include <asm/processor.h>
+#include <asm/cache.h>
 #include <asm/page.h>
-#include <asm/nios.h>
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 

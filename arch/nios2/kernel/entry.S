@@ -42,7 +42,6 @@
 #include <asm/entry.h>
 #include <asm/unistd.h>
 #include <asm/processor.h>
-#include <asm/nios.h>
 
 .macro GET_THREAD_INFO reg
 .if THREAD_SIZE & 0xffff0000

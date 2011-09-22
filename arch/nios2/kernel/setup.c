@@ -140,7 +140,7 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	memory_start = PAGE_ALIGN((unsigned long)__pa(_end));
-	memory_end = (unsigned long) DDR2_TOP_BASE + DDR2_TOP_SPAN;
+	memory_end = (unsigned long) CONFIG_MEM_BASE + CONFIG_MEM_SIZE;
 
 #ifndef CONFIG_PASS_CMDLINE
 	memcpy(cmd_line, default_command_line, sizeof(default_command_line));

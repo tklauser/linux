@@ -17,8 +17,6 @@
 #ifndef _ASM_NIOS2_PAGE_H
 #define _ASM_NIOS2_PAGE_H
 
-#include <asm/nios.h>
-
 /*
  * PAGE_SHIFT determines the page size
  */
@@ -29,14 +27,14 @@
 /*
  * PAGE_OFFSET -- the first address of the first page of memory.
  */
-#define PAGE_OFFSET	(DDR2_TOP_BASE + CONFIG_KERNEL_REGION_BASE)
+#define PAGE_OFFSET	(CONFIG_MEM_BASE + CONFIG_KERNEL_REGION_BASE)
 
 #ifndef __ASSEMBLY__
 
 /*
  * This gives the physical RAM offset.
  */
-#define PHYS_OFFSET		DDR2_TOP_BASE
+#define PHYS_OFFSET		CONFIG_MEM_BASE
 
 /*
  * It's normally defined only for FLATMEM config but it's
