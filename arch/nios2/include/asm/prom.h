@@ -13,9 +13,6 @@
 
 extern unsigned long early_altera_uart_or_juart_console(void);
 
-extern int reserve_mem_mach(unsigned long addr, unsigned long size);
-extern void free_mem_mach(unsigned long addr, unsigned long size);
-
 extern void device_tree_init(void);
 
 #endif /* _ASM_NIOS2_PROM_H */
