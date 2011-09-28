@@ -102,10 +102,19 @@ static inline void copy_fast_tlb_miss_handler(unsigned int addr)
 }
 #endif /* CONFIG_MMU */
 
-/* save args passed from u-boot, called from head.S */
+/*
+ * save args passed from u-boot, called from head.S
+ *
+ * @r4: NIOS magic
+ * @r5: initrd start
+ * @r6: initrd end or fdt
+ * @r7: kernel command line
+ */
 asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 				       unsigned r7)
 {
+	unsigned dtb_passed = 0;
+
 #ifdef CONFIG_MMU
 	mmu_init();
 #endif
@@ -118,15 +127,16 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 			initrd_end = r6;
 		}
 #endif /* CONFIG_BLK_DEV_INITRD */
+		dtb_passed = r6;
+
 		if (r7)
 			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
-	} else
-		r6 = 0; /* no magic, invalidate r6 as dtb */
+	}
 #endif
 	if (!cmd_line[0])
 		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 
-	early_init_devtree((void *)r6);
+	early_init_devtree((void *)dtb_passed);
 }
 
 void __init setup_arch(char **cmdline_p)
