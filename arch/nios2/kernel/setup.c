@@ -27,10 +27,6 @@
 #include <asm/prom.h>
 #include <asm/cpuinfo.h>
 
-#ifdef CONFIG_CONSOLE
-extern struct consw *conswitchp;
-#endif
-
 unsigned long memory_start;
 unsigned long memory_end;
 
@@ -225,9 +221,8 @@ void __init setup_arch(char **cmdline_p)
 	 * get kmalloc into gear
 	 */
 	paging_init();
-#ifdef CONFIG_VT
-#if defined(CONFIG_DUMMY_CONSOLE)
+
+#if defined(CONFIG_VT) && defined(CONFIG_DUMMY_CONSOLE)
 	conswitchp = &dummy_con;
-#endif
 #endif
 }
