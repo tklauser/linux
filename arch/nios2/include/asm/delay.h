@@ -87,6 +87,4 @@ extern void __bad_ndelay(void);		/* deliberately undefined */
 	((n) > __MAX_NDELAY? __bad_ndelay(): __ndelay((n) * HZ)) : \
 	__ndelay((n) * HZ))
 
-#define muldiv(a, b, c)    (((a)*(b))/(c))
-
-#endif /* defined(_NIOS_DELAY_H) */
+#endif /* _ASM_NIOS2_DELAY_H */
