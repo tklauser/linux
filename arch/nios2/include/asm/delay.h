@@ -11,7 +11,7 @@
 
 #include <asm/param.h>
 
-extern __inline__ void __delay(unsigned long loops)
+static inline void __delay(unsigned long loops)
 {
 	int dummy;
 
@@ -43,7 +43,7 @@ extern __inline__ void __delay(unsigned long loops)
 
 extern unsigned long loops_per_jiffy;
 
-extern __inline__ void __udelay(unsigned int x)
+static inline void __udelay(unsigned int x)
 {
 	unsigned int loops;
 
@@ -62,7 +62,7 @@ extern __inline__ void __udelay(unsigned int x)
 	__delay(loops);
 }
 
-extern __inline__ void __ndelay(unsigned int x)
+static inline void __ndelay(unsigned int x)
 {
 	unsigned int loops;
 
