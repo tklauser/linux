@@ -302,8 +302,8 @@ static int tse_sgdma_add_buffer(struct net_device *dev)
 				dev->name, tse_priv->current_mtu + 4);
 		return -ENOMEM;
 	}
-	flush_dcache_range((unsigned long)skb->data,
-			   ((unsigned long)skb->data) + skb->len);
+	flush_dcache_range((unsigned long)skb->head,
+			   (unsigned long)skb->end);
 	skb->dev = dev;
 
 	tse_priv->rx_skb[tse_priv->rx_sgdma_descriptor_head] = skb;
