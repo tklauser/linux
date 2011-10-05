@@ -36,11 +36,16 @@ KBUILD_CFLAGS += -DUTS_SYSNAME=\"$(UTS_SYSNAME)\"
 KBUILD_CFLAGS += -fno-builtin
 KBUILD_CFLAGS += -G 0
 
+CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
+KBUILD_CFLAGS += -I$(CFLAGS_GCC_INC)
+
 LDFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
 LDFLAGS += -mnios2elf
 
+LIBGCC := `$(CC) -print-libgcc-file-name`
+
 head-y		:= arch/nios2/kernel/head.o
-libs-y		+= arch/nios2/lib/
+libs-y		+= arch/nios2/lib/ $(LIBGCC)
 core-y		+= arch/nios2/kernel/ arch/nios2/mm/
 core-y		+= arch/nios2/platform/
 
