@@ -84,15 +84,13 @@ void __init paging_init(void)
 void __init mem_init(void)
 {
 	unsigned int codek = 0, datak = 0;
-	unsigned long start_mem = memory_start; /* DAVIDM - these must start at end of kernel */
 	unsigned long end_mem   = memory_end; /* DAVIDM - this must not include kernel stack at top */
 
-	pr_debug("mem_init: start=%lx, end=%lx\n", start_mem, end_mem);
+	pr_debug("mem_init: start=%lx, end=%lx\n", memory_start, memory_end);
 
 	end_mem &= PAGE_MASK;
 	high_memory = __va(end_mem);
 
-	start_mem = PAGE_ALIGN(start_mem);
 #ifdef CONFIG_MMU
 	max_mapnr = ((unsigned long)end_mem) >> PAGE_SHIFT;
 #else
