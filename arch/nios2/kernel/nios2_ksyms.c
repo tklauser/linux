@@ -1,26 +1,10 @@
-/*--------------------------------------------------------------------
+/*
+ * Copyright (C) 2004 Microtronix Datacom Ltd
  *
- * arch/nios2nommu/kernel/nios_ksyms.c
- *
- * Derived from Nios1
- *
- * Copyright (C) 2004   Microtronix Datacom Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- *
- * vic - copied from v850
- * Jan/20/2004		dgt	    NiosII
- *
- ---------------------------------------------------------------------*/
+ * This file is subject to the terms and conditions of the GNU General
+ * Public License. See the file COPYING in the main directory of this
+ * archive for more details.
+ */
 
 #include <linux/module.h>
 
@@ -35,39 +19,23 @@ EXPORT_SYMBOL(memmove);
  * compiler...  (prototypes are not correct though, but that
  * doesn't really matter since they're not versioned).
  */
-extern void __gcc_bcmp(void);
-EXPORT_SYMBOL(__gcc_bcmp);
-extern void __ashldi3(void);
-EXPORT_SYMBOL(__ashldi3);
-extern void __ashrdi3(void);
-EXPORT_SYMBOL(__ashrdi3);
-extern void __cmpdi2(void);
-EXPORT_SYMBOL(__cmpdi2);
-extern void __divdi3(void);
-EXPORT_SYMBOL(__divdi3);
-extern void __divsi3(void);
-EXPORT_SYMBOL(__divsi3);
-extern void __lshrdi3(void);
-EXPORT_SYMBOL(__lshrdi3);
-extern void __moddi3(void);
-EXPORT_SYMBOL(__moddi3);
-extern void __modsi3(void);
-EXPORT_SYMBOL(__modsi3);
-extern void __muldi3(void);
-EXPORT_SYMBOL(__muldi3);
-extern void __mulsi3(void);
-EXPORT_SYMBOL(__mulsi3);
-extern void __negdi2(void);
-EXPORT_SYMBOL(__negdi2);
-extern void __ucmpdi2(void);
-EXPORT_SYMBOL(__ucmpdi2);
-extern void __udivdi3(void);
-EXPORT_SYMBOL(__udivdi3);
-extern void __udivmoddi4(void);
-EXPORT_SYMBOL(__udivmoddi4);
-extern void __udivsi3(void);
-EXPORT_SYMBOL(__udivsi3);
-extern void __umoddi3(void);
-EXPORT_SYMBOL(__umoddi3);
-extern void __umodsi3(void);
-EXPORT_SYMBOL(__umodsi3);
+#define DECLARE_EXPORT(name)	extern void name(void); EXPORT_SYMBOL(name)
+
+DECLARE_EXPORT(__gcc_bcmp);
+DECLARE_EXPORT(__ashldi3);
+DECLARE_EXPORT(__ashrdi3);
+DECLARE_EXPORT(__cmpdi2);
+DECLARE_EXPORT(__divdi3);
+DECLARE_EXPORT(__divsi3);
+DECLARE_EXPORT(__lshrdi3);
+DECLARE_EXPORT(__moddi3);
+DECLARE_EXPORT(__modsi3);
+DECLARE_EXPORT(__muldi3);
+DECLARE_EXPORT(__mulsi3);
+DECLARE_EXPORT(__negdi2);
+DECLARE_EXPORT(__ucmpdi2);
+DECLARE_EXPORT(__udivdi3);
+DECLARE_EXPORT(__udivmoddi4);
+DECLARE_EXPORT(__udivsi3);
+DECLARE_EXPORT(__umoddi3);
+DECLARE_EXPORT(__umodsi3);
