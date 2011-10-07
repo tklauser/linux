@@ -107,7 +107,6 @@ static struct irqaction nios2_timer_irq = {
 void __init nios2_late_time_init(void)
 {
 	unsigned int ctrl;
-	unsigned int i;
 	struct device_node *timer = of_find_compatible_node(NULL, NULL, "ALTR,timer-1.0");
 
 	BUG_ON(!timer);
