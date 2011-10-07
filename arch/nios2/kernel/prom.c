@@ -68,10 +68,10 @@ void __init early_init_devtree(void *params)
 
 	if (params && be32_to_cpup((__be32 *)params) == OF_DT_HEADER)
 		initial_boot_params = dtb_passed = params;
-#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR) && CONFIG_NIOS2_DTB_AT_PHYS_ADDR
-	else if (be32_to_cpup((__be32 *)CONFIG_NIOS2_DTB_AT_PHYS_ADDR) ==
+#if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
+	else if (be32_to_cpup((__be32 *)CONFIG_NIOS2_DTB_PHYS_ADDR) ==
 		 OF_DT_HEADER)
-		initial_boot_params = (void *)CONFIG_NIOS2_DTB_AT_PHYS_ADDR;
+		initial_boot_params = (void *)CONFIG_NIOS2_DTB_PHYS_ADDR;
 #endif
 	else if (be32_to_cpu((__be32)__dtb_start) == OF_DT_HEADER)
 		initial_boot_params = (void *)&__dtb_start;
