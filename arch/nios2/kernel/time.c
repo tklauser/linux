@@ -108,19 +108,8 @@ void __init nios2_late_time_init(void)
 {
 	unsigned int ctrl;
 	unsigned int i;
-	struct device_node *timer = NULL;
-	const char * const timer_list[] = {
-		"altera,timer",	/* Will be removed later on */
-		"altr,timer-8.0",
-		"altr,timer-1.0",
-		NULL
-	};
+	struct device_node *timer = of_find_compatible_node(NULL, NULL, "ALTR,timer-1.0");
 
-	for (i = 0; timer_list[i] != NULL; i++) {
-		timer = of_find_compatible_node(NULL, NULL, timer_list[i]);
-		if (timer)
-			break;
-	}
 	BUG_ON(!timer);
 
 	timer_membase = of_translate_address(timer, of_get_address(timer, 0, NULL, NULL));
