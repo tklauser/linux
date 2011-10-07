@@ -23,6 +23,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/asm-macros.h>
 
+#ifdef CONFIG_MMU
 /*
  * ZERO_PAGE is a special page that is used for zero-initialized
  * data and COW.
@@ -32,6 +33,7 @@
 .align 12
 empty_zero_page:
 	.space	PAGE_SIZE
+#endif /* CONFIG_MMU */
 
 /*
  * This global variable is used as an extension to the nios'
