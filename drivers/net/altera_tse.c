@@ -52,8 +52,8 @@ static int altera_tse_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 	mac_dev = (alt_tse_mac *) bus->priv;
 
 	/* set MDIO address */
-	writel(mii_id, &mac_dev->mdio_phy0_addr);
-	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
+	writel(mii_id, &mac_dev->mdio_phy1_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy1;
 
 	/* get the data */
 	data = readl(&mdio_regs[regnum]);
@@ -70,8 +70,8 @@ static int altera_tse_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u1
 	mac_dev = (alt_tse_mac *) bus->priv;
 
 	/* set MDIO address */
-	writel(mii_id, &mac_dev->mdio_phy0_addr);
-	mdio_regs = (unsigned int *) &mac_dev->mdio_phy0;
+	writel(mii_id, &mac_dev->mdio_phy1_addr);
+	mdio_regs = (unsigned int *) &mac_dev->mdio_phy1;
 
 	/* get the data */
 	data = (unsigned int) value;
