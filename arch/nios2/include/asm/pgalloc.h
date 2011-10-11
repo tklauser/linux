@@ -59,22 +59,9 @@ static inline pgtable_t pte_alloc_one(struct mm_struct *mm,
 
 	pte = alloc_pages(GFP_KERNEL | __GFP_REPEAT, PTE_ORDER);
 	if (pte) {
-		pgtable_page_ctor(pte);
-      /* FIXME: This is only here for the iss, to avoid alias at address 0
-       */
-#if 1
 		clear_highpage(pte);
-#else
-      pte_t *p = kmap_atomic(pte, KM_USER0);
-      int i;
-
-      for(i = 0; i < 1024; i++) {
-         pte_val(p[i]) = i & 0xf;
-      }
-      kunmap_atomic(p, KM_USER0);
-#endif
-   }
-
+		pgtable_page_ctor(pte);
+	}
 	return pte;
 }
 
