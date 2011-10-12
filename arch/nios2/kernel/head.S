@@ -162,19 +162,12 @@ finish_move:
 
 	/* Clear .bss */
 	movia	r2,__bss_start
-#ifdef CONFIG_MMU
-	/* presume nothing is between the .bss and _end */
-	movia	r1,_end
-#else
 	movia	r1,__bss_stop
-#endif /* CONFIG_MMU */
-
 1:
 	stb	r0,0(r2)
 	addi	r2,r2,1
 	bne	r1,r2,1b
 
-	/* Call main() with interrupts disabled */
 #ifndef CONFIG_MMU
 	movia	r1,status_extension	/* get the STATUS extension address */
 	movi	r2,PS_S			/* set initial mode = supervisor */
