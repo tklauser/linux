@@ -226,6 +226,15 @@ static int __devinit altera_spi_probe(struct platform_device *pdev)
 	if (!master)
 		return err;
 
+	/* bus_num is dynamically assigned when undefined (see spi.c)  */
+	/* look for a DTS entry to override this */
+	if (pdev->id == -1 && pdev->dev.of_node != 0) {
+		u32 tmp;
+
+		if (of_property_read_u32(pdev->dev.of_node, "bus-number", &tmp) == 0)
+			pdev->id = tmp;
+	}
+
 	/* setup the master state. */
 	master->bus_num = pdev->id;
 	master->num_chipselect = 16;

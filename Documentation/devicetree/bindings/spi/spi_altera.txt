@@ -2,3 +2,6 @@ Altera SPI
 
 Required properties:
 - compatible : should be "ALTR,spi-1.0".
+
+Optional property:
+- bus-number : SPI bus number
