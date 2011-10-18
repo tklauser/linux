@@ -28,8 +28,8 @@ config GENERIC_GPIO
 config NO_IOPORT
 	def_bool y
 
-config NO_DMA
-	def_bool !MMU
+config HAS_DMA
+	def_bool y
 
 config ZONE_DMA
 	def_bool y
