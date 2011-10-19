@@ -295,7 +295,7 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
 
 static inline pgoff_t pte_to_pgoff(pte_t pte)	{ BUG(); /* FIXME */ }
 
-#define kern_addr_valid(addr)	BUG()
+#define kern_addr_valid(addr)		(1)
 
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
 	remap_pfn_range(vma, vaddr, pfn, size, prot)
