@@ -15,7 +15,6 @@
 #ifndef _ASM_NIOS2_UACCESS_H
 #define _ASM_NIOS2_UACCESS_H
 
-#include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/thread_info.h>
 #include <linux/string.h>

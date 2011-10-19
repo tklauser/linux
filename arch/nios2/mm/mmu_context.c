@@ -10,6 +10,8 @@
  * for more details.
  */
 
+#include <linux/mm.h>
+
 #include <asm/cpuinfo.h>
 #include <asm/mmu_context.h>
 

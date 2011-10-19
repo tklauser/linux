@@ -7,14 +7,8 @@
  * for more details.
  */
 
-#include <linux/errno.h>
-#include <linux/sched.h>
-#include <linux/mm.h>
-#include <linux/stat.h>
 #include <linux/syscalls.h>
-#include <linux/mman.h>
 #include <linux/file.h>
-#include <linux/uaccess.h>
 
 #include <asm/cacheflush.h>
 #include <asm/traps.h>

@@ -13,11 +13,6 @@
 #ifndef _ASM_NIOS2_MMU_CONTEXT_H
 #define _ASM_NIOS2_MMU_CONTEXT_H
 
-#include <linux/errno.h>
-#include <linux/sched.h>
-#include <linux/slab.h>
-#include <asm/cacheflush.h>
-#include <asm/tlbflush.h>
 #include <asm-generic/mm_hooks.h>
 
 extern void mmu_context_init(void);
