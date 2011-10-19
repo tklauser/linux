@@ -32,27 +32,34 @@ static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {
 }
 
-/* ivho: leaving old MIPS comment
- * Initialize the context related info for a new mm_struct
- * instance.
+/*
+ * Initialize the context related info for a new mm_struct instance.
+ *
+ * Set all new contexts to 0, that way the generation will never match
+ * the currently running generation when this context is switched in.
  */
-int init_new_context(struct task_struct *tsk, struct mm_struct *mm);
+static inline int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
+{
+	mm->context = 0;
+	return 0;
+}
 
-/* Normal, classic MIPS get_new_mmu_context */
-void get_new_mmu_context(struct mm_struct *mm, unsigned long cpu);
-
-/* ivho: leaving old MIPS comment
+/*
  * Destroy context related info for an mm_struct that is about
  * to be put to rest.
  */
-void destroy_context(struct mm_struct *mm);
+static inline void destroy_context(struct mm_struct *mm)
+{
+}
 
 void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	       struct task_struct *tsk);
 
-void deactivate_mm(struct task_struct *tsk, struct mm_struct *mm);
+static inline void deactivate_mm(struct task_struct *tsk, struct mm_struct *mm)
+{
+}
 
-/* ivho: leaving old MIPS comment
+/*
  * After we have set current->mm to a new value, this activates
  * the context for the new mm so we see the new mappings.
  */

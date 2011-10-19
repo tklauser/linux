@@ -75,16 +75,6 @@ static mm_context_t get_new_context(void)
 	return next_mmu_context;
 }
 
-/*
- * Set all new contexts to 0, that way the generation will never match
- * the currently running generation when this context is switched in.
- */
-int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
-{
-	mm->context = 0;
-	return 0;
-}
-
 void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	       struct task_struct *tsk)
 {
@@ -104,18 +94,6 @@ void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	set_context(next->context);
 
 	local_irq_restore(flags);
-}
-
-void deactivate_mm(struct task_struct *tsk, struct mm_struct *mm)
-{
-}
-
-/*
- * Destroy context related info for an mm_struct that is about
- * to be put to rest.
- */
-void destroy_context(struct mm_struct *mm)
-{
 }
 
 /*
