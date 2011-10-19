@@ -209,7 +209,7 @@ vmalloc_fault:
 
 #if 1
 		/* FIXME: Is this entirely correct ? */
-		pgd = (pgd_t *) pgd_current + offset;
+		pgd = pgd_current + offset;
 #else
 		pgd = &current->mm->pgd[offset];
 #endif

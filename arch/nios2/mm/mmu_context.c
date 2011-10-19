@@ -88,7 +88,7 @@ void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		next->context = get_new_context();
 
 	/* Save the current pgd so the fast tlb handler can find it */
-	pgd_current = (unsigned long) next->pgd;
+	pgd_current = next->pgd;
 
 	/* Set the current context */
 	set_context(next->context);
@@ -104,7 +104,7 @@ void activate_mm(struct mm_struct *prev, struct mm_struct *next)
 {
 	next->context = get_new_context();
 	set_context(next->context);
-	pgd_current = (unsigned long) next->pgd;
+	pgd_current = next->pgd;
 }
 
 unsigned long get_pid_from_context(mm_context_t* context)

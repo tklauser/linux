@@ -33,9 +33,9 @@
 /*
  * Initialize a new pgd / pmd table with invalid pointers.
  */
-static void pgd_init(unsigned long page)
+static void pgd_init(pgd_t *pgd)
 {
-	unsigned long *p = (unsigned long *) page;
+	unsigned long *p = (unsigned long *) pgd;
 	int i;
 
 	for (i = 0; i < USER_PTRS_PER_PGD; i += 8) {
@@ -56,7 +56,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	ret = (pgd_t *) __get_free_pages(GFP_KERNEL, PGD_ORDER);
 	if (ret) {
 		init = pgd_offset(&init_mm, 0UL);
-		pgd_init((unsigned long) ret);
+		pgd_init(ret);
 		memcpy(ret + USER_PTRS_PER_PGD, init + USER_PTRS_PER_PGD,
 		       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
 	}
@@ -67,9 +67,8 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 void __init pagetable_init(void)
 {
 	/* Initialize the entire pgd.  */
-	pgd_init((unsigned long)swapper_pg_dir);
-	pgd_init((unsigned long)swapper_pg_dir
-		 + sizeof(pgd_t) * USER_PTRS_PER_PGD);
+	pgd_init(swapper_pg_dir);
+	pgd_init(swapper_pg_dir + sizeof(pgd_t) * USER_PTRS_PER_PGD);
 }
 
 /* FIXME: Swap not implemented */

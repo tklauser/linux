@@ -26,7 +26,7 @@ extern void mmu_context_init(void);
  * For the fast tlb miss handlers, we keep a pointer to the current pgd.
  * processor.
  */
-extern unsigned long pgd_current;
+extern pgd_t *pgd_current;
 
 static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {

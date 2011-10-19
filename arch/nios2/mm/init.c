@@ -34,6 +34,10 @@
 #include <asm/mmu_context.h>
 #include <asm/cpuinfo.h>
 
+#ifdef CONFIG_MMU
+pgd_t *pgd_current;
+#endif
+
 /*
  * paging_init() continues the virtual memory environment setup which
  * was begun by the code in arch/head.S.
@@ -61,7 +65,7 @@ void __init paging_init(void)
 
 #ifdef CONFIG_MMU
 	pagetable_init();
-	pgd_current = (unsigned long)swapper_pg_dir;
+	pgd_current = swapper_pg_dir;
 #endif
 
 	/*
@@ -151,7 +155,6 @@ void __init_refok free_initmem(void)
 #ifdef CONFIG_MMU
 
 #define __page_aligned(order) __attribute__((__aligned__(PAGE_SIZE << (order))))
-unsigned long pgd_current;
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned(PGD_ORDER);
 pte_t invalid_pte_table[PTRS_PER_PTE] __page_aligned(PTE_ORDER);
 
