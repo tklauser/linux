@@ -346,6 +346,7 @@ struct alt_tse_private {
 	/* PHY */
 	unsigned int mii_id;
 	int phy_addr;			/* PHY's MDIO address, -1 for autodetection */
+	phy_interface_t phy_iface;
 	struct mii_bus *mdio;
 	struct phy_device *phydev;
 	int oldspeed;

@@ -778,8 +778,7 @@ static int init_phy(struct net_device *dev)
 	struct phy_device *phydev;
 	phy_interface_t iface;
 
-	/* XXX: hard code for now */
-	iface = PHY_INTERFACE_MODE_RGMII;
+	iface = tse_priv->phy_iface;
 
 	tse_priv->oldlink = 0;
 	tse_priv->oldspeed = 0;
@@ -1355,6 +1354,35 @@ static int altera_tse_get_of_prop(struct platform_device *pdev,
 	return 0;
 }
 
+static int altera_tse_get_phy_iface_prop(struct platform_device *pdev,
+					 phy_interface_t *iface)
+{
+	const void *prop;
+	int len;
+
+	prop = of_get_property(pdev->dev.of_node, "phy-mode", &len);
+	if (!prop)
+		return -ENOENT;
+	if (len < 4)
+		return -EINVAL;
+
+	if (!strncmp((char *)prop, "mii", 3)) {
+		*iface = PHY_INTERFACE_MODE_MII;
+		return 0;
+	} else if (!strncmp((char *)prop, "gmii", 4)) {
+		*iface = PHY_INTERFACE_MODE_GMII;
+		return 0;
+	} else if (!strncmp((char *)prop, "rgmii", 5)) {
+		*iface = PHY_INTERFACE_MODE_RGMII;
+		return 0;
+	} else if (!strncmp((char *)prop, "sgmii", 5)) {
+		*iface = PHY_INTERFACE_MODE_SGMII;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
 /**
  * altera_tse_probe() - probe Altera TSE MAC device
  * pdev:	platform device
@@ -1529,6 +1557,17 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	ret = altera_tse_get_of_prop(pdev, "ALTR,mii-id", &tse_priv->mii_id);
 	if (ret)
 		goto out_free;
+
+	ret = altera_tse_get_phy_iface_prop(pdev, &tse_priv->phy_iface);
+	if (ret == -ENOENT) {
+		/* backward compatability, assume RGMII */
+		dev_warn(&pdev->dev,
+			 "cannot obtain PHY interface mode, assuming RGMII\n");
+		tse_priv->phy_iface = PHY_INTERFACE_MODE_RGMII;
+	} else if (ret) {
+		dev_err(&pdev->dev, "unknown PHY interface mode\n");
+		goto out_free;
+	}
 
 	/*
 	 * try to get PHY address from device tree, use PHY autodetection if
