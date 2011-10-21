@@ -470,7 +470,7 @@ static int tse_poll(struct napi_struct *napi, int budget)
 			temp_desc_pointer = &tse_priv->sgdma_tx_desc[tx_tail];
 
 			//check is tx sgdma is running, and if it should be
-			if (!(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) &
+			if (!(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK) &&
 				(temp_desc_pointer->descriptor_control & ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK))
 			{
 				pr_debug("%s: NAPI starting TX SGDMA with Desc %d\n",
