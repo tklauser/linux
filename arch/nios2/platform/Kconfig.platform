@@ -13,12 +13,6 @@ config MEM_BASE
 	  Please not that this address is used directly so you have to manually
 	  do address translation if it's connected to a bridge.
 
-config MEM_SIZE
-	hex "Memory size"
-	default "0x01000000"
-	help
-	  This is the size of the memory the kernel will run from.
-
 comment "Device tree"
 
 config NIOS2_DTB_AT_PHYS_ADDR

@@ -25,11 +25,18 @@
 
 #include <asm/page.h>
 #include <asm/prom.h>
+#include <asm/sections.h>
 
 static void *dtb_passed; /* need to reserve bootmem */
 
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
+	u64 kernel_start = (u64)virt_to_phys(_text);
+
+	if (!memory_size &&
+	    (kernel_start >= base) && (kernel_start <= (base + size)))
+		memory_size = size;
+
 	return;
 }
 

@@ -29,6 +29,7 @@
 
 unsigned long memory_start;
 unsigned long memory_end;
+unsigned long memory_size;
 
 EXPORT_SYMBOL(memory_start);
 EXPORT_SYMBOL(memory_end);
@@ -146,7 +147,7 @@ void __init setup_arch(char **cmdline_p)
 #endif
 
 	memory_start = PAGE_ALIGN((unsigned long)__pa(_end));
-	memory_end = (unsigned long) CONFIG_MEM_BASE + CONFIG_MEM_SIZE;
+	memory_end = (unsigned long) CONFIG_MEM_BASE + memory_size;
 
 #ifndef CONFIG_PASS_CMDLINE
 	memcpy(cmd_line, default_command_line, sizeof(default_command_line));

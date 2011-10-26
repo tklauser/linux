@@ -89,6 +89,7 @@ typedef struct { unsigned long pmd[16]; } pmd_t;
 
 extern unsigned long memory_start;
 extern unsigned long memory_end;
+extern unsigned long memory_size;
 
 #endif /* !__ASSEMBLY__ */
 
