@@ -68,7 +68,7 @@ void __init pagetable_init(void)
 {
 	/* Initialize the entire pgd.  */
 	pgd_init(swapper_pg_dir);
-	pgd_init(swapper_pg_dir + sizeof(pgd_t) * USER_PTRS_PER_PGD);
+	pgd_init(swapper_pg_dir + USER_PTRS_PER_PGD);
 }
 
 /* FIXME: Swap not implemented */
