@@ -200,10 +200,10 @@ static inline void __iomem *__ioremap(unsigned long physaddr, unsigned long size
                                       unsigned long cacheflag)
 {
 	if (cacheflag & _PAGE_CACHED) {
-		return (void __iomem *)(physaddr & ~0x80000000);
+		return (void __iomem *)(physaddr & ~CONFIG_IO_REGION_BASE);
 	} else {
 /*		flush_dcache_range(physaddr, physaddr + size); */
-		return (void __iomem *)(physaddr | 0x80000000);
+		return (void __iomem *)(physaddr | CONFIG_IO_REGION_BASE);
 	}
 }
 
