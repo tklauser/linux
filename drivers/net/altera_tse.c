@@ -673,8 +673,18 @@ static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	//if it is not, start it up with irq's enabled.
 
 	if (!(tse_priv->tx_sgdma_dev->status & ALT_SGDMA_STATUS_BUSY_MSK)) {
+		unsigned int i;
+
 		pr_debug("%s: TX SGDMA not running\n", dev->name);
-		sgdma_async_write(tse_priv, &tse_priv->sgdma_tx_desc[tail]);
+
+		/* Walk the descriptors and find the first one OBHW (Owned By Hardware) */
+		for (i = tse_priv->tx_sgdma_descriptor_tail; i != next_head;
+		     i = (i + 1) & (ALT_TX_RING_MOD_MASK)) {
+			if (((&tse_priv->sgdma_tx_desc[i])->descriptor_control & ALT_SGDMA_DESCRIPTOR_CONTROL_OWNED_BY_HW_MSK)) {
+				sgdma_async_write(tse_priv, &tse_priv->sgdma_tx_desc[i]);
+				break;
+			}
+		}
 	}
 
 	tse_priv->tx_sgdma_descriptor_head = next_head;
