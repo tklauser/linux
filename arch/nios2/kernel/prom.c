@@ -27,8 +27,6 @@
 #include <asm/prom.h>
 #include <asm/sections.h>
 
-static void *dtb_passed; /* need to reserve bootmem */
-
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
 	u64 kernel_start = (u64)virt_to_phys(_text);
@@ -74,7 +72,7 @@ void __init early_init_devtree(void *params)
 	extern int __dtb_start;
 
 	if (params && be32_to_cpup((__be32 *)params) == OF_DT_HEADER)
-		initial_boot_params = dtb_passed = params;
+		initial_boot_params = params;
 #if defined(CONFIG_NIOS2_DTB_AT_PHYS_ADDR)
 	else if (be32_to_cpup((__be32 *)CONFIG_NIOS2_DTB_PHYS_ADDR) ==
 		 OF_DT_HEADER)
@@ -98,14 +96,21 @@ void __init early_init_devtree(void *params)
 
 void __init device_tree_init(void)
 {
+	unsigned long base, size;
+
 	if (!initial_boot_params)
 		return;
 
-	if (dtb_passed) {
-		unsigned long base, size;
+	base = virt_to_phys((void *)initial_boot_params);
+	size = be32_to_cpu(initial_boot_params->totalsize);
 
-		base = virt_to_phys((void *)initial_boot_params);
-		size = be32_to_cpu(initial_boot_params->totalsize);
+	/*
+	 * If the chosen DTB is not the built-in one (passed via
+	 * bootloader or found at a built-in physical address) and
+	 * it is within main memory above the kernel binary itself
+	 * (> memory_start), we need to reserve_bootmem().
+	 */
+	if ((base >= memory_start) && (base < memory_end)) {
 		reserve_bootmem(base, size, BOOTMEM_DEFAULT);
 		unflatten_device_tree();
 		free_bootmem(base, size);
