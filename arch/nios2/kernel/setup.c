@@ -108,6 +108,7 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 				       unsigned r7)
 {
 	unsigned dtb_passed = 0;
+	char cmdline_passed[COMMAND_LINE_SIZE] = { 0, };
 
 #ifdef CONFIG_MMU
 	mmu_init();
@@ -124,15 +125,20 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 		dtb_passed = r6;
 
 		if (r7)
-			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
+			strncpy(cmdline_passed, (char *)r7, COMMAND_LINE_SIZE);
 	}
 #endif
-#ifndef CONFIG_CMDLINE_FORCE
-	if (!cmd_line[0])
-#endif
-		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 
 	early_init_devtree((void *)dtb_passed);
+
+#ifndef CONFIG_CMDLINE_FORCE
+	if (cmdline_passed[0])
+		strncpy(cmd_line, cmdline_passed, COMMAND_LINE_SIZE);
+#ifdef CONFIG_CMDLINE_IGNORE_DTB
+	else
+		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+#endif
+#endif
 }
 
 void __init setup_arch(char **cmdline_p)

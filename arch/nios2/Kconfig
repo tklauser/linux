@@ -108,6 +108,14 @@ config CMDLINE_FORCE
 	  Set this to have arguments from the default kernel command string
 	  override those passed by the boot loader.
 
+config CMDLINE_IGNORE_DTB
+	bool "Ignore kernel command string from DTB"
+	depends on !CMDLINE_FORCE
+	default y
+	help
+	  Set this to ignore the bootargs property from the devicetree's
+	  chosen node and fall back to CMDLINE if nothing is passed.
+
 config PASS_CMDLINE
 	bool "Passed kernel command line from u-boot"
 	default n

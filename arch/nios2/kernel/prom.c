@@ -26,6 +26,7 @@
 #include <asm/page.h>
 #include <asm/prom.h>
 #include <asm/sections.h>
+#include <asm/setup.h>
 
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
@@ -87,7 +88,7 @@ void __init early_init_devtree(void *params)
 	 * device-tree, including the platform type, initrd location and
 	 * size, and more ...
 	 */
-	of_scan_flat_dt(early_init_dt_scan_chosen, NULL);
+	of_scan_flat_dt(early_init_dt_scan_chosen, cmd_line);
 
 	/* Scan memory nodes */
 	of_scan_flat_dt(early_init_dt_scan_root, NULL);
