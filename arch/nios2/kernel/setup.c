@@ -34,9 +34,6 @@ unsigned long memory_size;
 EXPORT_SYMBOL(memory_start);
 EXPORT_SYMBOL(memory_end);
 
-#ifndef CONFIG_PASS_CMDLINE
-static char default_command_line[] = CONFIG_CMDLINE;
-#endif
 char cmd_line[COMMAND_LINE_SIZE] = { 0, };
 
 /*				   r1  r2  r3  r4  r5  r6  r7  r8  r9 r10 r11*/
@@ -148,10 +145,6 @@ void __init setup_arch(char **cmdline_p)
 
 	memory_start = PAGE_ALIGN((unsigned long)__pa(_end));
 	memory_end = (unsigned long) CONFIG_MEM_BASE + memory_size;
-
-#ifndef CONFIG_PASS_CMDLINE
-	memcpy(cmd_line, default_command_line, sizeof(default_command_line));
-#endif
 
 	init_mm.start_code = (unsigned long) _stext;
 	init_mm.end_code = (unsigned long) _etext;
