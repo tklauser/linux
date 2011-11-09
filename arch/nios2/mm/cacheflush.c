@@ -7,6 +7,7 @@
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
+#include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <asm/cpuinfo.h>
