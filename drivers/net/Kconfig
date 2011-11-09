@@ -262,12 +262,6 @@ config OPEN_ETH
 	  This is support for the opencores Igor emac driver implemented
 	  in an FPGA.
 
-config MTIP1000_ETH
-	bool "MoreThanIP 10_100_1000 Emac support"
-	help
-	  This is support for the MoreThanIP 10_100_1000 emac driver implemented
-	  in an FPGA.
-
 source "drivers/net/fddi/Kconfig"
 
 config NET_SB1000

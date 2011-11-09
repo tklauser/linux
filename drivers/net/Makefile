@@ -35,7 +35,6 @@ obj-$(CONFIG_FDDI) += fddi/
 obj-$(CONFIG_HIPPI) += hippi/
 obj-$(CONFIG_HAMRADIO) += hamradio/
 obj-$(CONFIG_IRDA) += irda/
-obj-$(CONFIG_MTIP1000_ETH) += mtip1000.o
 obj-$(CONFIG_OPEN_ETH) += open_eth.o
 obj-$(CONFIG_PLIP) += plip/
 obj-$(CONFIG_PPP) += ppp/
