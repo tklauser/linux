@@ -127,7 +127,9 @@ asmlinkage void __init nios2_boot_init(unsigned r4, unsigned r5, unsigned r6,
 			strncpy(cmd_line, (char *)r7, COMMAND_LINE_SIZE);
 	}
 #endif
+#ifndef CONFIG_CMDLINE_FORCE
 	if (!cmd_line[0])
+#endif
 		strncpy(cmd_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 
 	early_init_devtree((void *)dtb_passed);

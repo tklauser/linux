@@ -86,15 +86,27 @@ config ALIGNMENT_TRAP
 
 comment "Boot options"
 
+config CMDLINE_BOOL
+	bool "Default bootloader kernel arguments"
+	default y
+
 config CMDLINE
 	string "Default kernel command string"
 	default ""
+	depends on CMDLINE_BOOL
 	help
 	  On some platforms, there is currently no way for the boot loader to
 	  pass arguments to the kernel. For these platforms, you can supply
 	  some command-line options at build time by entering them here.  In
 	  other cases you can specify kernel args so that you don't have
 	  to set them up in board prom initialization routines.
+
+config CMDLINE_FORCE
+	bool "Force default kernel command string"
+	depends on CMDLINE_BOOL
+	help
+	  Set this to have arguments from the default kernel command string
+	  override those passed by the boot loader.
 
 config PASS_CMDLINE
 	bool "Passed kernel command line from u-boot"
