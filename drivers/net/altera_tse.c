@@ -1320,7 +1320,7 @@ static const struct net_device_ops altera_tse_netdev_ops = {
 	.ndo_start_xmit		= tse_start_xmit,
 	.ndo_get_stats		= tse_get_statistics,
 	.ndo_set_mac_address	= tse_set_hw_address,
-	.ndo_set_multicast_list	= tse_set_multicast_list,
+	.ndo_set_rx_mode	= tse_set_multicast_list,
 	.ndo_change_mtu		= tse_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
 #ifdef CONFIG_NET_POLL_CONTROLLER
