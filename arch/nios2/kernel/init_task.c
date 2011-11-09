@@ -11,6 +11,7 @@
  * for more details.
  */
 
+#include <linux/module.h>
 #include <linux/init_task.h>
 #include <linux/mqueue.h>
 
