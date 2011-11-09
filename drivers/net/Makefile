@@ -26,8 +26,6 @@ obj-$(CONFIG_VIRTIO_NET) += virtio_net.o
 #
 obj-$(CONFIG_ARCNET) += arcnet/
 obj-$(CONFIG_ATSE) += atse.o
-obj-$(CONFIG_ALT_TSE) += altera_tse_driver.o
-altera_tse_driver-objs := altera_tse.o altera_tse_ethtool.o
 obj-$(CONFIG_DEV_APPLETALK) += appletalk/
 obj-$(CONFIG_CAIF) += caif/
 obj-$(CONFIG_CAN) += can/

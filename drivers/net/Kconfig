@@ -255,13 +255,6 @@ config ATSE
 	  Daughter Cards, say y:
 	  "10/100/1000 Ethernet PHY Daughter Board with Marvell PHY (88E1111)"
 
-config ALT_TSE
-	tristate "Altera Triple Speed Ethernet MAC support(SLS)"
-	depends on NIOS2
-	select PHYLIB
-	help
-	  This drivers supports the Altera Triple-Speed Ethernet MAC.
-
 config OPEN_ETH
 	bool "Opencores (Igor) Emac support"
 	select MII
