@@ -243,18 +243,6 @@ source "drivers/net/caif/Kconfig"
 
 source "drivers/net/ethernet/Kconfig"
 
-config ATSE
-	bool "Altera Triple Speed Ethernet support (EXPERIMENTAL)"
-	default n
-	depends on NIOS2
-	help
-	  This is support for Altera Triple Speed (TSE) Ethernet MAC
-	  implemented in an FPGA.
-
-	  If you have one of the following of Development Board
-	  Daughter Cards, say y:
-	  "10/100/1000 Ethernet PHY Daughter Board with Marvell PHY (88E1111)"
-
 config OPEN_ETH
 	bool "Opencores (Igor) Emac support"
 	select MII
