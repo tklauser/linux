@@ -31,6 +31,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/ads7846.h>
 #include <linux/regulator/consumer.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <asm/irq.h>
 
