@@ -162,6 +162,7 @@ void __iomem *__ioremap(unsigned long phys_addr, unsigned long size,
 	}
 	return (void __iomem *) (offset + (char *)addr);
 }
+EXPORT_SYMBOL(__ioremap);
 
 /*
  * __iounmap unmaps nearly everything, so be careful
@@ -180,3 +181,4 @@ void __iounmap(void __iomem *addr)
 		printk(KERN_ERR "iounmap: bad address %p\n", addr);
 	kfree(p);
 }
+EXPORT_SYMBOL(__iounmap);
