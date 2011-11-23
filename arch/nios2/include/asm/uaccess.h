@@ -278,7 +278,7 @@ static inline long strnlen_user(const char *src, long n)
 #define put_user(x, ptr)				\
 ({							\
 	int __pu_err = 0;				\
-	typeof(*(ptr)) __pu_val = (x);			\
+	__typeof__(*(ptr)) __pu_val = (x);		\
 	switch (sizeof (*(ptr))) {			\
 	case 1:						\
 	case 2:						\
