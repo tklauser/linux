@@ -60,26 +60,6 @@ void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 }
 EXPORT_SYMBOL(dma_sync_sg_for_cpu);
 
-int dma_mapping_error(struct device *dev, dma_addr_t handle)
-{
-	return 0;
-}
-EXPORT_SYMBOL(dma_mapping_error);
-
-dma_addr_t dma_map_single(struct device * dev, void *ptr, size_t size,
-			  enum dma_data_direction direction)
-{
-	flush_dcache_range((unsigned long)ptr, (unsigned long)ptr+size);
-	return (dma_addr_t)ptr;
-}
-EXPORT_SYMBOL(dma_map_single);
-
-void dma_unmap_single(struct device *dev, dma_addr_t addr,
-		      size_t size, enum dma_data_direction dir)
-{
-}
-EXPORT_SYMBOL(dma_unmap_single);
-
 dma_addr_t dma_map_page(struct device *dev, struct page *page,
 			unsigned long offset, size_t size,
 			enum dma_data_direction direction)
