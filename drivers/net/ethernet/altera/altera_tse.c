@@ -1712,18 +1712,7 @@ static struct platform_driver altera_tse_driver = {
 	},
 };
 
-static int __init altera_tse_init(void)
-{
-	return platform_driver_register(&altera_tse_driver);
-}
-
-static void __exit altera_tse_exit(void)
-{
-	platform_driver_unregister(&altera_tse_driver);
-}
-
-module_init(altera_tse_init);
-module_exit(altera_tse_exit);
+module_platform_driver(altera_tse_driver);
 
 MODULE_AUTHOR("Altera Corporation");
 MODULE_DESCRIPTION("Altera Triple Speed Ethernet MAC driver");
