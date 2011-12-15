@@ -66,7 +66,7 @@ static mm_context_t get_new_context(void)
 		/* Version is incremented since the pid increment above
 		 * overflows info version */
 		flush_cache_all();
-		local_flush_tlb_all();
+		flush_tlb_all();
 	}
 
 	/* If the version wraps we start over with the first generation, we do

@@ -118,7 +118,7 @@ void __init mem_init(void)
 #ifdef CONFIG_MMU
 void __init mmu_init(void)
 {
-	local_flush_tlb_all();
+	flush_tlb_all();
 }
 #endif
 

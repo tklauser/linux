@@ -39,10 +39,10 @@
  * All entries common to a mm share an asid.  To effectively flush these
  * entries, we just bump the asid.
  */
-void local_flush_tlb_mm(struct mm_struct *mm)
+void flush_tlb_mm(struct mm_struct *mm)
 {
 	if (current->mm == mm)
-		local_flush_tlb_all();
+		flush_tlb_all();
 	else
 		memset(&mm->context, 0, sizeof(mm_context_t));
 }
@@ -55,7 +55,7 @@ void local_flush_tlb_mm(struct mm_struct *mm)
  *        read only then write to it, the tlb-entry will not be flushed.
  *
  */
-void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
+void flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
 {
 	unsigned int way;
 	unsigned long org_misc;
@@ -91,28 +91,23 @@ void local_flush_tlb_one_pid(unsigned long addr, unsigned long mmu_pid)
 	WRCTL(CTL_TLBMISC, org_misc);
 }
 
-void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
-			   unsigned long end)
+void flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
+		     unsigned long end)
 {
 	/* Implemented in mmu_context.c */
 	extern unsigned long get_pid_from_context(mm_context_t* ctx);
 	unsigned long mmu_pid = get_pid_from_context(&vma->vm_mm->context);
 
 	while (start < end) {
-		local_flush_tlb_one_pid(start, mmu_pid);
+		flush_tlb_one_pid(start, mmu_pid);
 		start += PAGE_SIZE;
 	}
 }
 
-void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long address)
-{
-	local_flush_tlb_one(address);
-}
-
-void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
+void flush_tlb_kernel_range(unsigned long start, unsigned long end)
 {
 	while (start < end) {
-		local_flush_tlb_one(start);
+		flush_tlb_one(start);
 		start += PAGE_SIZE;
 	}
 }
@@ -121,7 +116,7 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
  * This one is only used for pages with the global bit set so we don't care
  * much about the ASID.
  */
-void local_flush_tlb_one(unsigned long addr)
+void flush_tlb_one(unsigned long addr)
 {
 	unsigned int way;
 	unsigned long pid, org_misc;
@@ -236,7 +231,7 @@ void flush_tlb_pid(unsigned long pid)
 	}
 }
 
-void local_flush_tlb_all(void)
+void flush_tlb_all(void)
 {
 	int i;
 	unsigned long vaddr = CONFIG_IO_REGION_BASE;
