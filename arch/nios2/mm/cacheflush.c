@@ -8,10 +8,11 @@
  */
 
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
-#include <asm/cpuinfo.h>
 #include <asm/cacheflush.h>
+#include <asm/cpuinfo.h>
 
 static void __flush_dcache(unsigned long start, unsigned long end)
 {

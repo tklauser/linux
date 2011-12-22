@@ -12,6 +12,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -35,7 +36,7 @@ static inline void remap_area_pte(pte_t *pte, unsigned long address,
 		end = PMD_SIZE;
 	if (address >= end)
 		BUG();
-	pfn = phys_addr >> PAGE_SHIFT;
+	pfn = PFN_DOWN(phys_addr);
 	do {
 		if (!pte_none(*pte)) {
 			printk(KERN_ERR "remap_area_pte: page already exists\n");

@@ -79,8 +79,6 @@ struct mm_struct;
 #define PGDIR_SIZE	(1UL << PGDIR_SHIFT)
 #define PGDIR_MASK	(~(PGDIR_SIZE-1))
 
-#define PTE_FILE_MAX_BITS	28
-
 /*
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
@@ -100,10 +98,8 @@ static inline void set_pmd(pmd_t *pmdptr, pmd_t pmdval)
 	pmdptr->pud.pgd.pgd = pmdval.pud.pgd.pgd;
 }
 
-#define pgd_index(address)	(((address) >> PGDIR_SHIFT) \
-				 & (PTRS_PER_PGD - 1))
-
 /* to find an entry in a page-table-directory */
+#define pgd_index(addr)		(((addr) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
 #define pgd_offset(mm, addr)	((mm)->pgd + pgd_index(addr))
 
 static inline int pte_write(pte_t pte)		{ return pte_val(pte) & _PAGE_WRITE; }
@@ -122,13 +118,6 @@ static inline pgprot_t pgprot_noncached(pgprot_t _prot)
 
 	return __pgprot(prot);
 }
-
-#include <linux/swap.h>
-swp_entry_t   __pte_to_swp_entry(pte_t pte);
-pte_t         __swp_entry_to_pte(swp_entry_t swp);
-unsigned long __swp_type(swp_entry_t);
-pgoff_t       __swp_offset(swp_entry_t);
-swp_entry_t   __swp_entry(unsigned long, pgoff_t offset);
 
 /*
  * FIXME: Today unmapped pages are mapped to the low physical addresses
@@ -206,6 +195,10 @@ static inline void pmd_clear(pmd_t *pmdp)
 	pmd_val(*pmdp) = (unsigned long) invalid_pte_table;
 }
 
+#define pte_pfn(pte)		(pte_val(pte) & 0xfffff)
+#define pfn_pte(pfn, prot)	(__pte(pfn | pgprot_val(prot)))
+#define pte_page(pte)		(pfn_to_page(pte_pfn(pte)))
+
 /*
  * Store a linux PTE into the linux page table.
  */
@@ -213,13 +206,6 @@ static inline void set_pte(pte_t *ptep, pte_t pteval)
 {
 	*ptep = pteval;
 }
-
-static inline unsigned long pte_pfn(pte_t pte)
-{
-	return pte_val(pte) & 0xfffff;
-}
-
-#define pte_page(pte)		(pfn_to_page(pte_pfn(pte)))
 
 static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 			      pte_t *ptep, pte_t pteval)
@@ -257,8 +243,6 @@ static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *pt
 
 #define pte_unmap(pte)	do { } while (0)
 
-static inline pte_t pgoff_to_pte(pgoff_t off)	{ BUG(); /* FIXME */ }
-
 /*
  * Conversion functions: convert a page and protection to a page entry,
  * and a page entry and page directory to the page they refer to.
@@ -286,14 +270,29 @@ static inline pte_t pgoff_to_pte(pgoff_t off)	{ BUG(); /* FIXME */ }
 	printk(KERN_ERR "%s:%d: bad pgd %08lx.\n", \
 		__FILE__, __LINE__, pgd_val(e))
 
-static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
-{
-	pte_t pte;
-	pte_val(pte) = pfn | pgprot_val(prot);
-	return pte;
-}
+/*
+ * Encode and decode a swap entry (must be !pte_none(pte) && !pte_present(pte)
+ * && !pte_file(pte)):
+ *
+ * 31 30 29 28 27 26 25 24 23 22 21 20 19 18 ...  1  0
+ *  0  0  0  0 type.  0  0  0  0  0  0 offset.........
+ *
+ * This gives us up to 2**2 = 4 swap files and 2**20 * 4K = 4G per swap file.
+ *
+ * Note that the offset field is always non-zero, thus !pte_none(pte) is always
+ * true.
+ */
+#define __swp_type(swp)		(((swp).val >> 26) & 0x3)
+#define __swp_offset(swp)	((swp).val & 0xfffff)
+#define __swp_entry(type, off)	((swp_entry_t) { (((type) & 0x3) << 26) \
+						 | ((off) & 0xfffff) })
+#define __swp_entry_to_pte(swp)	((pte_t) { (swp).val })
+#define __pte_to_swp_entry(pte)	((swp_entry_t) { pte_val(pte) })
 
-static inline pgoff_t pte_to_pgoff(pte_t pte)	{ BUG(); /* FIXME */ }
+/* Encode and decode a nonlinear file mapping entry */
+#define PTE_FILE_MAX_BITS	25
+#define pte_to_pgoff(pte)	(pte_val(pte) & 0x1ffffff)
+#define pgoff_to_pte(off)	__pte(((off) & 0x1ffffff) | _PAGE_FILE)
 
 #define kern_addr_valid(addr)		(1)
 

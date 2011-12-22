@@ -8,6 +8,7 @@
  */
 
 #include <linux/mm.h>
+#include <linux/sched.h>
 
 #include <asm/pgtable.h>
 #include <asm/cpuinfo.h>
@@ -70,10 +71,3 @@ void __init pagetable_init(void)
 	pgd_init(swapper_pg_dir);
 	pgd_init(swapper_pg_dir + USER_PTRS_PER_PGD);
 }
-
-/* FIXME: Swap not implemented */
-swp_entry_t   __pte_to_swp_entry(pte_t pte){BUG();}
-pte_t         __swp_entry_to_pte(swp_entry_t swp){BUG();}
-unsigned long __swp_type(swp_entry_t swp){BUG();}
-pgoff_t       __swp_offset(swp_entry_t swp){BUG();}
-swp_entry_t   __swp_entry(unsigned long type, pgoff_t offset){BUG();}

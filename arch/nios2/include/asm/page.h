@@ -17,6 +17,8 @@
 #ifndef _ASM_NIOS2_PAGE_H
 #define _ASM_NIOS2_PAGE_H
 
+#include <linux/pfn.h>
+
 /*
  * PAGE_SHIFT determines the page size
  */
@@ -90,6 +92,8 @@ typedef struct { unsigned long pmd[16]; } pmd_t;
 extern unsigned long memory_start;
 extern unsigned long memory_end;
 extern unsigned long memory_size;
+
+extern struct page *mem_map;
 
 #endif /* !__ASSEMBLY__ */
 
