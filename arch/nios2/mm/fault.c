@@ -49,6 +49,11 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long cause,
 	int fault;
 	unsigned int flags = 0;
 
+	cause >>= 2;
+
+	/* Restart the instruction */
+	regs->ea -= 4;
+
 	/*
 	 * We fault-in kernel-space virtual memory on-demand. The
 	 * 'reference' page table is init_mm.pgd.

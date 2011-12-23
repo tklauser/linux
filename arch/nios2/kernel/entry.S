@@ -537,12 +537,12 @@ ENTRY(sys_rt_sigreturn)
 protection_exception_pte:
 	rdctl r6,pteaddr
 	slli r6,r6,10
-	call protection_exception_c
+	call do_page_fault
 	br ret_from_exception
 	
 protection_exception_ba:
 	rdctl r6,badaddr
-	call protection_exception_c
+	call do_page_fault
 	br ret_from_exception
 
 protection_exception_instr:

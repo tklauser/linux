@@ -255,23 +255,6 @@ void flush_tlb_all(void)
 	WRCTL(CTL_TLBMISC, org_misc);
 }
 
-extern asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long write,
-                                     unsigned long address);
-
-/* FIXME: This function should probably be eliminated, we
- *        should do this directly in fault.c
- */
-void protection_exception_c(struct pt_regs *regs, int cause,
-                            unsigned long addr)
-{
-	cause /= 4;
-
-	/* Restart the instruction */
-	regs->ea -= 4;
-
-	do_page_fault(regs, cause, addr);
-}
-
 void set_mmu_pid(unsigned long pid)
 {
 	WRCTL(CTL_TLBMISC, (RDCTL(CTL_TLBMISC) & (WAY_MASK << WAY_SHIFT)) | ((pid & PID_MASK) << PID_SHIFT));
