@@ -21,7 +21,7 @@
 #include <asm/cacheflush.h>
 #include <asm/io.h>
 
-void *dma_alloc_noncoherent(struct device *dev, size_t size,
+void *dma_alloc_coherent(struct device *dev, size_t size,
 			    dma_addr_t *dma_handle, gfp_t gfp)
 {
 	void *ret;
@@ -36,20 +36,8 @@ void *dma_alloc_noncoherent(struct device *dev, size_t size,
 		gfp |= GFP_DMA;
 
 	ret = (void *) __get_free_pages(gfp, get_order(size));
-	if (ret != NULL)
+	if (ret != NULL) {
 		*dma_handle = virt_to_phys(ret);
-
-	return ret;
-}
-EXPORT_SYMBOL(dma_alloc_noncoherent);
-
-void *dma_alloc_coherent(struct device *dev, size_t size,
-			 dma_addr_t *dma_handle, gfp_t gfp)
-{
-	void *ret;
-
-	ret = dma_alloc_noncoherent(dev, size, dma_handle, gfp);
-	if (ret) {
 		flush_dcache_range((unsigned long) ret, (unsigned long) ret + size);
 		ret = UNCAC_ADDR(ret);
 	}
@@ -58,19 +46,10 @@ void *dma_alloc_coherent(struct device *dev, size_t size,
 }
 EXPORT_SYMBOL(dma_alloc_coherent);
 
-void dma_free_noncoherent(struct device *dev, size_t size, void *vaddr,
-			  dma_addr_t dma_handle)
-{
-	free_pages((unsigned long) vaddr, get_order(size));
-}
-EXPORT_SYMBOL(dma_free_noncoherent);
-
 void dma_free_coherent(struct device *dev, size_t size, void *vaddr,
 		       dma_addr_t dma_handle)
 {
-	unsigned long addr = (unsigned long) vaddr;
-
-	addr = (unsigned long) CAC_ADDR(addr);
+	unsigned long addr = (unsigned long) CAC_ADDR((unsigned long) vaddr);
 	free_pages(addr, get_order(size));
 }
 EXPORT_SYMBOL(dma_free_coherent);
