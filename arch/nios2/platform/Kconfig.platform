@@ -53,24 +53,24 @@ config DTB_SOURCE
 comment "Nios II instructions"
 
 config NIOS2_HW_MUL_SUPPORT
-	int "Enable MUL instruction (0=none, 1=MUL)"
-	default 0
+	bool "Enable MUL instruction"
+	default n
 	help
-	  Set to 1 if you configured the NiosII to include the MUL instruction.
+	  Set to true if you configured the NiosII to include the MUL instruction.
 	  This will enable the -mhw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
-	int "Enable MULX instruction (0=none, 1=MULX)"
-	default 0
+	bool "Enable MULX instruction"
+	default n
 	help
-	  Set to 1 if you configured the NiosII to include the MULX instruction.
+	  Set to true if you configured the NiosII to include the MULX instruction.
 	  Enables the -mhw-mulx compiler flag.
 
 config NIOS2_HW_DIV_SUPPORT
-	int "Enable DIV instruction (0=none, 1=DIV)"
-	default 0
+	bool "Enable DIV instruction"
+	default n
 	help
-	  Set to 1 if you configured the NiosII to include the DIV instruction.
+	  Set to true if you configured the NiosII to include the DIV instruction.
 	  Enables the -mhw-div compiler flag.
 
 config NIOS2_FPU_SUPPORT

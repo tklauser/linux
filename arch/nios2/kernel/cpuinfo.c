@@ -58,14 +58,21 @@ void __init setup_cpuinfo(void)
 		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
 	cpuinfo.has_div = fcpu_has(cpu, "ALTR,has-div");
-	if (cpuinfo.has_div != CONFIG_NIOS2_HW_DIV_SUPPORT)
-		err_cpu("DIV");
 	cpuinfo.has_mul = fcpu_has(cpu, "ALTR,has-mul");
-	if (cpuinfo.has_mul != CONFIG_NIOS2_HW_MUL_SUPPORT)
-		err_cpu("MUL");
 	cpuinfo.has_mulx = fcpu_has(cpu, "ALTR,has-mulx");
-	if (cpuinfo.has_mulx != CONFIG_NIOS2_HW_MULX_SUPPORT)
+
+#ifdef CONFIG_NIOS2_HW_DIV_SUPPORT
+	if (!cpuinfo.has_div)
+		err_cpu("DIV");
+#endif
+#ifdef CONFIG_NIOS2_HW_MUL_SUPPORT
+	if (!cpuinfo.has_mul)
+		err_cpu("MUL");
+#endif
+#ifdef CONFIG_NIOS2_HW_MULX_SUPPORT
+	if (!cpuinfo.has_mulx)
 		err_cpu("MULX");
+#endif
 
 	cpuinfo.icache_line_size = fcpu(cpu, "icache-line-size");
 	cpuinfo.icache_size = fcpu(cpu, "icache-size");
