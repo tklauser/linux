@@ -605,10 +605,12 @@ static ssize_t ads7846_disable_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct ads7846 *ts = dev_get_drvdata(dev);
-	unsigned long i;
+	unsigned int i;
+	int err;
 
-	if (strict_strtoul(buf, 10, &i))
-		return -EINVAL;
+	err = kstrtouint(buf, 10, &i);
+	if (err)
+		return err;
 
 	if (i)
 		ads7846_disable(ts);
@@ -1468,7 +1470,6 @@ MODULE_DEVICE_TABLE(of, ads7846_match);
 static struct spi_driver ads7846_driver = {
 	.driver = {
 		.name	= "ads7846",
-		.bus	= &spi_bus_type,
 		.owner	= THIS_MODULE,
 		.pm	= &ads7846_pm,
 		.of_match_table = ads7846_match,
