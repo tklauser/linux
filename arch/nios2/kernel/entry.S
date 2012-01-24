@@ -388,7 +388,8 @@ need_resched:
 	ldw	r4,TI_FLAGS(r1)		// ? Need resched set
 	BTBZ	r10,r4,TIF_NEED_RESCHED,restore_all
 	ldw	r4,PT_ESTATUS(sp)	// ? Interrupts off
-	BTBZ	r10,r4,NIOS2_STATUS_PIE_OFST,restore_all
+	andi	r10,r4,STATUS_PIE
+	beq	r10,r0,restore_all
 	movia	r4,PREEMPT_ACTIVE
 	stw	r4,TI_PREEMPT_COUNT(r1)
 	rdctl	r10,status		/* enable intrs again */
