@@ -134,7 +134,7 @@ ENTRY(inthandler)
 	/* Read cause and vector and branch to the associated handler (
          */
 	mov	r4,sp
-        rdctl   r5,ctl7
+        rdctl   r5,exception
         movia   r9,exception_table
         add     r24,r9,r5
         ldw     r24,0(r24)
