@@ -31,7 +31,6 @@ KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_HW_DIV_SUPPORT),-mhw-div,-mno-hw-div)
 KBUILD_CFLAGS += $(if $(CONFIG_NIOS2_FPU_SUPPORT),-mcustom-fpu-cfg=60-1,)
 
 KBUILD_CFLAGS += -fno-optimize-sibling-calls
-KBUILD_CFLAGS += -DNO_TEXT_SECTIONS
 KBUILD_CFLAGS += -DUTS_SYSNAME=\"$(UTS_SYSNAME)\"
 KBUILD_CFLAGS += -fno-builtin
 KBUILD_CFLAGS += -G 0
@@ -39,7 +38,6 @@ KBUILD_CFLAGS += -G 0
 CFLAGS_GCC_INC := $(shell $(CC) -print-file-name=include)
 KBUILD_CFLAGS += -I$(CFLAGS_GCC_INC)
 
-LDFLAGS += $(if $(CONFIG_NIOS2_HW_MUL_OFF),-mno-hw-mul)
 LDFLAGS += -mnios2elf
 
 LIBGCC := `$(CC) -print-libgcc-file-name`
