@@ -39,7 +39,7 @@ DTB_SRC := $(subst ",,$(CONFIG_DTB_SOURCE))
 # Make sure the generated dtb gets removed during clean
 extra-$(CONFIG_DTB_SOURCE_BOOL) += system.dtb
 
-$(obj)/system.dtb: $(DTB_SRC)
+$(obj)/system.dtb: $(DTB_SRC) FORCE
 	$(call cmd,dtc)
 
 # Ensure system.dtb exists
