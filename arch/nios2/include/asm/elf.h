@@ -9,6 +9,8 @@
 #ifndef _ASM_NIOS2_ELF_H
 #define _ASM_NIOS2_ELF_H
 
+#include <asm/ptrace.h>
+
 /* Relocation types */
 #define R_NIOS2_NONE		0
 #define R_NIOS2_S16		1
@@ -35,9 +37,6 @@
 /* Keep this the last entry.  */
 #define R_NIOS2_NUM		22
 
-#include <asm/ptrace.h>
-#include <asm/user.h>
-
 typedef unsigned long elf_greg_t;
 
 #define ELF_NGREG ((sizeof(struct pt_regs) + sizeof(struct switch_stack)) / sizeof(elf_greg_t))
@@ -46,16 +45,18 @@ typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 typedef unsigned long elf_fpregset_t;
 
 /*
- * This is used to ensure we don't load something for the wrong architecture.
- */
-#define elf_check_arch(x) ((x)->e_machine == EM_ALTERA_NIOS2)
-
-/*
  * These are used to set parameters in the core dumps.
  */
 #define ELF_CLASS	ELFCLASS32
 #define ELF_DATA	ELFDATA2LSB
 #define ELF_ARCH	EM_ALTERA_NIOS2
+
+#ifdef __KERNEL__
+
+/*
+ * This is used to ensure we don't load something for the wrong architecture.
+ */
+#define elf_check_arch(x) ((x)->e_machine == EM_ALTERA_NIOS2)
 
 #define ELF_PLAT_INIT(_r, load_addr)
 
@@ -160,4 +161,5 @@ typedef unsigned long elf_fpregset_t;
 
 #define SET_PERSONALITY(ex) set_personality(PER_LINUX_32BIT)
 
-#endif
+#endif /* __KERNEL__ */
+#endif /* _ASM_NIOS2_ELF_H */
