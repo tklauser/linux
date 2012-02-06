@@ -284,12 +284,7 @@ int copy_thread(unsigned long clone_flags,
 	struct pt_regs *childregs;
 	struct switch_stack *childstack, *stack;
 
-#ifdef CONFIG_MMU
 	childregs = task_pt_regs(p);
-#else
-	childregs = (struct pt_regs *) ((unsigned long) p->stack +
-					(THREAD_SIZE - sizeof(struct pt_regs)));
-#endif /* CONFIG_MMU */
 
 	/* Save pointer to registers in thread_struct */
 	p->thread.kregs = childregs;

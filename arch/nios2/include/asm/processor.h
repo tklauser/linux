@@ -113,9 +113,12 @@ extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
 
 #ifdef CONFIG_MMU
 # define THREAD_START_SP	(THREAD_SIZE - sizeof(struct pt_regs))
-# define task_pt_regs(p) \
-	((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
+#else
+# define THREAD_START_SP	THREAD_SIZE
 #endif
+
+#define task_pt_regs(p) \
+	(((struct pt_regs *)(THREAD_START_SP + task_stack_page(p))) - 1)
 
 /* Used by procfs */
 #define KSTK_EIP(tsk)	((tsk)->thread.kregs->ea)
