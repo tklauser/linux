@@ -234,7 +234,6 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 		writel(UINT_MAX, chip->mmchip.regs + ALTERA_GPIO_EDGE_CAP);
 		writel(UINT_MAX, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
 	}
-	pr_info(DRV_NAME ": %s: registered, irq %d\n", np->full_name, chip->irq);
 	return 0;
 }
 
