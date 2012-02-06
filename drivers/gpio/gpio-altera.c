@@ -187,26 +187,24 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 {
 	struct altera_gpio_instance *chip;
 	int status = 0;
-	int len;
-	const __be32 *tree_info;
+	u32 reg;
 
 	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
 	/* Update GPIO state shadow register with default value */
-	tree_info = of_get_property(np, "resetvalue", &len);
-	if (tree_info && len >= sizeof(__be32))
-		chip->gpio_state = be32_to_cpup(tree_info);
+	if (of_property_read_u32(np, "resetvalue", &reg) == 0)
+		chip->gpio_state = reg;
 
 	/* Update GPIO direction shadow register with default value */
 	chip->gpio_dir = 0; /* By default, all pins are inputs */
 
 	/* Check device node for device width */
-	chip->mmchip.gc.ngpio = 32; /* By default assume full GPIO controller */
-	tree_info = of_get_property(np, "width", &len);
-	if (tree_info && len >= sizeof(__be32))
-		chip->mmchip.gc.ngpio = be32_to_cpup(tree_info);
+	if (of_property_read_u32(np, "width", &reg) == 0)
+		chip->mmchip.gc.ngpio = reg;
+	else
+		chip->mmchip.gc.ngpio = 32; /* By default assume full GPIO controller */
 
 	/* Check device node for interrupt */
 	chip->irq = of_irq_count(np) ? of_irq_to_resource(np, 0, NULL) : -ENXIO;
