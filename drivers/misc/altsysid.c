@@ -28,23 +28,32 @@ struct altera_sysid {
 	void __iomem *base;
 };
 
-static ssize_t show_id(struct device *dev, struct device_attribute *attr,
-		       char *buf)
+static ssize_t altsysid_show_id(struct device *dev,
+				struct device_attribute *attr, char *buf)
 {
 	struct altera_sysid *sys = dev_get_drvdata(dev);
 	return sprintf(buf, "%u\n", ioread32(sys->base + REG_ID));
 }
 
-static DEVICE_ATTR(id, S_IRUGO, show_id, NULL);
-
-static ssize_t show_timestamp(struct device *dev, struct device_attribute *attr,
-			      char *buf)
+static ssize_t altsysid_show_timestamp(struct device *dev,
+				       struct device_attribute *attr, char *buf)
 {
 	struct altera_sysid *sys = dev_get_drvdata(dev);
 	return sprintf(buf, "%u\n", ioread32(sys->base + REG_TIMESTAMP));
 }
 
-static DEVICE_ATTR(timestamp, S_IRUGO, show_timestamp, NULL);
+static DEVICE_ATTR(id, S_IRUGO, altsysid_show_id, NULL);
+static DEVICE_ATTR(timestamp, S_IRUGO, altsysid_show_timestamp, NULL);
+
+static struct attribute *altsysid_attrs[] = {
+	&dev_attr_id.attr,
+	&dev_attr_timestamp.attr,
+	NULL
+};
+
+static const struct attribute_group altsysid_attr_group = {
+	.attrs = altsysid_attrs,
+};
 
 static int __devinit altsysid_probe(struct platform_device *pdev)
 {
@@ -76,6 +85,10 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, sys);
 
+	ret = sysfs_create_group(&pdev->dev.kobj, &altsysid_attr_group);
+	if (ret)
+		return ret;
+
 	time_to_tm(ioread32(sys->base + REG_TIMESTAMP), 0, &tstamp);
 	dev_printk(KERN_INFO, &pdev->dev, "System creation hash %08X timestamp "
 			"%li-%02i-%02i %02i:%02i:%02i\n",
@@ -83,18 +96,12 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 			tstamp.tm_mon + 1, tstamp.tm_mday, tstamp.tm_hour,
 			tstamp.tm_min, tstamp.tm_sec);
 
-	ret = device_create_file(&pdev->dev, &dev_attr_id);
-	if (ret)
-		return ret;
-	ret = device_create_file(&pdev->dev, &dev_attr_timestamp);
-	if (ret)
-		return ret;
-
 	return 0;
 }
 
 static int __devexit altsysid_remove(struct platform_device *pdev)
 {
+	sysfs_remove_group(&pdev->dev.kobj, &altsysid_attr_group);
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
