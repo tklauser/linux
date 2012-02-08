@@ -20,6 +20,7 @@
 
 #define REG_ID		0
 #define REG_TIMESTAMP	4
+
 /*
  * Local per-device structure.
  */
@@ -27,20 +28,20 @@ struct altera_sysid {
 	void __iomem *base;
 };
 
-static ssize_t show_id(struct device *dev, struct device_attribute *attr, 
-			char *buf)
+static ssize_t show_id(struct device *dev, struct device_attribute *attr,
+		       char *buf)
 {
-  struct altera_sysid *sys = dev_get_drvdata(dev);
-  return sprintf(buf, "%u\n", ioread32(sys->base + REG_ID));
+	struct altera_sysid *sys = dev_get_drvdata(dev);
+	return sprintf(buf, "%u\n", ioread32(sys->base + REG_ID));
 }
 
 static DEVICE_ATTR(id, S_IRUGO, show_id, NULL);
 
 static ssize_t show_timestamp(struct device *dev, struct device_attribute *attr,
-			char *buf)
+			      char *buf)
 {
-  struct altera_sysid *sys = dev_get_drvdata(dev);
-  return sprintf(buf, "%u\n", ioread32(sys->base + REG_TIMESTAMP));
+	struct altera_sysid *sys = dev_get_drvdata(dev);
+	return sprintf(buf, "%u\n", ioread32(sys->base + REG_TIMESTAMP));
 }
 
 static DEVICE_ATTR(timestamp, S_IRUGO, show_timestamp, NULL);
@@ -49,26 +50,26 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 {
 	struct altera_sysid *sys;
 	struct tm tstamp;
-	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	struct resource *res;
 	int ret;
 
-	if(!res)
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
 		return -ENODEV;
 
 	sys = devm_kzalloc(&pdev->dev, sizeof(struct altera_sysid), GFP_KERNEL);
-	if(!sys)
+	if (!sys)
 		return -ENOMEM;
 
 	if (!devm_request_mem_region(&pdev->dev, res->start,
-				resource_size(res), pdev->name)) {
+				     resource_size(res), pdev->name)) {
 		dev_err(&pdev->dev, "Memory region busy\n");
 		return -EBUSY;
 	}
 
 	sys->base = devm_ioremap_nocache(&pdev->dev, res->start,
-					resource_size(res));
-
-	if(!sys->base) {
+					 resource_size(res));
+	if (!sys->base) {
 		dev_err(&pdev->dev, "Unable to map registers\n");
 		return -EIO;
 	}
@@ -77,8 +78,8 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 
 	time_to_tm(ioread32(sys->base + REG_TIMESTAMP), 0, &tstamp);
 	dev_printk(KERN_INFO, &pdev->dev, "System creation hash %08X timestamp "
-			"%li-%02i-%02i %02i:%02i:%02i\n", 
-			ioread32(sys->base + REG_ID), tstamp.tm_year+1900,
+			"%li-%02i-%02i %02i:%02i:%02i\n",
+			ioread32(sys->base + REG_ID), tstamp.tm_year + 1900,
 			tstamp.tm_mon + 1, tstamp.tm_mday, tstamp.tm_hour,
 			tstamp.tm_min, tstamp.tm_sec);
 
@@ -99,7 +100,7 @@ static int __devexit altsysid_remove(struct platform_device *pdev)
 }
 #ifdef CONFIG_OF
 static struct of_device_id altera_sysid_match[] = {
-	{ 
+	{
 		.compatible = "altr,sysid-1.0",
 	},
 	{},
@@ -136,4 +137,3 @@ MODULE_DESCRIPTION("Altera sysid driver");
 MODULE_AUTHOR("Walter Goossens <waltergoossens@home.nl>");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRV_NAME);
-
