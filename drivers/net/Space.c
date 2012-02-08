@@ -68,8 +68,6 @@ extern struct net_device *ni65_probe(int unit);
 extern struct net_device *sonic_probe(int unit);
 extern struct net_device *seeq8005_probe(int unit);
 extern struct net_device *smc_init(int unit);
-extern struct net_device *oeth_init(int unit);
-extern struct net_device *mtip1000_init(int unit);
 extern struct net_device *atarilance_probe(int unit);
 extern struct net_device *sun3lance_probe(int unit);
 extern struct net_device *sun3_82586_probe(int unit);
@@ -187,12 +185,6 @@ static struct devprobe2 isa_probes[] __initdata = {
 #endif
 #ifdef CONFIG_SMC9194
 	{smc_init, 0},
-#endif
-#if defined(CONFIG_OPEN_ETH)
-//	{oeth_init, 0},
-#endif
-#if defined(CONFIG_MTIP1000_ETH)
-	{mtip1000_init, 0},
 #endif
 #ifdef CONFIG_SEEQ8005
 	{seeq8005_probe, 0},
