@@ -90,7 +90,7 @@ static int __devinit altsysid_probe(struct platform_device *pdev)
 		return ret;
 
 	time_to_tm(ioread32(sys->base + REG_TIMESTAMP), 0, &tstamp);
-	dev_printk(KERN_INFO, &pdev->dev, "System creation hash %08X timestamp "
+	dev_info(&pdev->dev, "System creation hash %08X timestamp "
 			"%li-%02i-%02i %02i:%02i:%02i\n",
 			ioread32(sys->base + REG_ID), tstamp.tm_year + 1900,
 			tstamp.tm_mon + 1, tstamp.tm_mday, tstamp.tm_hour,
