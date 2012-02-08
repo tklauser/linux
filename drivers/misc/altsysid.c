@@ -105,6 +105,7 @@ static int __devexit altsysid_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
+
 #ifdef CONFIG_OF
 static struct of_device_id altera_sysid_match[] = {
 	{
@@ -127,18 +128,7 @@ static struct platform_driver altera_sysid_platform_driver = {
 	},
 };
 
-static int __init altera_sysid_init(void)
-{
-	return platform_driver_register(&altera_sysid_platform_driver);
-}
-
-static void __exit altera_sysid_exit(void)
-{
-	platform_driver_unregister(&altera_sysid_platform_driver);
-}
-
-module_init(altera_sysid_init);
-module_exit(altera_sysid_exit);
+module_platform_driver(altera_sysid_platform_driver);
 
 MODULE_DESCRIPTION("Altera sysid driver");
 MODULE_AUTHOR("Walter Goossens <waltergoossens@home.nl>");
