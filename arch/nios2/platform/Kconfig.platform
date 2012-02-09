@@ -79,6 +79,20 @@ config NIOS2_FPU_SUPPORT
 	help
 	  Enables the -mcustom-fpu-cfg=60-1 compiler flag.
 
+config NIOS2_CI_SWAB_SUPPORT
+	bool "Byteswap custom instruction"
+	default n
+	help
+	  Use the byteswap (endian convertor) NiosII custom instruction provided
+	  by Altera and which can be enabled in SOPC builder. This accelerates
+	  endian conversions in the kernel (e.g. ntohs).
+
+config NIOS2_CI_SWAB_NO
+	int "Byteswap custom instruction number" if NIOS2_CI_SWAB_SUPPORT
+	default 0
+	help
+	  Number of the instruction as configured in SOPC Builder.
+
 comment "Cache settings"
 
 config CUSTOM_CACHE_SETTINGS
