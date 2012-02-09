@@ -17,7 +17,10 @@ ifeq ($(CONFIG_MMU),y)
 UTS_SYSNAME = Linux
 else
 UTS_SYSNAME = uClinux
+MMU := -nommu
 endif
+
+export MMU
 
 cflags-y :=
 LDFLAGS		:=
@@ -50,9 +53,6 @@ core-y		+= arch/nios2/platform/
 drivers-y	+= arch/nios2/drivers/
 drivers-$(CONFIG_OPROFILE) += arch/$(ARCH)/oprofile/
 
-archclean:
-	$(Q)$(MAKE) $(clean)=$(boot)
-
 INSTALL_PATH ?= /tftpboot
 boot := arch/$(ARCH)/boot
 BOOT_TARGETS = vmImage zImage
@@ -63,14 +63,10 @@ ifneq ($(CONFIG_DTB_SOURCE),"")
 	core-y	+= $(boot)/
 endif
 
-# define filename extension depending on memory management type
-ifeq ($(CONFIG_MMU),)
-MMU := -nommu
-endif
-
-export MMU
-
 all: vmImage
+
+archclean:
+	$(Q)$(MAKE) $(clean)=$(boot)
 
 $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
