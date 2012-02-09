@@ -72,15 +72,15 @@ config MMU
 	bool "MMU support"
 	default y
 	help
-	  This option enables support for the NiosII MMU. Only enable this
-	  option if your design contains a NiosII/f core with MMU enabled.
+	  This option enables support for the Nios II MMU. Only enable this
+	  option if your design contains a Nios II/f core with MMU enabled.
 
 config ALIGNMENT_TRAP
 	bool "Catch alignment trap"
 	default y
 	depends on MMU
 	help
-	  NIOS II cpus cannot fetch/store data which is not bus aligned,
+	  Nios II CPUs cannot fetch/store data which is not bus aligned,
 	  i.e., a 2 or 4 byte fetch must start at an address divisible by
 	  2 or 4. Any non-aligned load/store instructions will be trapped and
 	  emulated in software if you say Y here, which has a performance

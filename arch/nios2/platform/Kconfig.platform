@@ -56,22 +56,22 @@ config NIOS2_HW_MUL_SUPPORT
 	bool "Enable MUL instruction"
 	default n
 	help
-	  Set to true if you configured the NiosII to include the MUL instruction.
-	  This will enable the -mhw-mul compiler flag.
+	  Set to true if you configured the Nios II to include the MUL
+	  instruction.  This will enable the -mhw-mul compiler flag.
 
 config NIOS2_HW_MULX_SUPPORT
 	bool "Enable MULX instruction"
 	default n
 	help
-	  Set to true if you configured the NiosII to include the MULX instruction.
-	  Enables the -mhw-mulx compiler flag.
+	  Set to true if you configured the Nios II to include the MULX
+	  instruction.  Enables the -mhw-mulx compiler flag.
 
 config NIOS2_HW_DIV_SUPPORT
 	bool "Enable DIV instruction"
 	default n
 	help
-	  Set to true if you configured the NiosII to include the DIV instruction.
-	  Enables the -mhw-div compiler flag.
+	  Set to true if you configured the Nios II to include the DIV
+	  instruction.  Enables the -mhw-div compiler flag.
 
 config NIOS2_FPU_SUPPORT
 	bool "Custom floating point instr support"
@@ -83,7 +83,7 @@ config NIOS2_CI_SWAB_SUPPORT
 	bool "Byteswap custom instruction"
 	default n
 	help
-	  Use the byteswap (endian convertor) NiosII custom instruction provided
+	  Use the byteswap (endian convertor) Nios II custom instruction provided
 	  by Altera and which can be enabled in SOPC builder. This accelerates
 	  endian conversions in the kernel (e.g. ntohs).
 

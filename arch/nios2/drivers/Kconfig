@@ -1,6 +1,6 @@
 # Platfrom drivers configuration
 
-menu "Additional NiosII Device Drivers"
+menu "Additional Nios II Device Drivers"
 
 config AVALON_DMA
 	bool "Support for DMA controller with Avalon interface"
@@ -16,7 +16,7 @@ config ALTERA_REMOTE_UPDATE
 	default N
 	help
 	  This driver provides support for automatic reconfiguration of a
-	  CycloneIII FPGA (Possibly others too).
+	  Cyclone III FPGA (Possibly others too).
 
 choice ALTERA_REMOTE_UPDATE_FLASH_WIDTH
 	prompt "FPGA configuration flash data width"

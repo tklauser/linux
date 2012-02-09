@@ -19,7 +19,7 @@
 struct cpuinfo cpuinfo;
 
 #define err_cpu(x) \
-	pr_err("ERROR: NiosII " x " different for kernel and DTS\n");
+	pr_err("ERROR: Nios II " x " different for kernel and DTS\n");
 
 static inline u32 fcpu(struct device_node *cpu, const char *n)
 {
