@@ -540,7 +540,7 @@ protection_exception_pte:
 	slli r6,r6,10
 	call do_page_fault
 	br ret_from_exception
-	
+
 protection_exception_ba:
 	rdctl r6,badaddr
 	call do_page_fault
@@ -549,7 +549,7 @@ protection_exception_ba:
 protection_exception_instr:
 	call handle_supervisor_instr
 	br ret_from_exception
-	
+
 handle_breakpoint:
 	call breakpoint_c
 	br ret_from_exception
@@ -565,13 +565,13 @@ handle_unaligned:
 	call handle_unaligned_c
 	br ret_from_exception
 #endif
-	
+
 handle_illegal:
 	call handle_illegal_c
 	br ret_from_exception
 
 handle_diverror:
-	call handle_illegal_c
+	call handle_diverror_c
 	br ret_from_exception
 
 #ifdef CONFIG_KGDB
