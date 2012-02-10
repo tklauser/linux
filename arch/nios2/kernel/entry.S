@@ -53,7 +53,8 @@
 .endm
 
 /* FIXME: Lots of these exceptions need to be handled */
-.data
+.section .rodata
+.align 4
 exception_table:
 	.word unhandled_exception	/* 0 - Reset */
 	.word unhandled_exception	/* 1 - Processor-only Reset */
@@ -114,10 +115,10 @@ trap_table:
 	.word	instruction_trap	// 30
 #endif
 	.word	handle_breakpoint	// 31
+
 .text
 .set noat
 .set nobreak
-
 
 ENTRY(inthandler)
 	SAVE_ALL
