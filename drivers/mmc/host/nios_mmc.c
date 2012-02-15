@@ -396,8 +396,7 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	MMC_DEBUG(3, "Done initial probe\n");
 	/* SG DMA Caps */
 	/* Setup block-related parameters on host */
-	mmc->max_phys_segs = 1;
-	mmc->max_hw_segs = 1;
+	mmc->max_segs = 1;
 	mmc->max_blk_size = 512;
 	mmc->max_blk_count = max_blk_count;
 	if (max_seg_size)
