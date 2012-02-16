@@ -566,19 +566,7 @@ static struct platform_driver nios_mmc_driver = {
 		.of_match_table = of_match_ptr(nios_mmc_dt_match),
 	},
 };
-
-static int __init nios_mmc_init(void)
-{
-	return platform_driver_register(&nios_mmc_driver);
-}
-
-static void __exit nios_mmc_exit(void)
-{
-	platform_driver_unregister(&nios_mmc_driver);
-}
-
-module_init(nios_mmc_init);
-module_exit(nios_mmc_exit);
+module_platform_driver(nios_mmc_driver);
 
 module_param(max_blk_count, uint, 0444);
 module_param(max_req_size, uint, 0444);
@@ -589,6 +577,7 @@ module_param(fmax, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");
+MODULE_ALIAS("platform:" DRIVER_NAME);
 
 /********** PROC FS Stuff **************/
 #ifdef CONFIG_PROC_FS
