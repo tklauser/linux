@@ -27,7 +27,7 @@
 #include <asm/scatterlist.h>
 #include <linux/scatterlist.h>
 
-#include <linux/nios_mmc.h>
+#include "nios_mmc.h"
 
 #define DRIVER_NAME	"nios_mmc"
 #define NR_SG 1

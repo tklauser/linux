@@ -1,7 +1,5 @@
-#ifndef SDIO_HOST_H_
-#define SDIO_HOST_H_
-
-#include <linux/platform_device.h>
+#ifndef _NIOS_MMC_H
+#define _NIOS_MMC_H
 
 struct nios_mmc_platform_mmc {
 	unsigned long mapbase;	/* Physical address base */
@@ -10,8 +8,7 @@ struct nios_mmc_platform_mmc {
 	unsigned int clk_src;	/* Source clock rate */
 };
 /******* SDIO Core defines *******/
-typedef volatile struct
-{
+typedef volatile struct {
 	void __iomem *base;
 	struct mmc_host *mmc;
 	spinlock_t lock;
@@ -71,4 +68,4 @@ typedef volatile struct
 #define NIOS_MMC_MISC_PROF_RESET (1<<0)
 #define NIOS_MMC_MISC_PROF_CNT_SEL_SHIFT (1)
 
-#endif /*SDIO_HOST_H_*/
+#endif /* _NIOS_MMC_H */
