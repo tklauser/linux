@@ -20,6 +20,7 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/core.h>
 #include <linux/pagemap.h>
+#include <linux/of.h>
 
 #include <asm/dma.h>
 #include <asm/io.h>
@@ -368,6 +369,24 @@ static struct mmc_host_ops nios_mmc_ops = {
 	.set_ios = nios_mmc_set_ios,
 };
 
+#ifdef CONFIG_OF
+static int nios_mmc_get_of_clk_freq(struct platform_device *pdev, NIOS_MMC_HOST *host)
+{
+	u32 clk;
+
+	if (of_property_read_u32(pdev->dev.of_node, "clock-frequency", &clk))
+		return -ENODEV;
+
+	host->clock_freq = clk;
+	return 0;
+}
+#else
+static int nios_mmc_get_of_clk_freq(struct platform_device *pdev, NIOS_MMC_HOST *host)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_OF */
+
 static int nios_mmc_probe(struct platform_device *pdev)
 {
 	struct mmc_host *mmc;
@@ -431,7 +450,13 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		goto out;
 	}
 	/* Setup clock frequency support */
-	host->clock_freq = platp->clk_src;
+	if (platp)
+		host->clock_freq = platp->clk_src;
+	else {
+		ret = nios_mmc_get_of_clk_freq(pdev, host);
+		if (ret)
+			goto out;
+	}
 	mmc->f_max = host->clock_freq / 4;
 	/* Assign FMAX to be minimum of cpu_clk/4 and 'fmax' variable */
 	if (mmc->f_max > fmax) {
@@ -524,13 +549,22 @@ static int nios_mmc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id nios_mmc_dt_match[] = {
+	{ .compatible = "fps,mmc-1.1", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, nios_mmc_dt_match);
+#endif
+
 static struct platform_driver nios_mmc_driver = {
-	.probe = nios_mmc_probe,
-	.remove = nios_mmc_remove,
-	.driver = {
-		   .name = DRIVER_NAME,
-		   .pm = NULL,
-		   },
+	.probe	= nios_mmc_probe,
+	.remove	= nios_mmc_remove,
+	.driver	= {
+		.name	= DRIVER_NAME,
+		.owner	= THIS_MODULE,
+		.of_match_table = of_match_ptr(nios_mmc_dt_match),
+	},
 };
 
 static int __init nios_mmc_init(void)
