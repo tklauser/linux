@@ -326,7 +326,6 @@ static void nios_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	host->cmd = mrq->cmd;
 	MMC_DEBUG(3, "Start req\n");
 	nios_mmc_start_cmd(host, host->cmd);
-	return;
 }
 
 /* Function to cleanup previous call */
@@ -335,7 +334,6 @@ static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	NIOS_MMC_HOST *host = mmc_priv(mmc);
 	host->cmd = NULL;
 	mmc_request_done(host->mmc, mrq);
-	return;
 }
 static int nios_mmc_get_ro(struct mmc_host *mmc)
 {
@@ -371,8 +369,6 @@ static void nios_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		host->dat_width = 1;
 	else
 		host->dat_width = 0;
-
-	return;
 }
 
 static struct mmc_host_ops nios_mmc_ops = {
