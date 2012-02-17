@@ -1115,56 +1115,42 @@ static void tse_set_multicast_list(struct net_device *dev)
 	}
 }
 
-/*
-* Initialize the MAC address
-* arg1    : net device for which TSE MAC driver is registered
-* arg2    : address passed from upper layer
-* return : 0
-*/
-static int tse_set_hw_address(struct net_device *dev, void *port)
+static void tse_update_mac_addr(struct alt_tse_private *tse_priv, u8 *addr)
 {
-	struct sockaddr *addr = port;
+	/* Set primary MAC address */
+	tse_priv->mac_dev->mac_addr_0 = ((addr[3]) << 24
+					 | (addr[2]) << 16
+					 | (addr[1]) << 8
+					 | (addr[0]));
+
+	tse_priv->mac_dev->mac_addr_1 = ((addr[5] << 8
+					  | (addr[4])) & 0xFFFF);
+
+	/* Set supplemental the MAC addresses */
+	tse_priv->mac_dev->supp_mac_addr_0_0 = tse_priv->mac_dev->mac_addr_0;
+	tse_priv->mac_dev->supp_mac_addr_0_1 = tse_priv->mac_dev->mac_addr_1;
+
+	tse_priv->mac_dev->supp_mac_addr_1_0 = tse_priv->mac_dev->mac_addr_0;
+	tse_priv->mac_dev->supp_mac_addr_1_1 = tse_priv->mac_dev->mac_addr_1;
+
+	tse_priv->mac_dev->supp_mac_addr_2_0 = tse_priv->mac_dev->mac_addr_0;
+	tse_priv->mac_dev->supp_mac_addr_2_1 = tse_priv->mac_dev->mac_addr_1;
+
+	tse_priv->mac_dev->supp_mac_addr_3_0 = tse_priv->mac_dev->mac_addr_0;
+	tse_priv->mac_dev->supp_mac_addr_3_1 = tse_priv->mac_dev->mac_addr_1;
+}
+
+static int tse_set_mac_address(struct net_device *dev, void *p)
+{
+	struct sockaddr *addr = p;
 	struct alt_tse_private *tse_priv = netdev_priv(dev);
 
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
+	dev->addr_assign_type &= ~NET_ADDR_RANDOM;
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
-
-/* Set the MAC address */
-//tse_priv->mac_dev->mac_addr_0 = (( dev->dev_addr[2] ) << 24
-//                                |( dev->dev_addr[3] ) << 16
-//                                |( dev->dev_addr[4] ) <<  8
-//                                |( dev->dev_addr[5] ));
-
-//tse_priv->mac_dev->mac_addr_1 = (( dev->dev_addr[0] << 8
-//                                |( dev->dev_addr[1] )) & 0xFFFF );
-
-	tse_priv->mac_dev->mac_addr_0 = ((dev->dev_addr[3]) << 24
-					 | (dev->dev_addr[2]) << 16
-					 | (dev->dev_addr[1]) << 8
-					 | (dev->dev_addr[0]));
-
-	tse_priv->mac_dev->mac_addr_1 = ((dev->dev_addr[5] << 8
-					  | (dev->dev_addr[4])) & 0xFFFF);
-
-	/* Set the MAC address */
-	tse_priv->mac_dev->supp_mac_addr_0_0 = tse_priv->mac_dev->mac_addr_0;
-	tse_priv->mac_dev->supp_mac_addr_0_1 = tse_priv->mac_dev->mac_addr_1;
-
-	/* Set the MAC address */
-	tse_priv->mac_dev->supp_mac_addr_1_0 = tse_priv->mac_dev->mac_addr_0;
-	tse_priv->mac_dev->supp_mac_addr_1_1 = tse_priv->mac_dev->mac_addr_1;
-
-	/* Set the MAC address */
-	tse_priv->mac_dev->supp_mac_addr_2_0 = tse_priv->mac_dev->mac_addr_0;
-	tse_priv->mac_dev->supp_mac_addr_2_1 = tse_priv->mac_dev->mac_addr_1;
-
-	/* Set the MAC address */
-	tse_priv->mac_dev->supp_mac_addr_3_0 = tse_priv->mac_dev->mac_addr_0;
-	tse_priv->mac_dev->supp_mac_addr_3_1 = tse_priv->mac_dev->mac_addr_1;
-
-	pr_debug("%s: Set MAC address %pM\n", dev->name, dev->dev_addr);
+	tse_update_mac_addr(tse_priv, dev->dev_addr);
 
 	return 0;
 }
@@ -1319,7 +1305,7 @@ static const struct net_device_ops altera_tse_netdev_ops = {
 	.ndo_stop		= tse_shutdown,
 	.ndo_start_xmit		= tse_start_xmit,
 	.ndo_get_stats		= tse_get_statistics,
-	.ndo_set_mac_address	= tse_set_hw_address,
+	.ndo_set_mac_address	= tse_set_mac_address,
 	.ndo_set_rx_mode	= tse_set_multicast_list,
 	.ndo_change_mtu		= tse_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
@@ -1556,12 +1542,15 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 
 	/* get default MAC address from device tree */
 	macaddr = of_get_property(pdev->dev.of_node, "local-mac-address", &len);
-	if (!macaddr || len != ETH_ALEN) {
-		dev_err(&pdev->dev, "cannot obtain MAC address\n");
-		ret = -ENODEV;
-		goto out_free;
-	}
-	memcpy(dev->dev_addr, macaddr, ETH_ALEN);
+	if (macaddr && len == ETH_ALEN)
+		memcpy(dev->dev_addr, macaddr, ETH_ALEN);
+
+	/* If we didn't get a valid address, generate a random one */
+	if (!is_valid_ether_addr(dev->dev_addr))
+		dev_hw_addr_random(dev, dev->dev_addr);
+
+	/* Write it to the MAC address register */
+	tse_update_mac_addr(tse_priv, dev->dev_addr);
 
 	/* get MII ID from device tree */
 	ret = altera_tse_get_of_prop(pdev, "ALTR,mii-id", &tse_priv->mii_id);
