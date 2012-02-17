@@ -30,7 +30,6 @@
 #include "nios_mmc.h"
 
 #define DRIVER_NAME	"nios_mmc"
-#define NR_SG 1
 #define debug_level 1
 
 #if defined(CONFIG_MMC_DEBUG)
