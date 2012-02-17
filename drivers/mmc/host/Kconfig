@@ -520,7 +520,7 @@ config SDH_BFIN_MISSING_CMD_PULLUP_WORKAROUND
 
 config MMC_NIOS
 	tristate "NIOS SD/SDIO/MMC Host"
-	depends on NIOS2
+	depends on OF && NIOS2
 	help
 	  Device driver for the FPS-Tech SD/SDIO/MMC Host for Altera NIOS systems.
 

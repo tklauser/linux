@@ -1,13 +1,6 @@
 #ifndef _NIOS_MMC_H
 #define _NIOS_MMC_H
 
-struct nios_mmc_platform_mmc {
-	unsigned long mapbase;	/* Physical address base */
-	void __iomem *membase;	/* Virtual address if mapped */
-	unsigned int irq;	/* Interrupt vector */
-	unsigned int clk_src;	/* Source clock rate */
-};
-/******* SDIO Core defines *******/
 typedef volatile struct {
 	void __iomem *base;
 	struct mmc_host *mmc;

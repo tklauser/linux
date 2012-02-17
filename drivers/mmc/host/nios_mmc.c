@@ -377,31 +377,13 @@ static struct mmc_host_ops nios_mmc_ops = {
 	.set_ios = nios_mmc_set_ios,
 };
 
-#ifdef CONFIG_OF
-static int nios_mmc_get_of_clk_freq(struct platform_device *pdev, NIOS_MMC_HOST *host)
-{
-	u32 clk;
-
-	if (of_property_read_u32(pdev->dev.of_node, "clock-frequency", &clk))
-		return -ENODEV;
-
-	host->clock_freq = clk;
-	return 0;
-}
-#else
-static int nios_mmc_get_of_clk_freq(struct platform_device *pdev, NIOS_MMC_HOST *host)
-{
-	return -ENODEV;
-}
-#endif /* CONFIG_OF */
-
 static int nios_mmc_probe(struct platform_device *pdev)
 {
 	struct mmc_host *mmc;
 	struct resource *r;
 	NIOS_MMC_HOST *host = NULL;
-	struct nios_mmc_platform_mmc *platp = pdev->dev.platform_data;
 	int ret, irq;
+	u32 clk;
 
 	MMC_DEBUG(3, "Starting NIOS_MMC Probe\n");
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -457,14 +439,15 @@ static int nios_mmc_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto out;
 	}
+
 	/* Setup clock frequency support */
-	if (platp)
-		host->clock_freq = platp->clk_src;
-	else {
-		ret = nios_mmc_get_of_clk_freq(pdev, host);
-		if (ret)
-			goto out;
+	if (of_property_read_u32(pdev->dev.of_node, "clock-frequency", &clk)) {
+		ret = -ENODEV;
+		goto out;
 	}
+
+	host->clock_freq = clk;
+
 	mmc->f_max = host->clock_freq / 4;
 	/* Assign FMAX to be minimum of cpu_clk/4 and 'fmax' variable */
 	if (mmc->f_max > fmax) {
