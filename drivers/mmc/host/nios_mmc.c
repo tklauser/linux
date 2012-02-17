@@ -55,12 +55,25 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd);
 static void nios_mmc_end_request(struct mmc_host *mmc, struct mmc_request *mrq);
 static int nios_mmc_procinit(NIOS_MMC_HOST * host);
 static void nios_mmc_procclose(void);
+
 unsigned int max_blk_count = 128;
+module_param(max_blk_count, uint, S_IRUGO);
+
 unsigned int max_req_size = 512 * 128;
+module_param(max_req_size, uint, S_IRUGO);
+
 unsigned int max_seg_size = 512 * 128;
+module_param(max_seg_size, uint, S_IRUGO);
+
 unsigned int dat_width = 1;
+module_param(dat_width, uint, S_IRUGO);
+
 unsigned int blk_prefetch = 1;
+module_param(blk_prefetch, uint, S_IRUGO);
+
 unsigned int fmax = SD_MAX_FREQ;
+module_param(fmax, uint, S_IRUGO);
+
 static unsigned int irq_count;
 /**************************** Low-level register access ******************************/
 static inline void nios_mmc_writel(unsigned int val, NIOS_MMC_HOST *host, unsigned char off)
@@ -566,13 +579,6 @@ static struct platform_driver nios_mmc_driver = {
 	},
 };
 module_platform_driver(nios_mmc_driver);
-
-module_param(max_blk_count, uint, 0444);
-module_param(max_req_size, uint, 0444);
-module_param(max_seg_size, uint, 0444);
-module_param(dat_width, uint, 0444);
-module_param(blk_prefetch, uint, 0444);
-module_param(fmax, uint, 0444);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NIOS MMC Host Driver");
