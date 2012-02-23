@@ -3,7 +3,7 @@
 #
 
 config NET_VENDOR_ALTERA
-	bool "Altera device"
+	bool "Altera devices"
 	depends on NIOS2
 	---help---
 	  If you have a network (Ethernet) card belonging to this class, say Y.
