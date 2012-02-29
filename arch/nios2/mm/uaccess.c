@@ -7,7 +7,7 @@
  * Implemented by fredrik.markstrom@gmail.com and ivarholmqvist@gmail.com
  */
 
-#include <linux/module.h>
+#include <linux/export.h>
 #include <asm/uaccess.h>
 
 extern long __copy_from_user(void *to, const void __user *from, unsigned long n);

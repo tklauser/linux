@@ -9,6 +9,7 @@
 
 #include <linux/syscalls.h>
 #include <linux/file.h>
+#include <linux/export.h>
 
 #include <asm/cacheflush.h>
 #include <asm/traps.h>

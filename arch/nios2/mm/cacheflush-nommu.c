@@ -17,7 +17,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/slab.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <asm/setup.h>
 #include <asm/segment.h>
 #include <asm/page.h>
