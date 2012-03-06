@@ -54,6 +54,6 @@ void __init init_IRQ(void)
 {
 	int irq;
 
-	for (irq = 0; irq < NR_IRQS; irq++)
+	for (irq = 0; irq < NIOS2_CPU_NR_IRQS; irq++)
 		irq_set_chip_and_handler(irq, &m_irq_chip, handle_level_irq);
 }
