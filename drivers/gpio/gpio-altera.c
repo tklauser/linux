@@ -29,10 +29,10 @@
 #define DRV_NAME "altera_gpio"
 
 /* Register Offset Definitions */
-#define ALTERA_GPIO_DATA_OFFSET   0x0	/* Data register  */
-#define ALTERA_GPIO_DIR_OFFSET    0x4	/* I/O direction register  */
-#define ALTERA_GPIO_IRQ_MASK	  0x8
-#define ALTERA_GPIO_EDGE_CAP	  0xc
+#define ALTERA_GPIO_DATA_OFFSET		0x0	/* Data register  */
+#define ALTERA_GPIO_DIR_OFFSET		0x4	/* I/O direction register  */
+#define ALTERA_GPIO_IRQ_MASK		0x8
+#define ALTERA_GPIO_EDGE_CAP		0xc
 
 struct altera_gpio_instance {
 	struct of_mm_gpio_chip mmchip;
