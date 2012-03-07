@@ -594,8 +594,7 @@ static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned int tail;
 	unsigned int aligned_tx_buffer;
 	unsigned long flags;
-	char	req_tx_shift_16;
-//	struct sk_buff *new_skb;
+	char req_tx_shift_16;
 
 	/* Align frame data to 32bit boundaries */
 	if (((unsigned int) skb->data) & 0x2) {
