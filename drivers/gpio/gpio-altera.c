@@ -1,6 +1,7 @@
 /*
  * Altera GPIO driver
  *
+ * Copyright (C) 2012 Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2011 Thomas Chou <thomas@wytron.com.tw>
  *
  * Based on Xilinx gpio driver, which is
@@ -22,6 +23,8 @@
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/irq.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
@@ -38,7 +41,9 @@ struct altera_gpio_instance {
 	struct of_mm_gpio_chip mmchip;
 	u32 gpio_state;		/* GPIO state shadow register */
 	u32 gpio_dir;		/* GPIO direction shadow register */
-	int irq;		/* GPIO irq number */
+	int irq;		/* GPIO controller IRQ number */
+	int irq_base;		/* base number for the "virtual" GPIO IRQs */
+	u32 irq_mask;		/* IRQ mask */
 	spinlock_t gpio_lock;	/* Lock used for synchronization */
 };
 
@@ -172,7 +177,71 @@ static int altera_gpio_to_irq(struct gpio_chip *gc, unsigned int gpio)
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
 	struct altera_gpio_instance *chip = to_altera_gpio(mm_gc);
 
-	return chip->irq;
+	if (chip->irq_base < 0)
+		return -EINVAL;
+
+	return chip->irq_base + gpio;
+}
+
+/*
+ * GPIO IRQ
+ */
+
+static void altera_gpio_irq_mask(struct irq_data *d)
+{
+	struct altera_gpio_instance *chip = irq_data_get_irq_chip_data(d);
+	int offset = d->irq - chip->irq_base;
+	unsigned long flags;
+
+	spin_lock_irqsave(&chip->gpio_lock, flags);
+	chip->irq_mask &= ~(1 << offset);
+	writel(chip->irq_mask, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
+	spin_unlock_irqrestore(&chip->gpio_lock, flags);
+}
+
+static void altera_gpio_irq_unmask(struct irq_data *d)
+{
+	struct altera_gpio_instance *chip = irq_data_get_irq_chip_data(d);
+	int offset = d->irq - chip->irq_base;
+	unsigned long flags;
+
+	spin_lock_irqsave(&chip->gpio_lock, flags);
+	chip->irq_mask |= 1 << offset;
+	writel(chip->irq_mask, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
+	spin_unlock_irqrestore(&chip->gpio_lock, flags);
+}
+
+static int altera_gpio_irq_set_type(struct irq_data *d, unsigned type)
+{
+	/* TODO: Do we need to check type here? */
+	return 0;
+}
+
+static struct irq_chip altera_gpio_irq_chip = {
+	.name		= "altera_gpio",
+	.irq_mask	= altera_gpio_irq_mask,
+	.irq_unmask	= altera_gpio_irq_unmask,
+	.irq_set_type	= altera_gpio_irq_set_type,
+};
+
+static void altera_gpio_irq_handler(unsigned int irq, struct irq_desc *desc)
+{
+	struct altera_gpio_instance *chip = irq_get_handler_data(irq);
+	unsigned long edgecap;
+	unsigned int offset;
+
+	/* disable the IRQ temporarily */
+	writel(0, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
+
+	/* Reset edge capture register */
+	edgecap = readl(chip->mmchip.regs + ALTERA_GPIO_EDGE_CAP);
+	writel(edgecap, chip->mmchip.regs + ALTERA_GPIO_EDGE_CAP);
+
+	for_each_set_bit(offset, &edgecap, chip->mmchip.gc.ngpio)
+		generic_handle_irq(altera_gpio_to_irq(&chip->mmchip.gc, offset));
+
+	/* reenable the IRQ */
+	writel(chip->irq_mask, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
 }
 
 /*
@@ -208,6 +277,21 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 
 	/* Check device node for interrupt */
 	chip->irq = of_irq_count(np) ? of_irq_to_resource(np, 0, NULL) : -ENXIO;
+	if (of_irq_count(np)) {
+		chip->irq_base = irq_alloc_descs(-1, 0, chip->mmchip.gc.ngpio, 0);
+		if (chip->irq_base < 0) {
+			kfree(chip);
+			pr_err("%s: couldn't allocate IRQ numbers\n", np->full_name);
+			return -ENODEV;
+		}
+
+		chip->irq = of_irq_to_resource(np, 0, NULL);
+		chip->mmchip.gc.to_irq = altera_gpio_to_irq;
+	} else {
+		chip->irq = -1;
+		chip->irq_base = -1;
+		chip->mmchip.gc.to_irq = NULL;
+	}
 
 	spin_lock_init(&chip->gpio_lock);
 
@@ -215,7 +299,6 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 	chip->mmchip.gc.direction_output = altera_gpio_dir_out;
 	chip->mmchip.gc.get = altera_gpio_get;
 	chip->mmchip.gc.set = altera_gpio_set;
-	chip->mmchip.gc.to_irq = altera_gpio_to_irq;
 
 	chip->mmchip.save_regs = altera_gpio_save_regs;
 
@@ -228,10 +311,22 @@ static int __devinit altera_gpio_of_probe(struct device_node *np)
 		return status;
 	}
 	if (chip->irq >= 0) {
-		/* clear edge and enable irq */
-		writel(UINT_MAX, chip->mmchip.regs + ALTERA_GPIO_EDGE_CAP);
-		writel(UINT_MAX, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
+		unsigned int i;
+
+		/* clear edge and disable all IRQs */
+		writel(0, chip->mmchip.regs + ALTERA_GPIO_EDGE_CAP);
+		writel(0, chip->mmchip.regs + ALTERA_GPIO_IRQ_MASK);
+
+		for (i = 0; i < chip->mmchip.gc.ngpio; i++) {
+			irq_set_chip_and_handler_name(chip->irq_base + i,
+					&altera_gpio_irq_chip, handle_simple_irq, "demux");
+			irq_set_chip_data(chip->irq_base + i, chip);
+		}
+
+		irq_set_handler_data(chip->irq, chip);
+		irq_set_chained_handler(chip->irq, altera_gpio_irq_handler);
 	}
+
 	return 0;
 }
 
