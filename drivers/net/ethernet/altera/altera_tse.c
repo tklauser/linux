@@ -607,17 +607,6 @@ static int tse_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	aligned_tx_buffer = (unsigned int) skb->data;
 	len = skb->len;
 
-	/* Align len on 4, otherwise it seems we get truncated frames */
-	len += 3;
-	len &= ~3UL;
-	if (skb_padto(skb, len))
-		return NETDEV_TX_OK;
-
-	/* len in align later in alt_sgdma_construct_descriptor_burst(), but
-	 * we can safely ingorned the extra alignement added in  on len here
-	 * since it's not actually part of the data and/or checksum
-	 */
-	//Flush raw data from data cache
 	flush_dcache_range(aligned_tx_buffer, aligned_tx_buffer + len);
 
 	spin_lock_irqsave(&tse_priv->tx_lock, flags);
