@@ -31,10 +31,6 @@
 
 #define DRIVER_NAME	"nios_mmc"
 
-#define MMC_CRIT_ERR(x...) {\
-	printk("Crit. error in %s(): %s. Halting\n",__func__,x);\
-	while(1);\
-}
 #define SD_MAX_FREQ 25000000	/* Set the max frequency to 25MHz (std. speed) */
 #define SD_MIN_FREQ 375000	/* Set the minimum frequency to 375Khz */
 
@@ -81,15 +77,14 @@ static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
 	struct mmc_data *data = cmd->data;
 	struct mmc_command *stop = data->stop;
 
+	BUG_ON(cmd == NULL);
+
 	/* assign stop only if data is assigned */
 	if (data)
 		stop = data->stop;
 	else
 		stop = NULL;
-	/* Check MRQ first */
-	if (cmd == NULL) {
-		MMC_CRIT_ERR("CMD is null when it shouldn't be!");
-	}
+
 	/* Interrupt flags will be cleared in ISR routine, so we don't have to touch them */
 	if (stat & NIOS_MMC_CTLSTAT_TIMEOUTERR_IF) {
 		dev_dbg(mmc_dev(host->mmc), "Timeout error\n");
@@ -135,7 +130,6 @@ static void nios_mmc_end_cmd(NIOS_MMC_HOST * host, unsigned int stat)
 		/* Schedule the stop command */
 		/* We will need to reassign the pointer in the structure since we are 
 		 * switching commands now */
-		host->cmd = stop;
 		nios_mmc_start_cmd(host, stop);
 	} else {
 		/* No other commands needed, finish off transaction */
@@ -155,8 +149,9 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 
 	/* Do a sanity check that the core isn't busy... why should it be since we haven't started a cmd?? */
 	if (nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT) & NIOS_MMC_CTLSTAT_BUSY) {
-		MMC_CRIT_ERR("Core is busy when it shouldn't be!");
+		BUG();
 	}
+
 	xfer_ctl = (cmd & 0x3F) << NIOS_MMC_XFER_CTL_CMD_IDX_SHIFT;
 	nios_mmc_writel(arg_in, host, NIOS_MMC_REG_CMD_ARG0);
 	xfer_ctl |= (resp_type & 0x3) << NIOS_MMC_XFER_CTL_RESP_CODE_SHIFT;
@@ -215,17 +210,14 @@ static irqreturn_t nios_mmc_irq(int irq, void *dev_id)
 }
 
 /* Function to start the CMD process */
-static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
+static void nios_mmc_start_cmd(NIOS_MMC_HOST *host, struct mmc_command *cmd)
 {
 	unsigned char resp_type = 0, nocrc = 0, rwn = 0;
 	struct mmc_data *data = cmd->data;
 	struct scatterlist *sg;
 	unsigned int current_address = 0, bytes = 0, blocks = 0;
 
-	/* Do a sanity check that we are being passed the same CMD that is in host struct */
-	if (host->cmd != cmd) {
-		MMC_CRIT_ERR("Cmd doesn't match what is in structure");
-	}
+	host->cmd = cmd;
 
 	dev_dbg(mmc_dev(host->mmc), "Opcode: %d Arg: 0x%X ", cmd->opcode, cmd->arg);
 	switch (mmc_resp_type(cmd)) {
@@ -243,7 +235,7 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 		resp_type = 0;
 		break;
 	default:
-		MMC_CRIT_ERR("Unhandled MMC Response type!");
+		BUG();
 		break;
 	}
 
@@ -252,9 +244,8 @@ static void nios_mmc_start_cmd(NIOS_MMC_HOST * host, struct mmc_command *cmd)
 		sg = data->sg;
 		current_address = (unsigned int)sg_phys(sg);
 		dev_dbg(mmc_dev(host->mmc), "Completed sg_phys() mapping to 0x%X\n", current_address);
-		if (data->sg_len > 1) {
-			MMC_CRIT_ERR("sg_len is > 1!");
-		}
+		BUG_ON(data->sg_len > 1);
+
 		dev_dbg(mmc_dev(host->mmc), "Block size: %d Blocks: %d sg_len: %d\n",
 			  data->blksz, data->blocks, data->sg_len);
 		if (data->stop) {
@@ -310,9 +301,9 @@ static void nios_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	if (host->cmd != NULL) {
 		dev_dbg(mmc_dev(mmc), "HOST_CMD Not null!\n");
 	}
-	host->cmd = mrq->cmd;
+
 	dev_dbg(mmc_dev(mmc), "Start req\n");
-	nios_mmc_start_cmd(host, host->cmd);
+	nios_mmc_start_cmd(host, mrq->cmd);
 }
 
 /* Function to cleanup previous call */
