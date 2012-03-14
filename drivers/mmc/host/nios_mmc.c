@@ -151,7 +151,7 @@ static void nios_mmc_execute_cmd(NIOS_MMC_HOST * host, unsigned char cmd,
 				 unsigned int buf)
 {
 	unsigned int xfer_ctl = 0;
-	u_char cmdidx;
+	unsigned char cmdidx;
 
 	/* Do a sanity check that the core isn't busy... why should it be since we haven't started a cmd?? */
 	if (nios_mmc_readl(host, NIOS_MMC_REG_CTLSTAT) & NIOS_MMC_CTLSTAT_BUSY) {
