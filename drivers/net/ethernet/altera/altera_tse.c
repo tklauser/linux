@@ -1298,7 +1298,7 @@ static const struct net_device_ops altera_tse_netdev_ops = {
 	.ndo_change_mtu		= tse_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
 #ifdef CONFIG_NET_POLL_CONTROLLER
-	.ndo_poll_controller	= tse_net_poll_controller;
+	.ndo_poll_controller	= tse_net_poll_controller
 #endif
 };
 
