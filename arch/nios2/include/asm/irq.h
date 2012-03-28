@@ -13,11 +13,7 @@
 /* Reserve 32 additional interrupts for GPIO IRQs */
 #define NR_IRQS			(NIOS2_CPU_NR_IRQS + 32)
 
-static inline void irq_dispose_mapping(unsigned int virq)
-{
-	return;
-}
-
 #include <asm-generic/irq.h>
+#include <linux/irqdomain.h>
 
 #endif
