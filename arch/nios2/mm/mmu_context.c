@@ -17,7 +17,7 @@
 
 /* The pids position and mask in context */
 #define PID_SHIFT	0
-#define PID_BITS	(cpuinfo.pid_num_bits)
+#define PID_BITS	(cpuinfo.tlb_pid_num_bits)
 #define PID_MASK	((1UL << PID_BITS) - 1)
 
 /* The versions position and mask in context */

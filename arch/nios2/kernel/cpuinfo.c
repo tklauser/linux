@@ -79,7 +79,7 @@ void __init setup_cpuinfo(void)
 	cpuinfo.dcache_line_size = fcpu(cpu, "dcache-line-size");
 	cpuinfo.dcache_size = fcpu(cpu, "dcache-size");
 
-	cpuinfo.pid_num_bits = fcpu(cpu, "ALTR,pid-num-bits");
+	cpuinfo.tlb_pid_num_bits = fcpu(cpu, "ALTR,pid-num-bits");
 	cpuinfo.tlb_num_ways = fcpu(cpu, "ALTR,tlb-num-ways");
 	cpuinfo.tlb_num_ways_log2 = ilog2(cpuinfo.tlb_num_ways);
 	cpuinfo.tlb_num_entries = fcpu(cpu, "ALTR,tlb-num-entries");
@@ -135,9 +135,10 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 
 	if (cpuinfo.mmu)
 		count += seq_printf(m,
-				"TLB:\t\t%u ways, %u entries\n",
+				"TLB:\t\t%u ways, %u entries, %u PID bits\n",
 				cpuinfo.tlb_num_ways,
-				cpuinfo.tlb_num_entries);
+				cpuinfo.tlb_num_entries,
+				cpuinfo.tlb_pid_num_bits);
 
 	return 0;
 }
