@@ -556,8 +556,6 @@ static const struct of_device_id altera_cf_match[] = {
 	{},
 }
 MODULE_DEVICE_TABLE(of, altera_cf_match);
-#else
-#define altera_cf_match NULL
 #endif /* CONFIG_OF */
 
 /* We are a platform device driver. */
@@ -567,27 +565,14 @@ static struct platform_driver altcf_platform_driver = {
 	.driver = {
 		.name		= DRV_NAME,
 		.owner		= THIS_MODULE,
-		.of_match_table = altera_cf_match,
+		.of_match_table = of_match_ptr(altera_cf_match),
 	},
 };
 
-/* module_init function */
-static int __init altcf_init(void)
-{
-	return platform_driver_register(&altcf_platform_driver);
-}
-
-/* module_exit function */
-static void __exit altcf_exit(void)
-{
-	platform_driver_unregister(&altcf_platform_driver);
-}
+module_platform_driver(altcf_platform_driver);
 
 MODULE_AUTHOR("Ian Abbott");
 MODULE_DESCRIPTION("low-level driver for Altera SOPC Builder CompactFlash ATA");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 MODULE_ALIAS("platform:" DRV_NAME);
-
-module_init(altcf_init);
-module_exit(altcf_exit);
