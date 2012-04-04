@@ -29,8 +29,8 @@
 #define MAX_PHYS_ADDR 0
 
 /* bit definitions for TLBMISC register */
-#define PID_SHIFT     4
-#define PID_MASK 0x3fff
+#define PID_SHIFT	4
+#define PID_MASK	((1UL << cpuinfo.tlb_pid_num_bits) - 1)
 
 #define WAY_SHIFT 20
 #define WAY_MASK  0xf
