@@ -59,8 +59,10 @@ static void cfi_amdstd_resume (struct mtd_info *);
 static int cfi_amdstd_reboot(struct notifier_block *, unsigned long, void *);
 static int cfi_amdstd_secsi_read (struct mtd_info *, loff_t, size_t, size_t *, u_char *);
 
+#ifndef CONFIG_NIOS2
 static int cfi_amdstd_panic_write(struct mtd_info *mtd, loff_t to, size_t len,
 				  size_t *retlen, const u_char *buf);
+#endif
 
 static void cfi_amdstd_destroy(struct mtd_info *);
 
@@ -446,7 +448,9 @@ struct mtd_info *cfi_cmdset_0002(struct map_info *map, int primary)
 	pr_debug("MTD %s(): write buffer size %d\n", __func__,
 			mtd->writebufsize);
 
+#ifndef CONFIG_NIOS2
 	mtd->_panic_write = cfi_amdstd_panic_write;
+#endif
 	mtd->reboot_notifier.notifier_call = cfi_amdstd_reboot;
 
 	if (cfi->cfi_mode==CFI_MODE_CFI){
@@ -1612,6 +1616,7 @@ static int cfi_amdstd_write_buffers(struct mtd_info *mtd, loff_t to, size_t len,
 	return 0;
 }
 
+#ifndef CONFIG_NIOS2
 /*
  * Wait for the flash chip to become ready to write data
  *
@@ -1843,7 +1848,7 @@ static int cfi_amdstd_panic_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 	return 0;
 }
-
+#endif /* CONFIG_NIOS2 */
 
 /*
  * Handle devices with one erase region, that only implement
