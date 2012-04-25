@@ -6,14 +6,9 @@
 # for more details.
 #
 
-MKIMAGE := $(srctree)/scripts/mkuboot.sh
-
-quiet_cmd_uimage = UIMAGE  $@
-      cmd_uimage = $(CONFIG_SHELL) $(MKIMAGE) -A $(ARCH) -O linux -T kernel \
-                   -C gzip -n 'Linux-$(KERNELRELEASE)' \
-                   -a $(shell $(NM) vmlinux | awk '$$NF == "_stext" {print $$1}') \
-                   -e $(shell $(NM) vmlinux | awk '$$NF == "_start" {print $$1}') \
-                   -d $< $@
+UIMAGE_LOADADDR = $(shell $(NM) vmlinux | awk '$$NF == "_stext" {print $$1}')
+UIMAGE_ENTRYADDR = $(shell $(NM) vmlinux | awk '$$NF == "_start" {print $$1}')
+UIMAGE_COMPRESSION = gzip
 
 OBJCOPYFLAGS_vmlinux.bin := -O binary
 $(obj)/vmlinux.bin: vmlinux FORCE
