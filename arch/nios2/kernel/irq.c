@@ -15,8 +15,6 @@
 #include <linux/linkage.h>
 #include <linux/interrupt.h>
 
-#include <asm/system.h>
-
 asmlinkage void do_IRQ(int irq, struct pt_regs *regs)
 {
 	struct pt_regs *oldregs = set_irq_regs(regs);

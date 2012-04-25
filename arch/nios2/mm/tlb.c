@@ -17,7 +17,6 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
-#include <asm/system.h>
 #include <asm/cpuinfo.h>
 
 #define TLB_INDEX_MASK ((((1UL << (cpuinfo.tlb_ptr_sz - cpuinfo.tlb_num_ways_log2))) - 1) << PAGE_SHIFT)

@@ -10,7 +10,6 @@
 #ifndef _ASM_NIOS2_IO_H
 #define _ASM_NIOS2_IO_H
 
-#include <asm/system.h>
 #include <asm/pgtable-bits.h>
 
 #define readb(addr) \
