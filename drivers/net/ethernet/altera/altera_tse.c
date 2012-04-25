@@ -1535,7 +1535,7 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 
 	/* If we didn't get a valid address, generate a random one */
 	if (!is_valid_ether_addr(dev->dev_addr))
-		dev_hw_addr_random(dev, dev->dev_addr);
+		eth_hw_addr_random(dev);
 
 	/* Write it to the MAC address register */
 	tse_update_mac_addr(tse_priv, dev->dev_addr);
