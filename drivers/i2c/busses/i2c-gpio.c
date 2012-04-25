@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/of_i2c.h>
 
 struct i2c_gpio_private_data {
@@ -84,56 +85,37 @@ static int i2c_gpio_getscl(void *data)
 	return gpio_get_value(pdata->scl_pin);
 }
 
-#ifdef CONFIG_OF
-#include <linux/of_gpio.h>
-
-/* Check if devicetree nodes exist and build platform data */
-static int i2c_gpio_of_probe(struct platform_device *pdev,
+static int __devinit of_i2c_gpio_probe(struct device_node *np,
 			     struct i2c_gpio_platform_data *pdata)
 {
-	struct device_node *np = pdev->dev.of_node;
-	const __be32 *prop;
-	int sda_pin, scl_pin;
-	int len;
+	u32 reg;
 
-	if (!np || of_gpio_count(np) < 2)
-		return -ENXIO;
+	if (of_gpio_count(np) < 2)
+		return -ENODEV;
 
-	sda_pin = of_get_gpio_flags(np, 0, NULL);
-	scl_pin = of_get_gpio_flags(np, 1, NULL);
-	if (sda_pin < 0 || scl_pin < 0) {
+	pdata->sda_pin = of_get_gpio(np, 0);
+	pdata->scl_pin = of_get_gpio(np, 1);
+
+	if (!gpio_is_valid(pdata->sda_pin) || !gpio_is_valid(pdata->scl_pin)) {
 		pr_err("%s: invalid GPIO pins, sda=%d/scl=%d\n",
-		       np->full_name, sda_pin, scl_pin);
-		return -ENXIO;
+		       np->full_name, pdata->sda_pin, pdata->scl_pin);
+		return -ENODEV;
 	}
 
-	pdata->sda_pin = sda_pin;
-	pdata->scl_pin = scl_pin;
-	prop = of_get_property(np, "sda-is-open-drain", NULL);
-	if (prop)
-		pdata->sda_is_open_drain = 1;
-	prop = of_get_property(np, "scl-is-open-drain", NULL);
-	if (prop)
-		pdata->scl_is_open_drain = 1;
-	prop = of_get_property(np, "scl-is-output-only", NULL);
-	if (prop)
-		pdata->scl_is_output_only = 1;
-	prop = of_get_property(np, "speed-hz", &len);
-	if (prop && len >= sizeof(__be32))
-		pdata->udelay = DIV_ROUND_UP(1000000, be32_to_cpup(prop) * 2);
-	prop = of_get_property(np, "timeout", &len);
-	if (prop && len >= sizeof(__be32))
-		pdata->timeout = msecs_to_jiffies(be32_to_cpup(prop));
+	of_property_read_u32(np, "i2c-gpio,delay-us", &pdata->udelay);
+
+	if (!of_property_read_u32(np, "i2c-gpio,timeout-ms", &reg))
+		pdata->timeout = msecs_to_jiffies(reg);
+
+	pdata->sda_is_open_drain =
+		of_property_read_bool(np, "i2c-gpio,sda-open-drain");
+	pdata->scl_is_open_drain =
+		of_property_read_bool(np, "i2c-gpio,scl-open-drain");
+	pdata->scl_is_output_only =
+		of_property_read_bool(np, "i2c-gpio,scl-output-only");
 
 	return 0;
 }
-#else
-static int i2c_gpio_of_probe(struct platform_device *pdev,
-			     struct i2c_gpio_platform_data *pdata)
-{
-	return -ENXIO;
-}
-#endif
 
 static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 {
@@ -150,13 +132,14 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	bit_data = &priv->bit_data;
 	pdata = &priv->pdata;
 
-	if (pdev->dev.platform_data) {
-		*pdata = *(struct i2c_gpio_platform_data *)
-			pdev->dev.platform_data;
-	} else {
-		ret = i2c_gpio_of_probe(pdev, pdata);
+	if (pdev->dev.of_node) {
+		ret = of_i2c_gpio_probe(pdev->dev.of_node, pdata);
 		if (ret)
 			return ret;
+	} else {
+		if (!pdev->dev.platform_data)
+			return -ENXIO;
+		memcpy(pdata, pdev->dev.platform_data, sizeof(*pdata));
 	}
 
 	ret = gpio_request(pdata->sda_pin, "sda");
@@ -217,6 +200,8 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_add_bus;
 
+	of_i2c_register_devices(adap);
+
 	platform_set_drvdata(pdev, priv);
 
 	dev_info(&pdev->dev, "using pins %u (SDA) and %u (SCL%s)\n",
@@ -254,21 +239,21 @@ static int __devexit i2c_gpio_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static const struct of_device_id i2c_gpio_match[] = {
+
+#if defined(CONFIG_OF)
+static const struct of_device_id i2c_gpio_dt_ids[] = {
 	{ .compatible = "i2c-gpio", },
-	{},
+	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, i2c_gpio_match);
-#else /* CONFIG_OF */
-#define i2c_gpio_match NULL
-#endif /* CONFIG_OF */
+
+MODULE_DEVICE_TABLE(of, i2c_gpio_dt_ids);
+#endif
 
 static struct platform_driver i2c_gpio_driver = {
 	.driver		= {
 		.name	= "i2c-gpio",
 		.owner	= THIS_MODULE,
-		.of_match_table = i2c_gpio_match,
+		.of_match_table	= of_match_ptr(i2c_gpio_dt_ids),
 	},
 	.probe		= i2c_gpio_probe,
 	.remove		= __devexit_p(i2c_gpio_remove),
