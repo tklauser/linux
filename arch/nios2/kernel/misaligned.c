@@ -64,10 +64,10 @@ static inline void put_reg_val(struct pt_regs *fp, int reg, u32 val)
 /*
  * (mis)alignment handler
  */
-asmlinkage void handle_unaligned_c(struct pt_regs *fp)
+asmlinkage void handle_unaligned_c(struct pt_regs *fp, int cause)
 {
 	u32 isn, addr, val;
-	int cause, in_kernel;
+	int in_kernel;
 	u8 a, b, d0, d1, d2, d3;
 	u16 imm16;
 	unsigned int fault;
@@ -162,7 +162,7 @@ asmlinkage void handle_unaligned_c(struct pt_regs *fp)
 	}
 
 	addr = RDCTL(CTL_BADADDR);
-	cause = RDCTL(CTL_EXCEPTION)/4;
+	cause >>= 2;
 
 	if (fault) {
 		if (in_kernel) {

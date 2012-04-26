@@ -133,11 +133,11 @@ asmlinkage void breakpoint_c(struct pt_regs *fp)
 
 #if defined(CONFIG_MMU) && !defined(CONFIG_ALIGNMENT_TRAP)
 /* Alignment exception handler */
-asmlinkage void handle_unaligned_c(struct pt_regs *fp)
+asmlinkage void handle_unaligned_c(struct pt_regs *fp, int cause)
 {
 	unsigned long addr = RDCTL(CTL_BADADDR);
-	int cause = RDCTL(CTL_EXCEPTION) >> 2;
 
+	cause >>= 2;
 	fp->ea -= 4;
 
 	if (fixup_exception(fp))
