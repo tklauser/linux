@@ -181,10 +181,12 @@ asmlinkage void handle_diverror_c(struct pt_regs *fp)
 /* Unhandled exception handler */
 asmlinkage void unhandled_exception(struct pt_regs *regs, int cause)
 {
+	unsigned long addr = RDCTL(CTL_BADADDR);
+
 	cause /= 4;
 
-	pr_warn("Unhandled exception #%d in %s mode\n",
-			cause, user_mode(regs) ? "user" : "kernel");
+	pr_warn("Unhandled exception #%d in %s mode (badaddr=0x%08lx)\n",
+			cause, user_mode(regs) ? "user" : "kernel", addr);
 
 	regs->ea -= 4;
 	show_regs(regs);
