@@ -473,7 +473,7 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	}
 
 	ret =
-	    request_irq(host->irq, nios_mmc_irq, IRQF_SHARED | IRQF_DISABLED, DRIVER_NAME, (void *)host);
+	    request_irq(host->irq, nios_mmc_irq, IRQF_SHARED, DRIVER_NAME, (void *)host);
 	if (ret) {
 		dev_dbg(mmc_dev(mmc), "Error allocating interrupt\n");
 		goto out;
