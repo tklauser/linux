@@ -1618,23 +1618,6 @@ static int __devinit altera_tse_probe(struct platform_device *pdev)
 	pr_info("%s: Altera TSE MAC at 0x%08lx irq %d/%d\n", dev->name,
 			dev->base_addr, tse_priv->rx_irq, tse_priv->tx_irq);
 
-	pr_info("%s: Reporting available PHYs:\n", dev->name);
-	for (i = PHY_MAX_ADDR - 1; i >= 0; i--) {
-		u32 phy_id;
-		u32 phy_id_bottom;
-		u32 phy_id_top;
-
-		if (get_phy_id(mdio, i, &phy_id))
-			continue;
-
-		phy_id_top = (phy_id >> 16) & 0xffff;
-		phy_id_bottom = (phy_id) & 0xffff;
-
-		if (phy_id_top != phy_id_bottom)
-			pr_info("%s: PHY with ID 0x%x at 0x%x\n", dev->name,
-					phy_id, i);
-	}
-
 	return 0;
 
 out_free_mdio_irq:
