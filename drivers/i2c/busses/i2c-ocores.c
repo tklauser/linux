@@ -344,6 +344,8 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 	if (pdata) {
 		for (i = 0; i < pdata->num_devices; i++)
 			i2c_new_device(&i2c->adap, pdata->devices + i);
+	} else {
+		of_i2c_register_devices(&i2c->adap);
 	}
 
 	/* Now register all the child nodes */
