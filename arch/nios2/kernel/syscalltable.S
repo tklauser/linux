@@ -41,7 +41,7 @@ ENTRY(sys_call_table)
 	.long sys_lseek
 	.long sys_getpid	/* 20 */
 	.long sys_mount
-	.long sys_umount
+	.long sys_oldumount
 	.long sys_setuid
 	.long sys_getuid
 	.long sys_stime		/* 25 */
@@ -71,7 +71,7 @@ ENTRY(sys_call_table)
 	.long sys_geteuid
 	.long sys_getegid	/* 50 */
 	.long sys_acct
-	.long sys_umount	/* recycled never used phys() */
+	.long sys_umount
 	.long sys_ni_syscall	/* old sys_lock */
 	.long sys_ioctl
 	.long sys_fcntl		/* 55 */
