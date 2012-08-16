@@ -106,7 +106,6 @@ static inline struct thread_info *current_thread_info(void)
 # define TIF_USEDFPU		16	/* FPU was used by this task this quantum (SMP) */
 # define TIF_POLLING_NRFLAG	17	/* true if poll_idle() is polling TIF_NEED_RESCHED */
 # define TIF_MEMDIE		18
-# define TIF_FREEZE		19
 # define TIF_SYSCALL_TRACE	31	/* syscall trace active */
 #else
 # define TIF_SYSCALL_TRACE	0	/* syscall trace active */
@@ -116,7 +115,6 @@ static inline struct thread_info *current_thread_info(void)
 					   TIF_NEED_RESCHED */
 # define TIF_MEMDIE		4
 # define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
-# define TIF_FREEZE		16	/* is freezing for suspend */
 #endif /* CONFIG_MMU */
 
 #define _TIF_SYSCALL_TRACE	(1<<TIF_SYSCALL_TRACE)
@@ -129,7 +127,6 @@ static inline struct thread_info *current_thread_info(void)
 #endif /* CONFIG_MMU */
 #define _TIF_RESTORE_SIGMASK	(1<<TIF_RESTORE_SIGMASK)
 #define _TIF_POLLING_NRFLAG	(1<<TIF_POLLING_NRFLAG)
-#define _TIF_FREEZE		(1<<TIF_FREEZE)
 
 /* work to do on interrupt/exception return */
 #ifdef CONFIG_MMU
