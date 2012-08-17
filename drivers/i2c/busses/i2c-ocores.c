@@ -18,7 +18,7 @@
  * - interrupts      : interrupt number
  * - regstep         : size of device registers in bytes
  * - clock-frequency : frequency of bus clock in Hz
- *
+ * 
  * Example:
  *
  *  i2c0: ocores@a0000000 {
@@ -347,9 +347,6 @@ static int __devinit ocores_i2c_probe(struct platform_device *pdev)
 	} else {
 		of_i2c_register_devices(&i2c->adap);
 	}
-
-	/* Now register all the child nodes */
-	of_i2c_register_devices(&i2c->adap);
 
 	return 0;
 }
