@@ -204,9 +204,6 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 		 pdata->scl_is_output_only
 		 ? ", no clock stretching" : "");
 
-	/* Now register all the child nodes */
-	of_i2c_register_devices(adap);
-
 	return 0;
 
 err_add_bus:
@@ -233,7 +230,6 @@ static int __devexit i2c_gpio_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
 
 #if defined(CONFIG_OF)
 static const struct of_device_id i2c_gpio_dt_ids[] = {
