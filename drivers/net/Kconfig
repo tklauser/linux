@@ -244,13 +244,6 @@ source "drivers/net/dsa/Kconfig"
 
 source "drivers/net/ethernet/Kconfig"
 
-config OPEN_ETH
-	bool "Opencores (Igor) Emac support"
-	select MII
-	help
-	  This is support for the opencores Igor emac driver implemented
-	  in an FPGA.
-
 source "drivers/net/fddi/Kconfig"
 
 source "drivers/net/hippi/Kconfig"
