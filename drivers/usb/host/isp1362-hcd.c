@@ -2915,8 +2915,6 @@ static struct of_device_id isp1362_match[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(of, isp1362_match);
-#else
-#define isp1362_match NULL
 #endif /* CONFIG_OF */
 
 static struct platform_driver isp1362_driver = {
@@ -2928,7 +2926,7 @@ static struct platform_driver isp1362_driver = {
 	.driver = {
 		.name = (char *)hcd_name,
 		.owner = THIS_MODULE,
-		.of_match_table = isp1362_match,
+		.of_match_table = of_match_ptr(isp1362_match),
 	},
 };
 
