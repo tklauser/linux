@@ -76,6 +76,9 @@ static inline void __flush_cache_all(void)
 /* FIXME: Remove: Linux does not define this interfaces, it's arch specific. */
 #define flush_dcache_range(start,end)		dcache_push((start), (end) - (start))
 
+/* Arch-specific: invalidate virtual memory range. */
+extern void nios2_clear_dcache_range(unsigned long vstart, unsigned long vend);
+
 #endif /* CONFIG_MMU */
 
 #define flush_dcache_mmap_lock(mapping)         do { } while(0)

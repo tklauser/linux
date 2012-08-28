@@ -65,7 +65,8 @@ static inline void cache_invalidate_inst(unsigned long paddr, int len)
 	}
 }
 
-static inline void cache_invalidate_data(unsigned long paddr, int len)
+static inline void cache_invalidate_data(unsigned long paddr,
+					     unsigned long len)
 {
 	unsigned long cache_size, line_size;
 
@@ -218,4 +219,14 @@ void icache_push(unsigned long vaddr, int len)
 {
 	cache_push_invalidate_data(vaddr, len);
 	cache_invalidate_inst(vaddr, len);
+}
+
+/*
+ * nios2_clear_dcache_range() semantics: Invalidate a range of virtual
+ * addresses in the data cache, writing back as little as possible because
+ * the area is about to be overwritten, e.g. by a DMA transfer.
+ */
+void nios2_clear_dcache_range(unsigned long vstart, unsigned long vend)
+{
+	cache_invalidate_data(vstart, vend - vstart);
 }
