@@ -32,7 +32,7 @@
  *	the instruction cache for the range.
  *
  */
-static __inline__ void cache_invalidate_inst(unsigned long paddr, int len)
+static inline void cache_invalidate_inst(unsigned long paddr, int len)
 {
 	if (len >= cpuinfo.icache_size) {
 		__asm__ __volatile__("1:\n\t"
@@ -65,7 +65,7 @@ static __inline__ void cache_invalidate_inst(unsigned long paddr, int len)
 	}
 }
 
-static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
+static inline void cache_invalidate_data(unsigned long paddr, int len)
 {
 	unsigned long cache_size, line_size;
 
@@ -133,7 +133,7 @@ static __inline__ void cache_invalidate_data(unsigned long paddr, int len)
 	}
 }
 
-static __inline__ void cache_push_invalidate_data(unsigned long paddr, int len)
+static inline void cache_push_invalidate_data(unsigned long paddr, int len)
 {
 	if (len >= cpuinfo.dcache_size * 2) {
 		__asm__ __volatile__("1:\n\t"
