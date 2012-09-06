@@ -34,33 +34,34 @@
  */
 static inline void cache_invalidate_inst(unsigned long paddr, int len)
 {
-	if (len >= cpuinfo.icache_size) {
-		__asm__ __volatile__("1:\n\t"
-				     "flushi	%0\n\t"
-				     "sub	%0,%0,%1\n\t"
-				     "bgt	%0,r0,1b\n\t"
-				     "flushp\n\t"
-				     :
-				     : "r" (cpuinfo.icache_size),
-				       "r" (cpuinfo.icache_line_size));
-	} else {
-		unsigned long sset, eset;
+	if (cpuinfo.icache_size != 0 && likely(len > 0)) {
+		if (len >= cpuinfo.icache_size) {
+			__asm__ __volatile__("1:\n\t"
+					     "flushi	%0\n\t"
+					     "sub	%0,%0,%1\n\t"
+					     "bgt	%0,r0,1b\n\t"
+					     :
+					     : "r" (cpuinfo.icache_size),
+					       "r" (cpuinfo.icache_line_size));
+		} else {
+			unsigned long sset, eset;
 
-		sset = paddr & (~(cpuinfo.icache_line_size - 1));
-		eset =
-		    (paddr + len + cpuinfo.icache_line_size - 1) &
-		    (~(cpuinfo.icache_line_size - 1));
+			sset = paddr & (~(cpuinfo.icache_line_size - 1));
+			eset =
+			    (paddr + len + cpuinfo.icache_line_size - 1) &
+			    (~(cpuinfo.icache_line_size - 1));
 
-		__asm__ __volatile__("1:\n\t"
-				     "flushi	%0\n\t"
-				     "add	%0,%0,%2\n\t"
-				     "blt	%0,%1,1b\n\t"
-				     "flushp\n\t"
-				     :
-				     : "r" (sset),
-				       "r" (eset),
-				       "r" (cpuinfo.icache_line_size));
+			__asm__ __volatile__("1:\n\t"
+					     "flushi	%0\n\t"
+					     "add	%0,%0,%2\n\t"
+					     "blt	%0,%1,1b\n\t"
+					     :
+					     : "r" (sset),
+					       "r" (eset),
+					       "r" (cpuinfo.icache_line_size));
+		}
 	}
+	__asm__ __volatile__("\tflushp\n");
 }
 
 static inline void cache_invalidate_data(unsigned long paddr,
@@ -70,6 +71,9 @@ static inline void cache_invalidate_data(unsigned long paddr,
 
 	line_size = cpuinfo.dcache_line_size;
 	cache_size = cpuinfo.dcache_size;
+	if (cache_size == 0 || unlikely(len == 0))
+		return;
+
 	if (len >= cache_size * 2) {
 		/*
 		 * Invalidating an area at least twice the data cache size.
@@ -83,7 +87,7 @@ static inline void cache_invalidate_data(unsigned long paddr,
 				     : "r" (cache_size),
 				       "r" (line_size));
 
-	} else if (likely(len > 0)) {
+	} else {
 		/*
 		 * Invalidating an area less than twice the data cache size.
 		 * Only invalidate the desired area.
@@ -134,6 +138,9 @@ static inline void cache_invalidate_data(unsigned long paddr,
 
 static inline void cache_push_invalidate_data(unsigned long paddr, int len)
 {
+	if (cpuinfo.dcache_size == 0 || unlikely(len <= 0))
+		return;
+
 	if (len >= cpuinfo.dcache_size * 2) {
 		__asm__ __volatile__("1:\n\t"
 				     "flushd	0(%0)\n\t"
@@ -177,25 +184,29 @@ void cache_push(unsigned long paddr, int len)
 
 void dcache_push_all(void)
 {
-	__asm__ __volatile__("1:\n\t"
-			     "flushd	0(%0)\n\t"
-			     "sub	%0,%0,%1\n\t"
-			     "bgt	%0,r0,1b\n\t"
-			     :
-			     : "r" (cpuinfo.dcache_size),
-			       "r" (cpuinfo.dcache_line_size));
+	if (cpuinfo.dcache_size != 0) {
+		__asm__ __volatile__("1:\n\t"
+				     "flushd	0(%0)\n\t"
+				     "sub	%0,%0,%1\n\t"
+				     "bgt	%0,r0,1b\n\t"
+				     :
+				     : "r" (cpuinfo.dcache_size),
+				       "r" (cpuinfo.dcache_line_size));
+	}
 }
 
 void icache_push_all(void)
 {
-	__asm__ __volatile__("1:\n\t"
-			     "flushi	%0\n\t"
-			     "sub	%0,%0,%1\n\t"
-			     "bgt	%0,r0,1b\n\t"
-			     "flushp\n\t"
-			     :
-			     : "r" (cpuinfo.icache_size),
-			       "r" (cpuinfo.icache_line_size));
+	if (cpuinfo.icache_size != 0) {
+		__asm__ __volatile__("1:\n\t"
+				     "flushi	%0\n\t"
+				     "sub	%0,%0,%1\n\t"
+				     "bgt	%0,r0,1b\n\t"
+				     :
+				     : "r" (cpuinfo.icache_size),
+				       "r" (cpuinfo.icache_line_size));
+	}
+	__asm__ __volatile__("\tflushp\n");
 }
 
 /*
