@@ -110,18 +110,35 @@ static inline void cache_invalidate_data(unsigned long paddr,
 			sset += line_size;
 		}
 		if (sset < eset) {
-			/*
-			 * Invalidate all the cache lines that fall completely
-			 * within the area.
-			 */
-			__asm__ __volatile__("1:\n\t"
-					     "initda	0(%0)\n\t"
-					     "add	%0,%0,%2\n\t"
-					     "blt	%0,%1,1b\n\t"
-					     :
-					     : "r" (sset),
-					       "r" (eset),
-					       "r"(line_size));
+			if (line_size > 4) {
+				/*
+				 * Invalidate all the cache lines that fall
+				 * completely within the area.
+				 */
+				__asm__ __volatile__("1:\n\t"
+						     "initda	0(%0)\n\t"
+						     "add	%0,%0,%2\n\t"
+						     "blt	%0,%1,1b\n\t"
+						     :
+						     : "r" (sset),
+						       "r" (eset),
+						       "r"(line_size));
+			} else {
+				/*
+				 * CPU doesn't implement "initda" when cache
+				 * line size is 4, so use "flushda" instead,
+				 * which will also write back dirty cache
+				 * lines before invalidating them.
+				 */
+				__asm__ __volatile__("1:\n\t"
+						     "flushda	0(%0)\n\t"
+						     "add	%0,%0,%2\n\t"
+						     "blt	%0,%1,1b\n\t"
+						     :
+						     : "r" (sset),
+						       "r" (eset),
+						       "r"(line_size));
+			}
 		}
 		if (eset != pend) {
 			/*
