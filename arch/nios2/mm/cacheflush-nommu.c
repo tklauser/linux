@@ -46,12 +46,10 @@ static inline void cache_invalidate_inst(unsigned long paddr, int len)
 	} else {
 		unsigned long sset, eset;
 
-		sset =
-		    (paddr & (cpuinfo.icache_size - 1)) &
-		    (~(cpuinfo.icache_line_size - 1));
+		sset = paddr & (~(cpuinfo.icache_line_size - 1));
 		eset =
-		    (((paddr & (cpuinfo.icache_size - 1)) + len) &
-		     (~(cpuinfo.icache_line_size - 1))) + cpuinfo.icache_line_size;
+		    (paddr + len + cpuinfo.icache_line_size - 1) &
+		    (~(cpuinfo.icache_line_size - 1));
 
 		__asm__ __volatile__("1:\n\t"
 				     "flushi	%0\n\t"
