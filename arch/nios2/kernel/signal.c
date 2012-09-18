@@ -143,6 +143,9 @@ static inline int restore_sigcontext(struct pt_regs *regs,
 	int err = 0;
 	int estatus;
 
+	/* Always make any pending restarted system calls return -EINTR */
+	current_thread_info()->restart_block.fn = do_no_restart_syscall;
+
 	estatus = regs->estatus;
 
 	/* get previous pt_regs */
