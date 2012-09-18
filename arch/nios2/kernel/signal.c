@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2011-2012 Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2004 Microtronix Datacom Ltd
  * Copyright (C) 1991, 1992 Linus Torvalds
  *
@@ -16,13 +16,14 @@
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
 #include <linux/personality.h>
+#include <linux/tracehook.h>
 
 #include <asm/ucontext.h>
 #include <asm/cacheflush.h>
 
 #define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
 
-asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall);
+static int do_signal(struct pt_regs *regs, sigset_t *oldset, int in_syscall);
 
 /*
  * Atomically swap in the new signal mask, and wait for a signal.
@@ -48,7 +49,7 @@ asmlinkage int do_sigsuspend(struct pt_regs *regs)
 	while (1) {
 		current->state = TASK_INTERRUPTIBLE;
 		schedule();
-		if (do_signal(&saveset, regs, 0))
+		if (do_signal(regs, &saveset, 0))
 			return -EINTR;
 	}
 }
@@ -82,7 +83,7 @@ asmlinkage int do_rt_sigsuspend(struct pt_regs *regs)
 	while (1) {
 		current->state = TASK_INTERRUPTIBLE;
 		schedule();
-		if (do_signal(&saveset, regs, 0))
+		if (do_signal(regs, &saveset, 0))
 			return -EINTR;
 	}
 }
@@ -557,19 +558,11 @@ static void handle_signal(int sig, struct k_sigaction *ka, siginfo_t *info,
  * want to handle. Thus you cannot kill init even with a SIGKILL even by
  * mistake.
  */
-asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall)
+static int do_signal(struct pt_regs *regs, sigset_t *oldset, int in_syscall)
 {
 	struct k_sigaction ka;
 	siginfo_t info;
 	int signr;
-
-	/*
-	 * We want the common case to go fast, which is why we may in certain
-	 * cases get here from kernel mode. Just return without doing anything
-	 * if so.
-	 */
-	if (!user_mode(regs))
-		return 1;
 
 #ifndef CONFIG_MMU
 	/*
@@ -637,4 +630,22 @@ asmlinkage int do_signal(sigset_t *oldset, struct pt_regs *regs, int in_syscall)
 #endif /* CONFIG_MMU */
 
 	return 0;
+}
+
+asmlinkage void do_notify_resume(struct pt_regs *regs, sigset_t *oldset, int in_syscall)
+{
+	pr_debug("--> ENTERING %s\n", __func__);
+	/*
+	 * We want the common case to go fast, which is why we may in certain
+	 * cases get here from kernel mode. Just return without doing anything
+	 * if so.
+	 */
+	if (!user_mode(regs))
+		return;
+
+	if (test_thread_flag(TIF_SIGPENDING))
+		do_signal(regs, oldset, in_syscall);
+
+	if (test_and_clear_thread_flag(TIF_NOTIFY_RESUME))
+		tracehook_notify_resume(regs);
 }

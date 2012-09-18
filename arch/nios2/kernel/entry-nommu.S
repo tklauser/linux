@@ -103,13 +103,13 @@ Lwork_resched:
 	br	ret_from_exception
 
 Lsignal_return:
-	BTBZ	r1,r10,TIF_SIGPENDING,restore_all
-	mov	r5,sp			/* pt_regs */
+	ANDI32	r1,r10,_TIF_SIGPENDING | _TIF_NOTIFY_RESUME
+	beq	r1,r0,restore_all
+	mov	r4,sp			/* pt_regs */
 	SAVE_SWITCH_STACK
-	mov	r4,r0			/* oldset = 0 */
-	movi	r6,1			/* in_syscall, will be overriden in
-					   do_signal for NOMMU */
-	call	do_signal
+	mov	r5,r0			/* oldset = 0 */
+	movi	r6,1			/* in_syscall = 1 */
+	call	do_notify_resume
 	RESTORE_SWITCH_STACK
 	br	restore_all
 

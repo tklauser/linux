@@ -97,45 +97,32 @@ static inline struct thread_info *current_thread_info(void)
  * - pending work-to-be-done flags are in LSW
  * - other flags in MSW
  */
-#ifdef CONFIG_MMU
-# define TIF_SIGPENDING		2	/* signal pending */
-# define TIF_NEED_RESCHED	3	/* rescheduling necessary */
-# define TIF_SYSCALL_AUDIT	4	/* syscall auditing active */
-# define TIF_SECCOMP		5	/* secure computing */
-# define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
-# define TIF_USEDFPU		16	/* FPU was used by this task this quantum (SMP) */
-# define TIF_POLLING_NRFLAG	17	/* true if poll_idle() is polling TIF_NEED_RESCHED */
-# define TIF_MEMDIE		18
-# define TIF_SYSCALL_TRACE	31	/* syscall trace active */
-#else
-# define TIF_SYSCALL_TRACE	0	/* syscall trace active */
-# define TIF_SIGPENDING		1	/* signal pending */
-# define TIF_NEED_RESCHED	2	/* rescheduling necessary */
-# define TIF_POLLING_NRFLAG	3	/* true if poll_idle() is polling
-					   TIF_NEED_RESCHED */
-# define TIF_MEMDIE		4
-# define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
-#endif /* CONFIG_MMU */
+#define TIF_SYSCALL_TRACE	0	/* syscall trace active */
+#define TIF_NOTIFY_RESUME	1	/* resumption notification requested */
+#define TIF_SIGPENDING		2	/* signal pending */
+#define TIF_NEED_RESCHED	3	/* rescheduling necessary */
+#define TIF_MEMDIE		4	/* is terminating due to OOM killer */
+#define TIF_SECCOMP		5	/* secure computing */
+#define TIF_SYSCALL_AUDIT	6	/* syscall auditing active */
+#define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
 
-#define _TIF_SYSCALL_TRACE	(1<<TIF_SYSCALL_TRACE)
-#define _TIF_SIGPENDING		(1<<TIF_SIGPENDING)
-#define _TIF_NEED_RESCHED	(1<<TIF_NEED_RESCHED)
-#ifdef CONFIG_MMU
-# define _TIF_SYSCALL_AUDIT	(1<<TIF_SYSCALL_AUDIT)
-# define _TIF_SECCOMP		(1<<TIF_SECCOMP)
-# define _TIF_USEDFPU		(1<<TIF_USEDFPU)
-#endif /* CONFIG_MMU */
-#define _TIF_RESTORE_SIGMASK	(1<<TIF_RESTORE_SIGMASK)
-#define _TIF_POLLING_NRFLAG	(1<<TIF_POLLING_NRFLAG)
+#define TIF_POLLING_NRFLAG	16	/* true if poll_idle() is polling
+					   TIF_NEED_RESCHED */
+
+#define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
+#define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
+#define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
+#define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
+#define _TIF_SECCOMP		(1 << TIF_SECCOMP)
+#define _TIF_SYSCALL_AUDIT	(1 << TIF_SYSCALL_AUDIT)
+#define _TIF_RESTORE_SIGMASK	(1 << TIF_RESTORE_SIGMASK)
+#define _TIF_POLLING_NRFLAG	(1 << TIF_POLLING_NRFLAG)
 
 /* work to do on interrupt/exception return */
-#ifdef CONFIG_MMU
-# define _TIF_WORK_MASK		(0x0000ffef & ~_TIF_SECCOMP)
+#define _TIF_WORK_MASK		0x0000FFFE
+
 /* work to do on any return to u-space */
-# define _TIF_ALLWORK_MASK	(0x8000ffff & ~_TIF_SECCOMP)
-#else
-# define _TIF_WORK_MASK		0x0000FFFE	/* work to do on interrupt/exception return */
-#endif /* CONFIG_MMU */
+# define _TIF_ALLWORK_MASK	0x0000FFFF
 
 #endif /* __KERNEL__ */
 
