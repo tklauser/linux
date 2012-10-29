@@ -18,10 +18,8 @@
 
 #include <linux/export.h>
 #include <linux/sched.h>
-#include <linux/slab.h>
-#include <linux/uaccess.h>
 #include <linux/tick.h>
-#include <linux/fs.h>
+#include <linux/uaccess.h>
 
 #include <asm/unistd.h>
 #include <asm/traps.h>
@@ -211,68 +209,6 @@ EXPORT_SYMBOL(kernel_thread);
 void flush_thread(void)
 {
 	set_fs(USER_DS);
-}
-
-/*
- * "nios2_fork()".. By the time we get here, the non-volatile registers have
- * also been saved on the stack. We do some ugly pointer stuff here.. (see also
- * copy_thread)
- */
-asmlinkage int nios2_fork(struct pt_regs *regs)
-{
-#ifdef CONFIG_MMU
-	return do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
-#else
-	/* fork almost works, enough to trick you into looking elsewhere :-( */
-	return -EINVAL;
-#endif /* CONFIG_MMU */
-}
-
-/*
- * nios2_execve() executes a new program.
- */
-asmlinkage int nios2_execve(struct pt_regs *regs)
-{
-	int error;
-	char *filename;
-
-	filename = getname((char *) regs->r4);
-	error = PTR_ERR(filename);
-	if (IS_ERR(filename))
-		return error;
-	error = do_execve(filename,
-			  (const char __user *const __user *) regs->r5,
-			  (const char __user *const __user *) regs->r6,
-			  regs);
-	putname(filename);
-	return error;
-}
-
-asmlinkage int nios2_vfork(struct pt_regs *regs)
-{
-	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, 0, NULL, NULL);
-}
-
-asmlinkage int nios2_clone(struct pt_regs *regs)
-{
-	unsigned long clone_flags;
-	unsigned long newsp;
-	int __user *parent_tidptr, *child_tidptr;
-
-	clone_flags = regs->r4;
-	newsp = regs->r5;
-	if (newsp == 0)
-		newsp = regs->sp;
-#ifdef CONFIG_MMU
-	parent_tidptr = (int __user *) regs->r6;
-	child_tidptr = (int __user *) regs->r8;
-#else
-	parent_tidptr = NULL;
-	child_tidptr = NULL;
-#endif
-
-	return do_fork(clone_flags, newsp, regs, 0, 
-	               parent_tidptr, child_tidptr);
 }
 
 int copy_thread(unsigned long clone_flags,

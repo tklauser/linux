@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Tobias Klauser <tklauser@distanz.ch>
+ * Copyright (C) 2011-2012 Tobias Klauser <tklauser@distanz.ch>
  * Copyright (C) 2004 Microtronix Datacom Ltd.
  *
  * This file is subject to the terms and conditions of the GNU General Public
@@ -7,12 +7,68 @@
  * for more details.
  */
 
-#include <linux/syscalls.h>
-#include <linux/file.h>
 #include <linux/export.h>
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/slab.h>
+#include <linux/syscalls.h>
 
 #include <asm/cacheflush.h>
 #include <asm/traps.h>
+
+asmlinkage int nios2_fork(struct pt_regs *regs)
+{
+#ifdef CONFIG_MMU
+	return do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
+#else
+	return -EINVAL;
+#endif
+}
+
+asmlinkage int nios2_vfork(struct pt_regs *regs)
+{
+	return do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp,
+		       regs, 0, NULL, NULL);
+}
+
+asmlinkage int nios2_clone(struct pt_regs *regs)
+{
+	unsigned long flags;
+	unsigned long newsp;
+	int __user *parent_tidptr, *child_tidptr;
+
+	flags = regs->r4;
+	newsp = regs->r5;
+	if (newsp == 0)
+		newsp = regs->sp;
+#ifdef CONFIG_MMU
+	parent_tidptr = (int __user *) regs->r6;
+	child_tidptr = (int __user *) regs->r8;
+#else
+	parent_tidptr = NULL;
+	child_tidptr = NULL;
+#endif
+
+	return do_fork(flags, newsp, regs, 0,
+	               parent_tidptr, child_tidptr);
+}
+
+asmlinkage int nios2_execve(struct pt_regs *regs)
+{
+	int error;
+	char *filename;
+
+	filename = getname((char *) regs->r4);
+	error = PTR_ERR(filename);
+	if (IS_ERR(filename))
+		return error;
+	error = do_execve(filename,
+			  (const char __user *const __user *) regs->r5,
+			  (const char __user *const __user *) regs->r6,
+			  regs);
+	putname(filename);
+	return error;
+}
 
 asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 			 unsigned long prot, unsigned long flags,
@@ -108,17 +164,3 @@ unsigned long get_fb_unmapped_area(struct file *filp, unsigned long orig_addr, u
 EXPORT_SYMBOL(get_fb_unmapped_area);
 #endif /* CONFIG_FB */
 #endif /* CONFIG_MMU */
-
-/* Uncomment if you uncomment the syscall printk tracing in entry.S */
-#if 0
-void print_syscall(int sc)
-{
-	printk("Syscall %d\n", sc);
-}
-
-
-void print_syscall_ret(int rv, int err)
-{
-	printk("  RET %d %d\n", err, rv);
-}
-#endif
