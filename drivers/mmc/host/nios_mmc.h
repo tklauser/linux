@@ -4,7 +4,6 @@
 typedef volatile struct {
 	void __iomem *base;
 	struct mmc_host *mmc;
-	spinlock_t lock;
 	struct resource *res;
 	int irq;
 	unsigned char dat_width;	/* 1=4-bit mode, 0=1-bit */

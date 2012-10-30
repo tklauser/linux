@@ -397,7 +397,6 @@ static int nios_mmc_probe(struct platform_device *pdev)
 	host->cmd = NULL;
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
 
-	spin_lock_init(&host->lock);
 	host->res = r;
 	host->irq = irq;
 	host->base = ioremap(r->start, 16 * 4);
