@@ -56,13 +56,13 @@ asmlinkage int nios2_clone(struct pt_regs *regs)
 asmlinkage int nios2_execve(struct pt_regs *regs)
 {
 	int error;
-	char *filename;
+	struct filename *filename;
 
 	filename = getname((char *) regs->r4);
 	error = PTR_ERR(filename);
 	if (IS_ERR(filename))
 		return error;
-	error = do_execve(filename,
+	error = do_execve(filename->name,
 			  (const char __user *const __user *) regs->r5,
 			  (const char __user *const __user *) regs->r6,
 			  regs);
