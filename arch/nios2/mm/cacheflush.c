@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
+
 #include <asm/cacheflush.h>
 #include <asm/cpuinfo.h>
 
@@ -57,13 +58,12 @@ static void flush_aliases(struct address_space *mapping, struct page *page)
 {
 	struct mm_struct *mm = current->active_mm;
 	struct vm_area_struct *mpnt;
-	struct prio_tree_iter iter;
 	pgoff_t pgoff;
 
 	pgoff = page->index;
 
 	flush_dcache_mmap_lock(mapping);
-	vma_prio_tree_foreach(mpnt, &iter, &mapping->i_mmap, pgoff, pgoff) {
+	vma_interval_tree_foreach(mpnt, &mapping->i_mmap, pgoff, pgoff) {
 		unsigned long offset;
 
 		if (mpnt->vm_mm != mm)
