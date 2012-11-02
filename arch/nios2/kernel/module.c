@@ -79,20 +79,9 @@ int module_frob_arch_sections(Elf_Ehdr *hdr,
 	return 0;
 }
 
-int apply_relocate(Elf32_Shdr *sechdrs,
-		   const char *strtab,
-		   unsigned int symindex,
-		   unsigned int relsec,
-		   struct module *me)
-{
-	pr_err("module %s: RELOCATION unsupported\n", me->name);
-	return -ENOEXEC;
-}
-
-
-int apply_relocate_add (Elf32_Shdr *sechdrs, const char *strtab,
-			unsigned int symindex, unsigned int relsec,
-			struct module *mod)
+int apply_relocate_add(Elf32_Shdr *sechdrs, const char *strtab,
+		       unsigned int symindex, unsigned int relsec,
+		       struct module *mod)
 {
 	unsigned int i;
 	Elf32_Rela *rela = (void *)sechdrs[relsec].sh_addr;

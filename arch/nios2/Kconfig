@@ -11,6 +11,7 @@ config NIOS2
 	select GENERIC_IRQ_SHOW
 	select GENERIC_CPU_DEVICES
 	select GENERIC_ATOMIC64
+	select MODULES_USE_ELF_RELA
 
 config GENERIC_CSUM
 	def_bool y
