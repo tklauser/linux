@@ -70,15 +70,6 @@ void module_free(struct module *mod, void *module_region)
 
 #endif /* CONFIG_MMU */
 
-/* We don't need anything special. */
-int module_frob_arch_sections(Elf_Ehdr *hdr,
-			      Elf_Shdr *sechdrs,
-			      char *secstrings,
-			      struct module *mod)
-{
-	return 0;
-}
-
 int apply_relocate_add(Elf32_Shdr *sechdrs, const char *strtab,
 		       unsigned int symindex, unsigned int relsec,
 		       struct module *mod)
