@@ -958,7 +958,8 @@ static int ads7846_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(ads7846_pm, ads7846_suspend, ads7846_resume);
 
-static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads7846 *ts)
+static int __devinit ads7846_setup_pendown(struct spi_device *spi,
+					   struct ads7846 *ts)
 {
 	const struct ads7846_platform_data *pdata = &ts->platdata;
 	int err;
@@ -984,6 +985,9 @@ static int __devinit ads7846_setup_pendown(struct spi_device *spi, struct ads784
 
 		ts->gpio_pendown = pdata->gpio_pendown;
 
+		if (pdata->gpio_pendown_debounce)
+			gpio_set_debounce(pdata->gpio_pendown,
+					  pdata->gpio_pendown_debounce);
 	} else {
 		dev_err(&spi->dev, "no get_pendown_state nor gpio_pendown?\n");
 		return -EINVAL;
